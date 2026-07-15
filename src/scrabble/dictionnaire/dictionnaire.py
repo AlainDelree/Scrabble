@@ -86,6 +86,13 @@ def normaliser_mot(mot: str) -> str:
 # passés au filtre sont déjà normalisés par ``normaliser_mot``). Tout mot
 # contenant un autre caractère (apostrophe, trait d'union, chiffre, lettre
 # grecque, lettre étrangère…) est rejeté par :func:`est_mot_scrabble`.
+#
+# Les trémas Ä/Ö/Ü sont volontairement conservés : le corpus filtré de
+# ``fr-toutesvariantes`` en contient des mots légitimes (vérifié issue #8) —
+# Ü dans les graphies rectifiées de 1990 (AIGÜE, AMBIGÜE, AMBIGÜITÉ, ARGÜER,
+# 191 formes), Ö dans ANGSTRÖM/RÖNTGEN et dérivés (79 formes), Ä dans les
+# emprunts LÄNDER, DOPPELGÄNGER (4 formes). Les retirer amputerait le filtre
+# de ces entrées jouables.
 LETTRES_SCRABBLE = "A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇŒÆ"
 _MOT_SCRABBLE = re.compile(f"^[{LETTRES_SCRABBLE}]+$")
 
