@@ -1,0 +1,4 @@
+# Dépendances du projet Scrabble.
+pywebview
+pyinstaller
+pytest

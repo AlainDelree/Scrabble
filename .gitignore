@@ -1,0 +1,18 @@
+# Environnements virtuels
+venv/
+.venv/
+
+# Sorties de build / packaging (PyInstaller)
+build/
+dist/
+*.spec
+
+# Caches Python
+__pycache__/
+*.py[cod]
+
+# Configuration locale auto-générée (recréée par scrabble.config)
+config.json
+
+# Divers
+.pytest_cache/
