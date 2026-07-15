@@ -19,6 +19,7 @@ from scrabble.dictionnaire.dictionnaire import (
     charger_ods,
     construire_ensemble_mots,
     construire_trie,
+    est_mot_scrabble,
     lire_liste_mots,
     normaliser_mot,
     obtenir_trie,
@@ -52,6 +53,41 @@ def test_normalisation_nfc():
     precompose = "É"          # U+00C9
     combinant = "É"     # E + accent aigu combinant
     assert normaliser_mot(precompose) == normaliser_mot(combinant)
+
+
+# --------------------------------------------------------------------------- #
+# Filtre alphabétique du dépliage Hunspell (issue #7, suite de #4)
+# --------------------------------------------------------------------------- #
+
+def test_est_mot_scrabble_accepte_les_formes_alphabetiques():
+    """Un mot fait uniquement de lettres jouables (accents inclus) passe."""
+    assert est_mot_scrabble("MANGEONS")
+    assert est_mot_scrabble("BELLES")
+    assert est_mot_scrabble("ÉLÈVE")       # voyelles accentuées usuelles
+    assert est_mot_scrabble("CŒUR")        # ligature Œ
+    assert est_mot_scrabble("NÆVUS")       # ligature Æ
+    assert est_mot_scrabble("FRANÇAIS")    # cédille
+
+
+def test_est_mot_scrabble_rejette_apostrophes_traits_union_chiffres():
+    """Les formes bruitées du dépliage Hunspell sont écartées."""
+    assert not est_mot_scrabble("QU'IL")        # élision avec apostrophe
+    assert not est_mot_scrabble("QU’IL")        # apostrophe typographique
+    assert not est_mot_scrabble("ARC-EN-CIEL")  # trait d'union
+    assert not est_mot_scrabble("H2O")          # chiffre
+    assert not est_mot_scrabble("2E")           # ordinal
+    assert not est_mot_scrabble("ΑΛΦΑ")         # lettres grecques
+    assert not est_mot_scrabble("CAÑON")        # lettre étrangère (ñ)
+    assert not est_mot_scrabble("")             # chaîne vide
+    assert not est_mot_scrabble("MOT SUIVI")    # espace interne
+
+
+def test_est_mot_scrabble_ne_garde_que_la_forme_alphabetique():
+    """Sur un lot mêlé, seule la forme purement alphabétique/accentuée passe."""
+    candidats = ["ÉLÈVE", "QU'IL", "ARC-EN-CIEL", "H2O", "CŒUR"]
+    conserves = [mot for mot in candidats if est_mot_scrabble(mot)]
+
+    assert conserves == ["ÉLÈVE", "CŒUR"]
 
 
 # --------------------------------------------------------------------------- #

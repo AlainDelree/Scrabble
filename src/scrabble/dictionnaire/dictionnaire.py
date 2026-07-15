@@ -35,6 +35,7 @@ configurée change.
 from __future__ import annotations
 
 import pickle
+import re
 import unicodedata
 from pathlib import Path
 from typing import Any, Iterable
@@ -74,6 +75,29 @@ def normaliser_mot(mot: str) -> str:
     accentué (précomposé vs. combinant) soient considérées identiques.
     """
     return unicodedata.normalize("NFC", mot.strip().upper())
+
+
+# --------------------------------------------------------------------------- #
+# Filtre alphabétique du dépliage Hunspell
+# --------------------------------------------------------------------------- #
+
+# Lettres acceptées au Scrabble francophone : les 26 lettres de l'alphabet plus
+# les voyelles accentuées usuelles et les ligatures Œ/Æ, en MAJUSCULES (les mots
+# passés au filtre sont déjà normalisés par ``normaliser_mot``). Tout mot
+# contenant un autre caractère (apostrophe, trait d'union, chiffre, lettre
+# grecque, lettre étrangère…) est rejeté par :func:`est_mot_scrabble`.
+LETTRES_SCRABBLE = "A-ZÀÂÄÉÈÊËÎÏÔÖÙÛÜÇŒÆ"
+_MOT_SCRABBLE = re.compile(f"^[{LETTRES_SCRABBLE}]+$")
+
+
+def est_mot_scrabble(mot: str) -> bool:
+    """Vrai si ``mot`` (déjà normalisé) n'est fait que de lettres jouables.
+
+    Voir :data:`LETTRES_SCRABBLE`. Sert à filtrer le dépliage Hunspell, qui
+    produit massivement des formes inutilisables au Scrabble (élisions avec
+    apostrophe, mots composés à trait d'union, ordinaux, symboles…).
+    """
+    return bool(_MOT_SCRABBLE.match(mot))
 
 
 # --------------------------------------------------------------------------- #
@@ -127,6 +151,19 @@ def deplier_hunspell(base: Path = BASE_HUNSPELL) -> set[str]:
     (préfixe + suffixe) et les drapeaux de continuation (affixes en cascade,
     p. ex. conjugaison puis accord). Les radicaux marqués FORBIDDENWORD sont
     exclus, ceux marqués NEEDAFFIX ne sont pas émis seuls.
+
+    Filtre alphabétique
+    ~~~~~~~~~~~~~~~~~~~~~
+    Seules les formes *purement alphabétiques jouables au Scrabble* sont
+    conservées (voir :func:`est_mot_scrabble` / :data:`LETTRES_SCRABBLE`). Le
+    diagnostic de l'issue #4 a montré que le dépliage brut de
+    ``fr-toutesvariantes`` produit ~2,5 M de formes dont **81 %** sont des
+    élisions avec apostrophe (« QU'… ») ou des mots composés à trait d'union,
+    plus ~7 200 formes bruitées (chiffres, ordinaux, lettres grecques, lettres
+    étrangères hors alphabet français) — toutes inutilisables au Scrabble. On
+    exclut donc explicitement apostrophes, traits d'union, chiffres et lettres
+    hors des 26 lettres + accents français usuels. Le corpus filtré attendu
+    tombe à ~461 000 mots, ordre de grandeur cohérent avec l'ODS8 (411 430).
 
     Nécessite la bibliothèque ``spylls`` (voir requirements.txt). L'import est
     différé pour que le mode ODS n'en dépende pas.
@@ -215,7 +252,7 @@ def deplier_hunspell(base: Path = BASE_HUNSPELL) -> set[str]:
     for entree in dico.dic.words:
         for forme in _developper(entree.stem, entree.flags):
             forme_norm = normaliser_mot(forme)
-            if forme_norm:
+            if forme_norm and est_mot_scrabble(forme_norm):
                 resultat.add(forme_norm)
     return resultat
 
