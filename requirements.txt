@@ -2,3 +2,8 @@
 pywebview
 pyinstaller
 pytest
+# Dépliage ("unmunch") du dictionnaire Hunspell fr-toutesvariantes
+# (source alternative à l'ODS). Réimplémentation pure-Python de Hunspell
+# qui parse fiablement les fichiers .aff/.dic. Requis uniquement pour la
+# source "hunspell" ; le mode ODS (défaut) n'en dépend pas.
+spylls

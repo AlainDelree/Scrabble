@@ -1,0 +1,298 @@
+"""Tests du module dictionnaire (``scrabble.dictionnaire.dictionnaire``).
+
+Ces tests n'utilisent **jamais** les vrais fichiers ODS/Hunspell : ils
+construisent de petits dictionnaires factices dans des fichiers temporaires
+(``tmp_path``). Le dépliage Hunspell réel (via ``spylls``) n'est donc pas
+exercé ici — seule la chaîne de construction (union/soustraction, Trie, cache)
+et la normalisation sont testées de façon déterministe et rapide.
+"""
+
+from __future__ import annotations
+
+import os
+import time
+
+from scrabble.dictionnaire.dictionnaire import (
+    Dictionnaire,
+    Trie,
+    assurer_fichiers_modifs,
+    charger_ods,
+    construire_ensemble_mots,
+    construire_trie,
+    lire_liste_mots,
+    normaliser_mot,
+    obtenir_trie,
+)
+
+
+# --------------------------------------------------------------------------- #
+# Normalisation
+# --------------------------------------------------------------------------- #
+
+def test_normalisation_majuscules_et_espaces():
+    """Passage en MAJUSCULES et suppression des espaces superflus."""
+    assert normaliser_mot("  chat  ") == "CHAT"
+    assert normaliser_mot("Chien") == "CHIEN"
+
+
+def test_normalisation_conserve_les_accents():
+    """Le Scrabble francophone distingue les mots accentués : on les garde."""
+    assert normaliser_mot("élève") == "ÉLÈVE"
+    assert normaliser_mot("ELEVE") != normaliser_mot("élève")
+
+
+def test_normalisation_chaine_vide():
+    """Une ligne ne contenant que des espaces se normalise en chaîne vide."""
+    assert normaliser_mot("   ") == ""
+    assert normaliser_mot("\n") == ""
+
+
+def test_normalisation_nfc():
+    """Formes précomposée et combinante d'un accent sont unifiées (NFC)."""
+    precompose = "É"          # U+00C9
+    combinant = "É"     # E + accent aigu combinant
+    assert normaliser_mot(precompose) == normaliser_mot(combinant)
+
+
+# --------------------------------------------------------------------------- #
+# Lecture des listes de mots (un mot par ligne)
+# --------------------------------------------------------------------------- #
+
+def _ecrire_liste(chemin, mots):
+    chemin.write_text("\n".join(mots) + "\n", encoding="utf-8")
+
+
+def test_lire_liste_mots_normalise_et_ignore_les_vides(tmp_path):
+    """Casse normalisée, lignes vides ignorées, doublons dédupliqués."""
+    fichier = tmp_path / "liste.txt"
+    fichier.write_text("chat\n\nCHAT\n  chien  \n\n", encoding="utf-8")
+
+    mots = lire_liste_mots(fichier)
+
+    assert mots == {"CHAT", "CHIEN"}
+
+
+def test_lire_liste_mots_fichier_absent(tmp_path):
+    """Un fichier inexistant donne un ensemble vide, sans erreur."""
+    assert lire_liste_mots(tmp_path / "absent.txt") == set()
+
+
+def test_charger_ods_lit_un_mot_par_ligne(tmp_path):
+    """``charger_ods`` lit une liste ODS factice normalisée."""
+    fichier = tmp_path / "ods.txt"
+    _ecrire_liste(fichier, ["chat", "chien", "OISEAU"])
+
+    assert charger_ods(fichier) == {"CHAT", "CHIEN", "OISEAU"}
+
+
+def test_assurer_fichiers_modifs_cree_les_fichiers_vides(tmp_path):
+    """Les fichiers d'ajouts/retraits sont créés vides s'ils manquent."""
+    ajoutes = tmp_path / "sous" / "mots_ajoutes.txt"
+    retires = tmp_path / "sous" / "mots_retires.txt"
+
+    assurer_fichiers_modifs(ajoutes, retires)
+
+    assert ajoutes.exists() and ajoutes.read_text(encoding="utf-8") == ""
+    assert retires.exists() and retires.read_text(encoding="utf-8") == ""
+
+
+# --------------------------------------------------------------------------- #
+# Union / soustraction
+# --------------------------------------------------------------------------- #
+
+def test_construire_ensemble_union_puis_soustraction():
+    """(source ∪ ajoutes) − retires, dans cet ordre."""
+    source = {"CHAT", "CHIEN"}
+    ajoutes = {"OISEAU", "CHAT"}      # CHAT déjà présent : union idempotente
+    retires = {"CHIEN"}
+
+    resultat = construire_ensemble_mots(source, ajoutes, retires)
+
+    assert resultat == {"CHAT", "OISEAU"}
+
+
+def test_soustraction_prioritaire_sur_ajout():
+    """Un mot à la fois ajouté et retiré est absent (retrait prioritaire)."""
+    resultat = construire_ensemble_mots({"CHAT"}, {"OISEAU"}, {"OISEAU"})
+
+    assert resultat == {"CHAT"}
+
+
+def test_retrait_d_un_mot_source():
+    """Un mot de la source figurant dans les retraits disparaît."""
+    resultat = construire_ensemble_mots({"CHAT", "CHIEN"}, set(), {"CHAT"})
+
+    assert resultat == {"CHIEN"}
+
+
+# --------------------------------------------------------------------------- #
+# Trie
+# --------------------------------------------------------------------------- #
+
+def test_trie_contient_et_taille():
+    """Insertion, appartenance et comptage sans doublon."""
+    trie = Trie.depuis_iterable(["CHAT", "CHIEN", "CHAT"])
+
+    assert "CHAT" in trie
+    assert "CHIEN" in trie
+    assert "CHA" not in trie          # préfixe non terminal
+    assert "CHATS" not in trie        # dépasse un mot existant
+    assert len(trie) == 2
+
+
+def test_trie_mot_vide_ignore():
+    """Insérer une chaîne vide n'ajoute rien."""
+    trie = Trie()
+    trie.inserer("")
+
+    assert len(trie) == 0
+    assert "" not in trie
+
+
+def test_dictionnaire_mot_valide_normalise_l_entree():
+    """``mot_valide`` normalise l'entrée avant de consulter le Trie."""
+    dico = Dictionnaire(Trie.depuis_iterable(["CHAT", "ÉLÈVE"]))
+
+    assert dico.mot_valide("chat")
+    assert dico.mot_valide("  Chat ")
+    assert dico.mot_valide("élève")
+    assert not dico.mot_valide("eleve")   # accents distincts
+    assert not dico.mot_valide("zzz")
+
+
+# --------------------------------------------------------------------------- #
+# Construction complète (source ODS factice) + validation
+# --------------------------------------------------------------------------- #
+
+def _preparer_dico(tmp_path, source_mots, ajoutes=(), retires=()):
+    """Crée les fichiers ODS/ajouts/retraits factices et renvoie les chemins."""
+    chemin_ods = tmp_path / "ods.txt"
+    _ecrire_liste(chemin_ods, source_mots)
+    chemin_ajoutes = tmp_path / "mots_ajoutes.txt"
+    _ecrire_liste(chemin_ajoutes, ajoutes or [""])
+    chemin_retires = tmp_path / "mots_retires.txt"
+    _ecrire_liste(chemin_retires, retires or [""])
+    return chemin_ods, chemin_ajoutes, chemin_retires
+
+
+def test_construire_trie_bout_en_bout(tmp_path):
+    """Chaîne complète en source ODS : union/soustraction + normalisation."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path,
+        source_mots=["chat", "chien", "poisson"],
+        ajoutes=["oiseau"],
+        retires=["chien"],
+    )
+
+    trie = construire_trie(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+    )
+
+    assert "CHAT" in trie
+    assert "OISEAU" in trie           # ajouté
+    assert "CHIEN" not in trie        # retiré
+    assert len(trie) == 3             # CHAT, POISSON, OISEAU
+
+
+def test_source_inconnue_retombe_sur_ods(tmp_path):
+    """Une source inattendue retombe sur l'ODS (robustesse)."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=["chat"]
+    )
+
+    trie = construire_trie(
+        source="valeur_bidon",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+    )
+
+    assert "CHAT" in trie
+
+
+# --------------------------------------------------------------------------- #
+# Cache disque : reconstruction et invalidation
+# --------------------------------------------------------------------------- #
+
+def test_cache_ecrit_et_relu(tmp_path):
+    """Le premier appel écrit le cache, le second le relit tel quel."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=["chat", "chien"]
+    )
+    chemin_cache = tmp_path / "trie_cache.pkl"
+
+    kwargs = dict(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+        chemin_cache=chemin_cache,
+    )
+
+    trie1 = obtenir_trie(**kwargs)
+    assert chemin_cache.exists()
+    mtime_cache = chemin_cache.stat().st_mtime_ns
+
+    trie2 = obtenir_trie(**kwargs)
+    # Cache non périmé : pas de réécriture (mtime inchangé).
+    assert chemin_cache.stat().st_mtime_ns == mtime_cache
+    assert "CHAT" in trie1 and "CHAT" in trie2
+
+
+def test_cache_invalide_si_source_modifiee(tmp_path):
+    """Modifier un fichier source après le cache force une reconstruction."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=["chat"]
+    )
+    chemin_cache = tmp_path / "trie_cache.pkl"
+    kwargs = dict(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+        chemin_cache=chemin_cache,
+    )
+
+    trie1 = obtenir_trie(**kwargs)
+    assert "OISEAU" not in trie1
+
+    # On modifie la source ET on rend son mtime postérieur au cache, sans
+    # dépendre de la résolution d'horloge (mtime forcé à cache + 10 s).
+    _ecrire_liste(chemin_ods, ["chat", "oiseau"])
+    futur = chemin_cache.stat().st_mtime + 10
+    os.utime(chemin_ods, (futur, futur))
+
+    trie2 = obtenir_trie(**kwargs)
+
+    assert "OISEAU" in trie2           # cache invalidé, dictionnaire reconstruit
+
+
+def test_cache_invalide_si_source_configuree_change(tmp_path):
+    """Changer la source (ods → hunspell) invalide le cache existant."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=["chat"]
+    )
+    # Fichiers hunspell factices : jamais lus car le cache doit d'abord être
+    # jugé invalide sur le seul critère « source différente ». Pour éviter tout
+    # dépliage réel, on garde source="ods" au 1er appel puis on vérifie que
+    # _cache_valide rejette une source distincte via l'en-tête.
+    chemin_cache = tmp_path / "trie_cache.pkl"
+    obtenir_trie(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+        chemin_cache=chemin_cache,
+    )
+
+    from scrabble.dictionnaire.dictionnaire import _cache_valide, _sources_pertinentes
+
+    sources_ods = _sources_pertinentes(
+        "ods", chemin_ods, tmp_path / "base", chemin_ajoutes, chemin_retires
+    )
+    assert _cache_valide(chemin_cache, "ods", sources_ods) is True
+    # Même cache, source demandée différente → invalide.
+    assert _cache_valide(chemin_cache, "hunspell", sources_ods) is False

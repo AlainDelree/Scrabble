@@ -101,7 +101,18 @@ def test_sauvegarder_puis_recharger(tmp_path):
     """Aller-retour : ce qui est sauvegardé se relit à l'identique."""
     chemin = tmp_path / "config.json"
 
-    sauvegarder_config({"niveau_ia": "debutant", "mode_saisie": "clavier"}, chemin)
+    sauvegarder_config(
+        {
+            "niveau_ia": "debutant",
+            "mode_saisie": "clavier",
+            "source_dictionnaire": "hunspell",
+        },
+        chemin,
+    )
     config = charger_config(chemin)
 
-    assert config == {"niveau_ia": "debutant", "mode_saisie": "clavier"}
+    assert config == {
+        "niveau_ia": "debutant",
+        "mode_saisie": "clavier",
+        "source_dictionnaire": "hunspell",
+    }
