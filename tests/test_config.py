@@ -16,6 +16,7 @@ def test_fichier_absent_cree_defauts(tmp_path):
     assert config == CONFIG_DEFAUT
     assert config["niveau_ia"] == "amateur"
     assert config["mode_saisie"] == "clic"
+    assert config["source_dictionnaire"] == "ods"
     # Un fichier propre et relisible a bien été créé.
     assert chemin.exists()
     assert json.loads(chemin.read_text(encoding="utf-8")) == CONFIG_DEFAUT
@@ -53,6 +54,7 @@ def test_cle_manquante_completee(tmp_path):
 
     assert config["niveau_ia"] == "expert"
     assert config["mode_saisie"] == "clic"
+    assert config["source_dictionnaire"] == "ods"
     assert json.loads(chemin.read_text(encoding="utf-8"))["mode_saisie"] == "clic"
 
 
@@ -81,7 +83,11 @@ def test_cle_inconnue_nettoyee(tmp_path):
 def test_fichier_valide_non_reecrit(tmp_path):
     """Fichier déjà propre : aucune réécriture inutile (mtime inchangé)."""
     chemin = tmp_path / "config.json"
-    valeur = {"niveau_ia": "expert", "mode_saisie": "clavier"}
+    valeur = {
+        "niveau_ia": "expert",
+        "mode_saisie": "clavier",
+        "source_dictionnaire": "hunspell",
+    }
     chemin.write_text(json.dumps(valeur), encoding="utf-8")
     mtime_avant = chemin.stat().st_mtime_ns
 

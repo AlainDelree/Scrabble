@@ -25,6 +25,9 @@ CHEMIN_CONFIG = RACINE_PROJET / "config.json"
 CONFIG_DEFAUT: dict[str, Any] = {
     "niveau_ia": "amateur",
     "mode_saisie": "clic",
+    # Source du dictionnaire de mots : "ods" (dictionnaire officiel du Scrabble
+    # francophone, défaut) ou "hunspell" (dictionnaire orthographique déplié).
+    "source_dictionnaire": "ods",
 }
 
 
