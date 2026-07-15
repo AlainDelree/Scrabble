@@ -14,5 +14,10 @@ __pycache__/
 # Configuration locale auto-générée (recréée par scrabble.config)
 config.json
 
+# Dictionnaires tiers (ODS8, Hunspell fr-toutesvariantes) : déposés
+# manuellement, jamais commités (licence floue). On garde uniquement le README.
+data/dictionnaire/*
+!data/dictionnaire/README.md
+
 # Divers
 .pytest_cache/
