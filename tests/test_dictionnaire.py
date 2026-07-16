@@ -9,6 +9,7 @@ et la normalisation sont testées de façon déterministe et rapide.
 
 from __future__ import annotations
 
+import json
 import os
 import time
 
@@ -16,6 +17,7 @@ from scrabble.dictionnaire.dictionnaire import (
     Dictionnaire,
     Trie,
     assurer_fichiers_modifs,
+    charger_definitions,
     charger_ods,
     construire_ensemble_mots,
     construire_trie,
@@ -247,6 +249,55 @@ def test_source_inconnue_retombe_sur_ods(tmp_path):
     )
 
     assert "CHAT" in trie
+
+
+# --------------------------------------------------------------------------- #
+# Définitions (index mot → liste de définitions), issue #15
+# --------------------------------------------------------------------------- #
+
+def test_charger_definitions_fichier_present(tmp_path):
+    """Un fichier ``definitions.json`` présent est lu et renvoyé tel quel."""
+    fichier = tmp_path / "definitions.json"
+    fichier.write_text(
+        json.dumps({"CHAT": ["Petit félin domestique."]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    definitions = charger_definitions(fichier)
+
+    assert definitions == {"CHAT": ["Petit félin domestique."]}
+
+
+def test_charger_definitions_fichier_absent(tmp_path):
+    """Fichier absent : dict vide, sans erreur (le jeu reste jouable)."""
+    assert charger_definitions(tmp_path / "absent.json") == {}
+
+
+def test_charger_definitions_mot_avec_plusieurs_definitions(tmp_path):
+    """Un mot homographe porte plusieurs définitions fusionnées en liste."""
+    fichier = tmp_path / "definitions.json"
+    fichier.write_text(
+        json.dumps(
+            {"LIRE": ["Interpréter un texte écrit.", "Ancienne monnaie italienne."]},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    definitions = charger_definitions(fichier)
+
+    assert definitions["LIRE"] == [
+        "Interpréter un texte écrit.",
+        "Ancienne monnaie italienne.",
+    ]
+
+
+def test_charger_definitions_json_invalide(tmp_path):
+    """Un JSON illisible retombe sur un dict vide plutôt que de planter."""
+    fichier = tmp_path / "definitions.json"
+    fichier.write_text("{ ceci n'est pas du json", encoding="utf-8")
+
+    assert charger_definitions(fichier) == {}
 
 
 # --------------------------------------------------------------------------- #

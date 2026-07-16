@@ -34,6 +34,7 @@ configurée change.
 
 from __future__ import annotations
 
+import json
 import pickle
 import re
 import unicodedata
@@ -58,6 +59,10 @@ BASE_HUNSPELL = (
 CHEMIN_MOTS_AJOUTES = DOSSIER_DICO / "mots_ajoutes.txt"
 CHEMIN_MOTS_RETIRES = DOSSIER_DICO / "mots_retires.txt"
 CHEMIN_CACHE = DOSSIER_DICO / "trie_cache.pkl"
+# Index mot → définition(s) restreint aux mots de l'ODS8 (issue #15). Ce fichier
+# est volumineux et gitignoré : construit hors-ligne par
+# ``scripts/construire_definitions.py``. Son absence est tolérée (dict vide).
+CHEMIN_DEFINITIONS = DOSSIER_DICO / "definitions.json"
 
 # Version du format de cache : incrémenter invalide tous les caches existants.
 VERSION_CACHE = 1
@@ -132,6 +137,53 @@ def lire_liste_mots(chemin: Path) -> set[str]:
 def charger_ods(chemin: Path = CHEMIN_ODS) -> set[str]:
     """Charge la liste ODS8 (un mot par ligne) normalisée."""
     return lire_liste_mots(chemin)
+
+
+# --------------------------------------------------------------------------- #
+# Définitions (index mot → liste de définitions), restreint à l'ODS8
+# --------------------------------------------------------------------------- #
+
+# Cache mémoire des définitions, chargé paresseusement au premier appel.
+_DEFINITIONS_CACHE: dict[str, list[str]] | None = None
+
+
+def charger_definitions(
+    chemin: Path = CHEMIN_DEFINITIONS,
+) -> dict[str, list[str]]:
+    """Charge l'index mot → liste de définitions (issue #15).
+
+    Le fichier ``definitions.json`` est construit hors-ligne à partir du
+    Wiktionnaire filtré, restreint aux seuls mots de l'ODS8 (voir
+    ``scripts/construire_definitions.py``). Il est **gitignoré** : son absence
+    est un cas normal (par exemple sur une machine fraîchement clonée). On
+    renvoie alors un dictionnaire vide plutôt que de lever une erreur — le jeu
+    doit rester jouable sans définitions.
+
+    Le résultat est mis en cache mémoire (chargement paresseux, à l'image de
+    ``charger_ods``/``obtenir_trie``) : les appels suivants renvoient l'objet
+    déjà chargé sans relire le disque. Le chemin par défaut est le seul mis en
+    cache ; passer un ``chemin`` explicite relit toujours le fichier (utile en
+    test).
+    """
+    global _DEFINITIONS_CACHE
+    if chemin == CHEMIN_DEFINITIONS and _DEFINITIONS_CACHE is not None:
+        return _DEFINITIONS_CACHE
+    definitions = _lire_definitions(chemin)
+    if chemin == CHEMIN_DEFINITIONS:
+        _DEFINITIONS_CACHE = definitions
+    return definitions
+
+
+def _lire_definitions(chemin: Path) -> dict[str, list[str]]:
+    """Lit et valide le JSON des définitions ; dict vide si absent/illisible."""
+    try:
+        with open(chemin, "r", encoding="utf-8") as fichier:
+            donnees = json.load(fichier)
+    except (FileNotFoundError, IsADirectoryError, OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(donnees, dict):
+        return {}
+    return donnees
 
 
 def assurer_fichiers_modifs(
