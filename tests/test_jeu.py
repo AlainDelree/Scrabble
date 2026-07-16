@@ -17,7 +17,9 @@ from scrabble.moteur.plateau_partie import Direction, Tuile
 from scrabble.regles.lettres import JOKER
 from scrabble.regles.plateau import CENTRE, TAILLE
 from scrabble.ui.jeu import (
+    AVATARS,
     ApiJeu,
+    calculer_avatars,
     calculer_positions,
     compter_humains,
     construire_coup,
@@ -627,6 +629,76 @@ class TestCalculerPositions:
         partie = Partie(self._joueurs(True, False, False), _DicoFactice(), graine=3)
         etat = etat_public(partie, None)
         assert [j["position"] for j in etat["joueurs"]] == ["bas", "haut", "gauche"]
+
+
+class TestCalculerAvatars:
+    """Attribution déterministe d'un avatar par joueur (issue #34)."""
+
+    def _joueurs(self, *noms: str) -> list[Joueur]:
+        return [Joueur(nom=nom, humain=True) for nom in noms]
+
+    def test_liste_vide(self):
+        assert calculer_avatars([]) == []
+
+    def test_identifiants_connus(self):
+        # Chaque avatar attribué appartient à la bibliothèque.
+        avatars = calculer_avatars(self._joueurs("Alice", "Bob", "Chloé", "David"))
+        assert len(avatars) == 4
+        assert all(a in AVATARS for a in avatars)
+
+    def test_deterministe_appels_repetes(self):
+        # Même partie -> mêmes avatars à chaque appel (pas de ré-tirage).
+        joueurs = self._joueurs("Alice", "Bob", "Chloé")
+        premier = calculer_avatars(joueurs)
+        for _ in range(5):
+            assert calculer_avatars(joueurs) == premier
+
+    def test_aucun_doublon_jusqu_a_quatre_joueurs(self):
+        for noms in [
+            ("Alice",),
+            ("Alice", "Bob"),
+            ("Alice", "Bob", "Chloé"),
+            ("Alice", "Bob", "Chloé", "David"),
+        ]:
+            avatars = calculer_avatars(self._joueurs(*noms))
+            assert len(set(avatars)) == len(avatars), noms
+
+    def test_homonymes_avatars_distincts(self):
+        # Deux joueurs de même nom : l'index départage, pas de doublon.
+        avatars = calculer_avatars(self._joueurs("Alice", "Alice"))
+        assert avatars[0] != avatars[1]
+
+    def test_humain_et_ordinateur_traites_pareil(self):
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
+        ]
+        avatars = calculer_avatars(joueurs)
+        assert len(set(avatars)) == 2
+        assert all(a in AVATARS for a in avatars)
+
+    def test_plus_de_joueurs_que_d_avatars_ne_plante_pas(self):
+        # Cas théorique impossible en jeu (max 4 joueurs) : on tolère les
+        # doublons au lieu de planter. On construit N = nb avatars + 3 joueurs.
+        joueurs = self._joueurs(*[f"J{i}" for i in range(len(AVATARS) + 3)])
+        avatars = calculer_avatars(joueurs)
+        assert len(avatars) == len(joueurs)
+        assert all(a in AVATARS for a in avatars)
+        # Les avatars distincts saturent la bibliothèque avant les doublons.
+        assert len(set(avatars)) == len(AVATARS)
+
+    def test_avatar_expose_dans_etat_public(self):
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
+        ]
+        partie = Partie(joueurs, _DicoFactice(), graine=5)
+        etat = etat_public(partie, None)
+        avatars = [j["avatar"] for j in etat["joueurs"]]
+        assert all(a in AVATARS for a in avatars)
+        assert len(set(avatars)) == 2
+        # Cohérent avec le calcul direct.
+        assert avatars == calculer_avatars(joueurs)
 
 
 class TestVerifierMotDictionnaire:

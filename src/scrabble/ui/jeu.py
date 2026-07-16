@@ -27,6 +27,7 @@ et ouvre l'écran de jeu sans passer par l'écran d'accueil.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -123,8 +124,70 @@ def calculer_positions(joueurs: list[Joueur]) -> list[str]:
     return positions
 
 
+# Bibliothèque d'avatars SVG (issue #34). Chaque identifiant correspond à un
+# fichier ``web/avatars/<id>.svg`` (portraits stylisés originaux, un jeu de
+# traits distinctifs par avatar). Une quinzaine suffit largement à garantir
+# l'absence de doublon avec au plus 4 joueurs par partie. L'ordre de cette liste
+# fait partie du contrat déterministe : ne pas la réordonner sans raison.
+AVATARS: tuple[str, ...] = tuple(f"avatar-{n:02d}" for n in range(1, 16))
+
+
+def _graine_avatar(joueur: Joueur, index: int) -> int:
+    """Graine stable (indépendante de l'exécution) pour le choix d'avatar.
+
+    Dérivée du nom du joueur **et** de son index dans la partie : deux joueurs
+    homonymes reçoivent ainsi des graines différentes. On passe par ``hashlib``
+    plutôt que par ``hash()`` intégré, dont la valeur varie d'un processus à
+    l'autre (``PYTHONHASHSEED``) — la reproductibilité inter-exécutions n'est pas
+    exigée ici mais elle rend les tests et le débogage plus simples.
+    """
+    cle = f"{index}\x00{joueur.nom}".encode("utf-8")
+    return int.from_bytes(hashlib.md5(cle).digest()[:8], "big")
+
+
+def calculer_avatars(joueurs: list[Joueur]) -> list[str]:
+    """Avatar attribué à chaque joueur autour du plateau (index → identifiant).
+
+    Renvoie une liste parallèle à ``joueurs`` où l'élément ``i`` est l'identifiant
+    d'avatar (voir :data:`AVATARS`) assigné au joueur d'index ``i``. Comme
+    :func:`calculer_positions`, c'est **une seule source de vérité** côté Python,
+    consommée telle quelle par l'UI (aucune logique d'attribution dupliquée en
+    JS). Propriétés garanties (issue #34) :
+
+    * **Déterminisme** : l'attribution ne dépend que de la liste ``joueurs`` (nom
+      + rang), donc un même appel sur une même partie rend toujours le même
+      résultat — pas de ré-tirage à chaque rafraîchissement d'écran.
+    * **Absence de doublon** tant qu'il reste des avatars libres : chaque joueur
+      vise l'avatar de sa graine puis, s'il est déjà pris, un sondage linéaire
+      lui trouve le prochain avatar libre. Avec ≤ 4 joueurs et 15 avatars, aucun
+      doublon n'est possible.
+    * **Dégradation propre** si le nombre de joueurs dépassait celui des avatars
+      (cas théorique, impossible avec ``MAX_JOUEURS`` = 4) : le sondage échoue,
+      on retombe sur l'avatar préféré et un doublon est toléré plutôt que de
+      planter.
+    """
+    nb = len(AVATARS)
+    assignes: list[str] = []
+    pris: set[int] = set()
+    for index, joueur in enumerate(joueurs):
+        prefere = _graine_avatar(joueur, index) % nb
+        choix = prefere
+        for pas in range(nb):
+            candidat = (prefere + pas) % nb
+            if candidat not in pris:
+                choix = candidat
+                break
+        pris.add(choix)
+        assignes.append(AVATARS[choix])
+    return assignes
+
+
 def serialiser_joueur_public(
-    joueur: Joueur, index: int, courant: bool, position: str | None = None
+    joueur: Joueur,
+    index: int,
+    courant: bool,
+    position: str | None = None,
+    avatar: str | None = None,
 ) -> dict[str, Any]:
     """Sérialise les infos **publiques** d'un joueur (sans révéler ses lettres).
 
@@ -133,6 +196,8 @@ def serialiser_joueur_public(
     rectangles grisés sans rien dévoiler. ``position`` est le côté du plateau
     assigné au joueur (voir :func:`calculer_positions`) : l'UI place le panneau
     du joueur sur ce côté (une seule source de vérité, calculée côté Python).
+    ``avatar`` est l'identifiant du portrait SVG attribué (voir
+    :func:`calculer_avatars`), également calculé côté Python.
     """
     return {
         "index": index,
@@ -143,6 +208,7 @@ def serialiser_joueur_public(
         "nb_lettres": len(joueur.chevalet),
         "courant": courant,
         "position": position,
+        "avatar": avatar,
     }
 
 
@@ -186,13 +252,18 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     bouton « voir mes lettres » que lorsqu'il y a au moins deux humains.
     """
     positions = calculer_positions(partie.joueurs)
+    avatars = calculer_avatars(partie.joueurs)
     return {
         "id_partie": id_partie,
         "taille": TAILLE,
         "plateau": serialiser_plateau(partie.plateau),
         "joueurs": [
             serialiser_joueur_public(
-                joueur, index, index == partie.index_courant, positions[index]
+                joueur,
+                index,
+                index == partie.index_courant,
+                positions[index],
+                avatars[index],
             )
             for index, joueur in enumerate(partie.joueurs)
         ],

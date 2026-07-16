@@ -192,6 +192,23 @@ header h1 {
     font-size: 1.2rem;
 }
 
+/* Avatar SVG du joueur (issue #34). Rond, il complète — sans la remplacer — la
+   distinction humain/ordinateur portée par la bordure de couleur du panneau. */
+.panneau-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: white;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.06);
+}
+
+/* Dans le bandeau bas (joueur de référence), l'avatar est un peu plus grand. */
+.slot-bas .panneau-avatar {
+    width: 48px;
+    height: 48px;
+}
+
 .panneau-nom {
     font-weight: 700;
     white-space: nowrap;

@@ -230,9 +230,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const badgeTour = joueur.courant
             ? '<span class="panneau-tour">● à jouer</span>'
             : '';
+        // Avatar SVG attribué côté Python (identifiant -> fichier). Repli sur
+        // l'icône emoji historique si aucun avatar n'est fourni (compat/robustesse).
+        const avatarHtml = joueur.avatar
+            ? `<img class="panneau-avatar" src="avatars/${encodeURIComponent(joueur.avatar)}.svg"
+                    alt="" width="40" height="40">`
+            : `<span class="panneau-icone">${icone(joueur.humain)}</span>`;
         item.innerHTML = `
             <div class="panneau-entete">
-                <span class="panneau-icone">${icone(joueur.humain)}</span>
+                ${avatarHtml}
                 <span class="panneau-nom">${escapeHtml(joueur.nom)}</span>
             </div>
             <div class="panneau-detail">${typeLabel}</div>
