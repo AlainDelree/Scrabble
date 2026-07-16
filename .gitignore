@@ -19,5 +19,9 @@ config.json
 data/dictionnaire/*
 !data/dictionnaire/README.md
 
+# Base SQLite des parties (persistance : historique + reprise) — jamais commitée
+data/parties.db
+data/*.db
+
 # Divers
 .pytest_cache/
