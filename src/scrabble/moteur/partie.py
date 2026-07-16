@@ -46,6 +46,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from scrabble.moteur import ia
+from scrabble.moteur.ia import Niveau
 from scrabble.moteur.plateau_partie import Coup, PlateauPartie
 from scrabble.moteur.score import DetailScore, detailler_score
 from scrabble.moteur.tirage import Sac
@@ -80,12 +81,17 @@ class Joueur:
 
     ``chevalet`` est une liste de jetons (chaînes d'un caractère, majuscule ou
     :data:`scrabble.regles.lettres.JOKER`), au plus :data:`TAILLE_CHEVALET`.
+
+    Pour un joueur IA (``humain=False``), le champ ``niveau`` indique la
+    stratégie de sélection de coup (:class:`~scrabble.moteur.ia.Niveau`).
+    Pour un joueur humain, ``niveau`` doit rester ``None``.
     """
 
     nom: str
     humain: bool = True
     chevalet: list[str] = field(default_factory=list)
     score: int = 0
+    niveau: Niveau | None = None
 
     def valeur_chevalet(self) -> int:
         """Somme des valeurs des lettres encore sur le chevalet (jokers = 0)."""
@@ -116,6 +122,7 @@ def creer_partie(
     *,
     nb_ia: int = 0,
     noms_ia: list[str] | None = None,
+    niveaux_ia: list[Niveau] | None = None,
     graine: int | None = None,
 ) -> "Partie":
     """Construit une partie à partir d'une configuration humains/IA.
@@ -123,8 +130,9 @@ def creer_partie(
     ``noms_humains`` doit contenir au moins un nom (1 à 4 humains). ``nb_ia``
     ajoute des joueurs IA en complément, le total étant plafonné à
     :data:`MAX_JOUEURS`. ``noms_ia`` permet de nommer les IA (sinon « IA 1 »,
-    « IA 2 »…). L'ordre de jeu est l'ordre de création : humains puis IA, pas de
-    tirage au sort à ce stade.
+    « IA 2 »…). ``niveaux_ia`` spécifie le niveau de chaque IA (sinon
+    :attr:`Niveau.INTERMEDIAIRE` par défaut). L'ordre de jeu est l'ordre de
+    création : humains puis IA, pas de tirage au sort à ce stade.
 
     :raises ValueError: si aucun humain, si ``nb_ia`` est négatif, ou si le
         total de joueurs sort de l'intervalle 1..:data:`MAX_JOUEURS`.
@@ -144,7 +152,11 @@ def creer_partie(
             nom = noms_ia[indice]
         else:
             nom = f"IA {indice + 1}"
-        joueurs.append(Joueur(nom=nom, humain=False))
+        if niveaux_ia is not None and indice < len(niveaux_ia):
+            niveau = niveaux_ia[indice]
+        else:
+            niveau = Niveau.INTERMEDIAIRE
+        joueurs.append(Joueur(nom=nom, humain=False, niveau=niveau))
     return Partie(joueurs, dictionnaire, graine=graine)
 
 
@@ -282,12 +294,13 @@ class Partie:
     # -- Tours automatiques (IA) ---------------------------------------- #
 
     def jouer_tour_ia(self) -> EntreeHistorique:
-        """Joue le tour du joueur courant s'il est une IA (via le stub ``ia``).
+        """Joue le tour du joueur courant s'il est une IA.
 
-        L'IA pose le coup simple trouvé par :func:`scrabble.moteur.ia.trouver_coup`,
-        ou passe si aucun coup simple n'existe.
+        L'IA choisit un coup via :func:`scrabble.moteur.ia.choisir_coup` selon
+        son niveau de difficulté, ou passe si aucun coup n'est jouable.
 
-        :raises ActionInvalide: si le joueur courant est humain ou la partie finie.
+        :raises ActionInvalide: si le joueur courant est humain, n'a pas de
+            niveau défini, ou la partie est finie.
         """
         self._assurer_en_cours()
         joueur = self.joueur_courant()
@@ -295,7 +308,13 @@ class Partie:
             raise ActionInvalide(
                 f"Le joueur courant {joueur.nom!r} est humain, pas une IA."
             )
-        coup = ia.trouver_coup(self.plateau, joueur.chevalet, self.dictionnaire)
+        if joueur.niveau is None:
+            raise ActionInvalide(
+                f"Le joueur IA {joueur.nom!r} n'a pas de niveau défini."
+            )
+        coup = ia.choisir_coup(
+            self.plateau, joueur.chevalet, self.dictionnaire, joueur.niveau
+        )
         if coup is None:
             return self.passer()
         return self.jouer_coup(coup)

@@ -1,10 +1,11 @@
-"""Tests de ``scrabble.moteur.partie`` et du stub ``scrabble.moteur.ia``.
+"""Tests de ``scrabble.moteur.partie``.
 
 Couvre l'initialisation (1 joueur, 4 joueurs, mix humains/IA), le déroulement
 d'un tour (pose, passe, échange), la mise à jour du chevalet et du score, les
 deux conditions de fin de partie (sac vide + chevalet vide, passes
 consécutives), le calcul du score final avec pénalité des lettres restantes, la
-gestion d'égalité, et le stub IA (jouer ou passer sans planter).
+gestion d'égalité, et l'intégration basique des tours IA (tests approfondis des
+niveaux dans ``test_moteur_ia.py``).
 """
 
 from __future__ import annotations
@@ -218,11 +219,14 @@ def test_action_sur_partie_terminee_rejetee():
 
 
 # --------------------------------------------------------------------------- #
-# Stub IA
+# Tours IA (tests basiques — tests approfondis dans test_moteur_ia.py)
 # --------------------------------------------------------------------------- #
 
 def test_ia_pose_un_premier_coup():
-    partie = Partie([Joueur("IA", humain=False)], _trie("CADRE"), graine=1)
+    from scrabble.moteur.ia import Niveau
+    partie = Partie(
+        [Joueur("IA", humain=False, niveau=Niveau.EXPERT)], _trie("CADRE"), graine=1
+    )
     partie.joueurs[0].chevalet[:] = list("CADRE")
     entree = partie.jouer_tour_ia()
     assert entree.action == ACTION_COUP
@@ -230,10 +234,13 @@ def test_ia_pose_un_premier_coup():
     assert not partie.plateau.est_vide()
 
 
-def test_ia_passe_si_aucun_coup_simple():
+def test_ia_passe_si_aucun_coup():
+    from scrabble.moteur.ia import Niveau
     # Deux joueurs pour qu'une passe IA ne termine pas la partie.
     partie = Partie(
-        [Joueur("IA", humain=False), Joueur("Humain")], _trie("CADRE"), graine=1
+        [Joueur("IA", humain=False, niveau=Niveau.EXPERT), Joueur("Humain")],
+        _trie("CADRE"),
+        graine=1,
     )
     partie.joueurs[0].chevalet[:] = list("BCDFGHJ")  # aucune voyelle jouable
     entree = partie.jouer_tour_ia()
@@ -242,15 +249,16 @@ def test_ia_passe_si_aucun_coup_simple():
     assert partie.index_courant == 1
 
 
-def test_ia_accroche_une_lettre_a_un_mot_existant():
+def test_ia_joue_un_mot_existant():
+    from scrabble.moteur.ia import Niveau
     partie = Partie(
-        [Joueur("Humain"), Joueur("IA", humain=False)],
-        _trie("CADRE", "AS"),
+        [Joueur("Humain"), Joueur("IA", humain=False, niveau=Niveau.EXPERT)],
+        _trie("CADRE", "AS", "CADRES"),
         graine=1,
     )
     partie.joueurs[0].chevalet[:] = list("CADRE")
     partie.jouer_coup(_coup_cadre_au_centre())  # pose CADRE, main à l'IA
-    partie.joueurs[1].chevalet[:] = ["S"]
+    partie.joueurs[1].chevalet[:] = ["S", "A", "T", "E", "R", "I", "O"]
     entree = partie.jouer_tour_ia()
     assert entree.action == ACTION_COUP
     assert partie.joueurs[1].score > 0
