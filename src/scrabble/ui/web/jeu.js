@@ -103,11 +103,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         'centre': 'Case centrale (mot compte double)',
         'normale': ''
     };
+    // Version courte affichée DANS la case (le texte complet reste en info-bulle
+    // via LABEL_TOOLTIP) : « Mot compte triple » déborderait d'une case de ~30 px.
+    // Abréviations lisibles (mot/lettre × 2 ou 3) qui tiennent sans rogner.
     const LABEL_COMPLET = {
-        'MT': 'Mot compte triple',
-        'MD': 'Mot compte double',
-        'LT': 'Lettre compte triple',
-        'LD': 'Lettre compte double',
+        'MT': 'MOT ×3',
+        'MD': 'MOT ×2',
+        'LT': 'LET ×3',
+        'LD': 'LET ×2',
         'centre': '★',
         'normale': ''
     };
@@ -198,7 +201,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         plateau.forEach((ligne, l) => {
             ligne.forEach((cell, c) => {
                 const caseEl = document.createElement('div');
-                caseEl.className = `case case-${cell.type}`;
+                // Le type vient de Python en MAJUSCULES (``TypeCase.value`` :
+                // « MT », « MD », « LT », « LD »). Les sélecteurs CSS de couleur
+                // (``.case-mt`` …) sont en minuscules et les classes HTML sont
+                // SENSIBLES À LA CASSE : sans ce toLowerCase(), ``case-MT`` ne
+                // matche aucune règle, la case reste transparente et laisse voir
+                // le fond brun du plateau — d'où l'absence de couleurs bonus
+                // constatée malgré l'issue #30. On normalise donc en minuscules.
+                const typeClasse = String(cell.type).toLowerCase();
+                caseEl.className = `case case-${typeClasse}`;
                 // Info-bulle toujours en français complet (indépendante du thème).
                 caseEl.title = LABEL_TOOLTIP[cell.type] || '';
                 caseEl.dataset.ligne = l;
@@ -256,17 +267,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             ? `<img class="panneau-avatar" src="avatars/${encodeURIComponent(joueur.avatar)}.svg"
                     alt="" width="40" height="40">`
             : `<span class="panneau-icone">${icone(joueur.humain)}</span>`;
+        // Carte compacte et IDENTIQUE quel que soit le côté (issue #38, point 2) :
+        // avatar + identité (nom / type) sur une ligne, stats (score, lettres) sur
+        // la suivante. Le panneau du bas partage exactement ce gabarit ; seule sa
+        // position (au-dessus du chevalet) le distingue.
         item.innerHTML = `
             <div class="panneau-entete">
                 ${avatarHtml}
-                <span class="panneau-nom">${escapeHtml(joueur.nom)}</span>
+                <div class="panneau-ident">
+                    <span class="panneau-nom">${escapeHtml(joueur.nom)}</span>
+                    <span class="panneau-detail">${typeLabel}</span>
+                </div>
+                ${badgeTour}
             </div>
-            <div class="panneau-detail">${typeLabel}</div>
             <div class="panneau-stats">
                 <span class="panneau-score">${joueur.score} pts</span>
-                <span class="panneau-lettres">🎴 ${joueur.nb_lettres} lettre(s)</span>
+                <span class="panneau-lettres">🎴 ${joueur.nb_lettres}</span>
             </div>
-            ${badgeTour}
         `;
         return item;
     }
