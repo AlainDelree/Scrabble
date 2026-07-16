@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrabble - Nouvelle partie</title>
+    <link rel="stylesheet" href="accueil.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Scrabble</h1>
+            <p class="subtitle">Configuration de la partie</p>
+        </header>
+
+        <main>
+            <section class="table-joueurs">
+                <h2>Joueurs autour de la table</h2>
+                <div id="liste-joueurs" class="liste-joueurs">
+                    <p class="vide" id="message-vide">Aucun joueur. Ajoutez des joueurs pour commencer.</p>
+                </div>
+                <div class="compteur" id="compteur">
+                    <span id="nb-humains">0</span> humain(s),
+                    <span id="nb-ordinateurs">0</span> ordinateur(s)
+                </div>
+            </section>
+
+            <section class="actions">
+                <button id="btn-ajouter-humain" class="btn btn-humain">
+                    Ajouter un joueur
+                </button>
+                <button id="btn-ajouter-ordinateur" class="btn btn-ordinateur">
+                    Ajouter un ordinateur
+                </button>
+            </section>
+
+            <section class="lancement">
+                <button id="btn-lancer" class="btn btn-lancer" disabled>
+                    Lancer la partie
+                </button>
+            </section>
+
+            <section class="reprise" id="section-reprise">
+                <h2>Reprendre une partie</h2>
+                <div id="parties-en-cours" class="parties-en-cours">
+                    <p class="vide">Aucune partie en cours.</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modale ajout joueur humain -->
+    <div id="modale-humain" class="modale" hidden>
+        <div class="modale-contenu">
+            <h3>Ajouter un joueur</h3>
+            <form id="form-humain">
+                <div class="champ">
+                    <label for="input-prenom">Prénom :</label>
+                    <input type="text" id="input-prenom" maxlength="30" autocomplete="off" required>
+                </div>
+                <div class="champ checkbox">
+                    <input type="checkbox" id="checkbox-sauvegarder">
+                    <label for="checkbox-sauvegarder">Toujours utiliser ce prénom</label>
+                </div>
+                <div class="modale-actions">
+                    <button type="button" class="btn btn-secondaire" id="btn-annuler-humain">Annuler</button>
+                    <button type="submit" class="btn btn-primaire">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modale ajout ordinateur -->
+    <div id="modale-ordinateur" class="modale" hidden>
+        <div class="modale-contenu">
+            <h3>Ajouter un ordinateur</h3>
+            <form id="form-ordinateur">
+                <div class="champ">
+                    <label>Niveau de difficulté :</label>
+                    <div class="niveaux" id="liste-niveaux">
+                        <!-- Rempli dynamiquement -->
+                    </div>
+                </div>
+                <div class="modale-actions">
+                    <button type="button" class="btn btn-secondaire" id="btn-annuler-ordinateur">Annuler</button>
+                    <button type="submit" class="btn btn-primaire">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modale transition (partie créée) -->
+    <div id="modale-transition" class="modale" hidden>
+        <div class="modale-contenu modale-transition">
+            <h3>Partie créée</h3>
+            <p id="message-transition"></p>
+            <p class="info-dev">L'écran de jeu sera disponible dans une prochaine version.</p>
+            <button type="button" class="btn btn-primaire" id="btn-fermer-transition">Fermer</button>
+        </div>
+    </div>
+
+    <script src="accueil.js"></script>
+</body>
+</html>
