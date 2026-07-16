@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrabble - Partie en cours</title>
+    <link rel="stylesheet" href="jeu.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Scrabble</h1>
+            <div class="bandeau-tour" id="bandeau-tour">
+                <span class="tour-label">Au tour de</span>
+                <span class="tour-joueur" id="tour-joueur">—</span>
+            </div>
+        </header>
+
+        <main class="disposition">
+            <!-- Colonne plateau -->
+            <section class="zone-plateau">
+                <div id="plateau" class="plateau" aria-label="Plateau de jeu 15 par 15"></div>
+            </section>
+
+            <!-- Colonne latérale : infos de partie -->
+            <aside class="zone-infos">
+                <section class="carte">
+                    <h2>Scores</h2>
+                    <div id="liste-scores" class="liste-scores"></div>
+                </section>
+
+                <section class="carte">
+                    <h2>Sac</h2>
+                    <div class="sac">
+                        <span class="sac-icone">🎒</span>
+                        <span class="sac-nombre" id="sac-nombre">—</span>
+                        <span class="sac-label">jetons restants</span>
+                    </div>
+                </section>
+
+                <section class="carte">
+                    <button id="btn-rafraichir" class="btn btn-secondaire btn-bloc">
+                        ↻ Rafraîchir
+                    </button>
+                </section>
+            </aside>
+        </main>
+
+        <!-- Chevalet du joueur courant -->
+        <footer class="zone-chevalet">
+            <div class="chevalet-entete">
+                <h2>Chevalet de <span id="chevalet-nom">—</span></h2>
+                <button id="btn-visibilite" class="btn btn-primaire">
+                    👁️ Voir mes lettres
+                </button>
+            </div>
+            <div id="chevalet" class="chevalet" aria-label="Chevalet du joueur courant"></div>
+            <p class="chevalet-aide" id="chevalet-aide">
+                Vos lettres restent masquées tant que vous ne cliquez pas sur
+                « Voir mes lettres ». Pensez à les cacher si un adversaire approche.
+            </p>
+        </footer>
+    </div>
+
+    <script src="jeu.js"></script>
+</body>
+</html>

@@ -1,0 +1,409 @@
+/* Écran de jeu - Plateau et chevalet (lecture seule) */
+
+:root {
+    --couleur-fond: #f5f5f0;
+    --couleur-texte: #2c2c2c;
+    --couleur-primaire: #2e7d32;
+    --couleur-primaire-hover: #1b5e20;
+    --couleur-humain: #1565c0;
+    --couleur-humain-fond: #e3f2fd;
+    --couleur-ordinateur: #6a1b9a;
+    --couleur-ordinateur-fond: #f3e5f5;
+    --couleur-bordure: #ccc;
+    --rayon-bordure: 8px;
+    --ombre: 0 2px 8px rgba(0, 0, 0, 0.15);
+
+    /* Couleurs standard des cases bonus du Scrabble */
+    --case-normale: #e6ddc8;
+    --case-md: #f2a6b3;       /* mot double : rose */
+    --case-mt: #c0392b;       /* mot triple : rouge foncé */
+    --case-ld: #a9d3ef;       /* lettre double : bleu clair */
+    --case-lt: #2874a6;       /* lettre triple : bleu foncé */
+    --case-centre: #e8899b;   /* case centrale (mot double, étoilée) */
+
+    /* Tuiles */
+    --tuile-fond: #f4e4bc;
+    --tuile-bordure: #c9a961;
+    --tuile-texte: #3b2f1a;
+    --tuile-joker-bordure: #8e44ad;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--couleur-fond);
+    color: var(--couleur-texte);
+    line-height: 1.5;
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 16px 20px 24px;
+}
+
+/* En-tête */
+header {
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+header h1 {
+    font-size: 1.8rem;
+    color: var(--couleur-primaire);
+    margin-bottom: 8px;
+}
+
+.bandeau-tour {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-radius: 999px;
+    background: white;
+    box-shadow: var(--ombre);
+    font-size: 1rem;
+}
+
+.tour-label {
+    color: #666;
+}
+
+.tour-joueur {
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tour-joueur.humain {
+    color: var(--couleur-humain);
+}
+
+.tour-joueur.ordinateur {
+    color: var(--couleur-ordinateur);
+}
+
+/* Disposition principale : plateau + colonne d'infos */
+.disposition {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.zone-plateau {
+    flex: 0 0 auto;
+}
+
+.zone-infos {
+    flex: 1 1 220px;
+    min-width: 220px;
+    max-width: 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Plateau 15x15 */
+.plateau {
+    display: grid;
+    grid-template-columns: repeat(15, 1fr);
+    gap: 2px;
+    background: #7d6b4f;
+    padding: 6px;
+    border-radius: var(--rayon-bordure);
+    box-shadow: var(--ombre);
+    width: min(78vw, 540px);
+    aspect-ratio: 1 / 1;
+}
+
+.case {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    font-size: clamp(0.4rem, 1.4vw, 0.62rem);
+    font-weight: 600;
+    text-transform: uppercase;
+    color: rgba(0, 0, 0, 0.55);
+    user-select: none;
+    overflow: hidden;
+}
+
+.case-normale { background: var(--case-normale); }
+.case-md { background: var(--case-md); }
+.case-mt { background: var(--case-mt); color: rgba(255, 255, 255, 0.9); }
+.case-ld { background: var(--case-ld); }
+.case-lt { background: var(--case-lt); color: rgba(255, 255, 255, 0.9); }
+.case-centre {
+    background: var(--case-centre);
+    color: rgba(0, 0, 0, 0.6);
+    font-size: clamp(0.6rem, 2vw, 1rem);
+}
+
+/* Tuile posée sur une case */
+.tuile {
+    position: absolute;
+    inset: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--tuile-fond);
+    border: 1px solid var(--tuile-bordure);
+    border-radius: 3px;
+    color: var(--tuile-texte);
+    font-size: clamp(0.55rem, 1.9vw, 0.95rem);
+    font-weight: 700;
+    text-transform: uppercase;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+}
+
+.tuile-joker {
+    border: 2px dashed var(--tuile-joker-bordure);
+    color: var(--tuile-joker-bordure);
+}
+
+/* Petite valeur en indice sur la tuile */
+.tuile-valeur {
+    position: absolute;
+    right: 1px;
+    bottom: 0;
+    font-size: 0.5em;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+/* Cartes de la colonne latérale */
+.carte {
+    background: white;
+    border-radius: var(--rayon-bordure);
+    box-shadow: var(--ombre);
+    padding: 14px;
+}
+
+.carte h2 {
+    font-size: 1rem;
+    margin-bottom: 10px;
+    color: var(--couleur-secondaire, #5d4037);
+    border-bottom: 2px solid var(--couleur-bordure);
+    padding-bottom: 6px;
+}
+
+/* Scores */
+.liste-scores {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.score-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+}
+
+.score-item.humain {
+    background: var(--couleur-humain-fond);
+    border-left: 4px solid var(--couleur-humain);
+}
+
+.score-item.ordinateur {
+    background: var(--couleur-ordinateur-fond);
+    border-left: 4px solid var(--couleur-ordinateur);
+}
+
+.score-item.courant {
+    outline: 2px solid var(--couleur-primaire);
+    outline-offset: 1px;
+}
+
+.score-icone {
+    font-size: 1.2rem;
+}
+
+.score-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.score-nom {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.score-detail {
+    font-size: 0.78rem;
+    color: #666;
+}
+
+.score-valeur {
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+/* Sac */
+.sac {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sac-icone {
+    font-size: 1.5rem;
+}
+
+.sac-nombre {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--couleur-primaire);
+}
+
+.sac-label {
+    font-size: 0.85rem;
+    color: #666;
+}
+
+/* Boutons */
+.btn {
+    padding: 10px 18px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    border: none;
+    border-radius: var(--rayon-bordure);
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+.btn-bloc {
+    width: 100%;
+}
+
+.btn-primaire {
+    background: var(--couleur-primaire);
+    color: white;
+}
+
+.btn-primaire:hover {
+    background: var(--couleur-primaire-hover);
+}
+
+.btn-secondaire {
+    background: #e0e0e0;
+    color: var(--couleur-texte);
+}
+
+.btn-secondaire:hover {
+    background: #bdbdbd;
+}
+
+/* Chevalet */
+.zone-chevalet {
+    margin-top: 20px;
+    background: white;
+    border-radius: var(--rayon-bordure);
+    box-shadow: var(--ombre);
+    padding: 16px;
+}
+
+.chevalet-entete {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.chevalet-entete h2 {
+    font-size: 1.05rem;
+    color: var(--couleur-secondaire, #5d4037);
+}
+
+.chevalet {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-height: 60px;
+    align-items: center;
+    padding: 10px;
+    background: #8a5a3b;
+    border-radius: 6px;
+}
+
+/* Case de chevalet masquée (nombre visible, identité cachée) */
+.chevalet-case {
+    width: 44px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    font-weight: 700;
+    position: relative;
+}
+
+.chevalet-case.masquee {
+    background: repeating-linear-gradient(
+        45deg,
+        #b9a58f,
+        #b9a58f 6px,
+        #a8927a 6px,
+        #a8927a 12px
+    );
+    color: rgba(0, 0, 0, 0.35);
+    font-size: 1.3rem;
+    border: 1px solid #96806a;
+}
+
+.chevalet-case.revelee {
+    background: var(--tuile-fond);
+    border: 1px solid var(--tuile-bordure);
+    color: var(--tuile-texte);
+    font-size: 1.5rem;
+    text-transform: uppercase;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.chevalet-case.revelee.joker {
+    border: 2px dashed var(--tuile-joker-bordure);
+    color: var(--tuile-joker-bordure);
+}
+
+.chevalet-case .val {
+    position: absolute;
+    right: 3px;
+    bottom: 1px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+.chevalet-vide {
+    color: #f0e6d8;
+    font-style: italic;
+    font-size: 0.9rem;
+}
+
+.chevalet-aide {
+    margin-top: 10px;
+    font-size: 0.82rem;
+    color: #777;
+    font-style: italic;
+}
