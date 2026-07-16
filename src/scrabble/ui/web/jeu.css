@@ -18,12 +18,12 @@
        plateau) redéfinit ces variables ; la structure HTML, elle, ne change
        jamais. Voir plus bas la section « Thèmes de plateau ». */
     --plateau-fond: #b8935a;      /* liseré/fond du plateau (entre les cases) */
-    --case-normale: #e6ddc8;
-    --case-md: #f2909f;           /* mot double : rose */
-    --case-mt: #d62828;           /* mot triple : rouge vif */
-    --case-ld: #9fd0f2;           /* lettre double : bleu clair */
-    --case-lt: #1f6fb2;           /* lettre triple : bleu foncé */
-    --case-centre: #f2909f;       /* case centrale (mot double, étoilée) */
+    --case-normale: #e8dcbf;
+    --case-md: #ef6d86;           /* mot double : rose net */
+    --case-mt: #d21f24;           /* mot triple : rouge net */
+    --case-ld: #7cc0ef;           /* lettre double : bleu clair net */
+    --case-lt: #155fa8;           /* lettre triple : bleu foncé net */
+    --case-centre: #ef6d86;       /* case centrale (mot double, étoilée) */
     /* Couleur du texte des étiquettes selon le fond (clair vs foncé). */
     --label-sur-clair: rgba(0, 0, 0, 0.68);
     --label-sur-fonce: rgba(255, 255, 255, 0.95);
@@ -421,11 +421,11 @@ header h1 {
 .plateau.theme-classique {
     --plateau-fond: #b8935a;
     --case-normale: #e8dcbf;
-    --case-md: #f2909f;
-    --case-mt: #d62828;
-    --case-ld: #9fd0f2;
-    --case-lt: #1f6fb2;
-    --case-centre: #f2909f;
+    --case-md: #ef6d86;      /* mot double : rose net */
+    --case-mt: #d21f24;      /* mot triple : rouge net */
+    --case-ld: #7cc0ef;      /* lettre double : bleu clair net */
+    --case-lt: #155fa8;      /* lettre triple : bleu foncé net */
+    --case-centre: #ef6d86;  /* étoile centrale : mot double (rose net) */
 }
 
 /* Thème « vert » : plateau vert, mot double/triple en orange/rouge, lettre
