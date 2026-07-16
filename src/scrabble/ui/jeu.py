@@ -34,7 +34,7 @@ from typing import Any
 import webview
 
 from scrabble.config import THEMES_PLATEAU, charger_config
-from scrabble.dictionnaire.dictionnaire import normaliser_mot
+from scrabble.dictionnaire.dictionnaire import Trie, normaliser_mot
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import ActionInvalide, Joueur, Partie
 from scrabble.moteur.plateau_partie import (
@@ -759,15 +759,39 @@ def lancer_jeu(partie: Partie, id_partie: int | None) -> None:
     webview.start()
 
 
-class _DictionnaireFactice:
-    """Dictionnaire minimal pour le mode démonstration (accepte tout mot).
-
-    L'écran de jeu étant en lecture seule, aucun coup n'est validé ici ; ce stub
-    évite de charger le vrai dictionnaire juste pour afficher une partie d'exemple.
-    """
-
-    def contient(self, mot: str) -> bool:  # noqa: D102 - stub de démonstration
-        return True
+# Petit lexique du mode démonstration. Il doit contenir au minimum les mots
+# déjà posés sur le plateau de démo (« MAISON », « OPUS ») pour que la partie
+# soit cohérente, plus un socle de mots courts très courants : le générateur de
+# coups (:func:`scrabble.moteur.generateur.generer_coups`) explore les ancrages
+# autour des lettres posées et forme des mots transversaux ; sans un minimum de
+# mots plausibles, l'IA passerait systématiquement son tour. On privilégie donc
+# les mots de 2-3 lettres valides au Scrabble francophone, qui multiplient les
+# possibilités de pose autour des lettres existantes. (Ce n'est PAS le vrai
+# dictionnaire ODS8 : uniquement de quoi rendre le mode démo jouable.)
+_MOTS_DEMO: tuple[str, ...] = (
+    # Mots déjà posés sur le plateau de démo et quelques extensions plausibles.
+    "MAISON", "MAISONS", "MAISONNEE", "OPUS", "OPUSCULE",
+    # Mots de 2 lettres valides à l'ODS (socle d'ancrages transversaux).
+    "AA", "AH", "AI", "AN", "AS", "AU", "AY", "BA", "BE", "BI", "BU",
+    "CA", "CE", "CI", "DA", "DE", "DO", "DU", "EH", "EN", "ES", "ET",
+    "EU", "EX", "FA", "FI", "GO", "HA", "HE", "HI", "HO", "IF", "IN",
+    "JE", "KA", "LA", "LE", "LI", "LU", "MA", "ME", "MI", "MU", "NA",
+    "NE", "NI", "NO", "NU", "OC", "OH", "OM", "ON", "OR", "OS", "OU",
+    "PI", "PU", "RA", "RE", "RI", "RU", "SA", "SE", "SI", "SU", "TA",
+    "TE", "TU", "UN", "US", "UT", "VA", "VS", "VU", "WU", "XI", "YE",
+    "ZA", "ZE", "ZO",
+    # Mots de 3 lettres courants, riches en combinaisons.
+    "ANE", "ART", "AXE", "BAL", "BAR", "BAS", "BON", "BUS", "CAR", "COL",
+    "CRI", "DES", "DUO", "EAU", "ELU", "EPI", "ERE", "FEU", "FIL", "FIN",
+    "GAI", "GEL", "GRE", "HUE", "IRA", "JEU", "LAC", "LOI", "LOT", "MAL",
+    "MER", "MIS", "MUR", "NEZ", "NID", "NOM", "OIE", "OSE", "OUI", "PAS",
+    "PIN", "PIS", "POT", "PRE", "PUR", "RAT", "RIS", "ROI", "RUE", "SEL",
+    "SOL", "SON", "SUR", "TAS", "THE", "TON", "TRI", "TUE", "VIN", "VIS",
+    "VUE", "ZUT",
+    # Quelques mots plus longs formables autour du plateau.
+    "SAIN", "SAINT", "SOIN", "MAIS", "MAIN", "NAIS", "PONS",
+    "PONT", "SONT",
+)
 
 
 def construire_partie_demo(nb_joueurs: int = 2) -> tuple[Partie, int | None]:
@@ -788,7 +812,12 @@ def construire_partie_demo(nb_joueurs: int = 2) -> tuple[Partie, int | None]:
     partie à 3 joueurs, ou ``1`` pour le cas solo (aucun panneau latéral).
     """
     nb_joueurs = max(1, min(4, nb_joueurs))
-    dictionnaire: DictionnaireMots = _DictionnaireFactice()
+    # Vrai Trie (petit lexique de démo) : contrairement à un simple stub
+    # « accepte tout », il expose l'attribut ``.racine`` exigé par le générateur
+    # de coups, donc « Faire jouer l'ordinateur » fonctionne en mode démo.
+    dictionnaire: DictionnaireMots = Trie.depuis_iterable(
+        normaliser_mot(mot) for mot in _MOTS_DEMO
+    )
     niveaux = [Niveau.INTERMEDIAIRE, Niveau.FACILE, Niveau.EXPERT]
     noms_ia = ["Léon", "Nadia", "Bruno"]
     joueurs = [Joueur(nom="Camille", humain=True)]
