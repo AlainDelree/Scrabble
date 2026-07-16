@@ -13,13 +13,15 @@ import pytest
 
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import Joueur, Partie
-from scrabble.moteur.plateau_partie import Tuile
+from scrabble.moteur.plateau_partie import Direction, Tuile
 from scrabble.regles.lettres import JOKER
 from scrabble.regles.plateau import CENTRE, TAILLE
 from scrabble.ui.jeu import (
     ApiJeu,
+    construire_coup,
     construire_partie_demo,
     etat_public,
+    jouer_placements,
     serialiser_case,
     serialiser_chevalet,
     serialiser_joueur_public,
@@ -277,3 +279,228 @@ class TestPartieDemo:
         partie, id_partie = construire_partie_demo()
         etat = etat_public(partie, id_partie)
         assert etat["taille"] == TAILLE
+
+
+# --------------------------------------------------------------------------- #
+# Construction d'un Coup depuis des placements « clic-clic » (logique non-UI)
+# --------------------------------------------------------------------------- #
+
+
+class _DicoMots:
+    """Dictionnaire de test acceptant uniquement un ensemble de mots donnés."""
+
+    def __init__(self, *mots: str) -> None:
+        self._mots = {mot.upper() for mot in mots}
+
+    def contient(self, mot: str) -> bool:
+        return mot.upper() in self._mots
+
+
+def _placement(ligne: int, colonne: int, lettre: str, joker: bool = False) -> dict:
+    """Fabrique un placement JS simulé (dict {ligne, colonne, lettre, joker})."""
+    return {"ligne": ligne, "colonne": colonne, "lettre": lettre, "joker": joker}
+
+
+class TestConstruireCoup:
+    """Construction d'un :class:`Coup` à partir de placements simulés."""
+
+    def test_mot_horizontal(self):
+        partie = _partie_simple()
+        placements = [
+            _placement(7, 7, "C"),
+            _placement(7, 8, "H"),
+            _placement(7, 9, "A"),
+            _placement(7, 10, "T"),
+        ]
+        coup = construire_coup(partie.plateau, placements)
+        assert (coup.ligne, coup.colonne) == (7, 7)
+        assert coup.direction is Direction.HORIZONTALE
+        assert "".join(t.lettre for t in coup.tuiles) == "CHAT"
+
+    def test_direction_deduite_verticale(self):
+        partie = _partie_simple()
+        # Lettres placées dans le désordre : la direction se déduit de la colonne.
+        placements = [
+            _placement(9, 7, "T"),
+            _placement(7, 7, "C"),
+            _placement(8, 7, "A"),
+        ]
+        coup = construire_coup(partie.plateau, placements)
+        assert coup.direction is Direction.VERTICALE
+        assert (coup.ligne, coup.colonne) == (7, 7)
+        assert "".join(t.lettre for t in coup.tuiles) == "CAT"
+
+    def test_une_seule_lettre_sens_impose(self):
+        partie = _partie_simple()
+        coup_h = construire_coup(partie.plateau, [_placement(7, 7, "A")], "H")
+        assert coup_h.direction is Direction.HORIZONTALE
+        coup_v = construire_coup(partie.plateau, [_placement(7, 7, "A")], "V")
+        assert coup_v.direction is Direction.VERTICALE
+
+    def test_joker_conserve_le_drapeau(self):
+        partie = _partie_simple()
+        placements = [
+            _placement(7, 7, "C"),
+            _placement(7, 8, "A", joker=True),
+            _placement(7, 9, "T"),
+        ]
+        coup = construire_coup(partie.plateau, placements)
+        # La tuile centrale est un joker : lettre affichée 'A' mais valeur 0.
+        assert coup.tuiles[1].joker is True
+        assert coup.tuiles[1].lettre == "A"
+        assert coup.tuiles[1].valeur == 0
+
+    def test_enjambe_une_tuile_existante(self):
+        """Le mot construit inclut une tuile déjà posée qu'il enjambe."""
+        partie = _partie_simple()
+        partie.plateau.poser_tuile(7, 8, Tuile("H"))
+        # On pose C (7,7) et AT (7,9)(7,10) : le mot doit couvrir CHAT en reprenant
+        # le H déjà présent.
+        placements = [
+            _placement(7, 7, "C"),
+            _placement(7, 9, "A"),
+            _placement(7, 10, "T"),
+        ]
+        coup = construire_coup(partie.plateau, placements)
+        assert "".join(t.lettre for t in coup.tuiles) == "CHAT"
+
+    def test_liste_vide(self):
+        partie = _partie_simple()
+        with pytest.raises(ValueError):
+            construire_coup(partie.plateau, [])
+
+    def test_case_deja_occupee(self):
+        partie = _partie_simple()
+        partie.plateau.poser_tuile(7, 7, Tuile("Z"))
+        with pytest.raises(ValueError):
+            construire_coup(partie.plateau, [_placement(7, 7, "A")])
+
+    def test_lettres_non_alignees(self):
+        partie = _partie_simple()
+        placements = [_placement(7, 7, "A"), _placement(8, 8, "B")]
+        with pytest.raises(ValueError):
+            construire_coup(partie.plateau, placements)
+
+    def test_trou_au_milieu(self):
+        partie = _partie_simple()
+        # C en (7,7) et T en (7,10) sans lettre entre les deux : trou interdit.
+        placements = [_placement(7, 7, "C"), _placement(7, 10, "T")]
+        with pytest.raises(ValueError):
+            construire_coup(partie.plateau, placements)
+
+    def test_position_hors_plateau(self):
+        partie = _partie_simple()
+        with pytest.raises(ValueError):
+            construire_coup(partie.plateau, [_placement(7, 99, "A")])
+
+
+class TestJouerPlacements:
+    """Application d'un coup construit depuis des placements (succès et erreurs)."""
+
+    def _partie_avec_chevalet(self, lettres: str, mots: tuple[str, ...]) -> Partie:
+        """Partie déterministe dont le joueur courant a un chevalet imposé."""
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
+        ]
+        partie = Partie(joueurs, _DicoMots(*mots), graine=1)
+        partie.index_courant = 0
+        partie.joueurs[0].chevalet = list(lettres)
+        return partie
+
+    def test_coup_legal_met_a_jour_la_partie(self):
+        partie = self._partie_avec_chevalet("CHATSER", mots=("CHAT",))
+        placements = [
+            _placement(7, 7, "C"),
+            _placement(7, 8, "H"),
+            _placement(7, 9, "A"),
+            _placement(7, 10, "T"),
+        ]
+        resultat = jouer_placements(partie, placements)
+        assert resultat["succes"] is True
+        assert resultat["points"] > 0
+        assert resultat["nom"] == "Alice"
+        # Le plateau porte désormais le mot et le tour a changé.
+        assert not partie.plateau.case_vide(7, 7)
+        assert partie.index_courant == 1
+        assert partie.joueurs[0].score > 0
+
+    def test_mot_invalide_leve_coup_invalide(self):
+        # Structure correcte (couvre le centre) mais mot absent du dictionnaire.
+        partie = self._partie_avec_chevalet("XYZWKQJ", mots=("CHAT",))
+        placements = [
+            _placement(7, 7, "X"),
+            _placement(7, 8, "Y"),
+            _placement(7, 9, "Z"),
+        ]
+        resultat = jouer_placements(partie, placements)
+        assert resultat["succes"] is False
+        assert "erreur" in resultat
+        # La partie n'a pas avancé : correction possible sans tout perdre.
+        assert partie.index_courant == 0
+        assert partie.plateau.case_vide(7, 7)
+
+    def test_lettres_absentes_du_chevalet(self):
+        # « CHAT » est un mot valide mais le chevalet ne contient pas ces lettres.
+        partie = self._partie_avec_chevalet("BDFGKLM", mots=("CHAT",))
+        placements = [
+            _placement(7, 7, "C"),
+            _placement(7, 8, "H"),
+            _placement(7, 9, "A"),
+            _placement(7, 10, "T"),
+        ]
+        resultat = jouer_placements(partie, placements)
+        assert resultat["succes"] is False
+        assert "erreur" in resultat
+        assert partie.index_courant == 0
+
+    def test_placements_incoherents(self):
+        # Erreur de structure (non alignés) : traité comme échec, pas d'exception.
+        partie = self._partie_avec_chevalet("ABCDEFG", mots=("AB",))
+        placements = [_placement(7, 7, "A"), _placement(9, 9, "B")]
+        resultat = jouer_placements(partie, placements)
+        assert resultat["succes"] is False
+        assert "erreur" in resultat
+
+
+class TestApiPoserMot:
+    """API exposée au JS : ``ApiJeu.poser_mot`` (succès, erreur, confidentialité)."""
+
+    def _api_avec_chevalet(self, lettres: str, mots: tuple[str, ...]) -> ApiJeu:
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
+        ]
+        partie = Partie(joueurs, _DicoMots(*mots), graine=1)
+        partie.index_courant = 0
+        partie.joueurs[0].chevalet = list(lettres)
+        return ApiJeu(partie, None)
+
+    def test_succes_renvoie_etat_public(self):
+        api = self._api_avec_chevalet("CHATSER", mots=("CHAT",))
+        placements = [
+            _placement(7, 7, "C"),
+            _placement(7, 8, "H"),
+            _placement(7, 9, "A"),
+            _placement(7, 10, "T"),
+        ]
+        res = api.poser_mot(placements)
+        assert res["succes"] is True
+        assert "etat" in res
+        # L'état renvoyé reste public : aucune lettre de chevalet exposée.
+        for joueur_pub in res["etat"]["joueurs"]:
+            assert "lettres" not in joueur_pub
+            assert "chevalet" not in joueur_pub
+
+    def test_echec_renvoie_message_sans_etat(self):
+        api = self._api_avec_chevalet("XYZWKQJ", mots=("CHAT",))
+        placements = [
+            _placement(7, 7, "X"),
+            _placement(7, 8, "Y"),
+            _placement(7, 9, "Z"),
+        ]
+        res = api.poser_mot(placements)
+        assert res["succes"] is False
+        assert res.get("erreur")
+        # Pas d'état renvoyé en cas d'échec : le JS conserve son attente.
+        assert "etat" not in res

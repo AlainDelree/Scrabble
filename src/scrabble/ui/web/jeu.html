@@ -59,7 +59,38 @@
                 Vos lettres restent masquées tant que vous ne cliquez pas sur
                 « Voir mes lettres ». Pensez à les cacher si un adversaire approche.
             </p>
+
+            <!-- Contrôles de pose d'un mot (clic-clic) : visibles uniquement
+                 lorsque le chevalet est révélé et la partie en cours. -->
+            <div id="zone-jeu" class="zone-jeu" hidden>
+                <p class="zone-jeu-aide">
+                    Cliquez une lettre puis une case vide pour la poser. Recliquez
+                    une lettre posée pour la retirer.
+                </p>
+                <div class="zone-jeu-controles">
+                    <span id="indicateur-sens" class="indicateur-sens"></span>
+                    <button id="btn-sens" class="btn btn-secondaire" hidden></button>
+                    <span class="zone-jeu-actions">
+                        <button id="btn-annuler" class="btn btn-secondaire" disabled>
+                            ✗ Annuler
+                        </button>
+                        <button id="btn-valider" class="btn btn-primaire" disabled>
+                            ✓ Valider le coup
+                        </button>
+                    </span>
+                </div>
+                <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
+            </div>
         </footer>
+    </div>
+
+    <!-- Modale de choix de la lettre représentée par un joker. -->
+    <div id="joker-modale" class="modale" hidden>
+        <div class="modale-contenu">
+            <h3>Quelle lettre représente le joker ?</h3>
+            <div id="joker-grille" class="joker-grille"></div>
+            <button id="joker-annuler" class="btn btn-secondaire">Annuler</button>
+        </div>
     </div>
 
     <script src="jeu.js"></script>

@@ -1,4 +1,4 @@
-/* Écran de jeu - Plateau et chevalet (lecture seule) */
+/* Écran de jeu - Plateau, chevalet et pose d'un mot (clic-clic) */
 
 :root {
     --couleur-fond: #f5f5f0;
@@ -169,6 +169,21 @@ header h1 {
 
 .tuile-joker {
     border: 2px dashed var(--tuile-joker-bordure);
+    color: var(--tuile-joker-bordure);
+}
+
+/* Tuile en attente de validation (posée mais pas encore jouée). */
+.tuile-attente {
+    background: #d7f0d0;
+    border: 2px solid var(--couleur-primaire);
+    color: var(--couleur-primaire-hover);
+    box-shadow: 0 0 0 1px rgba(46, 125, 50, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+}
+
+.tuile-attente.tuile-joker {
+    border-style: dashed;
+    border-color: var(--tuile-joker-bordure);
     color: var(--tuile-joker-bordure);
 }
 
@@ -386,6 +401,35 @@ header h1 {
     color: var(--tuile-joker-bordure);
 }
 
+/* Lettre révélée cliquable (mécanique clic-clic). */
+.chevalet-case.revelee {
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.chevalet-case.revelee:hover {
+    transform: translateY(-2px);
+}
+
+/* Lettre du chevalet actuellement sélectionnée (prête à être posée). */
+.chevalet-case.selectionnee {
+    outline: 3px solid var(--couleur-primaire);
+    outline-offset: 1px;
+    transform: translateY(-4px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Lettre déjà posée en attente sur le plateau : grisée, non sélectionnable. */
+.chevalet-case.utilisee {
+    opacity: 0.35;
+    cursor: default;
+    filter: grayscale(0.6);
+}
+
+.chevalet-case.utilisee:hover {
+    transform: none;
+}
+
 .chevalet-case .val {
     position: absolute;
     right: 3px;
@@ -406,4 +450,116 @@ header h1 {
     font-size: 0.82rem;
     color: #777;
     font-style: italic;
+}
+
+/* Zone de pose d'un mot (clic-clic) */
+.zone-jeu {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--couleur-bordure);
+}
+
+.zone-jeu-aide {
+    font-size: 0.82rem;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.zone-jeu-controles {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.indicateur-sens {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--couleur-primaire-hover);
+}
+
+.zone-jeu-actions {
+    margin-left: auto;
+    display: inline-flex;
+    gap: 10px;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Message de retour (succès / erreur / info) sous les contrôles. */
+.message-coup {
+    margin-top: 10px;
+    font-size: 0.9rem;
+    min-height: 1.2em;
+}
+
+.message-coup.erreur {
+    color: #b71c1c;
+    font-weight: 600;
+}
+
+.message-coup.succes {
+    color: var(--couleur-primaire-hover);
+    font-weight: 600;
+}
+
+.message-coup.info {
+    color: #555;
+}
+
+/* Modale de choix de lettre pour un joker */
+.modale {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modale[hidden] {
+    display: none;
+}
+
+.modale-contenu {
+    background: white;
+    border-radius: var(--rayon-bordure);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    padding: 20px 24px;
+    max-width: 360px;
+    text-align: center;
+}
+
+.modale-contenu h3 {
+    font-size: 1.05rem;
+    margin-bottom: 14px;
+    color: var(--couleur-secondaire, #5d4037);
+}
+
+.joker-grille {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    margin-bottom: 16px;
+}
+
+.joker-lettre {
+    padding: 8px 0;
+    font-size: 1rem;
+    font-weight: 700;
+    background: var(--tuile-fond);
+    border: 1px solid var(--tuile-bordure);
+    border-radius: 4px;
+    color: var(--tuile-texte);
+    cursor: pointer;
+    transition: background 0.1s, transform 0.1s;
+}
+
+.joker-lettre:hover {
+    background: #e8d09a;
+    transform: translateY(-1px);
 }

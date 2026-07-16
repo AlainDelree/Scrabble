@@ -1,11 +1,19 @@
 /**
- * Écran de jeu - Plateau et chevalet (lecture seule)
+ * Écran de jeu - Plateau, chevalet et pose d'un mot (clic-clic)
  *
  * Communique avec l'API Python via pywebview.api.*
  *
  * Confidentialité : le chevalet du joueur courant reste masqué par défaut.
  * Il n'est révélé que sur clic explicite (« voir mes lettres ») et peut être
  * remasqué à tout moment. Chaque rafraîchissement remasque le chevalet.
+ *
+ * Pose d'un mot (mécanique clic-clic) : une fois le chevalet révélé, un clic
+ * sur une lettre la sélectionne, un clic sur une case vide du plateau l'y place
+ * (en attente, non validée). Recliquer une lettre en attente la retire. Le sens
+ * du mot se déduit dès deux lettres alignées ; pour une seule, un bouton bascule
+ * horizontal/vertical. Un joker demande la lettre représentée à la pose. Les
+ * boutons « Valider »/« Annuler » confirment ou abandonnent la saisie ; en cas
+ * d'erreur du moteur, le message est affiché sans perdre les lettres en attente.
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -344,6 +352,167 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Rafraîchir l'état de la partie
     btnRafraichir.addEventListener('click', rafraichir);
+
+    // --- Pose d'un mot (clic-clic) ---
+
+    /**
+     * Rafraîchit uniquement l'affichage lié à la pose en cours (plateau,
+     * chevalet révélé, contrôles) sans recharger l'état côté Python.
+     */
+    function rendrePose() {
+        rendrePlateau();
+        if (chevaletVisible) {
+            rendreChevaletRevele(chevaletLettres);
+        }
+        majControlesJeu();
+    }
+
+    /**
+     * Clic sur une lettre du chevalet révélé : la sélectionne (ou la
+     * désélectionne si elle l'était déjà). Une lettre déjà posée en attente
+     * (« utilisée ») n'est pas sélectionnable.
+     */
+    chevaletEl.addEventListener('click', (evt) => {
+        const caseEl = evt.target.closest('.chevalet-case.revelee');
+        if (!caseEl || caseEl.classList.contains('utilisee')) {
+            return;
+        }
+        const index = Number(caseEl.dataset.index);
+        selection = (selection === index) ? null : index;
+        afficherMessage('');
+        rendrePose();
+    });
+
+    /**
+     * Ouvre la modale de choix de lettre pour un joker et renvoie la lettre
+     * choisie (``A``–``Z``) ou ``null`` si l'utilisateur annule.
+     */
+    function choisirLettreJoker() {
+        return new Promise((resolve) => {
+            jokerGrille.innerHTML = '';
+            const fermer = (valeur) => {
+                jokerModale.hidden = true;
+                jokerAnnuler.removeEventListener('click', surAnnuler);
+                resolve(valeur);
+            };
+            const surAnnuler = () => fermer(null);
+            for (let i = 0; i < 26; i++) {
+                const lettre = String.fromCharCode(65 + i);
+                const b = document.createElement('button');
+                b.className = 'joker-lettre';
+                b.textContent = lettre;
+                b.addEventListener('click', () => fermer(lettre));
+                jokerGrille.appendChild(b);
+            }
+            jokerAnnuler.addEventListener('click', surAnnuler);
+            jokerModale.hidden = false;
+        });
+    }
+
+    /**
+     * Clic sur une case du plateau :
+     * - case portant une lettre en attente : on la retire (retour au chevalet) ;
+     * - case déjà occupée par une tuile validée : refus (message clair) ;
+     * - case vide : on y place la lettre sélectionnée (joker => choix de lettre).
+     */
+    plateauEl.addEventListener('click', async (evt) => {
+        const caseEl = evt.target.closest('.case');
+        if (!caseEl) {
+            return;
+        }
+        const ligne = Number(caseEl.dataset.ligne);
+        const colonne = Number(caseEl.dataset.colonne);
+
+        // Retrait d'une lettre en attente (recliquer sa case).
+        const dejaPosee = attenteEn(ligne, colonne);
+        if (dejaPosee) {
+            enAttente = enAttente.filter(p => p !== dejaPosee);
+            afficherMessage('');
+            rendrePose();
+            return;
+        }
+
+        // Case déjà occupée par une tuile d'un tour précédent : pose interdite.
+        if (etat.plateau[ligne][colonne].lettre) {
+            afficherMessage('Cette case porte déjà une tuile : impossible d\'y poser une lettre.', 'erreur');
+            return;
+        }
+
+        // Case vide : il faut une lettre sélectionnée au chevalet.
+        if (selection === null) {
+            afficherMessage('Sélectionnez d\'abord une lettre de votre chevalet.', 'info');
+            return;
+        }
+        const lettre = chevaletLettres[selection];
+        let valeurLettre = lettre.lettre;
+        let estJoker = Boolean(lettre.joker);
+        if (estJoker) {
+            const choix = await choisirLettreJoker();
+            if (!choix) {
+                return;  // choix annulé : rien n'est posé, la sélection demeure.
+            }
+            valeurLettre = choix;
+        }
+        enAttente.push({
+            ligne,
+            colonne,
+            lettre: valeurLettre,
+            joker: estJoker,
+            index: selection,
+        });
+        selection = null;
+        afficherMessage('');
+        rendrePose();
+    });
+
+    // Bascule du sens (seulement pertinent pour une unique lettre en attente).
+    btnSens.addEventListener('click', () => {
+        sensForce = (sensForce === 'H') ? 'V' : 'H';
+        majControlesJeu();
+    });
+
+    // Annuler : retire toutes les lettres en attente (retour au chevalet).
+    btnAnnuler.addEventListener('click', () => {
+        enAttente = [];
+        selection = null;
+        sensForce = 'H';
+        afficherMessage('');
+        rendrePose();
+    });
+
+    // Valider : construit le coup côté Python et l'applique.
+    btnValider.addEventListener('click', async () => {
+        if (!enAttente.length) {
+            return;
+        }
+        btnValider.disabled = true;
+        const placements = enAttente.map(p => ({
+            ligne: p.ligne,
+            colonne: p.colonne,
+            lettre: p.lettre,
+            joker: p.joker,
+        }));
+        let res;
+        try {
+            res = await api.poser_mot(placements, sensCourant());
+        } catch (err) {
+            afficherMessage('Erreur inattendue lors de la validation du coup.', 'erreur');
+            majControlesJeu();
+            return;
+        }
+        if (res && res.succes) {
+            // Le coup est joué : on recharge l'état (nouveau tour, chevalet remasqué)
+            // et on vide l'attente. Rien n'est perdu : le moteur a consommé les lettres.
+            const points = res.points != null ? res.points : 0;
+            await rafraichir();
+            afficherMessage(`Coup joué (+${points} point${points > 1 ? 's' : ''}).`, 'succes');
+        } else {
+            // Échec : on conserve les lettres en attente pour correction.
+            const message = (res && res.erreur) ? res.erreur : 'Coup refusé.';
+            afficherMessage(message, 'erreur');
+            majControlesJeu();
+        }
+    });
 
     // --- Initialisation ---
     await rafraichir();
