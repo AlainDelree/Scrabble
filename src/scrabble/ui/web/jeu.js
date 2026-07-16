@@ -97,10 +97,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     // État courant côté vue
     let etat = null;
     let chevaletVisible = false;
+    // Mode « chevalet toujours révélé » : vrai lorsqu'il y a au plus un joueur
+    // humain (personne à qui cacher ses lettres). Le bouton bascule et le texte
+    // d'avertissement de confidentialité sont alors masqués, et le chevalet ne
+    // se remasque jamais au rafraîchissement.
+    let chevaletTjrsRevele = false;
     // Thème visuel actif et jeu de libellés affichés dans les cases (le thème
     // « abrégé » utilise les étiquettes courtes ; les autres, le texte complet).
     let themePlateau = 'classique';
     let labelVisible = LABEL_COMPLET;
+
+    // Zone de brouillon : copie réordonnable des lettres révélées, INDÉPENDANTE
+    // du plateau et de la pose en attente (espace de réflexion pur). Réordonner
+    // ici n'affecte ni le chevalet, ni les placements en cours.
+    let brouillonLettres = [];  // {lettre, valeur, joker} dans l'ordre affiché
+    let brouillonSelection = null;  // index du 1er emplacement d'un échange
 
     // État de la pose « clic-clic »
     let chevaletLettres = [];   // lettres révélées du joueur courant (ordre chevalet)
@@ -286,6 +297,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
+     * Affiche un message dans la zone de brouillon (vérification dictionnaire).
+     */
+    function afficherMessageBrouillon(texte, type = 'info') {
+        messageBrouillon.textContent = texte || '';
+        messageBrouillon.className = 'message-brouillon' + (texte ? ' ' + type : '');
+    }
+
+    /**
+     * Rend la zone de brouillon : une case par lettre (dans l'ordre courant),
+     * cliquable pour un échange de deux positions. Le bloc entier est masqué
+     * tant que le chevalet n'est pas révélé (ou s'il est vide).
+     *
+     * Choix d'interaction retenu : échange par deux clics. Un premier clic
+     * sélectionne un emplacement (surbrillance), un second clic échange les deux
+     * lettres. Recliquer le même emplacement annule la sélection. Simple,
+     * sans dépendance à l'API de glisser-déposer (fiable sous pywebview).
+     */
+    function rendreBrouillon() {
+        const afficher = chevaletVisible && brouillonLettres.length > 0;
+        blocBrouillon.hidden = !afficher;
+        if (!afficher) {
+            brouillonSelection = null;
+            return;
+        }
+        brouillonEl.innerHTML = '';
+        brouillonLettres.forEach((l, index) => {
+            const c = document.createElement('div');
+            c.className = 'brouillon-case' + (l.joker ? ' joker' : '');
+            if (index === brouillonSelection) {
+                c.classList.add('selectionnee');
+            }
+            const lettreAffichee = l.joker ? '★' : escapeHtml(l.lettre);
+            c.innerHTML = `${lettreAffichee}<span class="val">${l.valeur}</span>`;
+            c.dataset.index = index;
+            brouillonEl.appendChild(c);
+        });
+    }
+
+    /**
      * Met à jour le bouton et l'affichage du chevalet selon l'état de visibilité.
      */
     async function majChevalet() {
@@ -299,18 +349,54 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (res.succes) {
                 chevaletLettres = res.lettres;
                 rendreChevaletRevele(chevaletLettres);
+                // Le brouillon reçoit une COPIE des lettres révélées (réflexion
+                // indépendante : réordonner ici n'affecte pas le chevalet).
+                brouillonLettres = chevaletLettres.map(l => ({ ...l }));
             } else {
                 chevaletVisible = false;
                 chevaletLettres = [];
+                brouillonLettres = [];
                 btnVisibilite.textContent = '👁️ Voir mes lettres';
                 rendreChevaletMasque(courant ? courant.nb_lettres : 0);
             }
         } else {
             btnVisibilite.textContent = '👁️ Voir mes lettres';
             chevaletLettres = [];
+            brouillonLettres = [];
             rendreChevaletMasque(courant ? courant.nb_lettres : 0);
         }
+        brouillonSelection = null;
+        rendreBrouillon();
+        majActionsChevalet();
         majControlesJeu();
+    }
+
+    /**
+     * Configure le mode de confidentialité selon le nombre de joueurs humains :
+     * avec au plus un humain, le chevalet est toujours révélé (personne à qui le
+     * cacher) — le bouton bascule et l'avertissement de confidentialité sont
+     * masqués. Avec deux humains ou plus, comportement historique (masqué par
+     * défaut, bascule manuelle). À appeler à chaque changement d'état.
+     */
+    function configurerConfidentialite() {
+        chevaletTjrsRevele = (etat.nb_humains || 0) <= 1;
+        btnVisibilite.hidden = chevaletTjrsRevele;
+        if (chevaletAide) {
+            chevaletAide.hidden = chevaletTjrsRevele;
+        }
+    }
+
+    /**
+     * Affiche/masque les actions du chevalet dépendant de sa révélation :
+     * bouton « remettre toutes ses lettres et passer » (visible seulement si le
+     * chevalet est révélé, la partie en cours et le chevalet non vide).
+     */
+    function majActionsChevalet() {
+        const courant = etat ? etat.joueurs[etat.index_courant] : null;
+        const actif = chevaletVisible && etat && !etat.terminee
+            && courant && courant.nb_lettres > 0;
+        btnEchangerTout.hidden = !actif;
+        btnEchangerTout.disabled = false;
     }
 
     /**
@@ -369,11 +455,15 @@ document.addEventListener('DOMContentLoaded', async () => {
      */
     async function rafraichir() {
         etat = await api.obtenir_etat();
-        chevaletVisible = false;
+        configurerConfidentialite();
+        // Avec au plus un humain, le chevalet reste révélé en permanence ; sinon
+        // il se remasque à chaque rechargement (confidentialité entre adversaires).
+        chevaletVisible = chevaletTjrsRevele;
         // Toute pose en cours est abandonnée lors d'un rechargement d'état.
         enAttente = [];
         selection = null;
         sensForce = 'H';
+        afficherMessageBrouillon('');
         rendrePlateau();
         rendreScores(etat.joueurs);
         rendreTour(etat.joueurs, etat.index_courant, etat.terminee, etat.gagnants);
@@ -391,6 +481,72 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Rafraîchir l'état de la partie
     btnRafraichir.addEventListener('click', rafraichir);
+
+    // --- Zone de brouillon (réflexion indépendante) ---
+
+    // Échange de deux emplacements du brouillon par deux clics successifs.
+    brouillonEl.addEventListener('click', (evt) => {
+        const caseEl = evt.target.closest('.brouillon-case');
+        if (!caseEl) {
+            return;
+        }
+        const index = Number(caseEl.dataset.index);
+        if (brouillonSelection === null) {
+            brouillonSelection = index;
+        } else if (brouillonSelection === index) {
+            brouillonSelection = null;  // reclic : on annule la sélection
+        } else {
+            // Échange des deux lettres, puis on efface la sélection.
+            const tmp = brouillonLettres[brouillonSelection];
+            brouillonLettres[brouillonSelection] = brouillonLettres[index];
+            brouillonLettres[index] = tmp;
+            brouillonSelection = null;
+        }
+        rendreBrouillon();
+    });
+
+    // Vérifier le mot du brouillon dans le dictionnaire (lecture seule).
+    btnVerifier.addEventListener('click', async () => {
+        const lettres = brouillonLettres.map(l => l.lettre);
+        let res;
+        try {
+            res = await api.verifier_mot(lettres);
+        } catch (err) {
+            afficherMessageBrouillon('Erreur inattendue lors de la vérification.', 'invalide');
+            return;
+        }
+        if (res && res.succes) {
+            if (res.valide) {
+                afficherMessageBrouillon(`✓ « ${res.mot} » est dans le dictionnaire.`, 'valide');
+            } else {
+                afficherMessageBrouillon(`✗ « ${res.mot} » n'est pas dans le dictionnaire.`, 'invalide');
+            }
+        } else {
+            afficherMessageBrouillon((res && res.erreur) || 'Vérification impossible.', 'info');
+        }
+    });
+
+    // Remettre tout le chevalet dans le sac et passer (via Partie.echanger).
+    btnEchangerTout.addEventListener('click', async () => {
+        btnEchangerTout.disabled = true;
+        let res;
+        try {
+            res = await api.echanger_tout();
+        } catch (err) {
+            afficherMessage('Erreur inattendue lors de l\'échange des lettres.', 'erreur');
+            btnEchangerTout.disabled = false;
+            return;
+        }
+        if (res && res.succes) {
+            // Échange réussi : tour suivant, chevalet remasqué si applicable.
+            await rafraichir();
+            afficherMessage('Toutes vos lettres ont été remises dans le sac. Tour passé.', 'succes');
+        } else {
+            // Sac trop pauvre (ou partie terminée) : message clair, rien changé.
+            afficherMessage((res && res.erreur) || 'Échange impossible.', 'erreur');
+            btnEchangerTout.disabled = false;
+        }
+    });
 
     // --- Pose d'un mot (clic-clic) ---
 

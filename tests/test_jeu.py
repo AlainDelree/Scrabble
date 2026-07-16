@@ -18,14 +18,17 @@ from scrabble.regles.lettres import JOKER
 from scrabble.regles.plateau import CENTRE, TAILLE
 from scrabble.ui.jeu import (
     ApiJeu,
+    compter_humains,
     construire_coup,
     construire_partie_demo,
+    echanger_chevalet_complet,
     etat_public,
     jouer_placements,
     serialiser_case,
     serialiser_chevalet,
     serialiser_joueur_public,
     serialiser_plateau,
+    verifier_mot_dictionnaire,
 )
 
 
@@ -530,3 +533,153 @@ class TestApiPoserMot:
         assert res.get("erreur")
         # Pas d'état renvoyé en cas d'échec : le JS conserve son attente.
         assert "etat" not in res
+
+
+# --------------------------------------------------------------------------- #
+# Suite #29 (issue #31) : comptage des humains, vérification dictionnaire,
+# échange complet du chevalet.
+# --------------------------------------------------------------------------- #
+
+
+class TestCompterHumains:
+    """Comptage des joueurs humains (bouton « voir mes lettres » conditionnel)."""
+
+    def _partie(self, *humains: bool) -> Partie:
+        joueurs = [
+            Joueur(
+                nom=f"J{i}",
+                humain=h,
+                niveau=None if h else Niveau.FACILE,
+            )
+            for i, h in enumerate(humains)
+        ]
+        return Partie(joueurs, _DicoFactice(), graine=7)
+
+    def test_un_seul_humain(self):
+        # Un humain + un ordinateur : un seul humain à qui rien n'est à cacher.
+        assert compter_humains(self._partie(True, False)) == 1
+
+    def test_deux_humains(self):
+        assert compter_humains(self._partie(True, True)) == 2
+
+    def test_aucun_humain(self):
+        assert compter_humains(self._partie(False, False)) == 0
+
+    def test_expose_dans_etat_public(self):
+        partie = self._partie(True, True, False)
+        etat = etat_public(partie, None)
+        assert etat["nb_humains"] == 2
+
+
+class TestVerifierMotDictionnaire:
+    """Vérification d'un mot du brouillon (lecture seule, sans mutation)."""
+
+    def test_mot_valide(self):
+        res = verifier_mot_dictionnaire(_DicoMots("CHAT"), ["C", "H", "A", "T"])
+        assert res == {"succes": True, "mot": "CHAT", "valide": True}
+
+    def test_mot_invalide(self):
+        res = verifier_mot_dictionnaire(_DicoMots("CHAT"), ["X", "Y", "Z"])
+        assert res["succes"] is True
+        assert res["mot"] == "XYZ"
+        assert res["valide"] is False
+
+    def test_accepte_chaine_deja_assemblee(self):
+        res = verifier_mot_dictionnaire(_DicoMots("CHAT"), "chat")
+        assert res["mot"] == "CHAT"
+        assert res["valide"] is True
+
+    def test_ordre_des_lettres_respecte(self):
+        # L'ordre du brouillon compte : "TACH" n'est pas "CHAT".
+        res = verifier_mot_dictionnaire(_DicoMots("CHAT"), ["T", "A", "C", "H"])
+        assert res["mot"] == "TACH"
+        assert res["valide"] is False
+
+    def test_brouillon_vide(self):
+        res = verifier_mot_dictionnaire(_DicoMots("CHAT"), [])
+        assert res["succes"] is False
+        assert res.get("erreur")
+
+    def test_joker_empeche_le_mot(self):
+        # Un joker ('*') laissé dans le brouillon n'est pas une lettre fixe.
+        res = verifier_mot_dictionnaire(_DicoMots("CHAT"), ["C", "H", "A", "*"])
+        assert res["succes"] is True
+        assert res["valide"] is False
+
+    def test_lecture_seule_pas_de_mutation(self):
+        # La vérification ne doit toucher NI la partie NI le dictionnaire.
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
+        ]
+        partie = Partie(joueurs, _DicoMots("CHAT"), graine=1)
+        partie.index_courant = 0
+        partie.joueurs[0].chevalet = list("CHATSER")
+        api = ApiJeu(partie, None)
+
+        avant = etat_public(partie, None)
+        chevalet_avant = list(partie.joueurs[0].chevalet)
+        sac_avant = partie.sac.jetons_restants()
+
+        res = api.verifier_mot(["C", "H", "A", "T"])
+        assert res["valide"] is True
+        # Aucune mutation : tour, chevalet, sac et état public inchangés.
+        assert partie.index_courant == 0
+        assert list(partie.joueurs[0].chevalet) == chevalet_avant
+        assert partie.sac.jetons_restants() == sac_avant
+        assert etat_public(partie, None) == avant
+
+
+class TestEchangerChevaletComplet:
+    """Échange de la totalité du chevalet (remet tout et passe le tour)."""
+
+    def _partie(self) -> Partie:
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Bob", humain=True),
+        ]
+        partie = Partie(joueurs, _DicoFactice(), graine=3)
+        partie.index_courant = 0
+        return partie
+
+    def test_succes_change_tout_et_passe_tour(self):
+        partie = self._partie()
+        chevalet_avant = list(partie.joueurs[0].chevalet)
+        sac_avant = partie.sac.jetons_restants()
+
+        res = echanger_chevalet_complet(partie, None)
+
+        assert res["succes"] is True
+        assert "etat" in res
+        # Le tour a bien avancé (échange = consommation du tour).
+        assert partie.index_courant == 1
+        # Le chevalet reste plein mais son contenu a été renouvelé depuis le sac.
+        assert len(partie.joueurs[0].chevalet) == len(chevalet_avant)
+        # Le sac garde le même total (autant tiré que remis).
+        assert partie.sac.jetons_restants() == sac_avant
+        # L'état renvoyé reste public (aucune lettre de chevalet).
+        for joueur_pub in res["etat"]["joueurs"]:
+            assert "lettres" not in joueur_pub
+
+    def test_echec_sac_trop_pauvre(self):
+        partie = self._partie()
+        # On vide le sac : plus assez de jetons pour échanger tout le chevalet.
+        partie.sac.tirer(partie.sac.jetons_restants())
+        chevalet_avant = list(partie.joueurs[0].chevalet)
+
+        res = echanger_chevalet_complet(partie, None)
+
+        assert res["succes"] is False
+        assert res.get("erreur")
+        assert "etat" not in res
+        # Aucun effet de bord : ni le tour ni le chevalet ne bougent.
+        assert partie.index_courant == 0
+        assert list(partie.joueurs[0].chevalet) == chevalet_avant
+
+    def test_api_echanger_tout_delegue(self):
+        partie = self._partie()
+        api = ApiJeu(partie, 42)
+        res = api.echanger_tout()
+        assert res["succes"] is True
+        assert res["etat"]["id_partie"] == 42
+        assert partie.index_courant == 1
