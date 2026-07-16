@@ -249,6 +249,32 @@ class TestApiConfidentialite:
             assert "chevalet" not in joueur_pub
 
 
+class TestThemePlateau:
+    """Tests de la lecture du thème visuel de plateau exposée au JS."""
+
+    def test_theme_valide_transmis(self, monkeypatch):
+        """Un thème reconnu dans la config est renvoyé tel quel."""
+        monkeypatch.setattr(
+            "scrabble.ui.jeu.charger_config", lambda: {"theme_plateau": "vert"}
+        )
+        api = ApiJeu(_partie_simple(), id_partie=1)
+        assert api.obtenir_theme_plateau() == "vert"
+
+    def test_theme_inconnu_retombe_sur_classique(self, monkeypatch):
+        """Une valeur imprévue (config trafiquée) est ramenée à « classique »."""
+        monkeypatch.setattr(
+            "scrabble.ui.jeu.charger_config", lambda: {"theme_plateau": "n_importe_quoi"}
+        )
+        api = ApiJeu(_partie_simple(), id_partie=1)
+        assert api.obtenir_theme_plateau() == "classique"
+
+    def test_theme_absent_retombe_sur_classique(self, monkeypatch):
+        """Clé absente de la config : défaut « classique »."""
+        monkeypatch.setattr("scrabble.ui.jeu.charger_config", lambda: {})
+        api = ApiJeu(_partie_simple(), id_partie=1)
+        assert api.obtenir_theme_plateau() == "classique"
+
+
 class TestPartieDemo:
     """Tests du mode démonstration (partie d'exemple pour test manuel)."""
 

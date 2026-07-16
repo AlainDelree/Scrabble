@@ -69,6 +69,27 @@ def test_modifier_champ_contraint_invalide_retombe_sur_defaut(tmp_path):
     assert retenue == "amateur"
 
 
+def test_modifier_theme_plateau_valide(tmp_path):
+    """On peut choisir un thème de plateau reconnu via les réglages."""
+    chemin = tmp_path / "config.json"
+
+    retenue = modifier_reglage("theme_plateau", "vert", chemin)
+
+    assert retenue == "vert"
+    assert lire_reglage("theme_plateau", chemin) == "vert"
+    assert json.loads(chemin.read_text(encoding="utf-8"))["theme_plateau"] == "vert"
+
+
+def test_modifier_theme_plateau_invalide_retombe_sur_defaut(tmp_path):
+    """Un thème inconnu est normalisé vers le défaut « classique »."""
+    chemin = tmp_path / "config.json"
+
+    retenue = modifier_reglage("theme_plateau", "inexistant", chemin)
+
+    assert retenue == "classique"
+    assert lire_reglage("theme_plateau", chemin) == "classique"
+
+
 def test_modifier_reglage_inconnu(tmp_path):
     chemin = tmp_path / "config.json"
     with pytest.raises(KeyError):

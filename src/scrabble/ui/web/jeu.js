@@ -52,18 +52,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     const jokerAnnuler = document.getElementById('joker-annuler');
 
     // Libellés des cases bonus (le TYPE de chaque case vient de Python).
-    const LABEL_CASE = {
-        'MT': 'Mot ×3',
-        'MD': 'Mot ×2',
-        'LT': 'Lettre ×3',
-        'LD': 'Lettre ×2',
+    //
+    // Trois jeux de libellés :
+    //   - LABEL_TOOLTIP : toujours en français complet des vraies boîtes de jeu
+    //     francophones ; utilisé pour l'attribut « title » (info-bulle) quel que
+    //     soit le thème.
+    //   - LABEL_COMPLET : texte affiché DANS la case pour les thèmes non abrégés.
+    //   - LABEL_ABREGE  : texte affiché DANS la case pour le thème « abrégé ».
+    const LABEL_TOOLTIP = {
+        'MT': 'Mot compte triple',
+        'MD': 'Mot compte double',
+        'LT': 'Lettre compte triple',
+        'LD': 'Lettre compte double',
+        'centre': 'Case centrale (mot compte double)',
+        'normale': ''
+    };
+    const LABEL_COMPLET = {
+        'MT': 'Mot compte triple',
+        'MD': 'Mot compte double',
+        'LT': 'Lettre compte triple',
+        'LD': 'Lettre compte double',
         'centre': '★',
         'normale': ''
     };
+    const LABEL_ABREGE = {
+        'MT': 'MT',
+        'MD': 'MD',
+        'LT': 'LT',
+        'LD': 'LD',
+        'centre': '★',
+        'normale': ''
+    };
+    // Thèmes reconnus (alignés avec scrabble.config.THEMES_PLATEAU et le CSS).
+    const THEMES = ['classique', 'vert', 'abrege'];
 
     // État courant côté vue
     let etat = null;
     let chevaletVisible = false;
+    // Thème visuel actif et jeu de libellés affichés dans les cases (le thème
+    // « abrégé » utilise les étiquettes courtes ; les autres, le texte complet).
+    let themePlateau = 'classique';
+    let labelVisible = LABEL_COMPLET;
 
     // État de la pose « clic-clic »
     let chevaletLettres = [];   // lettres révélées du joueur courant (ordre chevalet)
@@ -123,7 +152,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             ligne.forEach((cell, c) => {
                 const caseEl = document.createElement('div');
                 caseEl.className = `case case-${cell.type}`;
-                caseEl.title = LABEL_CASE[cell.type] || '';
+                // Info-bulle toujours en français complet (indépendante du thème).
+                caseEl.title = LABEL_TOOLTIP[cell.type] || '';
                 caseEl.dataset.ligne = l;
                 caseEl.dataset.colonne = c;
                 const attente = attenteEn(l, c);
@@ -137,7 +167,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } else if (cell.type === 'centre') {
                     caseEl.textContent = '★';
                 } else {
-                    caseEl.textContent = LABEL_CASE[cell.type] || '';
+                    // Étiquette visible : complète ou abrégée selon le thème.
+                    caseEl.textContent = labelVisible[cell.type] || '';
                 }
                 caseEl.setAttribute('aria-label', `Ligne ${l + 1}, colonne ${c + 1}`);
                 fragment.appendChild(caseEl);
@@ -514,6 +545,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    /**
+     * Lit le thème visuel choisi dans les réglages (champ auto-réparant côté
+     * Python) et l'applique au plateau : pose la classe CSS ``theme-<nom>`` (qui
+     * ne redéfinit que des variables de couleur/contraste) et sélectionne le jeu
+     * de libellés affichés dans les cases (abrégés pour « abrege », complets
+     * sinon). Une valeur inconnue retombe sur « classique » par sécurité.
+     */
+    async function appliquerTheme() {
+        let theme = 'classique';
+        try {
+            theme = await api.obtenir_theme_plateau();
+        } catch (err) {
+            theme = 'classique';
+        }
+        if (!THEMES.includes(theme)) {
+            theme = 'classique';
+        }
+        themePlateau = theme;
+        labelVisible = (theme === 'abrege') ? LABEL_ABREGE : LABEL_COMPLET;
+        // Retire les anciennes classes de thème avant de poser la nouvelle.
+        THEMES.forEach(t => plateauEl.classList.remove(`theme-${t}`));
+        plateauEl.classList.add(`theme-${theme}`);
+    }
+
     // --- Initialisation ---
+    await appliquerTheme();
     await rafraichir();
 });

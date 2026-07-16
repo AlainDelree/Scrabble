@@ -31,11 +31,24 @@ CONFIG_DEFAUT: dict[str, Any] = {
     # Prénom de l'utilisatrice principale, retenu d'une partie à l'autre pour
     # éviter de le redemander. Vide par défaut (aucun prénom mémorisé).
     "prenom_principal": "",
+    # Thème visuel (habillage couleurs/étiquettes) du plateau de l'écran de jeu.
+    # Voir THEMES_PLATEAU pour les valeurs acceptées ; défaut = "classique".
+    "theme_plateau": "classique",
 }
 
 # Clés dont la valeur est du texte libre : une chaîne vide y est légitime
 # (contrairement aux autres champs où le vide déclenche une réparation).
 CLES_TEXTE_LIBRE: frozenset[str] = frozenset({"prenom_principal"})
+
+# Thèmes visuels de plateau reconnus. Doivent rester alignés avec les classes
+# CSS ``theme-<nom>`` de ``ui/web/jeu.css`` et les libellés de ``ui/web/jeu.js``.
+THEMES_PLATEAU: tuple[str, ...] = ("classique", "vert", "abrege")
+
+# Clés dont la valeur est contrainte à un ensemble fini : toute valeur hors de
+# cet ensemble déclenche une réparation vers le défaut (auto-réparation).
+VALEURS_VALIDES: dict[str, frozenset[str]] = {
+    "theme_plateau": frozenset(THEMES_PLATEAU),
+}
 
 
 def charger_config(chemin: os.PathLike[str] | str = CHEMIN_CONFIG) -> dict[str, Any]:
@@ -95,6 +108,10 @@ def _fusionner_defauts(brut: Any) -> tuple[dict[str, Any], bool]:
             valeur = defaut
         elif not valeur.strip() and cle not in CLES_TEXTE_LIBRE:
             # Chaîne vide interdite, sauf pour les champs en texte libre.
+            doit_reparer = True
+            valeur = defaut
+        elif cle in VALEURS_VALIDES and valeur not in VALEURS_VALIDES[cle]:
+            # Valeur hors de l'ensemble autorisé : on retombe sur le défaut.
             doit_reparer = True
             valeur = defaut
         config[cle] = valeur

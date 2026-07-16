@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import json
 
-from scrabble.config import CONFIG_DEFAUT, charger_config, sauvegarder_config
+import pytest
+
+from scrabble.config import (
+    CONFIG_DEFAUT,
+    THEMES_PLATEAU,
+    charger_config,
+    sauvegarder_config,
+)
 
 
 def test_fichier_absent_cree_defauts(tmp_path):
@@ -89,6 +96,7 @@ def test_fichier_valide_non_reecrit(tmp_path):
         "mode_saisie": "clavier",
         "source_dictionnaire": "hunspell",
         "prenom_principal": "Marie",
+        "theme_plateau": "vert",
     }
     chemin.write_text(json.dumps(valeur), encoding="utf-8")
     mtime_avant = chemin.stat().st_mtime_ns
@@ -109,6 +117,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
             "mode_saisie": "clavier",
             "source_dictionnaire": "hunspell",
             "prenom_principal": "Alice",
+            "theme_plateau": "abrege",
         },
         chemin,
     )
@@ -119,6 +128,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
         "mode_saisie": "clavier",
         "source_dictionnaire": "hunspell",
         "prenom_principal": "Alice",
+        "theme_plateau": "abrege",
     }
 
 
@@ -130,6 +140,7 @@ def test_prenom_principal_vide_par_defaut_non_reecrit(tmp_path):
         "mode_saisie": "clic",
         "source_dictionnaire": "ods",
         "prenom_principal": "",
+        "theme_plateau": "classique",
     }
     chemin.write_text(json.dumps(valeur), encoding="utf-8")
     mtime_avant = chemin.stat().st_mtime_ns
@@ -162,3 +173,63 @@ def test_prenom_principal_mauvais_type_repare(tmp_path):
 
     assert config["prenom_principal"] == ""
     assert json.loads(chemin.read_text(encoding="utf-8"))["prenom_principal"] == ""
+
+
+def test_theme_plateau_defaut_classique(tmp_path):
+    """Le thème de plateau par défaut est « classique »."""
+    chemin = tmp_path / "config.json"
+
+    config = charger_config(chemin)
+
+    assert config["theme_plateau"] == "classique"
+    assert CONFIG_DEFAUT["theme_plateau"] == "classique"
+    # Le défaut fait partie des thèmes reconnus.
+    assert CONFIG_DEFAUT["theme_plateau"] in THEMES_PLATEAU
+
+
+@pytest.mark.parametrize("theme", THEMES_PLATEAU)
+def test_theme_plateau_valeurs_valides_conservees(tmp_path, theme):
+    """Chaque thème reconnu est conservé tel quel, sans réparation."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(
+        json.dumps({"theme_plateau": theme}), encoding="utf-8"
+    )
+
+    config = charger_config(chemin)
+
+    assert config["theme_plateau"] == theme
+
+
+def test_theme_plateau_valeur_invalide_reparee(tmp_path):
+    """Un thème inconnu retombe sur le défaut « classique » et le fichier est réparé."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(
+        json.dumps({"theme_plateau": "fluo-arc-en-ciel"}), encoding="utf-8"
+    )
+
+    config = charger_config(chemin)
+
+    assert config["theme_plateau"] == "classique"
+    # La réparation est persistée sur disque.
+    releu = json.loads(chemin.read_text(encoding="utf-8"))
+    assert releu["theme_plateau"] == "classique"
+
+
+def test_theme_plateau_vide_repare(tmp_path):
+    """Une chaîne vide n'est pas un thème valide : réparée vers le défaut."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(json.dumps({"theme_plateau": ""}), encoding="utf-8")
+
+    config = charger_config(chemin)
+
+    assert config["theme_plateau"] == "classique"
+
+
+def test_theme_plateau_mauvais_type_repare(tmp_path):
+    """Un thème du mauvais type retombe sur le défaut « classique »."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(json.dumps({"theme_plateau": 7}), encoding="utf-8")
+
+    config = charger_config(chemin)
+
+    assert config["theme_plateau"] == "classique"

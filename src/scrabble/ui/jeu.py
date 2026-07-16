@@ -32,6 +32,7 @@ from typing import Any
 
 import webview
 
+from scrabble.config import THEMES_PLATEAU, charger_config
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import ActionInvalide, Joueur, Partie
 from scrabble.moteur.plateau_partie import (
@@ -346,6 +347,18 @@ class ApiJeu:
     def obtenir_etat(self) -> dict[str, Any]:
         """Retourne l'état public de la partie (sans lettres de chevalet)."""
         return etat_public(self._partie, self._id_partie)
+
+    def obtenir_theme_plateau(self) -> str:
+        """Retourne le thème visuel du plateau choisi dans les réglages.
+
+        Lit ``theme_plateau`` de :func:`~scrabble.config.charger_config` (champ
+        auto-réparant : une valeur inconnue retombe sur ``"classique"``). Le JS
+        applique la classe CSS ``theme-<nom>`` correspondante au plateau et
+        choisit les libellés (complets ou abrégés). Par sécurité, si la valeur
+        lue n'est pas un thème connu, on renvoie ``"classique"``.
+        """
+        theme = charger_config().get("theme_plateau", "classique")
+        return theme if theme in THEMES_PLATEAU else "classique"
 
     def obtenir_chevalet(self, index_joueur: int) -> dict[str, Any]:
         """Retourne le chevalet du **seul** joueur d'index ``index_joueur``.

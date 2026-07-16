@@ -13,13 +13,23 @@
     --rayon-bordure: 8px;
     --ombre: 0 2px 8px rgba(0, 0, 0, 0.15);
 
-    /* Couleurs standard des cases bonus du Scrabble */
+    /* Habillage des cases bonus : valeurs par défaut (thème « classique »).
+       Chaque thème (.theme-classique / .theme-vert / .theme-abrege posé sur le
+       plateau) redéfinit ces variables ; la structure HTML, elle, ne change
+       jamais. Voir plus bas la section « Thèmes de plateau ». */
+    --plateau-fond: #b8935a;      /* liseré/fond du plateau (entre les cases) */
     --case-normale: #e6ddc8;
-    --case-md: #f2a6b3;       /* mot double : rose */
-    --case-mt: #c0392b;       /* mot triple : rouge foncé */
-    --case-ld: #a9d3ef;       /* lettre double : bleu clair */
-    --case-lt: #2874a6;       /* lettre triple : bleu foncé */
-    --case-centre: #e8899b;   /* case centrale (mot double, étoilée) */
+    --case-md: #f2909f;           /* mot double : rose */
+    --case-mt: #d62828;           /* mot triple : rouge vif */
+    --case-ld: #9fd0f2;           /* lettre double : bleu clair */
+    --case-lt: #1f6fb2;           /* lettre triple : bleu foncé */
+    --case-centre: #f2909f;       /* case centrale (mot double, étoilée) */
+    /* Couleur du texte des étiquettes selon le fond (clair vs foncé). */
+    --label-sur-clair: rgba(0, 0, 0, 0.68);
+    --label-sur-fonce: rgba(255, 255, 255, 0.95);
+    /* Graisse/taille des étiquettes ; le thème abrégé les grossit. */
+    --label-poids: 600;
+    --label-taille: clamp(0.4rem, 1.4vw, 0.62rem);
 
     /* Tuiles */
     --tuile-fond: #f4e4bc;
@@ -117,7 +127,7 @@ header h1 {
     display: grid;
     grid-template-columns: repeat(15, 1fr);
     gap: 2px;
-    background: #7d6b4f;
+    background: var(--plateau-fond);
     padding: 6px;
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
@@ -131,23 +141,76 @@ header h1 {
     align-items: center;
     justify-content: center;
     border-radius: 3px;
-    font-size: clamp(0.4rem, 1.4vw, 0.62rem);
-    font-weight: 600;
+    font-size: var(--label-taille);
+    font-weight: var(--label-poids);
+    line-height: 1.05;
+    text-align: center;
     text-transform: uppercase;
-    color: rgba(0, 0, 0, 0.55);
+    color: var(--label-sur-clair);
     user-select: none;
     overflow: hidden;
 }
 
 .case-normale { background: var(--case-normale); }
 .case-md { background: var(--case-md); }
-.case-mt { background: var(--case-mt); color: rgba(255, 255, 255, 0.9); }
+.case-mt { background: var(--case-mt); color: var(--label-sur-fonce); }
 .case-ld { background: var(--case-ld); }
-.case-lt { background: var(--case-lt); color: rgba(255, 255, 255, 0.9); }
+.case-lt { background: var(--case-lt); color: var(--label-sur-fonce); }
 .case-centre {
     background: var(--case-centre);
-    color: rgba(0, 0, 0, 0.6);
+    color: var(--label-sur-clair);
     font-size: clamp(0.6rem, 2vw, 1rem);
+}
+
+/* --------------------------------------------------------------------------- */
+/* Thèmes de plateau                                                           */
+/* --------------------------------------------------------------------------- */
+/* Chaque thème est une classe posée par le JS sur l'élément .plateau. Il ne
+   modifie QUE des variables CSS (couleurs, contraste, style d'étiquette) : la
+   structure HTML des cases est strictement identique d'un thème à l'autre.
+   Les couleurs sont volontairement franches et contrastées pour que chaque
+   type de case bonus soit identifiable au premier coup d'œil, sans lire le
+   texte. Les libellés complets/abrégés sont choisis côté JS (voir jeu.js). */
+
+/* Thème « classique » : fond beige/brun, mot triple rouge, mot double rose,
+   lettre triple bleu foncé, lettre double bleu clair (boîte Scrabble d'origine). */
+.plateau.theme-classique {
+    --plateau-fond: #b8935a;
+    --case-normale: #e8dcbf;
+    --case-md: #f2909f;
+    --case-mt: #d62828;
+    --case-ld: #9fd0f2;
+    --case-lt: #1f6fb2;
+    --case-centre: #f2909f;
+}
+
+/* Thème « vert » : plateau vert, mot double/triple en orange/rouge, lettre
+   double/triple en bleu clair/bleu (édition verte moderne). */
+.plateau.theme-vert {
+    --plateau-fond: #1f5b34;
+    --case-normale: #3f9a5c;
+    --case-md: #f0a83c;      /* mot double : orange */
+    --case-mt: #e23b3b;      /* mot triple : rouge */
+    --case-ld: #bcdcf5;      /* lettre double : bleu clair */
+    --case-lt: #3f7fc4;      /* lettre triple : bleu */
+    --case-centre: #f0a83c;  /* étoile centrale : orange */
+    /* Sur fond vert, les étiquettes des cases normales n'existent pas ; les
+       étiquettes bonus gardent un texte foncé bien lisible sur fonds clairs. */
+    --label-sur-clair: rgba(0, 0, 0, 0.72);
+}
+
+/* Thème « abrégé » : étiquettes courtes (MT / MD / LT / LD) en gros et gras
+   pour une lecture rapide, sur un plateau clair très contrasté. */
+.plateau.theme-abrege {
+    --plateau-fond: #55606e;
+    --case-normale: #eef1f5;
+    --case-md: #ff6f91;      /* mot double : rose vif */
+    --case-mt: #e5322b;      /* mot triple : rouge vif */
+    --case-ld: #7fc4f0;      /* lettre double : bleu clair */
+    --case-lt: #1f6fb2;      /* lettre triple : bleu */
+    --case-centre: #ff6f91;
+    --label-poids: 800;
+    --label-taille: clamp(0.5rem, 1.9vw, 0.9rem);
 }
 
 /* Tuile posée sur une case */
