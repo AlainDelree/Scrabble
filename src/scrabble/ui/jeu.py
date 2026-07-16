@@ -44,6 +44,7 @@ from scrabble.moteur.plateau_partie import (
     Tuile,
     dans_plateau,
 )
+from scrabble.moteur.score import DetailScore
 from scrabble.moteur.validation import CoupInvalide, DictionnaireMots
 from scrabble.regles.lettres import JOKER, valeur_lettre
 from scrabble.regles.plateau import TAILLE, type_case
@@ -240,6 +241,28 @@ def compter_humains(partie: Partie) -> int:
     return sum(1 for joueur in partie.joueurs if joueur.humain)
 
 
+def index_panneau_interactif(partie: Partie) -> int | None:
+    """Index du joueur dont le panneau du bas expose le chevalet **interactif**.
+
+    Correction du défaut d'exposition du tour IA (issue #35). Le panneau du bas
+    (chevalet, brouillon, pose clic-clic, valider/annuler, échanger) ne doit
+    jamais donner accès au chevalet d'un ordinateur :
+
+    * Si le joueur **courant** est humain — que ce soit l'unique humain ou, en
+      multi-humains, celui à qui c'est le tour — le panneau du bas le suit et
+      renvoie son index : le panneau est interactif pour cet humain.
+    * Si le joueur courant est un **ordinateur**, la fonction renvoie ``None`` :
+      aucun chevalet n'est alors exposé ni manipulable ; l'UI passe en mode
+      « attente » (message + bouton « Faire jouer l'ordinateur »).
+
+    Garantie structurelle : la valeur renvoyée ne désigne **jamais** un
+    ordinateur. C'est la seule source de vérité (côté Python) du choix « panneau
+    interactif ou attente », consommée telle quelle par l'UI.
+    """
+    joueur = partie.joueur_courant()
+    return partie.index_courant if joueur.humain else None
+
+
 def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     """État complet de la partie **sans aucune identité de lettre de chevalet**.
 
@@ -250,6 +273,10 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
 
     ``nb_humains`` (nombre de joueurs humains) permet à l'UI de n'afficher le
     bouton « voir mes lettres » que lorsqu'il y a au moins deux humains.
+    ``tour_humain`` dit si le joueur courant est humain (panneau interactif) ou
+    un ordinateur (panneau en attente) ; ``index_panneau`` est l'index du joueur
+    dont le chevalet est exposé, ou ``None`` pendant un tour d'ordinateur (voir
+    :func:`index_panneau_interactif`, issue #35).
     """
     positions = calculer_positions(partie.joueurs)
     avatars = calculer_avatars(partie.joueurs)
@@ -270,8 +297,38 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
         "index_courant": partie.index_courant,
         "jetons_sac": partie.sac.jetons_restants(),
         "nb_humains": compter_humains(partie),
+        "tour_humain": partie.joueur_courant().humain,
+        "index_panneau": index_panneau_interactif(partie),
         "terminee": partie.terminee,
         "gagnants": [j.nom for j in partie.gagnants] if partie.terminee else [],
+    }
+
+
+def serialiser_detail_score(detail: DetailScore) -> dict[str, Any]:
+    """Sérialise un :class:`~scrabble.moteur.score.DetailScore` pour la modale.
+
+    Expose le détail déjà calculé par
+    :func:`~scrabble.moteur.score.detailler_score` (issue #21) sans le
+    recalculer côté JS (issue #35) : pour chaque mot formé son texte, son score
+    individuel et les cases bonus **effectivement utilisées** (``ligne``,
+    ``colonne`` et ``type`` de case, p. ex. ``"MD"``) ; puis le bonus
+    « scrabble » et le total du coup. La liste ``mots`` commence par le mot
+    principal, suivie des mots transversaux.
+    """
+    return {
+        "mots": [
+            {
+                "texte": mot.texte,
+                "score": mot.score,
+                "cases_bonus": [
+                    {"ligne": ligne, "colonne": colonne, "type": case.value}
+                    for (ligne, colonne, case) in mot.cases_bonus
+                ],
+            }
+            for mot in detail.mots
+        ],
+        "bonus_scrabble": detail.bonus_scrabble,
+        "total": detail.total,
     }
 
 
@@ -455,6 +512,11 @@ def jouer_placements(
         "succes": True,
         "points": points,
         "nom": entree.nom_joueur,
+        "detail": (
+            serialiser_detail_score(entree.detail)
+            if entree.detail is not None
+            else None
+        ),
     }
 
 
@@ -525,6 +587,28 @@ def echanger_chevalet_complet(
     except ActionInvalide as err:
         return {"succes": False, "erreur": str(err)}
     return {"succes": True, "etat": etat_public(partie, id_partie)}
+
+
+def jouer_tours_ia_ui(partie: Partie, id_partie: int | None) -> dict[str, Any]:
+    """Enchaîne tous les tours IA consécutifs puis renvoie l'état rafraîchi.
+
+    Cœur non-UI de :meth:`ApiJeu.faire_jouer_ia`. Délègue à
+    :meth:`~scrabble.moteur.partie.Partie.jouer_tours_ia`, qui joue
+    automatiquement les tours des ordinateurs jusqu'au **prochain joueur humain**
+    ou la **fin de partie** (issue #22). Corrige le défaut d'exposition du tour
+    IA (issue #35) : c'est ce chemin — et non la manipulation manuelle du
+    chevalet d'un ordinateur — qui fait avancer le jeu pendant un tour IA.
+
+    Renvoie ``{"succes": True, "nb_tours": <int>, "etat": <état public>}``. Si le
+    joueur courant est déjà humain (ou la partie terminée), aucun tour n'est joué
+    (``nb_tours`` = 0) : l'appel reste sans effet, l'état est simplement renvoyé.
+    """
+    entrees = partie.jouer_tours_ia()
+    return {
+        "succes": True,
+        "nb_tours": len(entrees),
+        "etat": etat_public(partie, id_partie),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -633,6 +717,20 @@ class ApiJeu:
         modifié.
         """
         return echanger_chevalet_complet(self._partie, self._id_partie)
+
+    def faire_jouer_ia(self) -> dict[str, Any]:
+        """Fait jouer les tours des ordinateurs jusqu'au prochain humain/fin.
+
+        Point d'entrée du bouton « ▶ Faire jouer l'ordinateur » (issue #35).
+        S'appuie sur :meth:`~scrabble.moteur.partie.Partie.jouer_tours_ia` :
+        enchaîne tous les tours IA consécutifs, puis renvoie
+        ``{"succes": True, "nb_tours": ..., "etat": <état public rafraîchi>}``.
+        Sans effet si le joueur courant est déjà humain (``nb_tours`` = 0).
+
+        C'est la seule façon prévue de faire avancer le jeu pendant un tour IA :
+        l'humain n'a jamais à manipuler le chevalet d'un ordinateur à sa place.
+        """
+        return jouer_tours_ia_ui(self._partie, self._id_partie)
 
 
 # --------------------------------------------------------------------------- #

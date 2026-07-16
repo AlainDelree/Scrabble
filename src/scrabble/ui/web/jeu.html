@@ -46,6 +46,17 @@
             <div id="slot-bas" class="slot slot-bas" aria-label="Votre panneau"></div>
 
             <div class="zone-chevalet">
+            <!-- Mode « attente » : affiché à la place de toute la mécanique
+                 interactive tant que ce n'est pas le tour d'un joueur humain
+                 (tour d'un ordinateur). Le chevalet de l'ordinateur n'est
+                 jamais exposé ni manipulable ici (issue #35). -->
+            <div id="zone-attente-ia" class="zone-attente-ia" hidden>
+                <p id="attente-ia-message" class="attente-ia-message" role="status" aria-live="polite"></p>
+                <button id="btn-jouer-ia" class="btn btn-primaire">
+                    ▶ Faire jouer l'ordinateur
+                </button>
+            </div>
+
             <div class="chevalet-entete">
                 <h2>Chevalet de <span id="chevalet-nom">—</span></h2>
                 <div class="chevalet-actions">
@@ -113,6 +124,18 @@
             </div>
             </footer>
         </main>
+    </div>
+
+    <!-- Modale de détail du score après un coup posé (issue #35). Présente
+         chaque mot formé avec son score, les cases bonus utilisées, le bonus
+         « scrabble » éventuel et le total. Fermeture par bouton ou clic dehors. -->
+    <div id="score-modale" class="modale" hidden>
+        <div class="modale-contenu modale-score">
+            <h3 id="score-titre">Détail du score</h3>
+            <div id="score-detail" class="score-detail"></div>
+            <div id="score-total" class="score-total"></div>
+            <button id="score-fermer" class="btn btn-primaire">Fermer</button>
+        </div>
     </div>
 
     <!-- Modale de choix de la lettre représentée par un joker. -->

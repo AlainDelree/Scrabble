@@ -47,6 +47,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnRafraichir = document.getElementById('btn-rafraichir');
     const btnEchangerTout = document.getElementById('btn-echanger-tout');
 
+    // Mode « attente d'un tour d'ordinateur » (issue #35) : bloc affiché à la
+    // place de toute la mécanique interactive quand le joueur courant n'est pas
+    // humain, avec le bouton « Faire jouer l'ordinateur ».
+    const zoneAttenteIA = document.getElementById('zone-attente-ia');
+    const attenteMessageIA = document.getElementById('attente-ia-message');
+    const btnJouerIA = document.getElementById('btn-jouer-ia');
+    // Éléments interactifs masqués pendant un tour d'ordinateur.
+    const chevaletEntete = document.querySelector('.chevalet-entete');
+    const zoneReflexion = document.querySelector('.zone-reflexion');
+
     // Zone de brouillon (réflexion indépendante du plateau)
     const blocBrouillon = document.getElementById('bloc-brouillon');
     const brouillonEl = document.getElementById('brouillon');
@@ -66,6 +76,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const jokerModale = document.getElementById('joker-modale');
     const jokerGrille = document.getElementById('joker-grille');
     const jokerAnnuler = document.getElementById('joker-annuler');
+
+    // Modale de détail du score (issue #35)
+    const scoreModale = document.getElementById('score-modale');
+    const scoreTitre = document.getElementById('score-titre');
+    const scoreDetail = document.getElementById('score-detail');
+    const scoreTotal = document.getElementById('score-total');
+    const scoreFermer = document.getElementById('score-fermer');
 
     // Libellés des cases bonus (le TYPE de chaque case vient de Python).
     //
@@ -376,11 +393,74 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
+     * Vrai lorsque le joueur courant est un humain et la partie en cours : le
+     * panneau du bas est alors interactif (chevalet, brouillon, pose…). Faux
+     * pendant un tour d'ordinateur (panneau en attente) ou en fin de partie.
+     * Source de vérité côté Python : ``etat.tour_humain`` (voir issue #35).
+     */
+    function estTourHumain() {
+        return Boolean(etat && !etat.terminee && etat.tour_humain);
+    }
+
+    /**
+     * Bascule entre le mode interactif (tour d'un humain) et le mode « attente »
+     * (tour d'un ordinateur) — correction du défaut d'exposition du tour IA
+     * (issue #35). En mode attente, toute la mécanique interactive est masquée
+     * (le chevalet d'un ordinateur n'est jamais exposé) et un message
+     * « En attente du coup de [nom]… » accompagne le bouton « Faire jouer
+     * l'ordinateur ». Le bouton n'apparaît que lorsque le joueur courant n'est
+     * pas humain et la partie n'est pas terminée.
+     */
+    function majModeTour() {
+        const courant = etat.joueurs[etat.index_courant];
+        const attenteIA = Boolean(etat && !etat.terminee && !etat.tour_humain);
+
+        zoneAttenteIA.hidden = !attenteIA;
+        if (attenteIA && courant) {
+            attenteMessageIA.textContent =
+                `En attente du coup de ${courant.nom}…`;
+            btnJouerIA.disabled = false;
+        }
+
+        // Masquer toute la mécanique interactive tant que ce n'est pas un tour
+        // humain : entête (voir/cacher, échanger), chevalet + brouillon, aide.
+        if (chevaletEntete) {
+            chevaletEntete.hidden = attenteIA;
+        }
+        if (zoneReflexion) {
+            zoneReflexion.hidden = attenteIA;
+        }
+        if (chevaletAide) {
+            // Ne réafficher l'aide que si la confidentialité l'exige aussi.
+            chevaletAide.hidden = attenteIA || chevaletTjrsRevele;
+        }
+        if (attenteIA) {
+            zoneJeu.hidden = true;
+        }
+    }
+
+    /**
      * Met à jour le bouton et l'affichage du chevalet selon l'état de visibilité.
      */
     async function majChevalet() {
         const courant = etat.joueurs[etat.index_courant];
         chevaletNom.textContent = courant ? courant.nom : '—';
+
+        // Tour d'un ordinateur (ou fin de partie) : aucun chevalet n'est exposé
+        // ni manipulable — surtout pas celui d'une IA (issue #35). Le panneau
+        // reste en mode attente (voir majModeTour) ; on n'appelle même pas
+        // obtenir_chevalet pour ne rien faire fuir dans le DOM.
+        if (!estTourHumain()) {
+            chevaletVisible = false;
+            chevaletLettres = [];
+            brouillonLettres = [];
+            brouillonSelection = null;
+            rendreChevaletMasque(0);
+            rendreBrouillon();
+            majActionsChevalet();
+            majControlesJeu();
+            return;
+        }
 
         if (chevaletVisible) {
             btnVisibilite.textContent = '🙈 Cacher mes lettres';
@@ -508,6 +588,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         rendrePanneaux(etat.joueurs);
         rendreTour(etat.joueurs, etat.index_courant, etat.terminee, etat.gagnants);
         sacNombre.textContent = etat.jetons_sac;
+        majModeTour();
         await majChevalet();
     }
 
