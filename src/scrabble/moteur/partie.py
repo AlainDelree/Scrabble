@@ -105,6 +105,12 @@ class EntreeHistorique:
     Contient au minimum : le joueur (index et nom), le type d'action, le coup
     joué et son :class:`~scrabble.moteur.score.DetailScore` le cas échéant, et
     le score cumulé du joueur **après** l'action.
+
+    Pour un échange, ``lettres_echangees`` en donne le nombre et
+    ``jetons_echanges`` la liste exacte (dans l'ordre remis au sac) des jetons
+    échangés : cette liste précise — pas seulement son cardinal — est ce qui
+    permet de rejouer l'échange à l'identique lors d'une reprise après
+    plantage (voir :mod:`scrabble.persistance.stockage`).
     """
 
     index_joueur: int
@@ -113,6 +119,7 @@ class EntreeHistorique:
     coup: Coup | None = None
     detail: DetailScore | None = None
     lettres_echangees: int = 0
+    jetons_echanges: list[str] = field(default_factory=list)
     score_cumule: int = 0
 
 
@@ -164,9 +171,14 @@ class Partie:
     """État complet et déroulement d'une partie de Scrabble.
 
     Attributs publics : ``joueurs`` (1 à 4), ``plateau`` (:class:`PlateauPartie`),
-    ``sac`` (:class:`Sac`), ``index_courant``, ``historique`` (liste
-    d':class:`EntreeHistorique`), ``passes_consecutives``, ``terminee`` et,
-    une fois la partie finie, ``gagnants`` (liste — gère les égalités).
+    ``sac`` (:class:`Sac`), ``graine`` (la graine du sac, ``None`` si aléatoire),
+    ``index_courant``, ``historique`` (liste d':class:`EntreeHistorique`),
+    ``passes_consecutives``, ``terminee`` et, une fois la partie finie,
+    ``gagnants`` (liste — gère les égalités).
+
+    ``graine`` est conservée telle quelle : c'est elle, avec la suite ordonnée
+    des actions, qui rend le déroulement d'une partie entièrement reproductible
+    (base de la persistance, :mod:`scrabble.persistance.stockage`).
     """
 
     def __init__(
@@ -184,6 +196,7 @@ class Partie:
             )
         self.joueurs = joueurs
         self.dictionnaire = dictionnaire
+        self.graine = graine
         self.plateau = PlateauPartie()
         self.sac = sac if sac is not None else Sac(graine)
         self.index_courant = 0
@@ -286,7 +299,10 @@ class Partie:
         joueur.chevalet.extend(nouveaux)
         self.passes_consecutives = 0
         entree = self._enregistrer(
-            joueur, ACTION_ECHANGE, lettres_echangees=len(jetons)
+            joueur,
+            ACTION_ECHANGE,
+            lettres_echangees=len(jetons),
+            jetons_echanges=list(jetons),
         )
         self._avancer()
         return entree
@@ -362,6 +378,7 @@ class Partie:
         coup: Coup | None = None,
         detail: DetailScore | None = None,
         lettres_echangees: int = 0,
+        jetons_echanges: list[str] | None = None,
     ) -> EntreeHistorique:
         entree = EntreeHistorique(
             index_joueur=self.index_courant,
@@ -370,6 +387,7 @@ class Partie:
             coup=coup,
             detail=detail,
             lettres_echangees=lettres_echangees,
+            jetons_echanges=list(jetons_echanges) if jetons_echanges else [],
             score_cumule=joueur.score,
         )
         self.historique.append(entree)
