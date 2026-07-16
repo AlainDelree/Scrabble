@@ -292,6 +292,31 @@ def test_charger_definitions_mot_avec_plusieurs_definitions(tmp_path):
     ]
 
 
+def test_charger_definitions_mot_ascii_sans_accent(tmp_path):
+    """Une clé ODS8 purement ASCII (ex. ``ELEVE``) est lue telle quelle.
+
+    Depuis l'issue #18, le matching est désaccentué mais la CLÉ stockée reste
+    le mot ODS8 (ASCII) : ``definitions.json`` contient donc des entrées comme
+    ``ELEVE`` (sans accent), dont la définition provient du lemme accentué
+    ``ÉLÈVE``. L'interface reste un simple dict mot → liste de définitions.
+    """
+    fichier = tmp_path / "definitions.json"
+    fichier.write_text(
+        json.dumps(
+            {"ELEVE": ["Personne qui reçoit un enseignement.", "Nourri, engraissé."]},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    definitions = charger_definitions(fichier)
+
+    assert definitions["ELEVE"] == [
+        "Personne qui reçoit un enseignement.",
+        "Nourri, engraissé.",
+    ]
+
+
 def test_charger_definitions_json_invalide(tmp_path):
     """Un JSON illisible retombe sur un dict vide plutôt que de planter."""
     fichier = tmp_path / "definitions.json"
