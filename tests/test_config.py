@@ -17,6 +17,7 @@ def test_fichier_absent_cree_defauts(tmp_path):
     assert config["niveau_ia"] == "amateur"
     assert config["mode_saisie"] == "clic"
     assert config["source_dictionnaire"] == "ods"
+    assert config["prenom_principal"] == ""
     # Un fichier propre et relisible a bien été créé.
     assert chemin.exists()
     assert json.loads(chemin.read_text(encoding="utf-8")) == CONFIG_DEFAUT
@@ -87,6 +88,7 @@ def test_fichier_valide_non_reecrit(tmp_path):
         "niveau_ia": "expert",
         "mode_saisie": "clavier",
         "source_dictionnaire": "hunspell",
+        "prenom_principal": "Marie",
     }
     chemin.write_text(json.dumps(valeur), encoding="utf-8")
     mtime_avant = chemin.stat().st_mtime_ns
@@ -106,6 +108,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
             "niveau_ia": "debutant",
             "mode_saisie": "clavier",
             "source_dictionnaire": "hunspell",
+            "prenom_principal": "Alice",
         },
         chemin,
     )
@@ -115,4 +118,47 @@ def test_sauvegarder_puis_recharger(tmp_path):
         "niveau_ia": "debutant",
         "mode_saisie": "clavier",
         "source_dictionnaire": "hunspell",
+        "prenom_principal": "Alice",
     }
+
+
+def test_prenom_principal_vide_par_defaut_non_reecrit(tmp_path):
+    """Un prénom vide est légitime : aucune réparation ni réécriture."""
+    chemin = tmp_path / "config.json"
+    valeur = {
+        "niveau_ia": "amateur",
+        "mode_saisie": "clic",
+        "source_dictionnaire": "ods",
+        "prenom_principal": "",
+    }
+    chemin.write_text(json.dumps(valeur), encoding="utf-8")
+    mtime_avant = chemin.stat().st_mtime_ns
+
+    config = charger_config(chemin)
+
+    assert config["prenom_principal"] == ""
+    # Le vide ne déclenche pas de réparation (contrairement aux autres champs).
+    assert chemin.stat().st_mtime_ns == mtime_avant
+
+
+def test_prenom_principal_conserve(tmp_path):
+    """Un prénom renseigné est conservé tel quel."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(
+        json.dumps({"prenom_principal": "Marie"}), encoding="utf-8"
+    )
+
+    config = charger_config(chemin)
+
+    assert config["prenom_principal"] == "Marie"
+
+
+def test_prenom_principal_mauvais_type_repare(tmp_path):
+    """Un prénom du mauvais type retombe sur le vide par défaut."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(json.dumps({"prenom_principal": 42}), encoding="utf-8")
+
+    config = charger_config(chemin)
+
+    assert config["prenom_principal"] == ""
+    assert json.loads(chemin.read_text(encoding="utf-8"))["prenom_principal"] == ""

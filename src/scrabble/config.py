@@ -28,7 +28,14 @@ CONFIG_DEFAUT: dict[str, Any] = {
     # Source du dictionnaire de mots : "ods" (dictionnaire officiel du Scrabble
     # francophone, défaut) ou "hunspell" (dictionnaire orthographique déplié).
     "source_dictionnaire": "ods",
+    # Prénom de l'utilisatrice principale, retenu d'une partie à l'autre pour
+    # éviter de le redemander. Vide par défaut (aucun prénom mémorisé).
+    "prenom_principal": "",
 }
+
+# Clés dont la valeur est du texte libre : une chaîne vide y est légitime
+# (contrairement aux autres champs où le vide déclenche une réparation).
+CLES_TEXTE_LIBRE: frozenset[str] = frozenset({"prenom_principal"})
 
 
 def charger_config(chemin: os.PathLike[str] | str = CHEMIN_CONFIG) -> dict[str, Any]:
@@ -82,7 +89,12 @@ def _fusionner_defauts(brut: Any) -> tuple[dict[str, Any], bool]:
             config[cle] = defaut
             continue
         valeur = brut[cle]
-        if not isinstance(valeur, str) or not valeur.strip():
+        if not isinstance(valeur, str):
+            # Type incorrect : on retombe toujours sur le défaut.
+            doit_reparer = True
+            valeur = defaut
+        elif not valeur.strip() and cle not in CLES_TEXTE_LIBRE:
+            # Chaîne vide interdite, sauf pour les champs en texte libre.
             doit_reparer = True
             valeur = defaut
         config[cle] = valeur
