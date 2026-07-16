@@ -31,8 +31,12 @@
     --label-poids: 600;
     --label-taille: clamp(0.4rem, 1.4vw, 0.62rem);
 
-    /* Tuiles */
-    --tuile-fond: #f4e4bc;
+    /* Tuiles posées : fond blanc cassé (ivoire) plutôt que blanc pur, pour
+       ressortir nettement du fond brun du plateau et de toutes les cases bonus
+       (claires comme foncées) sans éblouir (issue #40). La bordure chaude et
+       l'ombre portée (voir .tuile) achèvent de détacher chaque lettre de sa
+       case sous-jacente, quelle qu'elle soit. */
+    --tuile-fond: #fbf9f3;
     --tuile-bordure: #c9a961;
     --tuile-texte: #3b2f1a;
     --tuile-joker-bordure: #8e44ad;
@@ -258,11 +262,19 @@ header h1 {
 /* --------------------------------------------------------------------------- */
 /* Panneaux d'information par joueur (autour du plateau)                        */
 /* --------------------------------------------------------------------------- */
+/* Carte joueur : gabarit UNIQUE partagé par les quatre côtés (haut, gauche,
+   droite ET bas), humain comme ordinateur (issue #40, point 1). Mêmes
+   proportions, mêmes marges internes, même niveau de détail (nom, type, score,
+   nombre de lettres). Volontairement compacte : son contenu tient dans peu de
+   hauteur, donc aucun côté — en particulier les panneaux ordinateur — ne doit
+   réserver plus d'espace vertical que nécessaire. Le panneau du bas reprend
+   exactement ce gabarit ; seule sa position (au-dessus du chevalet) le
+   distingue. */
 .panneau-joueur {
     background: white;
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
-    padding: 10px 12px;
+    padding: 8px 10px;
     width: 160px;
     border-left: 4px solid var(--couleur-bordure);
 }
@@ -288,7 +300,7 @@ header h1 {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 
 .panneau-icone {
@@ -298,18 +310,12 @@ header h1 {
 /* Avatar SVG du joueur (issue #34). Rond, il complète — sans la remplacer — la
    distinction humain/ordinateur portée par la bordure de couleur du panneau. */
 .panneau-avatar {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     flex-shrink: 0;
     background: white;
     box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.06);
-}
-
-/* Dans le bandeau bas (joueur de référence), l'avatar est un peu plus grand. */
-.slot-bas .panneau-avatar {
-    width: 48px;
-    height: 48px;
 }
 
 .panneau-nom {
@@ -322,7 +328,7 @@ header h1 {
 .panneau-detail {
     font-size: 0.76rem;
     color: #666;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
 }
 
 .panneau-stats {
@@ -354,29 +360,13 @@ header h1 {
     font-weight: 700;
 }
 
-/* Panneau du bas (joueur de référence) : disposé en bandeau horizontal, il
-   précède le chevalet. Ses infos publiques s'étalent sur toute la largeur. */
-.slot-bas .panneau-joueur {
-    width: 100%;
+/* Panneau du bas (joueur humain de référence) : MÊME carte que les trois autres
+   côtés (issue #40). Il ne s'étale plus en bandeau horizontal ; il reprend le
+   gabarit compact commun et se contente d'être centré juste au-dessus du
+   chevalet, qu'il continue de précéder (sa fonction est préservée). */
+.slot-bas {
     display: flex;
-    align-items: center;
-    gap: 16px;
-    border-left-width: 6px;
-}
-
-.slot-bas .panneau-entete,
-.slot-bas .panneau-detail,
-.slot-bas .panneau-stats {
-    margin: 0;
-}
-
-.slot-bas .panneau-stats {
-    gap: 16px;
-}
-
-.slot-bas .panneau-tour {
-    margin: 0;
-    margin-left: auto;
+    justify-content: center;
 }
 
 .case {
@@ -471,7 +461,9 @@ header h1 {
     font-size: clamp(0.55rem, 1.9vw, 0.95rem);
     font-weight: 700;
     text-transform: uppercase;
-    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+    /* Ombre portée légère mais nette : renforce la séparation entre la tuile
+       (fond ivoire) et la case sous-jacente (normale ou bonus) — issue #40. */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.32);
 }
 
 .tuile-joker {
@@ -1055,11 +1047,9 @@ header h1 {
         width: min(92vw, 500px);
     }
 
+    /* Gabarit unique conservé en repli : les quatre côtés, panneau du bas
+       compris, gardent exactement la même carte (issue #40). */
     .panneau-joueur {
         width: min(92vw, 320px);
-    }
-
-    .slot-bas .panneau-joueur {
-        width: min(92vw, 500px);
     }
 }
