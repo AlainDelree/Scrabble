@@ -23,5 +23,8 @@ data/dictionnaire/*
 data/parties.db
 data/*.db
 
+# Photos de plateaux réels fournies pour inspiration visuelle (non commitées)
+Exemples plateau/
+
 # Divers
 .pytest_cache/
