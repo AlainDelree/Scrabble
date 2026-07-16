@@ -8,6 +8,10 @@
 </head>
 <body>
     <div class="container">
+        <!-- En-tête sur UNE seule ligne horizontale (issue #42, point 1) : le
+             titre à gauche, les infos globales (tour courant, sac, resync) à
+             droite. Objectif : exploiter la largeur plutôt que la hauteur pour
+             libérer de la place verticale au reste de l'écran. -->
         <header>
             <h1>Scrabble</h1>
             <div class="barre-infos">
@@ -18,7 +22,7 @@
                 <div class="sac">
                     <span class="sac-icone">🎒</span>
                     <span class="sac-nombre" id="sac-nombre">—</span>
-                    <span class="sac-label">jetons</span>
+                    <span class="sac-label">lettres</span>
                 </div>
                 <!-- Bouton « Resynchroniser » (issue #41, point 3). Décision :
                      CONSERVÉ mais clarifié et rendu discret. L'affichage se met
@@ -35,18 +39,6 @@
             </div>
         </header>
 
-        <!-- Encart d'historique glissant (issue #37). Affiché en permanence sous
-             la barre d'infos, au-dessus de la table : emplacement toujours
-             disponible quel que soit le nombre de joueurs (indépendant de la
-             grille 3×3 du plateau). Liste les dernières actions de tous les
-             joueurs, la PLUS RÉCENTE EN HAUT ; chaque ligne est cliquable pour
-             rouvrir le détail du score de CE coup (modale réutilisée). Le nombre
-             de lignes et leur contenu viennent de Python (etat.historique). -->
-        <section class="historique" id="historique-encart" aria-label="Historique des derniers coups">
-            <h2 class="historique-titre">🕑 Derniers coups</h2>
-            <ol id="historique-liste" class="historique-liste" aria-live="polite"></ol>
-        </section>
-
         <!-- Table de jeu : plateau central entouré des panneaux joueurs, chacun
              positionné sur le côté qui lui est assigné côté Python (issue #33).
              Le panneau du bas est celui du joueur humain de référence : il porte,
@@ -62,8 +54,16 @@
 
             <div id="slot-droite" class="slot slot-droite" aria-label="Joueur de droite"></div>
 
-            <!-- Panneau du bas : joueur humain de référence. -->
+            <!-- Panneau du bas : joueur humain de référence. Réorganisé en deux
+                 colonnes (issue #42, point 2) : à GAUCHE la zone d'action du
+                 joueur (son panneau + chevalet + pose), à DROITE l'historique
+                 « Derniers coups ». L'historique n'est plus une carte flottante
+                 entre le titre et le plateau : il est désormais visuellement
+                 rattaché à la zone d'action humaine et occupe la largeur
+                 disponible au lieu d'ajouter de la hauteur. -->
             <footer class="panneau-bas" id="panneau-bas">
+            <div class="zone-humaine">
+            <div class="colonne-action">
             <div id="slot-bas" class="slot slot-bas" aria-label="Votre panneau"></div>
 
             <div class="zone-chevalet">
@@ -79,7 +79,17 @@
             </div>
 
             <div class="chevalet-entete">
-                <h2>Chevalet de <span id="chevalet-nom">—</span></h2>
+                <div class="chevalet-titre-groupe">
+                    <h2>Chevalet de <span id="chevalet-nom">—</span></h2>
+                    <!-- Instruction de pose clic-clic (issue #42, point 4) :
+                         placée juste sous le titre « Chevalet de … », donc
+                         visible AVANT toute interaction (auparavant sous la zone
+                         de jeu, découverte trop tard). -->
+                    <p class="chevalet-aide-pose">
+                        Cliquez une lettre puis une case vide pour la poser.
+                        Recliquez une lettre posée pour la retirer.
+                    </p>
+                </div>
                 <div class="chevalet-actions">
                     <button id="btn-visibilite" class="btn btn-primaire">
                         👁️ Voir mes lettres
@@ -122,30 +132,30 @@
                 </div>
             </div>
 
-            <!-- Ligne de bas de zone : aide de confidentialité (à gauche) et
-                 action rare « remettre toutes ses lettres » en retrait (issue #41,
-                 point 2) : petit lien neutre plutôt qu'un gros bouton plein, pour
-                 refléter sa fréquence d'usage rare tout en restant trouvable. -->
+            <!-- Ligne de bas de zone : aide de confidentialité (parties à deux
+                 humains ou plus). L'action rare « remettre toutes ses lettres »
+                 a quitté cette ligne (issue #42, point 6) : elle rejoint la barre
+                 de contrôles de jeu ci-dessous pour ne plus paraître orpheline
+                 quand l'aide de confidentialité est masquée (un seul humain). -->
             <div class="chevalet-pied">
                 <p class="chevalet-aide" id="chevalet-aide">
                     Vos lettres restent masquées tant que vous ne cliquez pas sur
                     « Voir mes lettres ». Pensez à les cacher si un adversaire approche.
                 </p>
-                <button id="btn-echanger-tout" class="lien-discret" hidden
-                        title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
-                    ♻️ Remettre toutes ses lettres et passer
-                </button>
             </div>
 
             <!-- Contrôles de pose d'un mot (clic-clic) : visibles uniquement
-                 lorsque le chevalet est révélé et la partie en cours. -->
+                 lorsque le chevalet est révélé et la partie en cours. L'aide de
+                 pose est désormais près du titre du chevalet (issue #42, point 4). -->
             <div id="zone-jeu" class="zone-jeu" hidden>
-                <p class="zone-jeu-aide">
-                    Cliquez une lettre puis une case vide pour la poser. Recliquez
-                    une lettre posée pour la retirer.
-                </p>
                 <div class="zone-jeu-controles">
-                    <span id="indicateur-sens" class="indicateur-sens"></span>
+                    <!-- Action rare regroupée avec les autres actions de tour
+                         (issue #42, point 6) : reste un lien discret, calé à
+                         gauche de la barre, jamais seul sur sa ligne. -->
+                    <button id="btn-echanger-tout" class="lien-discret" hidden
+                            title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
+                        ♻️ Remettre toutes ses lettres et passer
+                    </button>
                     <button id="btn-sens" class="btn btn-secondaire" hidden></button>
                     <span class="zone-jeu-actions">
                         <button id="btn-annuler" class="btn btn-secondaire" disabled>
@@ -159,6 +169,18 @@
                 <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
             </div>
             </div>
+            </div><!-- .colonne-action -->
+
+            <!-- Encart d'historique glissant (issue #37), déplacé ici (issue #42,
+                 point 2) : rattaché à la zone d'action humaine, à droite de
+                 celle-ci. Liste les dernières actions de tous les joueurs, la
+                 PLUS RÉCENTE EN HAUT ; chaque ligne est cliquable pour rouvrir le
+                 détail du score de CE coup (modale réutilisée). -->
+            <aside class="historique" id="historique-encart" aria-label="Historique des derniers coups">
+                <h2 class="historique-titre">🕑 Derniers coups</h2>
+                <ol id="historique-liste" class="historique-liste" aria-live="polite"></ol>
+            </aside>
+            </div><!-- .zone-humaine -->
             </footer>
         </main>
     </div>

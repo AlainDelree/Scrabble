@@ -69,7 +69,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Contrôles de pose d'un mot (mécanique clic-clic)
     const zoneJeu = document.getElementById('zone-jeu');
-    const indicateurSens = document.getElementById('indicateur-sens');
     const btnSens = document.getElementById('btn-sens');
     const btnValider = document.getElementById('btn-valider');
     const btnAnnuler = document.getElementById('btn-annuler');
@@ -645,20 +644,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!jouable) {
             return;
         }
-        // L'indicateur/bascule de sens n'a de sens que pour UNE seule lettre :
-        // au-delà, le sens est imposé par l'alignement.
+        // Indicateur de sens (issue #42, point 5). Décision : ne montrer un
+        // contrôle de sens QUE dans le seul cas où l'information n'est pas déjà
+        // évidente à l'écran — une unique lettre en attente, dont on ne peut
+        // deviner si elle prolonge un mot horizontalement ou verticalement. Dès
+        // deux lettres alignées, le sens saute aux yeux sur le plateau : on
+        // n'affiche plus alors le libellé « (déduit) », devenu redondant. Le
+        // libellé du bouton est explicite (ce que le mot « se lira ») plutôt
+        // qu'un « sens vertical » cru et sans contexte.
         const sens = sensCourant();
-        const libelleSens = sens === 'H' ? '↔ Horizontal' : '↕ Vertical';
-        if (enAttente.length >= 2) {
-            btnSens.hidden = true;
-            indicateurSens.textContent = `Sens : ${libelleSens} (déduit)`;
-        } else if (enAttente.length === 1) {
+        if (enAttente.length === 1) {
+            const libelle = sens === 'H'
+                ? 'Le mot se lira → à l\'horizontale (cliquer pour la verticale)'
+                : 'Le mot se lira ↓ à la verticale (cliquer pour l\'horizontale)';
             btnSens.hidden = false;
-            btnSens.textContent = `Sens : ${libelleSens} (cliquer pour changer)`;
-            indicateurSens.textContent = '';
+            btnSens.textContent = libelle;
         } else {
+            // 0 lettre (rien à orienter) ou ≥2 lettres (sens visible sur le
+            // plateau) : aucun contrôle de sens affiché.
             btnSens.hidden = true;
-            indicateurSens.textContent = '';
         }
         btnValider.disabled = enAttente.length === 0;
         btnAnnuler.disabled = enAttente.length === 0;

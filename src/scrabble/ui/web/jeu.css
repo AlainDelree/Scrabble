@@ -62,23 +62,29 @@ body {
     padding: 8px 20px 14px;
 }
 
-/* En-tête */
+/* En-tête sur une seule ligne (issue #42, point 1) : titre à gauche, infos
+   globales à droite. Exploite la largeur plutôt que la hauteur ; se replie
+   proprement (retour à la ligne centré) si la fenêtre est trop étroite. */
 header {
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 20px;
+    flex-wrap: wrap;
     margin-bottom: 8px;
 }
 
 header h1 {
     font-size: 1.4rem;
     color: var(--couleur-primaire);
-    margin-bottom: 6px;
 }
 
-/* Barre d'infos globales sous le titre (tour courant, sac, rafraîchir). */
+/* Barre d'infos globales (tour courant, sac, rafraîchir), calée à droite du
+   titre sur la même ligne. */
 .barre-infos {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-end;
     gap: 10px;
     flex-wrap: wrap;
 }
@@ -121,13 +127,18 @@ header h1 {
    Chaque ligne cliquable rouvre le détail du coup dans la modale existante ; la
    couleur de bord distingue humain (bleu) et ordinateur (violet), comme partout
    ailleurs à l'écran. */
+/* Rattaché à la zone d'action humaine (issue #42, point 2) : colonne étroite à
+   droite du chevalet plutôt que carte flottante pleine largeur. Sa hauteur
+   recouvre celle du chevalet au lieu de s'y ajouter — d'où un gain de hauteur
+   verticale. Se replie sous la zone d'action quand la fenêtre est étroite. */
 .historique {
-    max-width: 560px;
-    margin: 0 auto 8px;
+    flex: 0 1 260px;
+    min-width: 220px;
+    align-self: stretch;
     background: white;
     border-radius: 10px;
     box-shadow: var(--ombre);
-    padding: 5px 12px 6px;
+    padding: 8px 12px 10px;
 }
 
 .historique-titre {
@@ -371,6 +382,36 @@ header h1 {
     justify-content: center;
 }
 
+/* Panneau adversaire du HAUT : étiré en largeur, aplati en hauteur (issue #42,
+   point 3). Au lieu de la carte compacte mais haute (entête au-dessus des
+   stats), son contenu s'aligne sur UNE seule ligne horizontale, ce qui réduit
+   d'autant sa hauteur. Borne de largeur MAXIMALE : l'alignement entre la 3ᵉ et
+   la 13ᵉ colonne du plateau. Le plateau vaut min(52vw, 400px) ; les colonnes
+   3→13 en couvrent ≈ 71 % (11 colonnes utiles + gouttières sur 15), soit
+   min(37vw, 285px). C'est un plafond, pas une largeur fixe : si le contenu tient
+   dans moins, le panneau reste plus étroit (sa hauteur ne remonte pas pour
+   autant). Seul le panneau du haut est concerné ; ceux de gauche/droite bordent
+   le plateau et gardent la carte compacte (leur largeur est contrainte par les
+   côtés, pas leur hauteur). */
+.slot-haut .panneau-joueur {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px 18px;
+    flex-wrap: wrap;
+    width: auto;
+    max-width: min(37vw, 285px);
+}
+
+.slot-haut .panneau-entete {
+    margin-bottom: 0;
+}
+
+.slot-haut .panneau-stats {
+    flex: 0 0 auto;
+    gap: 14px;
+}
+
 .case {
     position: relative;
     display: flex;
@@ -595,9 +636,28 @@ header h1 {
     cursor: not-allowed;
 }
 
+/* Zone du joueur humain en deux colonnes (issue #42, point 2) : à gauche sa
+   zone d'action (panneau + chevalet + pose), à droite l'historique. Les deux se
+   replient l'un sous l'autre quand la fenêtre devient étroite. */
+.zone-humaine {
+    display: flex;
+    align-items: stretch;
+    gap: 14px;
+    flex-wrap: wrap;
+    width: 100%;
+    margin-top: 8px;
+}
+
+.colonne-action {
+    flex: 1 1 480px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
 /* Chevalet */
 .zone-chevalet {
-    margin-top: 12px;
+    margin-top: 10px;
     background: white;
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
@@ -616,6 +676,20 @@ header h1 {
 .chevalet-entete h2 {
     font-size: 1.05rem;
     color: var(--couleur-secondaire, #5d4037);
+}
+
+/* Titre du chevalet + instruction de pose regroupés (issue #42, point 4) :
+   l'aide clic-clic est ainsi visible juste sous « Chevalet de … », avant toute
+   interaction (elle se trouvait auparavant sous la zone de jeu). */
+.chevalet-titre-groupe {
+    min-width: 0;
+}
+
+.chevalet-aide-pose {
+    margin-top: 2px;
+    font-size: 0.8rem;
+    color: #666;
+    line-height: 1.35;
 }
 
 .chevalet-actions {
@@ -764,16 +838,17 @@ header h1 {
     font-size: 0.9rem;
 }
 
-/* Pied de la zone chevalet (issue #41) : aide de confidentialité à gauche,
-   action rare « remettre ses lettres » en retrait à droite (lien discret). Les
-   deux extrêmes d'une même ligne pour ne pas empiler inutilement en hauteur. */
+/* Pied de la zone chevalet : ne porte plus que l'aide de confidentialité
+   (parties à deux humains ou plus). L'action rare « remettre ses lettres » a
+   rejoint la barre de contrôles de jeu (issue #42, point 6). Quand l'aide est
+   masquée (un seul humain), le pied est vide : sa marge est alors annulée pour
+   ne pas laisser d'espace mort. */
 .chevalet-pied {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
     margin-top: 10px;
+}
+
+.chevalet-pied:has(> [hidden]) {
+    margin-top: 0;
 }
 
 .chevalet-aide {
@@ -781,14 +856,6 @@ header h1 {
     color: #777;
     font-style: italic;
     margin: 0;
-    flex: 1 1 240px;
-}
-
-/* Le lien « remettre ses lettres » ne s'étire pas et reste calé à droite, même
-   quand l'aide de confidentialité est masquée (parties à un seul humain). */
-.chevalet-pied .lien-discret {
-    flex: 0 0 auto;
-    margin-left: auto;
 }
 
 /* --------------------------------------------------------------------------- */
@@ -916,23 +983,15 @@ header h1 {
     border-top: 1px solid var(--couleur-bordure);
 }
 
-.zone-jeu-aide {
-    font-size: 0.82rem;
-    color: #666;
-    margin-bottom: 8px;
-}
-
+/* Barre de contrôles de pose. Le lien discret « remettre ses lettres » y est
+   calé à gauche (issue #42, point 6) ; le bouton de sens éventuel suit ; les
+   actions Annuler/Valider sont poussées à droite. Ainsi le lien d'échange n'est
+   jamais seul sur sa ligne, y compris en partie à un seul humain. */
 .zone-jeu-controles {
     display: flex;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
-}
-
-.indicateur-sens {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--couleur-primaire-hover);
 }
 
 .zone-jeu-actions {
@@ -1139,5 +1198,19 @@ header h1 {
        compris, gardent exactement la même carte (issue #40). */
     .panneau-joueur {
         width: min(92vw, 320px);
+    }
+
+    /* En repli, le panneau du haut n'est plus bridé par la largeur des colonnes
+       3→13 du plateau (la table est empilée) : on lui rend une borne cohérente
+       avec les autres cartes, tout en gardant sa disposition horizontale à plat
+       (issue #42, point 3). */
+    .slot-haut .panneau-joueur {
+        max-width: min(92vw, 360px);
+    }
+
+    /* Zone humaine repliée : l'historique passe sous la zone d'action plutôt
+       qu'à côté, sur toute la largeur disponible. */
+    .historique {
+        flex-basis: 100%;
     }
 }
