@@ -26,6 +26,18 @@
             </div>
         </header>
 
+        <!-- Encart d'historique glissant (issue #37). Affiché en permanence sous
+             la barre d'infos, au-dessus de la table : emplacement toujours
+             disponible quel que soit le nombre de joueurs (indépendant de la
+             grille 3×3 du plateau). Liste les dernières actions de tous les
+             joueurs, la PLUS RÉCENTE EN HAUT ; chaque ligne est cliquable pour
+             rouvrir le détail du score de CE coup (modale réutilisée). Le nombre
+             de lignes et leur contenu viennent de Python (etat.historique). -->
+        <section class="historique" id="historique-encart" aria-label="Historique des derniers coups">
+            <h2 class="historique-titre">🕑 Derniers coups</h2>
+            <ol id="historique-liste" class="historique-liste" aria-live="polite"></ol>
+        </section>
+
         <!-- Table de jeu : plateau central entouré des panneaux joueurs, chacun
              positionné sur le côté qui lui est assigné côté Python (issue #33).
              Le panneau du bas est celui du joueur humain de référence : il porte,

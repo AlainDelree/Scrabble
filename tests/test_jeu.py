@@ -31,7 +31,9 @@ from scrabble.ui.jeu import (
     index_panneau_interactif,
     jouer_placements,
     jouer_tours_ia_ui,
+    nb_lignes_historique,
     serialiser_case,
+    serialiser_historique,
     serialiser_chevalet,
     serialiser_detail_score,
     serialiser_joueur_public,
@@ -1027,3 +1029,142 @@ class TestSerialiserDetailScore:
         assert detail["total"] == sum(m["score"] for m in detail["mots"]) + detail[
             "bonus_scrabble"
         ]
+
+
+def _partie_quatre_joueurs(graine: int = 7) -> Partie:
+    """Partie déterministe à quatre joueurs (1 humain + 3 ordinateurs)."""
+    joueurs = [
+        Joueur(nom="Alice", humain=True),
+        Joueur(nom="Robot A", humain=False, niveau=Niveau.FACILE),
+        Joueur(nom="Robot B", humain=False, niveau=Niveau.FACILE),
+        Joueur(nom="Robot C", humain=False, niveau=Niveau.FACILE),
+    ]
+    return Partie(joueurs, _DicoFactice(), graine=graine)
+
+
+def _echanger_une_lettre(partie: Partie) -> None:
+    """Fait échanger une lettre au joueur courant (action sans détail, score 0).
+
+    Un échange ne compte pas comme une passe : enchaîner des échanges permet de
+    remplir l'historique sans terminer la partie (contrairement aux passes, qui
+    la clôturent après un tour de table complet).
+    """
+    joueur = partie.joueur_courant()
+    partie.echanger([joueur.chevalet[0]])
+
+
+def _poser_chat_au_centre(partie: Partie) -> None:
+    """Fait poser « CHAT » horizontalement en passant par le centre (7, 7)."""
+    partie.joueur_courant().chevalet = list("CHATSER")
+    placements = [
+        {"ligne": 7, "colonne": 7, "lettre": "C"},
+        {"ligne": 7, "colonne": 8, "lettre": "H"},
+        {"ligne": 7, "colonne": 9, "lettre": "A"},
+        {"ligne": 7, "colonne": 10, "lettre": "T"},
+    ]
+    resultat = jouer_placements(partie, placements)
+    assert resultat["succes"] is True
+
+
+class TestNbLignesHistorique:
+    """Nombre de lignes d'historique à afficher : min(nb_joueurs * 2, 8)."""
+
+    def test_deux_joueurs(self):
+        assert nb_lignes_historique(_partie_simple()) == 4
+
+    def test_quatre_joueurs_plafonne_a_huit(self):
+        assert nb_lignes_historique(_partie_quatre_joueurs()) == 8
+
+    def test_un_seul_joueur(self):
+        partie = Partie([Joueur(nom="Solo", humain=True)], _DicoFactice(), graine=1)
+        assert nb_lignes_historique(partie) == 2
+
+
+class TestSerialiserHistorique:
+    """Exposition de la portion récente de l'historique (issue #37)."""
+
+    def test_partie_neuve_historique_vide(self):
+        partie = _partie_simple()
+        assert serialiser_historique(partie) == []
+
+    def test_moins_de_lignes_en_debut_de_partie(self):
+        # 2 joueurs -> plafond 4, mais une seule action jouée : une seule ligne.
+        partie = _partie_simple()
+        _echanger_une_lettre(partie)
+        historique = serialiser_historique(partie)
+        assert len(historique) == 1
+        assert historique[0]["action"] == "echange"
+
+    def test_plafonne_a_huit_meme_a_quatre_joueurs(self):
+        partie = _partie_quatre_joueurs()
+        # Dix échanges (l'échange ne termine pas la partie) : historique tronqué.
+        for _ in range(10):
+            _echanger_une_lettre(partie)
+        assert len(partie.historique) == 10
+        historique = serialiser_historique(partie)
+        assert len(historique) == 8
+
+    def test_ordre_plus_recent_en_premier(self):
+        partie = _partie_quatre_joueurs()
+        for _ in range(5):
+            _echanger_une_lettre(partie)
+        historique = serialiser_historique(partie)
+        # La première ligne renvoyée est la plus récente ; l'index le confirme.
+        indices = [entree["index"] for entree in historique]
+        assert indices == sorted(indices, reverse=True)
+        assert indices[0] == len(partie.historique) - 1
+
+    def test_index_stable_vers_l_historique_complet(self):
+        partie = _partie_quatre_joueurs()
+        for _ in range(10):
+            _echanger_une_lettre(partie)
+        for entree in serialiser_historique(partie):
+            # L'index pointe bien vers l'entrée d'origine (identifiant du coup).
+            origine = partie.historique[entree["index"]]
+            assert origine.nom_joueur == entree["nom_joueur"]
+            assert origine.action == entree["action"]
+
+    def test_action_sans_detail_signalee(self):
+        partie = _partie_simple()
+        _echanger_une_lettre(partie)  # échange : ni mot, ni détail, score 0
+        partie.passer()               # passe : idem
+        historique = serialiser_historique(partie)
+        for entree in historique:
+            assert entree["detail"] is None
+            assert entree["score_action"] == 0
+            assert entree["mot"] is None
+        assert {e["action"] for e in historique} == {"echange", "passe"}
+
+    def test_coup_associe_a_son_detail(self):
+        partie = _partie_simple()
+        partie.index_courant = 0
+        _poser_chat_au_centre(partie)
+        historique = serialiser_historique(partie)
+        # Le coup est la plus récente (et unique) entrée : détail cliquable.
+        entree = historique[0]
+        assert entree["action"] == "coup"
+        assert entree["nom_joueur"] == "Alice"
+        assert entree["humain"] is True
+        assert entree["mot"] == "CHAT"
+        assert entree["detail"] is not None
+        assert entree["score_action"] == entree["detail"]["total"]
+        assert any(m["texte"] == "CHAT" for m in entree["detail"]["mots"])
+
+    def test_flag_humain_distingue_joueurs(self):
+        partie = _partie_simple()  # Alice (humaine) puis Robot (ordinateur)
+        _echanger_une_lettre(partie)  # Alice
+        _echanger_une_lettre(partie)  # Robot
+        historique = serialiser_historique(partie)
+        par_nom = {e["nom_joueur"]: e for e in historique}
+        assert par_nom["Alice"]["humain"] is True
+        assert par_nom["Robot"]["humain"] is False
+
+    def test_expose_dans_etat_public(self):
+        partie = _partie_quatre_joueurs()
+        for _ in range(10):
+            _echanger_une_lettre(partie)
+        etat = etat_public(partie, id_partie=3)
+        assert "historique" in etat
+        # Même fenêtrage et même ordre que serialiser_historique.
+        assert etat["historique"] == serialiser_historique(partie)
+        assert len(etat["historique"]) == 8

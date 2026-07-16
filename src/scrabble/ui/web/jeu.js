@@ -41,6 +41,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     const sacNombre = document.getElementById('sac-nombre');
     const tourJoueur = document.getElementById('tour-joueur');
+    // Encart d'historique glissant (issue #37) : liste des dernières actions,
+    // la plus récente en haut, chaque ligne cliquable pour le détail du coup.
+    const historiqueListe = document.getElementById('historique-liste');
     const chevaletEl = document.getElementById('chevalet');
     const chevaletNom = document.getElementById('chevalet-nom');
     const btnVisibilite = document.getElementById('btn-visibilite');
@@ -302,6 +305,88 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.querySelector('.tour-label').textContent = 'Au tour de';
         tourJoueur.textContent = `${icone(courant.humain)} ${courant.nom}`;
         tourJoueur.className = 'tour-joueur ' + (courant.humain ? 'humain' : 'ordinateur');
+    }
+
+    // Libellés lisibles du type d'action pour l'historique glissant (issue #37).
+    const LABEL_ACTION = {
+        'coup': 'a posé',
+        'passe': 'a passé',
+        'echange': 'a échangé',
+    };
+
+    /**
+     * Résumé texte d'une action de l'historique (mot posé, passe ou échange).
+     */
+    function resumeAction(entree) {
+        const verbe = LABEL_ACTION[entree.action] || entree.action;
+        if (entree.action === 'coup') {
+            const mot = entree.mot ? ` « ${entree.mot} »` : '';
+            return `${verbe}${mot}`;
+        }
+        return verbe;
+    }
+
+    /**
+     * Rend l'encart d'historique glissant (issue #37) à partir de
+     * ``etat.historique`` : une ligne par action récente, la plus RÉCENTE EN
+     * HAUT (ordre déjà fixé côté Python). Chaque ligne affiche le nom du joueur,
+     * le type d'action (mot posé / passé / échangé) et le score gagné (0 pour une
+     * passe/échange), avec la couleur bleu (humain) / violet (ordinateur)
+     * cohérente avec le reste de l'écran. Une ligne est cliquable pour rouvrir le
+     * détail du coup ; une action sans détail (passe/échange) est marquée comme
+     * telle et signale « rien à détailler » au clic.
+     */
+    function rendreHistorique(historique) {
+        historiqueListe.innerHTML = '';
+        if (!Array.isArray(historique) || !historique.length) {
+            const vide = document.createElement('li');
+            vide.className = 'historique-vide';
+            vide.textContent = 'Aucune action jouée pour le moment.';
+            historiqueListe.appendChild(vide);
+            return;
+        }
+        historique.forEach(entree => {
+            const item = document.createElement('li');
+            const nature = entree.humain ? 'humain' : 'ordinateur';
+            const cliquable = Boolean(entree.detail);
+            item.className = `historique-ligne ${nature}`
+                + (cliquable ? ' cliquable' : '');
+            item.dataset.index = entree.index;
+            if (cliquable) {
+                item.setAttribute('role', 'button');
+                item.tabIndex = 0;
+                item.title = 'Voir le détail de ce coup';
+            } else {
+                item.title = 'Aucun détail pour cette action';
+            }
+            item.innerHTML = `
+                <span class="historique-joueur">${icone(entree.humain)} ${escapeHtml(entree.nom_joueur)}</span>
+                <span class="historique-action">${escapeHtml(resumeAction(entree))}</span>
+                <span class="historique-score">+${entree.score_action} pt${entree.score_action > 1 ? 's' : ''}</span>
+            `;
+            historiqueListe.appendChild(item);
+        });
+    }
+
+    /**
+     * Ouvre le détail d'une action de l'historique au clic (issue #37). Si
+     * l'action a un détail (un coup), on rouvre la modale existante avec CE
+     * détail précis (pas nécessairement le dernier), en titrant par le joueur.
+     * Une passe ou un échange n'a rien à détailler : on affiche alors un message
+     * simple dans la modale plutôt que d'ouvrir un détail vide.
+     */
+    function ouvrirDetailHistorique(entree) {
+        if (!entree) {
+            return;
+        }
+        if (entree.detail) {
+            const titre = `Détail du coup de ${entree.nom_joueur}`
+                + (entree.mot ? ` — « ${entree.mot} »` : '');
+            afficherDetailScore(entree.detail, titre);
+        } else {
+            const quoi = entree.action === 'echange' ? 'un échange de lettres' : 'une passe';
+            afficherMessageSansDetail(entree.nom_joueur, quoi);
+        }
     }
 
     /**
@@ -587,6 +672,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         rendrePlateau();
         rendrePanneaux(etat.joueurs);
         rendreTour(etat.joueurs, etat.index_courant, etat.terminee, etat.gagnants);
+        rendreHistorique(etat.historique);
         sacNombre.textContent = etat.jetons_sac;
         majModeTour();
         await majChevalet();
@@ -713,16 +799,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Affiche la modale de détail du score après un coup posé (issue #35). Le
-     * détail (mots formés, score de chaque mot, cases bonus utilisées, bonus
-     * « scrabble », total) est fourni tel quel par Python (``res.detail`` de
-     * ``poser_mot``) : rien n'est recalculé côté JS. Si aucun détail n'est
-     * fourni (cas défensif), la modale n'est pas affichée.
+     * Affiche la modale de détail du score (issue #35, réutilisée par l'encart
+     * d'historique de l'issue #37). Le détail (mots formés, score de chaque mot,
+     * cases bonus utilisées, bonus « scrabble », total) est fourni tel quel par
+     * Python : rien n'est recalculé côté JS. ``titre`` (optionnel) personnalise
+     * l'en-tête de la modale (p. ex. le joueur et le mot du coup cliqué) ; à
+     * défaut, on garde « Détail du score ». Si aucun détail n'est fourni (cas
+     * défensif), la modale n'est pas affichée.
      */
-    function afficherDetailScore(detail) {
+    function afficherDetailScore(detail, titre) {
         if (!detail || !Array.isArray(detail.mots)) {
             return;
         }
+        scoreTitre.textContent = titre || 'Détail du score';
         scoreDetail.innerHTML = '';
         detail.mots.forEach(mot => {
             const ligne = document.createElement('div');
@@ -753,12 +842,61 @@ document.addEventListener('DOMContentLoaded', async () => {
         scoreModale.hidden = false;
     }
 
+    /**
+     * Affiche dans la modale un message simple pour une action sans détail
+     * (passe ou échange) cliquée dans l'historique (issue #37) : il n'y a alors
+     * ni mot formé ni score à détailler.
+     */
+    function afficherMessageSansDetail(nomJoueur, quoi) {
+        scoreTitre.textContent = `Action de ${nomJoueur}`;
+        scoreDetail.innerHTML = '';
+        const ligne = document.createElement('div');
+        ligne.className = 'score-mot';
+        ligne.innerHTML =
+            `<span class="score-mot-texte">Il s'agit de ${escapeHtml(quoi)}.</span>`;
+        scoreDetail.appendChild(ligne);
+        scoreTotal.textContent = 'Aucun mot formé — rien à détailler.';
+        scoreModale.hidden = false;
+    }
+
     // Fermeture par le bouton dédié…
     scoreFermer.addEventListener('click', fermerScore);
     // …ou par un clic en dehors du contenu de la modale (sur le fond assombri).
     scoreModale.addEventListener('click', (evt) => {
         if (evt.target === scoreModale) {
             fermerScore();
+        }
+    });
+
+    // --- Encart d'historique glissant (issue #37) ---
+
+    /**
+     * Retrouve l'entrée d'historique correspondant à un élément <li> cliqué
+     * (via son ``data-index``, l'index d'origine dans ``partie.historique``).
+     */
+    function entreeHistoriqueDe(li) {
+        if (!li || !etat || !Array.isArray(etat.historique)) {
+            return null;
+        }
+        const index = Number(li.dataset.index);
+        return etat.historique.find(e => e.index === index) || null;
+    }
+
+    // Clic sur une ligne de l'historique : ouvre le détail du coup concerné
+    // (modale réutilisée) — pas nécessairement le dernier coup joué.
+    historiqueListe.addEventListener('click', (evt) => {
+        const li = evt.target.closest('.historique-ligne');
+        ouvrirDetailHistorique(entreeHistoriqueDe(li));
+    });
+    // Accessibilité : Entrée/Espace sur une ligne focalisée ouvre aussi le détail.
+    historiqueListe.addEventListener('keydown', (evt) => {
+        if (evt.key !== 'Enter' && evt.key !== ' ') {
+            return;
+        }
+        const li = evt.target.closest('.historique-ligne');
+        if (li) {
+            evt.preventDefault();
+            ouvrirDetailHistorique(entreeHistoriqueDe(li));
         }
     });
 
@@ -912,12 +1050,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (res && res.succes) {
             // Le coup est joué : on recharge l'état (nouveau tour, chevalet remasqué)
             // et on vide l'attente. Rien n'est perdu : le moteur a consommé les lettres.
+            // La modale ne s'ouvre PLUS automatiquement (issue #37) : le détail du
+            // coup reste accessible à la demande via l'encart d'historique, dont la
+            // ligne du coup vient d'apparaître en tête après le rafraîchissement.
             const points = res.points != null ? res.points : 0;
-            const detail = res.detail;
             await rafraichir();
             afficherMessage(`Coup joué (+${points} point${points > 1 ? 's' : ''}).`, 'succes');
-            // Modale explicative du score (mots, bonus, total) fournie par Python.
-            afficherDetailScore(detail);
         } else {
             // Échec : on conserve les lettres en attente pour correction.
             const message = (res && res.erreur) ? res.erreur : 'Coup refusé.';

@@ -36,7 +36,12 @@ import webview
 from scrabble.config import THEMES_PLATEAU, charger_config
 from scrabble.dictionnaire.dictionnaire import Trie, normaliser_mot
 from scrabble.moteur.ia import Niveau
-from scrabble.moteur.partie import ActionInvalide, Joueur, Partie
+from scrabble.moteur.partie import (
+    ActionInvalide,
+    EntreeHistorique,
+    Joueur,
+    Partie,
+)
 from scrabble.moteur.plateau_partie import (
     Coup,
     Direction,
@@ -277,6 +282,13 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     un ordinateur (panneau en attente) ; ``index_panneau`` est l'index du joueur
     dont le chevalet est exposé, ou ``None`` pendant un tour d'ordinateur (voir
     :func:`index_panneau_interactif`, issue #35).
+
+    ``historique`` (issue #37) est la portion récente de l'historique des
+    actions (voir :func:`serialiser_historique`) : la plus récente en premier,
+    plafonnée à ``min(nb_joueurs * 2, 8)`` lignes, chacune avec le détail du
+    score inclus pour l'ouverture au clic — l'UI alimente son encart glissant à
+    partir de ce seul champ, rafraîchi après chaque action (coup humain ou série
+    de tours IA).
     """
     positions = calculer_positions(partie.joueurs)
     avatars = calculer_avatars(partie.joueurs)
@@ -301,7 +313,92 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
         "index_panneau": index_panneau_interactif(partie),
         "terminee": partie.terminee,
         "gagnants": [j.nom for j in partie.gagnants] if partie.terminee else [],
+        "historique": serialiser_historique(partie),
     }
+
+
+#: Plafond du nombre de lignes de l'historique glissant affichées à l'écran.
+MAX_LIGNES_HISTORIQUE = 8
+
+
+def nb_lignes_historique(partie: Partie) -> int:
+    """Nombre de lignes d'historique à afficher : ``min(nb_joueurs * 2, 8)``.
+
+    Règle de l'issue #37 : on montre au plus les ``nb_joueurs * 2`` dernières
+    actions (soit deux « tours de table »), plafonnées à
+    :data:`MAX_LIGNES_HISTORIQUE`. En tout début de partie, il peut y avoir moins
+    d'actions jouées que cette borne : :func:`serialiser_historique` n'en renvoie
+    alors que ce qui existe (voir cette fonction).
+    """
+    return min(len(partie.joueurs) * 2, MAX_LIGNES_HISTORIQUE)
+
+
+def serialiser_entree_historique(
+    partie: Partie, entree: "EntreeHistorique", index: int
+) -> dict[str, Any]:
+    """Sérialise une :class:`~scrabble.moteur.partie.EntreeHistorique` pour l'UI.
+
+    Expose de quoi afficher une ligne de l'historique glissant (issue #37) : le
+    joueur (``nom_joueur``, ``index_joueur`` et ``humain`` — ce dernier permet la
+    distinction visuelle bleu/violet cohérente avec le reste de l'écran), le
+    ``type`` d'action (``"coup"``/``"passe"``/``"echange"``), le
+    ``score_action`` gagné à cette action (le total du coup, ``0`` pour une passe
+    ou un échange) et, pour un coup, le mot principal (``mot``).
+
+    ``index`` est la position de l'entrée dans ``partie.historique`` : c'est
+    l'identifiant stable de l'action, transmis tel quel pour retrouver le détail
+    au clic. Choix documenté (issue #37) : le ``detail`` complet (réutilisant
+    :func:`serialiser_detail_score`) est **inclus directement** dans la
+    sérialisation quand l'action en a un — le clic n'a alors besoin d'aucun
+    aller-retour supplémentaire vers Python. Une passe ou un échange n'a pas de
+    détail : ``detail`` vaut ``None`` (l'UI signale « rien à détailler »).
+    """
+    joueur = partie.joueurs[entree.index_joueur]
+    score_action = entree.detail.total if entree.detail is not None else 0
+    mot = (
+        entree.detail.mots[0].texte
+        if entree.detail is not None and entree.detail.mots
+        else None
+    )
+    return {
+        "index": index,
+        "index_joueur": entree.index_joueur,
+        "nom_joueur": entree.nom_joueur,
+        "humain": joueur.humain,
+        "action": entree.action,
+        "score_action": score_action,
+        "mot": mot,
+        "detail": (
+            serialiser_detail_score(entree.detail)
+            if entree.detail is not None
+            else None
+        ),
+    }
+
+
+def serialiser_historique(partie: Partie) -> list[dict[str, Any]]:
+    """Sérialise la portion récente de l'historique pour l'encart glissant.
+
+    Renvoie les ``min(nb_joueurs * 2, 8)`` dernières actions de la partie (voir
+    :func:`nb_lignes_historique`), **la plus récente en premier** (ordre décroissant
+    d'ancienneté — choix documenté de l'issue #37 : le dernier coup apparaît en
+    tête de l'encart). En début de partie, moins d'actions ont été jouées que la
+    borne : on ne renvoie alors que ce qui existe (p. ex. 2 lignes seulement à
+    1 humain + 1 ordinateur après un tour chacun).
+
+    Chaque entrée est sérialisée par :func:`serialiser_entree_historique`, en
+    conservant son index d'origine dans ``partie.historique`` (identifiant stable
+    du coup, indépendant du fenêtrage).
+    """
+    limite = nb_lignes_historique(partie)
+    recentes = partie.historique[-limite:] if limite > 0 else []
+    debut = len(partie.historique) - len(recentes)
+    entrees = [
+        serialiser_entree_historique(partie, entree, debut + decalage)
+        for decalage, entree in enumerate(recentes)
+    ]
+    entrees.reverse()  # plus récent en premier
+    return entrees
 
 
 def serialiser_detail_score(detail: DetailScore) -> dict[str, Any]:
