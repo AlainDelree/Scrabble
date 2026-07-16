@@ -603,6 +603,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Rafraîchir l'état de la partie
     btnRafraichir.addEventListener('click', rafraichir);
 
+    // --- Tour d'un ordinateur (issue #35) ---
+
+    // « ▶ Faire jouer l'ordinateur » : enchaîne tous les tours IA consécutifs
+    // (via Partie.jouer_tours_ia côté moteur) jusqu'au prochain joueur humain ou
+    // la fin de partie, puis recharge l'écran. C'est la SEULE façon de faire
+    // avancer le jeu pendant un tour IA : à aucun moment l'humain ne manipule le
+    // chevalet d'un ordinateur à sa place (correction du défaut d'exposition).
+    btnJouerIA.addEventListener('click', async () => {
+        btnJouerIA.disabled = true;
+        let res;
+        try {
+            res = await api.faire_jouer_ia();
+        } catch (err) {
+            btnJouerIA.disabled = false;
+            return;
+        }
+        if (res && res.succes) {
+            await rafraichir();
+        } else {
+            btnJouerIA.disabled = false;
+        }
+    });
+
     // --- Zone de brouillon (réflexion indépendante) ---
 
     // Échange de deux emplacements du brouillon par deux clics successifs.
@@ -666,6 +689,76 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Sac trop pauvre (ou partie terminée) : message clair, rien changé.
             afficherMessage((res && res.erreur) || 'Échange impossible.', 'erreur');
             btnEchangerTout.disabled = false;
+        }
+    });
+
+    // --- Modale de détail du score (issue #35) ---
+
+    // Libellés lisibles des cases bonus (le TYPE vient de Python). Sert à
+    // expliquer un score, p. ex. « mot compte double ».
+    const LABEL_BONUS = {
+        'MT': 'mot compte triple',
+        'MD': 'mot compte double',
+        'LT': 'lettre compte triple',
+        'LD': 'lettre compte double',
+        'centre': 'case centrale (mot compte double)',
+        'normale': '',
+    };
+
+    /**
+     * Ferme la modale de détail du score.
+     */
+    function fermerScore() {
+        scoreModale.hidden = true;
+    }
+
+    /**
+     * Affiche la modale de détail du score après un coup posé (issue #35). Le
+     * détail (mots formés, score de chaque mot, cases bonus utilisées, bonus
+     * « scrabble », total) est fourni tel quel par Python (``res.detail`` de
+     * ``poser_mot``) : rien n'est recalculé côté JS. Si aucun détail n'est
+     * fourni (cas défensif), la modale n'est pas affichée.
+     */
+    function afficherDetailScore(detail) {
+        if (!detail || !Array.isArray(detail.mots)) {
+            return;
+        }
+        scoreDetail.innerHTML = '';
+        detail.mots.forEach(mot => {
+            const ligne = document.createElement('div');
+            ligne.className = 'score-mot';
+            const bonus = (mot.cases_bonus || [])
+                .map(c => LABEL_BONUS[c.type])
+                .filter(Boolean);
+            const bonusHtml = bonus.length
+                ? `<span class="score-bonus">${escapeHtml(bonus.join(', '))}</span>`
+                : '';
+            ligne.innerHTML = `
+                <span class="score-mot-texte">${escapeHtml(mot.texte)}</span>
+                <span class="score-mot-points">${mot.score} pt${mot.score > 1 ? 's' : ''}</span>
+                ${bonusHtml}
+            `;
+            scoreDetail.appendChild(ligne);
+        });
+        if (detail.bonus_scrabble) {
+            const bonusLigne = document.createElement('div');
+            bonusLigne.className = 'score-mot score-scrabble';
+            bonusLigne.innerHTML = `
+                <span class="score-mot-texte">🎉 Scrabble (7 lettres posées)</span>
+                <span class="score-mot-points">+${detail.bonus_scrabble} pts</span>
+            `;
+            scoreDetail.appendChild(bonusLigne);
+        }
+        scoreTotal.textContent = `Total : ${detail.total} point${detail.total > 1 ? 's' : ''}`;
+        scoreModale.hidden = false;
+    }
+
+    // Fermeture par le bouton dédié…
+    scoreFermer.addEventListener('click', fermerScore);
+    // …ou par un clic en dehors du contenu de la modale (sur le fond assombri).
+    scoreModale.addEventListener('click', (evt) => {
+        if (evt.target === scoreModale) {
+            fermerScore();
         }
     });
 
@@ -820,8 +913,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Le coup est joué : on recharge l'état (nouveau tour, chevalet remasqué)
             // et on vide l'attente. Rien n'est perdu : le moteur a consommé les lettres.
             const points = res.points != null ? res.points : 0;
+            const detail = res.detail;
             await rafraichir();
             afficherMessage(`Coup joué (+${points} point${points > 1 ? 's' : ''}).`, 'succes');
+            // Modale explicative du score (mots, bonus, total) fournie par Python.
+            afficherDetailScore(detail);
         } else {
             // Échec : on conserve les lettres en attente pour correction.
             const message = (res && res.erreur) ? res.erreur : 'Coup refusé.';

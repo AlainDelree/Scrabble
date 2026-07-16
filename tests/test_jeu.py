@@ -11,11 +11,13 @@ Couvre :
 
 import pytest
 
+from scrabble.dictionnaire.dictionnaire import Trie
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import Joueur, Partie
 from scrabble.moteur.plateau_partie import Direction, Tuile
+from scrabble.moteur.score import DetailMot, DetailScore
 from scrabble.regles.lettres import JOKER
-from scrabble.regles.plateau import CENTRE, TAILLE
+from scrabble.regles.plateau import CENTRE, TAILLE, TypeCase
 from scrabble.ui.jeu import (
     AVATARS,
     ApiJeu,
@@ -26,9 +28,12 @@ from scrabble.ui.jeu import (
     construire_partie_demo,
     echanger_chevalet_complet,
     etat_public,
+    index_panneau_interactif,
     jouer_placements,
+    jouer_tours_ia_ui,
     serialiser_case,
     serialiser_chevalet,
+    serialiser_detail_score,
     serialiser_joueur_public,
     serialiser_plateau,
     verifier_mot_dictionnaire,
@@ -813,3 +818,212 @@ class TestEchangerChevaletComplet:
         assert res["succes"] is True
         assert res["etat"]["id_partie"] == 42
         assert partie.index_courant == 1
+
+
+# --------------------------------------------------------------------------- #
+# Correction du défaut d'exposition du tour IA (issue #35)
+# --------------------------------------------------------------------------- #
+
+
+class TestIndexPanneauInteractif:
+    """Le panneau interactif suit le joueur humain courant, jamais un ordinateur."""
+
+    def test_tour_humain_unique_renvoie_son_index(self):
+        # Un seul humain (index 0) : quand c'est son tour, le panneau est à lui.
+        partie = _partie_simple()
+        partie.index_courant = 0
+        assert partie.joueur_courant().humain is True
+        assert index_panneau_interactif(partie) == 0
+
+    def test_tour_ordinateur_renvoie_none(self):
+        # Tour de l'ordinateur (index 1) : aucun chevalet exposé (None).
+        partie = _partie_simple()
+        partie.index_courant = 1
+        assert partie.joueur_courant().humain is False
+        assert index_panneau_interactif(partie) is None
+
+    def test_multi_humains_suit_l_humain_courant(self):
+        # Deux humains + un ordinateur : le panneau suit l'humain à qui c'est le
+        # tour, pas un humain fixe unique.
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Bob", humain=True),
+            Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
+        ]
+        partie = Partie(joueurs, _DicoFactice(), graine=7)
+        partie.index_courant = 1  # tour de Bob (2ᵉ humain)
+        assert index_panneau_interactif(partie) == 1
+        partie.index_courant = 0  # tour d'Alice
+        assert index_panneau_interactif(partie) == 0
+
+    def test_multi_humains_ordinateur_courant_renvoie_none(self):
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Bob", humain=True),
+            Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
+        ]
+        partie = Partie(joueurs, _DicoFactice(), graine=7)
+        partie.index_courant = 2  # tour de l'ordinateur
+        assert index_panneau_interactif(partie) is None
+
+    def test_ne_designe_jamais_un_ordinateur(self):
+        # Garantie structurelle : pour tout index courant, la valeur renvoyée est
+        # None ou l'index d'un joueur humain — jamais celui d'un ordinateur.
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Robot1", humain=False, niveau=Niveau.FACILE),
+            Joueur(nom="Bob", humain=True),
+            Joueur(nom="Robot2", humain=False, niveau=Niveau.EXPERT),
+        ]
+        partie = Partie(joueurs, _DicoFactice(), graine=11)
+        for index in range(len(joueurs)):
+            partie.index_courant = index
+            resultat = index_panneau_interactif(partie)
+            if resultat is not None:
+                assert partie.joueurs[resultat].humain is True
+
+
+class TestEtatPublicExpositionTour:
+    """L'état public expose correctement tour_humain / index_panneau (issue #35)."""
+
+    def test_tour_humain_expose_index_panneau(self):
+        partie = _partie_simple()
+        partie.index_courant = 0
+        etat = etat_public(partie, None)
+        assert etat["tour_humain"] is True
+        assert etat["index_panneau"] == 0
+
+    def test_tour_ordinateur_index_panneau_none(self):
+        partie = _partie_simple()
+        partie.index_courant = 1
+        etat = etat_public(partie, None)
+        assert etat["tour_humain"] is False
+        assert etat["index_panneau"] is None
+        # L'état reste public : aucune lettre exposée, même pendant un tour IA.
+        for joueur_pub in etat["joueurs"]:
+            assert "lettres" not in joueur_pub
+            assert "chevalet" not in joueur_pub
+
+
+class TestJouerToursIaUi:
+    """Enchaînement des tours IA côté API (jouer_tours_ia_ui / faire_jouer_ia)."""
+
+    def _partie_ia(self) -> Partie:
+        """Humain (index 0) puis deux ordinateurs, sur un dictionnaire réel."""
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Robot1", humain=False, niveau=Niveau.EXPERT),
+            Joueur(nom="Robot2", humain=False, niveau=Niveau.EXPERT),
+        ]
+        return Partie(joueurs, Trie.depuis_iterable(["CADRE"]), graine=1)
+
+    def test_joueur_humain_courant_aucun_tour(self):
+        partie = self._partie_ia()
+        partie.index_courant = 0
+        res = jouer_tours_ia_ui(partie, None)
+        assert res["succes"] is True
+        assert res["nb_tours"] == 0
+        assert partie.index_courant == 0  # rien n'a bougé
+        assert res["etat"]["index_courant"] == 0
+
+    def test_enchaine_les_ia_jusqu_a_l_humain(self):
+        partie = self._partie_ia()
+        partie.index_courant = 1  # tour du premier ordinateur
+        # Chevalets sans voyelle jouable : les IA passent leur tour (2 de 3 passes
+        # consécutives ne terminent pas une partie à 3 joueurs).
+        partie.joueurs[1].chevalet[:] = list("BCDFGHJ")
+        partie.joueurs[2].chevalet[:] = list("BCDFGHJ")
+        res = jouer_tours_ia_ui(partie, None)
+        assert res["succes"] is True
+        # Deux tours d'ordinateur enchaînés, puis la main revient à l'humain.
+        assert res["nb_tours"] == 2
+        assert partie.joueur_courant().humain is True
+        assert partie.index_courant == 0
+        assert res["etat"]["index_courant"] == 0
+        assert res["etat"]["tour_humain"] is True
+
+    def test_api_faire_jouer_ia_delegue(self):
+        partie = self._partie_ia()
+        partie.index_courant = 1
+        partie.joueurs[1].chevalet[:] = list("BCDFGHJ")
+        partie.joueurs[2].chevalet[:] = list("BCDFGHJ")
+        api = ApiJeu(partie, 99)
+        res = api.faire_jouer_ia()
+        assert res["succes"] is True
+        assert res["nb_tours"] == 2
+        assert res["etat"]["id_partie"] == 99
+        assert partie.joueur_courant().humain is True
+
+    def test_api_faire_jouer_ia_sans_effet_si_humain(self):
+        partie = self._partie_ia()
+        partie.index_courant = 0
+        api = ApiJeu(partie, None)
+        res = api.faire_jouer_ia()
+        assert res["nb_tours"] == 0
+        assert partie.index_courant == 0
+
+
+class TestSerialiserDetailScore:
+    """Sérialisation du détail de score exposé à la modale (issue #35)."""
+
+    def test_structure_mots_scores_et_total(self):
+        detail = DetailScore(
+            mots=[
+                DetailMot(
+                    texte="MAISON",
+                    score=14,
+                    cases_bonus=[(7, 7, TypeCase.CENTRE)],
+                ),
+                DetailMot(texte="OS", score=2, cases_bonus=[]),
+            ],
+            bonus_scrabble=50,
+            total=66,
+        )
+        serialise = serialiser_detail_score(detail)
+
+        # Chaque mot est présent avec son texte et son score individuel.
+        assert [m["texte"] for m in serialise["mots"]] == ["MAISON", "OS"]
+        assert [m["score"] for m in serialise["mots"]] == [14, 2]
+        # Le total et le bonus scrabble sont exposés tels quels.
+        assert serialise["total"] == 66
+        assert serialise["bonus_scrabble"] == 50
+        # Les cases bonus utilisées portent ligne, colonne et type sérialisable.
+        cases = serialise["mots"][0]["cases_bonus"]
+        assert cases == [{"ligne": 7, "colonne": 7, "type": TypeCase.CENTRE.value}]
+        assert serialise["mots"][1]["cases_bonus"] == []
+
+    def test_sans_bonus_scrabble(self):
+        detail = DetailScore(
+            mots=[DetailMot(texte="CHAT", score=9, cases_bonus=[])],
+            bonus_scrabble=0,
+            total=9,
+        )
+        serialise = serialiser_detail_score(detail)
+        assert serialise["bonus_scrabble"] == 0
+        assert serialise["total"] == 9
+        assert len(serialise["mots"]) == 1
+
+    def test_poser_mot_expose_le_detail(self):
+        # Intégration : un coup réussi renvoie un détail sérialisé cohérent.
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
+        ]
+        partie = Partie(joueurs, _DicoFactice(), graine=1)
+        partie.index_courant = 0
+        partie.joueurs[0].chevalet = list("CHATSER")
+        placements = [
+            {"ligne": 7, "colonne": 7, "lettre": "C"},
+            {"ligne": 7, "colonne": 8, "lettre": "H"},
+            {"ligne": 7, "colonne": 9, "lettre": "A"},
+            {"ligne": 7, "colonne": 10, "lettre": "T"},
+        ]
+        res = jouer_placements(partie, placements)
+        assert res["succes"] is True
+        assert res["detail"] is not None
+        detail = res["detail"]
+        assert any(m["texte"] == "CHAT" for m in detail["mots"])
+        assert detail["total"] == res["points"]
+        assert detail["total"] == sum(m["score"] for m in detail["mots"]) + detail[
+            "bonus_scrabble"
+        ]
