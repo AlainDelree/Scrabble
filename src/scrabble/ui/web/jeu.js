@@ -37,6 +37,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chevaletNom = document.getElementById('chevalet-nom');
     const btnVisibilite = document.getElementById('btn-visibilite');
     const btnRafraichir = document.getElementById('btn-rafraichir');
+    const btnEchangerTout = document.getElementById('btn-echanger-tout');
+
+    // Zone de brouillon (réflexion indépendante du plateau)
+    const blocBrouillon = document.getElementById('bloc-brouillon');
+    const brouillonEl = document.getElementById('brouillon');
+    const btnVerifier = document.getElementById('btn-verifier');
+    const messageBrouillon = document.getElementById('message-brouillon');
+    const chevaletAide = document.getElementById('chevalet-aide');
 
     // Contrôles de pose d'un mot (mécanique clic-clic)
     const zoneJeu = document.getElementById('zone-jeu');

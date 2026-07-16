@@ -414,10 +414,31 @@ header h1 {
     color: var(--couleur-secondaire, #5d4037);
 }
 
+.chevalet-actions {
+    display: inline-flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Disposition « réflexion » : chevalet compact à gauche, brouillon à droite. */
+.zone-reflexion {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+/* Le chevalet reste compact : à peine plus large que les 7 lettres, il ne
+   s'étire pas et ses cases ne passent pas à la ligne. */
+.bloc-chevalet {
+    flex: 0 0 auto;
+}
+
 .chevalet {
     display: flex;
     gap: 8px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    width: fit-content;
     min-height: 60px;
     align-items: center;
     padding: 10px;
@@ -513,6 +534,123 @@ header h1 {
     font-size: 0.82rem;
     color: #777;
     font-style: italic;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Zone de brouillon (réflexion indépendante du plateau)                       */
+/* --------------------------------------------------------------------------- */
+.bloc-brouillon {
+    flex: 1 1 320px;
+    min-width: 280px;
+    padding: 10px 12px 12px;
+    background: #f3eee4;
+    border: 1px dashed #c9a961;
+    border-radius: 6px;
+}
+
+.bloc-brouillon[hidden] {
+    display: none;
+}
+
+.brouillon-entete {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.brouillon-titre {
+    font-weight: 700;
+    color: var(--couleur-secondaire, #5d4037);
+}
+
+/* Emplacements de brouillon : 7 cases où réordonner ses lettres. */
+.brouillon {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-height: 56px;
+    align-items: center;
+}
+
+.brouillon-case {
+    width: 42px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 1.4rem;
+    text-transform: uppercase;
+    position: relative;
+    cursor: pointer;
+    background: var(--tuile-fond);
+    border: 1px solid var(--tuile-bordure);
+    color: var(--tuile-texte);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.brouillon-case:hover {
+    transform: translateY(-2px);
+}
+
+.brouillon-case.joker {
+    border: 2px dashed var(--tuile-joker-bordure);
+    color: var(--tuile-joker-bordure);
+}
+
+/* Emplacement sélectionné (premier clic d'un échange de deux positions). */
+.brouillon-case.selectionnee {
+    outline: 3px solid var(--couleur-primaire);
+    outline-offset: 1px;
+    transform: translateY(-4px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.brouillon-case .val {
+    position: absolute;
+    right: 3px;
+    bottom: 1px;
+    font-size: 0.55rem;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+.brouillon-vide {
+    color: #8a7a63;
+    font-style: italic;
+    font-size: 0.9rem;
+}
+
+.brouillon-aide {
+    margin-top: 8px;
+    font-size: 0.78rem;
+    color: #7a6b52;
+    font-style: italic;
+}
+
+.message-brouillon {
+    margin-top: 8px;
+    font-size: 0.9rem;
+    min-height: 1.2em;
+    font-weight: 600;
+}
+
+.message-brouillon.valide {
+    color: var(--couleur-primaire-hover);
+}
+
+.message-brouillon.invalide {
+    color: #b71c1c;
+}
+
+.message-brouillon.info {
+    color: #555;
+    font-weight: 500;
 }
 
 /* Zone de pose d'un mot (clic-clic) */

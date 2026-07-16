@@ -33,6 +33,7 @@ from typing import Any
 import webview
 
 from scrabble.config import THEMES_PLATEAU, charger_config
+from scrabble.dictionnaire.dictionnaire import normaliser_mot
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import ActionInvalide, Joueur, Partie
 from scrabble.moteur.plateau_partie import (
@@ -116,6 +117,17 @@ def serialiser_chevalet(joueur: Joueur) -> list[dict[str, Any]]:
     ]
 
 
+def compter_humains(partie: Partie) -> int:
+    """Nombre de joueurs **humains** dans la partie (champ ``Joueur.humain``).
+
+    Sert à décider si le bouton « voir mes lettres » a un sens : avec un seul
+    humain, il n'y a personne à qui cacher son chevalet, donc l'UI l'affiche
+    directement sans bouton bascule ni état masqué. Avec deux humains ou plus,
+    le chevalet reste masqué par défaut (confidentialité entre adversaires).
+    """
+    return sum(1 for joueur in partie.joueurs if joueur.humain)
+
+
 def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     """État complet de la partie **sans aucune identité de lettre de chevalet**.
 
@@ -123,6 +135,9 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     jetons restants dans le sac et état de fin. Les chevalets n'y figurent que
     par leur taille (``nb_lettres``) ; leur contenu ne s'obtient que via
     :meth:`ApiJeu.obtenir_chevalet`, un joueur à la fois.
+
+    ``nb_humains`` (nombre de joueurs humains) permet à l'UI de n'afficher le
+    bouton « voir mes lettres » que lorsqu'il y a au moins deux humains.
     """
     return {
         "id_partie": id_partie,
@@ -134,6 +149,7 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
         ],
         "index_courant": partie.index_courant,
         "jetons_sac": partie.sac.jetons_restants(),
+        "nb_humains": compter_humains(partie),
         "terminee": partie.terminee,
         "gagnants": [j.nom for j in partie.gagnants] if partie.terminee else [],
     }
@@ -323,6 +339,75 @@ def jouer_placements(
 
 
 # --------------------------------------------------------------------------- #
+# Zone de brouillon et actions de tour supplémentaires (logique non-UI)
+# --------------------------------------------------------------------------- #
+# Ces fonctions restent pures / testables directement (aucune dépendance à
+# pywebview). La vérification dictionnaire est en LECTURE SEULE : elle ne touche
+# jamais à l'état de la partie. L'échange complet délègue à Partie.echanger, qui
+# consomme le tour et lève ActionInvalide si le sac est trop pauvre.
+
+
+def _concatener_lettres(lettres: Any) -> str:
+    """Concatène ``lettres`` (liste de jetons ou chaîne) en une seule chaîne.
+
+    Accepte aussi bien la liste des jetons du brouillon (chacun une chaîne d'un
+    caractère) qu'une chaîne déjà assemblée. Tout élément non-chaîne est ignoré.
+    """
+    if isinstance(lettres, str):
+        return lettres
+    if isinstance(lettres, (list, tuple)):
+        return "".join(str(jeton) for jeton in lettres if isinstance(jeton, str))
+    return ""
+
+
+def verifier_mot_dictionnaire(
+    dictionnaire: DictionnaireMots, lettres: Any
+) -> dict[str, Any]:
+    """Teste l'appartenance au dictionnaire du mot formé par ``lettres``.
+
+    ``lettres`` est la suite de jetons arrangés dans la zone de brouillon (dans
+    l'ordre affiché), soit sous forme de liste, soit déjà concaténée. Le mot est
+    normalisé (majuscules, NFC) comme le Trie ODS8 l'attend, puis testé via
+    :meth:`dictionnaire.contient`. **Lecture seule** : aucune mutation de la
+    partie ni du dictionnaire.
+
+    Renvoie ``{"succes": True, "mot": <MOT>, "valide": bool}`` ; si la suite est
+    vide (après normalisation), ``{"succes": False, "erreur": <message>}``. Un
+    joker (``*``) laissé dans le brouillon n'est pas une lettre fixe : il empêche
+    tout mot d'être trouvé (le test renverra ``valide`` faux), ce qui est le
+    comportement attendu d'un simple test d'appartenance.
+    """
+    mot = normaliser_mot(_concatener_lettres(lettres))
+    if not mot:
+        return {
+            "succes": False,
+            "erreur": "La zone de brouillon ne contient aucune lettre à vérifier.",
+        }
+    return {"succes": True, "mot": mot, "valide": bool(dictionnaire.contient(mot))}
+
+
+def echanger_chevalet_complet(
+    partie: Partie, id_partie: int | None
+) -> dict[str, Any]:
+    """Remet **tout** le chevalet du joueur courant dans le sac et passe le tour.
+
+    Cœur non-UI de :meth:`ApiJeu.echanger_tout`. Délègue à
+    :meth:`~scrabble.moteur.partie.Partie.echanger` avec la totalité du chevalet
+    courant : l'échange consomme déjà le tour, aucun passe séparé n'est requis.
+    Le cas « sac trop pauvre pour échanger tout le chevalet » (ou partie
+    terminée) est capturé et transformé en ``{"succes": False, "erreur": ...}``
+    sans plantage. En cas de succès, l'état public rafraîchi est joint.
+    """
+    joueur = partie.joueur_courant()
+    jetons = list(joueur.chevalet)
+    try:
+        partie.echanger(jetons)
+    except ActionInvalide as err:
+        return {"succes": False, "erreur": str(err)}
+    return {"succes": True, "etat": etat_public(partie, id_partie)}
+
+
+# --------------------------------------------------------------------------- #
 # API Python exposée au JavaScript
 # --------------------------------------------------------------------------- #
 
@@ -404,6 +489,30 @@ class ApiJeu:
         if resultat.get("succes"):
             resultat["etat"] = etat_public(self._partie, self._id_partie)
         return resultat
+
+    def verifier_mot(self, lettres: Any) -> dict[str, Any]:
+        """Teste dans le dictionnaire le mot formé par la zone de brouillon.
+
+        ``lettres`` est la suite de jetons arrangés dans le brouillon (dans
+        l'ordre affiché). Le test est en **lecture seule** : il ne pose aucun
+        coup, ne consomme aucun tour et ne modifie en rien l'état de la partie.
+        Renvoie ``{"succes": True, "mot": <MOT>, "valide": bool}`` ou, si le
+        brouillon est vide, ``{"succes": False, "erreur": <message>}``.
+        """
+        return verifier_mot_dictionnaire(self._partie.dictionnaire, lettres)
+
+    def echanger_tout(self) -> dict[str, Any]:
+        """Remet tout le chevalet du joueur courant dans le sac et passe le tour.
+
+        Utilise :meth:`~scrabble.moteur.partie.Partie.echanger` avec la totalité
+        du chevalet courant (l'échange consomme déjà le tour). En cas de succès :
+        ``{"succes": True, "etat": <état public rafraîchi>}`` (tour suivant,
+        chevalet à remasquer selon le nombre d'humains). Si le sac ne contient
+        pas assez de jetons (ou partie terminée) :
+        ``{"succes": False, "erreur": <message clair>}`` — l'état n'est pas
+        modifié.
+        """
+        return echanger_chevalet_complet(self._partie, self._id_partie)
 
 
 # --------------------------------------------------------------------------- #
