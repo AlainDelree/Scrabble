@@ -53,7 +53,7 @@ body {
 }
 
 .container {
-    max-width: 960px;
+    max-width: 1040px;
     margin: 0 auto;
     padding: 16px 20px 24px;
 }
@@ -68,6 +68,15 @@ header h1 {
     font-size: 1.8rem;
     color: var(--couleur-primaire);
     margin-bottom: 8px;
+}
+
+/* Barre d'infos globales sous le titre (tour courant, sac, rafraîchir). */
+.barre-infos {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 .bandeau-tour {
@@ -100,27 +109,35 @@ header h1 {
     color: var(--couleur-ordinateur);
 }
 
-/* Disposition principale : plateau + colonne d'infos */
-.disposition {
-    display: flex;
-    gap: 20px;
-    align-items: flex-start;
+/* --------------------------------------------------------------------------- */
+/* Table de jeu : plateau central entouré des panneaux joueurs (issue #33)      */
+/* --------------------------------------------------------------------------- */
+/* Grille 3×3 : le plateau au centre, un panneau par côté (haut / gauche /
+   droite / bas) placé dans sa zone. Chaque panneau est rendu par le JS dans le
+   « slot » du côté que Python lui a assigné. Les colonnes latérales sont en
+   ``auto`` : un slot vide (moins de joueurs) se réduit à zéro et le plateau
+   reste centré. */
+.table {
+    display: grid;
+    grid-template-columns: auto auto auto;
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+        ".      haut     ."
+        "gauche plateau  droite"
+        "bas    bas      bas";
+    gap: 14px;
     justify-content: center;
-    flex-wrap: wrap;
+    align-items: center;
 }
 
-.zone-plateau {
-    flex: 0 0 auto;
-}
+.slot-haut { grid-area: haut; justify-self: center; }
+.slot-gauche { grid-area: gauche; }
+.slot-droite { grid-area: droite; }
+.zone-plateau { grid-area: plateau; }
+.panneau-bas { grid-area: bas; }
 
-.zone-infos {
-    flex: 1 1 220px;
-    min-width: 220px;
-    max-width: 300px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
+/* Un slot latéral vide ne réserve aucune place (colonne « auto »). */
+.slot:empty { display: none; }
 
 /* Plateau 15x15 */
 .plateau {
@@ -131,8 +148,115 @@ header h1 {
     padding: 6px;
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
-    width: min(78vw, 540px);
+    width: min(64vw, 500px);
     aspect-ratio: 1 / 1;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Panneaux d'information par joueur (autour du plateau)                        */
+/* --------------------------------------------------------------------------- */
+.panneau-joueur {
+    background: white;
+    border-radius: var(--rayon-bordure);
+    box-shadow: var(--ombre);
+    padding: 10px 12px;
+    width: 160px;
+    border-left: 4px solid var(--couleur-bordure);
+}
+
+.panneau-joueur.humain {
+    background: var(--couleur-humain-fond);
+    border-left-color: var(--couleur-humain);
+}
+
+.panneau-joueur.ordinateur {
+    background: var(--couleur-ordinateur-fond);
+    border-left-color: var(--couleur-ordinateur);
+}
+
+/* Joueur dont c'est le tour : mis en avant quel que soit son côté. */
+.panneau-joueur.courant {
+    outline: 3px solid var(--couleur-primaire);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.25), var(--ombre);
+}
+
+.panneau-entete {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.panneau-icone {
+    font-size: 1.2rem;
+}
+
+.panneau-nom {
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.panneau-detail {
+    font-size: 0.76rem;
+    color: #666;
+    margin-bottom: 6px;
+}
+
+.panneau-stats {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.panneau-score {
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+.panneau-lettres {
+    font-size: 0.82rem;
+    color: #555;
+}
+
+/* Badge « à jouer » du joueur actif (visible quel que soit le côté). */
+.panneau-tour {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--couleur-primaire);
+    color: white;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+/* Panneau du bas (joueur de référence) : disposé en bandeau horizontal, il
+   précède le chevalet. Ses infos publiques s'étalent sur toute la largeur. */
+.slot-bas .panneau-joueur {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-left-width: 6px;
+}
+
+.slot-bas .panneau-entete,
+.slot-bas .panneau-detail,
+.slot-bas .panneau-stats {
+    margin: 0;
+}
+
+.slot-bas .panneau-stats {
+    gap: 16px;
+}
+
+.slot-bas .panneau-tour {
+    margin: 0;
+    margin-left: auto;
 }
 
 .case {
@@ -260,91 +384,23 @@ header h1 {
     opacity: 0.8;
 }
 
-/* Cartes de la colonne latérale */
-.carte {
-    background: white;
-    border-radius: var(--rayon-bordure);
-    box-shadow: var(--ombre);
-    padding: 14px;
-}
-
-.carte h2 {
-    font-size: 1rem;
-    margin-bottom: 10px;
-    color: var(--couleur-secondaire, #5d4037);
-    border-bottom: 2px solid var(--couleur-bordure);
-    padding-bottom: 6px;
-}
-
-/* Scores */
-.liste-scores {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.score-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    border-radius: 6px;
-}
-
-.score-item.humain {
-    background: var(--couleur-humain-fond);
-    border-left: 4px solid var(--couleur-humain);
-}
-
-.score-item.ordinateur {
-    background: var(--couleur-ordinateur-fond);
-    border-left: 4px solid var(--couleur-ordinateur);
-}
-
-.score-item.courant {
-    outline: 2px solid var(--couleur-primaire);
-    outline-offset: 1px;
-}
-
-.score-icone {
-    font-size: 1.2rem;
-}
-
-.score-info {
-    flex: 1;
-    min-width: 0;
-}
-
-.score-nom {
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.score-detail {
-    font-size: 0.78rem;
-    color: #666;
-}
-
-.score-valeur {
-    font-size: 1.25rem;
-    font-weight: 700;
-}
-
-/* Sac */
+/* Sac (dans la barre d'infos de l'en-tête) */
 .sac {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: white;
+    box-shadow: var(--ombre);
 }
 
 .sac-icone {
-    font-size: 1.5rem;
+    font-size: 1.3rem;
 }
 
 .sac-nombre {
-    font-size: 1.5rem;
+    font-size: 1.3rem;
     font-weight: 700;
     color: var(--couleur-primaire);
 }
@@ -763,4 +819,42 @@ header h1 {
 .joker-lettre:hover {
     background: #e8d09a;
     transform: translateY(-1px);
+}
+
+/* --------------------------------------------------------------------------- */
+/* Responsive : sur fenêtre étroite, la table 3×3 s'empile en une colonne      */
+/* --------------------------------------------------------------------------- */
+/* Les panneaux latéraux (haut / gauche / droite) passent au-dessus du plateau,
+   côte à côte s'ils tiennent, puis le panneau du bas. La logique de placement
+   (issue #33) reste inchangée : seul l'agencement visuel se replie. */
+@media (max-width: 820px) {
+    .table {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "haut"
+            "gauche"
+            "droite"
+            "plateau"
+            "bas";
+        gap: 10px;
+        justify-items: center;
+    }
+
+    .slot-haut,
+    .slot-gauche,
+    .slot-droite {
+        justify-self: center;
+    }
+
+    .plateau {
+        width: min(92vw, 500px);
+    }
+
+    .panneau-joueur {
+        width: min(92vw, 320px);
+    }
+
+    .slot-bas .panneau-joueur {
+        width: min(92vw, 500px);
+    }
 }

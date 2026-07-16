@@ -30,7 +30,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Éléments du DOM
     const plateauEl = document.getElementById('plateau');
-    const listeScores = document.getElementById('liste-scores');
+    // Slots des panneaux joueurs, un par côté du plateau (issue #33). Le JS y
+    // insère le panneau du joueur dont la position (calculée côté Python) vaut
+    // le côté correspondant.
+    const slots = {
+        haut: document.getElementById('slot-haut'),
+        gauche: document.getElementById('slot-gauche'),
+        droite: document.getElementById('slot-droite'),
+        bas: document.getElementById('slot-bas'),
+    };
     const sacNombre = document.getElementById('sac-nombre');
     const tourJoueur = document.getElementById('tour-joueur');
     const chevaletEl = document.getElementById('chevalet');
@@ -197,35 +205,61 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Rend la liste des scores (tous les joueurs, joueur courant mis en avant).
+     * Construit le panneau d'information **public** d'un joueur : icône (humain
+     * ou ordinateur avec son niveau), nom, score, nombre de lettres au chevalet
+     * et, le cas échéant, l'indicateur « à qui le tour ». Aucune identité de
+     * lettre n'y figure jamais (confidentialité), quel que soit le côté.
      */
-    function rendreScores(joueurs) {
-        listeScores.innerHTML = '';
+    function creerPanneauJoueur(joueur) {
+        const item = document.createElement('div');
+        const nature = joueur.humain ? 'humain' : 'ordinateur';
+        item.className = `panneau-joueur ${nature}${joueur.courant ? ' courant' : ''}`;
+        item.dataset.cote = joueur.position || '';
+
+        let typeLabel = joueur.humain ? 'Joueur' : 'Ordinateur';
+        if (!joueur.humain && joueur.niveau) {
+            const niveauLabel = {
+                'DEBUTANT': 'Débutant',
+                'FACILE': 'Facile',
+                'INTERMEDIAIRE': 'Intermédiaire',
+                'EXPERT': 'Expert'
+            }[joueur.niveau] || joueur.niveau;
+            typeLabel += ` (${niveauLabel})`;
+        }
+
+        const badgeTour = joueur.courant
+            ? '<span class="panneau-tour">● à jouer</span>'
+            : '';
+        item.innerHTML = `
+            <div class="panneau-entete">
+                <span class="panneau-icone">${icone(joueur.humain)}</span>
+                <span class="panneau-nom">${escapeHtml(joueur.nom)}</span>
+            </div>
+            <div class="panneau-detail">${typeLabel}</div>
+            <div class="panneau-stats">
+                <span class="panneau-score">${joueur.score} pts</span>
+                <span class="panneau-lettres">🎴 ${joueur.nb_lettres} lettre(s)</span>
+            </div>
+            ${badgeTour}
+        `;
+        return item;
+    }
+
+    /**
+     * Dispose les panneaux joueurs autour du plateau : chacun est inséré dans le
+     * slot du côté que Python lui a assigné (``joueur.position`` : ``"bas"``,
+     * ``"haut"``, ``"gauche"`` ou ``"droite"``). Le joueur humain de référence
+     * (position ``"bas"``) partage son slot avec le chevalet ci-dessous ; les
+     * autres côtés n'affichent que les infos publiques. Un côté sans joueur
+     * reste vide (slot masqué par le CSS).
+     */
+    function rendrePanneaux(joueurs) {
+        Object.values(slots).forEach(slot => { slot.innerHTML = ''; });
         joueurs.forEach(joueur => {
-            const item = document.createElement('div');
-            const nature = joueur.humain ? 'humain' : 'ordinateur';
-            item.className = `score-item ${nature}${joueur.courant ? ' courant' : ''}`;
-
-            let typeLabel = joueur.humain ? 'Joueur' : 'Ordinateur';
-            if (!joueur.humain && joueur.niveau) {
-                const niveauLabel = {
-                    'DEBUTANT': 'Débutant',
-                    'FACILE': 'Facile',
-                    'INTERMEDIAIRE': 'Intermédiaire',
-                    'EXPERT': 'Expert'
-                }[joueur.niveau] || joueur.niveau;
-                typeLabel += ` (${niveauLabel})`;
+            const slot = slots[joueur.position];
+            if (slot) {
+                slot.appendChild(creerPanneauJoueur(joueur));
             }
-
-            item.innerHTML = `
-                <span class="score-icone">${icone(joueur.humain)}</span>
-                <div class="score-info">
-                    <div class="score-nom">${escapeHtml(joueur.nom)}</div>
-                    <div class="score-detail">${typeLabel} · ${joueur.nb_lettres} lettre(s)</div>
-                </div>
-                <span class="score-valeur">${joueur.score}</span>
-            `;
-            listeScores.appendChild(item);
         });
     }
 
@@ -465,7 +499,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         sensForce = 'H';
         afficherMessageBrouillon('');
         rendrePlateau();
-        rendreScores(etat.joueurs);
+        rendrePanneaux(etat.joueurs);
         rendreTour(etat.joueurs, etat.index_courant, etat.terminee, etat.gagnants);
         sacNombre.textContent = etat.jetons_sac;
         await majChevalet();

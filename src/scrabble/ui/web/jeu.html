@@ -10,44 +10,42 @@
     <div class="container">
         <header>
             <h1>Scrabble</h1>
-            <div class="bandeau-tour" id="bandeau-tour">
-                <span class="tour-label">Au tour de</span>
-                <span class="tour-joueur" id="tour-joueur">—</span>
+            <div class="barre-infos">
+                <div class="bandeau-tour" id="bandeau-tour">
+                    <span class="tour-label">Au tour de</span>
+                    <span class="tour-joueur" id="tour-joueur">—</span>
+                </div>
+                <div class="sac">
+                    <span class="sac-icone">🎒</span>
+                    <span class="sac-nombre" id="sac-nombre">—</span>
+                    <span class="sac-label">jetons</span>
+                </div>
+                <button id="btn-rafraichir" class="btn btn-secondaire">
+                    ↻ Rafraîchir
+                </button>
             </div>
         </header>
 
-        <main class="disposition">
-            <!-- Colonne plateau -->
+        <!-- Table de jeu : plateau central entouré des panneaux joueurs, chacun
+             positionné sur le côté qui lui est assigné côté Python (issue #33).
+             Le panneau du bas est celui du joueur humain de référence : il porte,
+             en plus de ses infos publiques, le chevalet + le brouillon + les
+             actions de tour. Les panneaux haut/gauche/droite sont publics. -->
+        <main class="table">
+            <div id="slot-haut" class="slot slot-haut" aria-label="Joueur du haut"></div>
+            <div id="slot-gauche" class="slot slot-gauche" aria-label="Joueur de gauche"></div>
+
             <section class="zone-plateau">
                 <div id="plateau" class="plateau" aria-label="Plateau de jeu 15 par 15"></div>
             </section>
 
-            <!-- Colonne latérale : infos de partie -->
-            <aside class="zone-infos">
-                <section class="carte">
-                    <h2>Scores</h2>
-                    <div id="liste-scores" class="liste-scores"></div>
-                </section>
+            <div id="slot-droite" class="slot slot-droite" aria-label="Joueur de droite"></div>
 
-                <section class="carte">
-                    <h2>Sac</h2>
-                    <div class="sac">
-                        <span class="sac-icone">🎒</span>
-                        <span class="sac-nombre" id="sac-nombre">—</span>
-                        <span class="sac-label">jetons restants</span>
-                    </div>
-                </section>
+            <!-- Panneau du bas : joueur humain de référence. -->
+            <footer class="panneau-bas" id="panneau-bas">
+            <div id="slot-bas" class="slot slot-bas" aria-label="Votre panneau"></div>
 
-                <section class="carte">
-                    <button id="btn-rafraichir" class="btn btn-secondaire btn-bloc">
-                        ↻ Rafraîchir
-                    </button>
-                </section>
-            </aside>
-        </main>
-
-        <!-- Chevalet du joueur courant -->
-        <footer class="zone-chevalet">
+            <div class="zone-chevalet">
             <div class="chevalet-entete">
                 <h2>Chevalet de <span id="chevalet-nom">—</span></h2>
                 <div class="chevalet-actions">
@@ -112,7 +110,9 @@
                 </div>
                 <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
             </div>
-        </footer>
+            </div>
+            </footer>
+        </main>
     </div>
 
     <!-- Modale de choix de la lettre représentée par un joker. -->

@@ -82,12 +82,57 @@ def serialiser_plateau(plateau: PlateauPartie) -> list[list[dict[str, Any]]]:
     ]
 
 
-def serialiser_joueur_public(joueur: Joueur, index: int, courant: bool) -> dict[str, Any]:
+# Côtés du plateau occupés par les adversaires du joueur humain de référence,
+# dans l'ordre de rotation imposé par l'issue #33 : le premier autre joueur va
+# en haut (face à face avec le joueur du bas), puis à gauche, puis à droite.
+COTES_ADVERSAIRES = ("haut", "gauche", "droite")
+
+
+def calculer_positions(joueurs: list[Joueur]) -> list[str]:
+    """Position spatiale de chaque joueur autour du plateau (index → côté).
+
+    Renvoie une liste parallèle à ``joueurs`` où l'élément ``i`` est le côté
+    (``"bas"``, ``"haut"``, ``"gauche"`` ou ``"droite"``) assigné au joueur
+    d'index ``i``. Règle (issue #33), avec une seule source de vérité côté
+    Python :
+
+    * Le **joueur humain de référence** — le premier joueur ``humain`` de la
+      liste ``joueurs`` — est toujours en ``"bas"`` (position naturelle face à
+      l'écran). S'il n'y a aucun humain (cas théorique / test), le premier
+      joueur tient ce rôle.
+    * Tous les autres joueurs (humains et ordinateurs confondus) se répartissent
+      sur les côtés restants dans l'ordre de la liste, en tournant :
+      ``haut``, puis ``gauche``, puis ``droite``.
+
+    Cas particuliers : liste vide → ``[]`` ; un seul joueur → ``["bas"]`` (aucune
+    position latérale).
+    """
+    if not joueurs:
+        return []
+    reference = next(
+        (index for index, joueur in enumerate(joueurs) if joueur.humain), 0
+    )
+    positions = [""] * len(joueurs)
+    positions[reference] = "bas"
+    rang = 0
+    for index in range(len(joueurs)):
+        if index == reference:
+            continue
+        positions[index] = COTES_ADVERSAIRES[rang % len(COTES_ADVERSAIRES)]
+        rang += 1
+    return positions
+
+
+def serialiser_joueur_public(
+    joueur: Joueur, index: int, courant: bool, position: str | None = None
+) -> dict[str, Any]:
     """Sérialise les infos **publiques** d'un joueur (sans révéler ses lettres).
 
     Contient le nombre de lettres du chevalet (``nb_lettres``) mais **jamais**
     leur identité : l'affichage masqué peut ainsi montrer le bon nombre de
-    rectangles grisés sans rien dévoiler.
+    rectangles grisés sans rien dévoiler. ``position`` est le côté du plateau
+    assigné au joueur (voir :func:`calculer_positions`) : l'UI place le panneau
+    du joueur sur ce côté (une seule source de vérité, calculée côté Python).
     """
     return {
         "index": index,
@@ -97,6 +142,7 @@ def serialiser_joueur_public(joueur: Joueur, index: int, courant: bool) -> dict[
         "score": joueur.score,
         "nb_lettres": len(joueur.chevalet),
         "courant": courant,
+        "position": position,
     }
 
 
@@ -139,12 +185,15 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     ``nb_humains`` (nombre de joueurs humains) permet à l'UI de n'afficher le
     bouton « voir mes lettres » que lorsqu'il y a au moins deux humains.
     """
+    positions = calculer_positions(partie.joueurs)
     return {
         "id_partie": id_partie,
         "taille": TAILLE,
         "plateau": serialiser_plateau(partie.plateau),
         "joueurs": [
-            serialiser_joueur_public(joueur, index, index == partie.index_courant)
+            serialiser_joueur_public(
+                joueur, index, index == partie.index_courant, positions[index]
+            )
             for index, joueur in enumerate(partie.joueurs)
         ],
         "index_courant": partie.index_courant,
@@ -552,21 +601,32 @@ class _DictionnaireFactice:
         return True
 
 
-def construire_partie_demo() -> tuple[Partie, int | None]:
-    """Construit une partie d'exemple (2 joueurs, plateau partiellement rempli).
+def construire_partie_demo(nb_joueurs: int = 2) -> tuple[Partie, int | None]:
+    """Construit une partie d'exemple (plateau partiellement rempli).
 
     Sert au test manuel autonome de cet écran (``python -m scrabble.ui.jeu``),
     sans passer par l'écran d'accueil. Les tuiles sont posées directement sur le
     plateau et les scores fixés à des valeurs plausibles : le but est de valider
-    le **rendu** (cases bonus, tuiles, joker, scores, joueur courant, sac), pas
-    de rejouer une partie réelle. Un joker (« blanc ») figure dans le mot vertical
+    le **rendu** (cases bonus, tuiles, joker, scores, joueur courant, sac,
+    disposition spatiale des joueurs autour du plateau — issue #33), pas de
+    rejouer une partie réelle. Un joker (« blanc ») figure dans le mot vertical
     pour illustrer sa distinction visuelle.
+
+    ``nb_joueurs`` (borné à 1–4, défaut 2) permet de vérifier **manuellement** la
+    disposition spatiale selon le nombre d'adversaires : un premier joueur humain
+    (« Camille », toujours en bas) puis autant d'ordinateurs que nécessaire (en
+    haut, gauche, droite). Lancer p. ex. ``python -m scrabble.ui.jeu 3`` pour une
+    partie à 3 joueurs, ou ``1`` pour le cas solo (aucun panneau latéral).
     """
+    nb_joueurs = max(1, min(4, nb_joueurs))
     dictionnaire: DictionnaireMots = _DictionnaireFactice()
-    joueurs = [
-        Joueur(nom="Camille", humain=True),
-        Joueur(nom="Léon", humain=False, niveau=Niveau.INTERMEDIAIRE),
-    ]
+    niveaux = [Niveau.INTERMEDIAIRE, Niveau.FACILE, Niveau.EXPERT]
+    noms_ia = ["Léon", "Nadia", "Bruno"]
+    joueurs = [Joueur(nom="Camille", humain=True)]
+    for i in range(nb_joueurs - 1):
+        joueurs.append(
+            Joueur(nom=noms_ia[i], humain=False, niveau=niveaux[i])
+        )
     partie = Partie(joueurs, dictionnaire, graine=20260716)
 
     # Mot horizontal « MAISON » passant par la case centrale (7, 7).
@@ -579,16 +639,31 @@ def construire_partie_demo() -> tuple[Partie, int | None]:
     partie.plateau.poser_tuile(9, 8, Tuile("U", joker=True))
     partie.plateau.poser_tuile(10, 8, Tuile("S"))
 
-    # Scores plausibles pour deux coups joués et tour de Camille.
-    partie.joueurs[0].score = 14
-    partie.joueurs[1].score = 9
+    # Scores plausibles (tour de Camille). Chaque joueur reçoit un score
+    # distinct pour distinguer visuellement les panneaux.
+    scores = [14, 9, 21, 5]
+    for i, joueur in enumerate(partie.joueurs):
+        joueur.score = scores[i % len(scores)]
     partie.index_courant = 0
     return partie, None
 
 
 def main() -> int:
-    """Point d'entrée de test : lance l'écran de jeu en mode démonstration."""
-    partie, id_partie = construire_partie_demo()
+    """Point d'entrée de test : lance l'écran de jeu en mode démonstration.
+
+    Un argument optionnel donne le nombre de joueurs (1 à 4) pour vérifier
+    manuellement la disposition spatiale (issue #33) — p. ex.
+    ``python -m scrabble.ui.jeu 3``. Sans argument : 2 joueurs.
+    """
+    import sys
+
+    nb_joueurs = 2
+    if len(sys.argv) > 1:
+        try:
+            nb_joueurs = int(sys.argv[1])
+        except ValueError:
+            nb_joueurs = 2
+    partie, id_partie = construire_partie_demo(nb_joueurs)
     lancer_jeu(partie, id_partie)
     return 0
 

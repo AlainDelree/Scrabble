@@ -18,6 +18,7 @@ from scrabble.regles.lettres import JOKER
 from scrabble.regles.plateau import CENTRE, TAILLE
 from scrabble.ui.jeu import (
     ApiJeu,
+    calculer_positions,
     compter_humains,
     construire_coup,
     construire_partie_demo,
@@ -569,6 +570,63 @@ class TestCompterHumains:
         partie = self._partie(True, True, False)
         etat = etat_public(partie, None)
         assert etat["nb_humains"] == 2
+
+
+class TestCalculerPositions:
+    """Disposition spatiale des joueurs autour du plateau (issue #33)."""
+
+    def _joueurs(self, *humains: bool) -> list[Joueur]:
+        return [
+            Joueur(
+                nom=f"J{i}",
+                humain=h,
+                niveau=None if h else Niveau.FACILE,
+            )
+            for i, h in enumerate(humains)
+        ]
+
+    def test_un_seul_joueur_aucune_position_laterale(self):
+        # 1 seul joueur au total : uniquement le panneau du bas.
+        positions = calculer_positions(self._joueurs(True))
+        assert positions == ["bas"]
+
+    def test_un_adversaire_en_haut(self):
+        # 1 adversaire → il est placé en haut (face à face avec le bas).
+        positions = calculer_positions(self._joueurs(True, False))
+        assert positions == ["bas", "haut"]
+
+    def test_deux_adversaires_haut_puis_gauche(self):
+        positions = calculer_positions(self._joueurs(True, False, False))
+        assert positions == ["bas", "haut", "gauche"]
+
+    def test_trois_adversaires_haut_gauche_droite(self):
+        positions = calculer_positions(self._joueurs(True, False, False, False))
+        assert positions == ["bas", "haut", "gauche", "droite"]
+
+    def test_humain_reference_toujours_en_bas(self):
+        # Le joueur humain de référence est le premier humain de la liste : il
+        # est en bas quel que soit l'ordre des joueurs dans la partie.
+        positions = calculer_positions(self._joueurs(False, False, True, False))
+        assert positions == ["haut", "gauche", "bas", "droite"]
+
+    def test_plusieurs_humains_autres_repartis_dans_l_ordre(self):
+        # Avec plusieurs humains, seul le premier va en bas ; les autres joueurs
+        # (humains et ordinateurs) se répartissent dans l'ordre de la liste.
+        positions = calculer_positions(self._joueurs(True, True, False))
+        assert positions == ["bas", "haut", "gauche"]
+
+    def test_aucun_humain_premier_joueur_en_bas(self):
+        # Cas théorique sans humain : le premier joueur tient le rôle de référence.
+        positions = calculer_positions(self._joueurs(False, False))
+        assert positions == ["bas", "haut"]
+
+    def test_liste_vide(self):
+        assert calculer_positions([]) == []
+
+    def test_position_exposee_dans_etat_public(self):
+        partie = Partie(self._joueurs(True, False, False), _DicoFactice(), graine=3)
+        etat = etat_public(partie, None)
+        assert [j["position"] for j in etat["joueurs"]] == ["bas", "haut", "gauche"]
 
 
 class TestVerifierMotDictionnaire:
