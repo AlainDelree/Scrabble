@@ -91,6 +91,43 @@ def test_partie_refuse_nombre_joueurs_invalide():
         Partie([], _trie())
 
 
+def test_creer_partie_sans_tirage_ordre_preserve_ordre_creation():
+    # Non-régression : par défaut, l'ordre reste celui de création.
+    partie = creer_partie(["Alice", "Bob"], _trie(), nb_ia=1, graine=1)
+    assert [j.nom for j in partie.joueurs] == ["Alice", "Bob", "IA 1"]
+    for joueur in partie.joueurs:
+        assert len(joueur.chevalet) == TAILLE_CHEVALET
+
+
+def test_creer_partie_tirage_ordre_reordonne_selon_le_tirage():
+    import random
+
+    from scrabble.moteur.ordre import determiner_ordre_jeu
+
+    noms = ["Alice", "Bob", "Carol", "Dan"]
+    # L'ordre attendu est celui que produit la même graine sur les 4 joueurs.
+    attendu = determiner_ordre_jeu(noms, random.Random(42))
+    ordre_noms = [noms[i] for i in attendu.ordre]
+
+    partie = creer_partie(noms, _trie(), graine=42, tirage_ordre=True)
+    assert [j.nom for j in partie.joueurs] == ordre_noms
+    # La distribution des chevalets a bien eu lieu ensuite, sur le sac complet.
+    for joueur in partie.joueurs:
+        assert len(joueur.chevalet) == TAILLE_CHEVALET
+    assert partie.sac.jetons_restants() == 102 - 4 * TAILLE_CHEVALET
+
+
+def test_creer_partie_tirage_ordre_change_effectivement_l_ordre():
+    # Sur au moins une graine, l'ordre tiré diffère de l'ordre de création :
+    # preuve que le paramètre a un effet observable.
+    noms = ["Alice", "Bob", "Carol", "Dan"]
+    for graine in range(50):
+        partie = creer_partie(noms, _trie(), graine=graine, tirage_ordre=True)
+        if [j.nom for j in partie.joueurs] != noms:
+            return
+    raise AssertionError("tirage_ordre n'a jamais modifié l'ordre de création.")
+
+
 # --------------------------------------------------------------------------- #
 # Déroulement d'un tour : pose
 # --------------------------------------------------------------------------- #

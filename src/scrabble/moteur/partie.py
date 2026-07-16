@@ -45,8 +45,11 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 
+import random
+
 from scrabble.moteur import ia
 from scrabble.moteur.ia import Niveau
+from scrabble.moteur.ordre import determiner_ordre_jeu
 from scrabble.moteur.plateau_partie import Coup, PlateauPartie
 from scrabble.moteur.score import DetailScore, detailler_score
 from scrabble.moteur.tirage import Sac
@@ -131,6 +134,7 @@ def creer_partie(
     noms_ia: list[str] | None = None,
     niveaux_ia: list[Niveau] | None = None,
     graine: int | None = None,
+    tirage_ordre: bool = False,
 ) -> "Partie":
     """Construit une partie à partir d'une configuration humains/IA.
 
@@ -138,8 +142,22 @@ def creer_partie(
     ajoute des joueurs IA en complément, le total étant plafonné à
     :data:`MAX_JOUEURS`. ``noms_ia`` permet de nommer les IA (sinon « IA 1 »,
     « IA 2 »…). ``niveaux_ia`` spécifie le niveau de chaque IA (sinon
-    :attr:`Niveau.INTERMEDIAIRE` par défaut). L'ordre de jeu est l'ordre de
-    création : humains puis IA, pas de tirage au sort à ce stade.
+    :attr:`Niveau.INTERMEDIAIRE` par défaut).
+
+    Ordre de jeu — deux modes :
+
+    * ``tirage_ordre=False`` (défaut) : l'ordre de jeu est l'ordre de création
+      (humains puis IA), sans aucun tirage — comportement historique inchangé.
+    * ``tirage_ordre=True`` : l'ordre est décidé par un tirage alphabétique
+      (:func:`scrabble.moteur.ordre.determiner_ordre_jeu`) avant la construction
+      de la partie ; la liste des joueurs est réordonnée en conséquence, si bien
+      que l'ordre de jeu de la :class:`Partie` (porté, comme toujours, par
+      l'ordre de sa liste ``joueurs``) reflète le tirage. La distribution des 7
+      lettres de chevalet a lieu ensuite, normalement, sur le sac complet.
+
+    ``graine``, si fournie, sert **et** au tirage d'ordre **et** au sac de la
+    partie (deux tirages indépendants mais tous deux reproductibles), gardant le
+    déroulement complet déterministe.
 
     :raises ValueError: si aucun humain, si ``nb_ia`` est négatif, ou si le
         total de joueurs sort de l'intervalle 1..:data:`MAX_JOUEURS`.
@@ -164,6 +182,9 @@ def creer_partie(
         else:
             niveau = Niveau.INTERMEDIAIRE
         joueurs.append(Joueur(nom=nom, humain=False, niveau=niveau))
+    if tirage_ordre:
+        resultat = determiner_ordre_jeu(joueurs, random.Random(graine))
+        joueurs = [joueurs[indice] for indice in resultat.ordre]
     return Partie(joueurs, dictionnaire, graine=graine)
 
 
