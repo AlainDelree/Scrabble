@@ -33,9 +33,15 @@ from typing import Any
 import webview
 
 from scrabble.moteur.ia import Niveau
-from scrabble.moteur.partie import Joueur, Partie
-from scrabble.moteur.plateau_partie import PlateauPartie, Tuile
-from scrabble.moteur.validation import DictionnaireMots
+from scrabble.moteur.partie import ActionInvalide, Joueur, Partie
+from scrabble.moteur.plateau_partie import (
+    Coup,
+    Direction,
+    PlateauPartie,
+    Tuile,
+    dans_plateau,
+)
+from scrabble.moteur.validation import CoupInvalide, DictionnaireMots
 from scrabble.regles.lettres import JOKER, valeur_lettre
 from scrabble.regles.plateau import TAILLE, type_case
 
@@ -133,6 +139,189 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# Construction d'un Coup à partir de placements « clic-clic » (logique non-UI)
+# --------------------------------------------------------------------------- #
+# Le JavaScript accumule des « placements en attente » : pour chaque lettre
+# déposée sur une case vide, un dict {ligne, colonne, lettre, joker}. Ces
+# fonctions transforment cette liste en un :class:`Coup` prêt pour le moteur,
+# sans aucune dépendance à pywebview : elles sont testables directement (voir
+# tests/test_jeu.py). Elles ne valident PAS les règles du Scrabble (rôle de
+# :mod:`scrabble.moteur.validation`) ; elles garantissent seulement que la
+# structure du coup est cohérente (lettres alignées et contiguës).
+
+
+def _direction_depuis_valeur(valeur: Any) -> Direction | None:
+    """Convertit ``"H"``/``"V"`` (ou une :class:`Direction`) en direction.
+
+    Renvoie ``None`` si ``valeur`` ne désigne aucune direction connue (cas d'un
+    coup à plusieurs lettres où la direction se déduit du placement).
+    """
+    if isinstance(valeur, Direction):
+        return valeur
+    if isinstance(valeur, str):
+        try:
+            return Direction(valeur.upper())
+        except ValueError:
+            return None
+    return None
+
+
+def _lire_placement(placement: Any) -> tuple[int, int, str, bool]:
+    """Valide et normalise un placement JS en ``(ligne, colonne, lettre, joker)``.
+
+    :raises ValueError: si la position est absente/hors plateau ou si la lettre
+        n'est pas une majuscule ``A``–``Z`` (un joker porte aussi la lettre
+        qu'il représente).
+    """
+    if not isinstance(placement, dict):
+        raise ValueError("Placement invalide : dictionnaire attendu.")
+    ligne = placement.get("ligne")
+    colonne = placement.get("colonne")
+    lettre = placement.get("lettre")
+    joker = bool(placement.get("joker", False))
+    if not isinstance(ligne, int) or not isinstance(colonne, int):
+        raise ValueError("Placement invalide : position (ligne, colonne) manquante.")
+    if not dans_plateau(ligne, colonne):
+        raise ValueError(
+            f"Placement hors plateau en (ligne={ligne}, colonne={colonne})."
+        )
+    if isinstance(lettre, str):
+        lettre = lettre.upper()
+    if not (isinstance(lettre, str) and len(lettre) == 1 and "A" <= lettre <= "Z"):
+        raise ValueError(f"Lettre de placement invalide : {lettre!r}.")
+    return ligne, colonne, lettre, joker
+
+
+def _deduire_direction(
+    placements: list[tuple[int, int, str, bool]], direction: Direction | None
+) -> Direction:
+    """Déduit le sens du mot depuis les cases posées (ou l'impose si une seule).
+
+    * Deux lettres ou plus : le sens se déduit de leur alignement (même ligne →
+      horizontal, même colonne → vertical). Une seule lettre en attente laisse
+      le choix libre — ``direction`` (fournie par l'UI) est alors utilisée, à
+      défaut l'horizontale.
+    * Lève :class:`ValueError` si les lettres ne sont ni alignées en ligne ni en
+      colonne.
+    """
+    lignes = {ligne for ligne, _, _, _ in placements}
+    colonnes = {colonne for _, colonne, _, _ in placements}
+    if len(placements) == 1:
+        return direction if direction is not None else Direction.HORIZONTALE
+    meme_ligne = len(lignes) == 1
+    meme_colonne = len(colonnes) == 1
+    if meme_ligne and not meme_colonne:
+        return Direction.HORIZONTALE
+    if meme_colonne and not meme_ligne:
+        return Direction.VERTICALE
+    raise ValueError(
+        "Les lettres posées ne sont ni alignées en ligne ni en colonne."
+    )
+
+
+def construire_coup(
+    plateau: PlateauPartie,
+    placements: list[Any],
+    direction: Any = None,
+) -> Coup:
+    """Construit un :class:`Coup` à partir des placements en attente du JS.
+
+    ``placements`` est la liste des lettres déposées (dicts
+    ``{ligne, colonne, lettre, joker}``). Le coup renvoyé couvre le segment
+    contigu du mot principal, de la première à la dernière lettre nouvelle, en
+    **incluant les tuiles déjà présentes** que le mot enjambe (leur lettre est
+    reprise telle quelle). ``direction`` (``"H"``/``"V"``) ne sert qu'au cas
+    d'une seule lettre en attente ; sinon le sens se déduit de l'alignement.
+
+    :raises ValueError: liste vide, position hors plateau, lettre invalide, deux
+        lettres sur la même case, pose sur une case déjà occupée, lettres non
+        alignées, ou trou (case vide) au milieu du mot.
+    """
+    if not placements:
+        raise ValueError("Aucune lettre à poser sur le plateau.")
+    lus = [_lire_placement(placement) for placement in placements]
+
+    poses: dict[tuple[int, int], Tuile] = {}
+    for ligne, colonne, lettre, joker in lus:
+        if (ligne, colonne) in poses:
+            raise ValueError(
+                f"Deux lettres posées sur la même case (ligne={ligne}, "
+                f"colonne={colonne})."
+            )
+        if not plateau.case_vide(ligne, colonne):
+            raise ValueError(
+                f"Une lettre est posée sur une case déjà occupée (ligne={ligne}, "
+                f"colonne={colonne})."
+            )
+        poses[(ligne, colonne)] = Tuile(lettre, joker=joker)
+
+    sens = _deduire_direction(lus, _direction_depuis_valeur(direction))
+    if sens is Direction.HORIZONTALE:
+        ligne = lus[0][0]
+        colonnes = [colonne for _, colonne, _, _ in lus]
+        depart = (ligne, min(colonnes))
+        cases = [(ligne, colonne) for colonne in range(min(colonnes), max(colonnes) + 1)]
+    else:
+        colonne = lus[0][1]
+        lignes = [ligne for ligne, _, _, _ in lus]
+        depart = (min(lignes), colonne)
+        cases = [(ligne, colonne) for ligne in range(min(lignes), max(lignes) + 1)]
+
+    tuiles: list[Tuile] = []
+    for position in cases:
+        if position in poses:
+            tuiles.append(poses[position])
+        else:
+            existante = plateau.tuile(*position)
+            if existante is None:
+                raise ValueError(
+                    "Les lettres posées ne sont pas contiguës : il reste une case "
+                    f"vide au milieu du mot (ligne={position[0]}, "
+                    f"colonne={position[1]})."
+                )
+            tuiles.append(existante)
+
+    return Coup(depart[0], depart[1], sens, tuple(tuiles))
+
+
+def jouer_placements(
+    partie: Partie,
+    placements: list[Any],
+    direction: Any = None,
+) -> dict[str, Any]:
+    """Construit le coup, le fait jouer par ``partie`` et renvoie succès/erreur.
+
+    Cœur non-UI de :meth:`ApiJeu.poser_mot`. Tous les échecs prévisibles sont
+    transformés en ``{"succes": False, "erreur": <message clair>}`` sans lever :
+
+    * structure de coup incohérente (:class:`ValueError` de
+      :func:`construire_coup`) ;
+    * placement illégal (:class:`~scrabble.moteur.validation.CoupInvalide`) ;
+    * lettres absentes du chevalet ou partie terminée
+      (:class:`~scrabble.moteur.partie.ActionInvalide`).
+
+    En cas de succès, l'appelant recharge l'état via :func:`etat_public` : rien
+    n'est perdu côté attente puisque le moteur a consommé les lettres.
+    """
+    try:
+        coup = construire_coup(partie.plateau, placements, direction)
+    except ValueError as err:
+        return {"succes": False, "erreur": str(err)}
+    try:
+        entree = partie.jouer_coup(coup)
+    except CoupInvalide as err:
+        return {"succes": False, "erreur": str(err)}
+    except ActionInvalide as err:
+        return {"succes": False, "erreur": str(err)}
+    points = entree.detail.total if entree.detail is not None else 0
+    return {
+        "succes": True,
+        "points": points,
+        "nom": entree.nom_joueur,
+    }
+
+
+# --------------------------------------------------------------------------- #
 # API Python exposée au JavaScript
 # --------------------------------------------------------------------------- #
 
@@ -176,6 +365,32 @@ class ApiJeu:
             "nom": joueur.nom,
             "lettres": serialiser_chevalet(joueur),
         }
+
+    def poser_mot(
+        self, placements: list[Any], direction: Any = None
+    ) -> dict[str, Any]:
+        """Pose le mot décrit par ``placements`` (mécanique clic-clic du JS).
+
+        ``placements`` est la liste des lettres déposées sur des cases vides
+        (dicts ``{ligne, colonne, lettre, joker}``) ; ``direction`` (``"H"`` ou
+        ``"V"``) ne sert que pour une seule lettre en attente, le sens se
+        déduisant sinon de l'alignement. La méthode construit un
+        :class:`~scrabble.moteur.plateau_partie.Coup`, appelle
+        :meth:`~scrabble.moteur.partie.Partie.jouer_coup` et renvoie :
+
+        * en cas de succès : ``{"succes": True, "points": ..., "etat": ...}``
+          où ``etat`` est l'état public rafraîchi (plateau, scores, tour) ;
+        * en cas d'échec : ``{"succes": False, "erreur": <message clair>}`` — les
+          lettres en attente ne sont pas perdues (le JS les conserve pour
+          correction).
+
+        Confidentialité : la réponse ne contient jamais l'identité des lettres
+        d'un chevalet (``etat`` est l'état public, sans chevalet).
+        """
+        resultat = jouer_placements(self._partie, placements, direction)
+        if resultat.get("succes"):
+            resultat["etat"] = etat_public(self._partie, self._id_partie)
+        return resultat
 
 
 # --------------------------------------------------------------------------- #
