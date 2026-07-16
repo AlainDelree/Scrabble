@@ -20,8 +20,17 @@
                     <span class="sac-nombre" id="sac-nombre">—</span>
                     <span class="sac-label">jetons</span>
                 </div>
-                <button id="btn-rafraichir" class="btn btn-secondaire">
-                    ↻ Rafraîchir
+                <!-- Bouton « Resynchroniser » (issue #41, point 3). Décision :
+                     CONSERVÉ mais clarifié et rendu discret. L'affichage se met
+                     déjà à jour tout seul après chaque action (pose, passe,
+                     échange, tour d'ordinateur) ; son seul rôle légitime est de
+                     forcer un rechargement depuis le moteur en cas de doute sur
+                     la synchronisation de la vue. Libellé et style reflètent donc
+                     ce rôle secondaire : petit lien neutre plutôt qu'un bouton
+                     plein, comme le bouton d'échange complet. -->
+                <button id="btn-rafraichir" class="lien-discret"
+                        title="Recharger l'affichage depuis le moteur (en cas de doute sur la synchronisation)">
+                    ↻ Resynchroniser
                 </button>
             </div>
         </header>
@@ -75,16 +84,21 @@
                     <button id="btn-visibilite" class="btn btn-primaire">
                         👁️ Voir mes lettres
                     </button>
-                    <button id="btn-echanger-tout" class="btn btn-secondaire" hidden>
-                        ♻️ Remettre toutes ses lettres et passer
-                    </button>
                 </div>
             </div>
 
-            <!-- Chevalet compact (à peine plus large que 7 lettres) à gauche,
-                 zone de brouillon indépendante à droite. -->
+            <!-- Réorganisation issue #41, point 1 : deux zones nettement
+                 séparées et clairement identifiées. À GAUCHE le chevalet (vraies
+                 lettres à jouer, zone d'ACTION : cliquer ici pose sur le plateau) ;
+                 à DROITE le brouillon (zone de RÉFLEXION libre, sans effet sur la
+                 partie). Chaque zone porte un intitulé et un habillage distinct
+                 pour que le joueur ne confonde jamais « je joue » et « je réfléchis ». -->
             <div class="zone-reflexion">
+                <!-- Chevalet compact (à peine plus large que 7 lettres). -->
                 <div class="bloc-chevalet">
+                    <div class="bloc-titre bloc-titre-jouer">
+                        🎯 À jouer <span class="bloc-titre-note">— cliquez une lettre pour la poser</span>
+                    </div>
                     <div id="chevalet" class="chevalet" aria-label="Chevalet du joueur courant"></div>
                 </div>
 
@@ -92,25 +106,36 @@
                      plateau ni la pose en attente (mécanique clic-clic). -->
                 <div id="bloc-brouillon" class="bloc-brouillon" hidden>
                     <div class="brouillon-entete">
-                        <span class="brouillon-titre">✏️ Brouillon</span>
-                        <button id="btn-verifier" class="btn btn-secondaire">
-                            🔎 Vérifier ce mot dans le dictionnaire
+                        <span class="brouillon-titre bloc-titre bloc-titre-brouillon">
+                            ✏️ Brouillon <span class="bloc-titre-note">— réflexion libre, sans effet sur la partie</span>
+                        </span>
+                        <button id="btn-verifier" class="btn btn-secondaire btn-petit">
+                            🔎 Vérifier dans le dictionnaire
                         </button>
                     </div>
                     <div id="brouillon" class="brouillon" aria-label="Zone de brouillon (réflexion)"></div>
                     <p class="brouillon-aide">
                         Réarrangez librement vos lettres pour trouver l'inspiration
-                        (cliquez deux emplacements pour les échanger). Cet espace
-                        est indépendant : il n'agit ni sur le plateau ni sur la pose.
+                        (cliquez deux emplacements pour les échanger).
                     </p>
                     <p id="message-brouillon" class="message-brouillon" role="status" aria-live="polite"></p>
                 </div>
             </div>
 
-            <p class="chevalet-aide" id="chevalet-aide">
-                Vos lettres restent masquées tant que vous ne cliquez pas sur
-                « Voir mes lettres ». Pensez à les cacher si un adversaire approche.
-            </p>
+            <!-- Ligne de bas de zone : aide de confidentialité (à gauche) et
+                 action rare « remettre toutes ses lettres » en retrait (issue #41,
+                 point 2) : petit lien neutre plutôt qu'un gros bouton plein, pour
+                 refléter sa fréquence d'usage rare tout en restant trouvable. -->
+            <div class="chevalet-pied">
+                <p class="chevalet-aide" id="chevalet-aide">
+                    Vos lettres restent masquées tant que vous ne cliquez pas sur
+                    « Voir mes lettres ». Pensez à les cacher si un adversaire approche.
+                </p>
+                <button id="btn-echanger-tout" class="lien-discret" hidden
+                        title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
+                    ♻️ Remettre toutes ses lettres et passer
+                </button>
+            </div>
 
             <!-- Contrôles de pose d'un mot (clic-clic) : visibles uniquement
                  lorsque le chevalet est révélé et la partie en cours. -->
