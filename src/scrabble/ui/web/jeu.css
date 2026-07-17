@@ -140,6 +140,93 @@ body {
     }
 }
 
+/* --------------------------------------------------------------------------- */
+/* Vérification dictionnaire déportée à gauche (issue #86)                      */
+/* --------------------------------------------------------------------------- */
+/* Ancre fixe logée dans l'espace libre en haut à gauche de l'écran, entre le
+   décor « SCRABBLE » (gouttière gauche) et la barre du sac. Comme le décor, elle
+   est en position: fixed → elle ne participe JAMAIS au flux et ne peut donc pas
+   « casser » la mise en page du contenu centré, quelle que soit la largeur.
+   Bord DROIT du bouton calé 8px à gauche du bord gauche du contenu centré
+   (.container, largeur max 1180px → demi-largeur 590px). Le bouton grandit vers
+   la GAUCHE dans la gouttière : il ne recouvre donc JAMAIS le contenu (sac,
+   panneaux, plateau), quelle que soit la largeur. Plancher (100vw − 52px) : sur
+   les fenêtres trop étroites où la gouttière disparaît, le bouton reste épinglé
+   dans le coin haut-gauche (icône seule) plutôt que de sortir de l'écran. */
+.verif-dico-ancre {
+    position: fixed;
+    top: 12px;
+    right: min(calc(50vw + 598px), calc(100vw - 66px));
+    z-index: 6;                /* au-dessus du décor (z-index:0), sous les modales */
+}
+
+/* Bouton discret d'ouverture. Repli par défaut (fenêtres étroites, décor masqué,
+   gouttière quasi nulle) : ICÔNE SEULE, compacte et calée dans le coin, pour ne
+   pas empiéter sur le contenu ni disparaître. Cible cliquable confortable
+   (public 80+) grâce au padding et à min-height. Style cohérent avec les boutons
+   secondaires blancs bien contrastés sur le feutre vert. */
+.btn-verif-dico {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 8px 12px;
+    background: white;
+    color: #444;
+    border: none;
+    border-radius: 999px;
+    box-shadow: var(--ombre);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-verif-dico:hover {
+    background: #f0f0f0;
+}
+
+.verif-dico-icone {
+    font-size: 1.05rem;
+    line-height: 1;
+}
+
+/* Libellé masqué par défaut (icône seule) ; réaffiché seulement quand la
+   gouttière gauche est assez large (voir media query plus bas). Il reste toujours
+   accessible via aria-label/title. */
+.verif-dico-libelle {
+    display: none;
+}
+
+/* Popover contenant le champ + le bouton de vérification (mêmes éléments qu'avant,
+   simplement déplacés). Ouvert au clic sur le bouton (attribut [hidden] retiré
+   par le JS), fermé au clic extérieur ou à la touche Échap. Ancré sous le bouton,
+   à gauche de l'écran. */
+.verif-dico-popover {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: min(320px, calc(100vw - 24px));
+    padding: 12px;
+    background: white;
+    border-radius: var(--rayon-bordure);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+
+.verif-dico-popover[hidden] {
+    display: none;
+}
+
+/* Fenêtre large (typiquement plein écran/maximisé) : la gouttière gauche est
+   assez profonde pour loger, entre le décor « SCRABBLE » et le contenu centré,
+   le bouton complet avec son libellé sans recouvrir ni le contenu ni le décor.
+   On réaffiche alors le texte. En dessous de ce seuil, le bouton reste en icône
+   seule (repli sensé prévu par l'issue #86). */
+@media (min-width: 1780px) {
+    .verif-dico-libelle {
+        display: inline;
+    }
+}
+
 /* Barre globale unique (issue #47, point 2) : sac, accès à l'historique et lien
    « Resynchroniser » fusionnés sur une seule ligne horizontale compacte. Se
    replie proprement si la fenêtre est trop étroite. */
@@ -977,12 +1064,12 @@ header {
 /* Chevalet */
 .zone-chevalet {
     margin-top: 8px;
-    /* Repère visuel TEMPORAIRE (issue #85) : fond jaune vif pour identifier,
-       à l'ouverture du jeu, la zone exacte considérée comme « le chevalet »
-       (le brouillon du joueur humain courant) avant de la séparer dans sa
-       propre fenêtre. Remplace temporairement le `background: white` d'origine.
-       À retirer ou ajuster après validation visuelle. */
-    background: #fff176;
+    /* Fond aligné sur la carte « Aucun joueur » de l'accueil (issue #86, suite
+       de #85) : cette carte, vide, s'intègre au tapis vert. On reprend donc la
+       MÊME couleur de feutre via la variable partagée --tapis-vert (identique
+       dans accueil.css et jeu.css : si le vert change un jour, les deux suivent),
+       plutôt que le jaune vif temporaire du repère #85 (désormais retiré). */
+    background: var(--tapis-vert);
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
     padding: 8px 14px 10px;
@@ -1315,11 +1402,72 @@ header {
     font-size: 0.9rem;
 }
 
-.brouillon-aide {
-    margin-top: 4px;
-    font-size: 0.76rem;
-    color: #7a6b52;
+/* Titre du brouillon + icône « i » d'aide + son popover (issue #86). Le groupe
+   est le contexte de positionnement du popover (position: relative). L'icône est
+   posée « en exposant » juste après la phrase du titre. */
+.brouillon-titre-groupe {
+    position: relative;
+    display: inline;
+}
+
+/* Icône « i » cerclée, cliquable. Cible confortable (≈ 26px + zone de clic
+   élargie via le padding négatif du survol) pour un public 80+, tout en gardant
+   l'aspect « exposant » discret grâce au décalage vertical. */
+.btn-aide-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    margin-left: 6px;
+    padding: 0;
+    vertical-align: super;     /* effet « exposant » juste après la phrase */
+    border: 2px solid var(--couleur-secondaire, #5d4037);
+    border-radius: 50%;
+    background: white;
+    color: var(--couleur-secondaire, #5d4037);
+    font-size: 0.85rem;
+    font-weight: 700;
     font-style: italic;
+    font-family: Georgia, "Times New Roman", serif;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.btn-aide-info:hover {
+    background: var(--couleur-secondaire, #5d4037);
+    color: white;
+}
+
+.btn-aide-info:focus-visible {
+    outline: 3px solid var(--couleur-primaire);
+    outline-offset: 2px;
+}
+
+/* Popover d'aide du brouillon : texte inchangé, désormais replié ici et ouvert
+   au clic sur l'icône « i » (attribut [hidden] retiré par le JS), fermé au clic
+   extérieur ou à la touche Échap. Ancré sous l'icône. */
+.aide-info-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 5;
+    width: min(320px, 80vw);
+    padding: 12px 14px;
+    background: white;
+    border-radius: var(--rayon-bordure);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+    font-size: 0.85rem;
+    color: #5b4a33;
+    font-style: normal;
+}
+
+.aide-info-popover[hidden] {
+    display: none;
+}
+
+.aide-info-popover p {
+    margin: 0;
 }
 
 .message-brouillon {
@@ -1378,19 +1526,16 @@ header {
     cursor: not-allowed;
 }
 
-/* Vérification dictionnaire par saisie libre (issue #50) : champ texte + bouton
-   déplacés sous « Remettre toutes ses lettres et passer », à l'intérieur de la
-   zone « À jouer ». Le champ s'étire pour occuper la largeur disponible, le
-   bouton reste calé à sa droite. Aide-mémoire de réflexion, sans effet sur la
-   partie. */
+/* Vérification dictionnaire par saisie libre (issue #50, déplacée issue #86) :
+   champ texte + bouton, désormais hébergés dans le popover « Vérification
+   dictionnaire » à gauche de l'écran (voir .verif-dico-popover). Le champ
+   s'étire pour occuper la largeur disponible, le bouton reste calé à sa droite.
+   Aide-mémoire de réflexion, sans effet sur la partie. */
 .zone-verif-dico {
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px dashed var(--couleur-bordure);
 }
 
 .champ-verif {

@@ -82,6 +82,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const messageBrouillon = document.getElementById('message-brouillon');
     const chevaletAide = document.getElementById('chevalet-aide');
 
+    // Popovers repliés (issue #86) : la vérification dictionnaire (déportée à
+    // gauche de l'écran) et l'aide du brouillon (icône « i »). Chacun est un
+    // bouton déclencheur + un conteneur [hidden] ouvert au clic, refermé au clic
+    // extérieur ou à la touche Échap (voir configurerPopover plus bas).
+    const btnOuvrirVerif = document.getElementById('btn-ouvrir-verif');
+    const verifPopover = document.getElementById('verif-dico-popover');
+    const btnAideBrouillon = document.getElementById('btn-aide-brouillon');
+    const aideBrouillonPopover = document.getElementById('aide-brouillon-popover');
+
     // Contrôles de pose d'un mot (mécanique clic-clic)
     const zoneJeu = document.getElementById('zone-jeu');
     const btnValider = document.getElementById('btn-valider');
@@ -1158,6 +1167,58 @@ document.addEventListener('DOMContentLoaded', async () => {
             verifierMotDictionnaire();
         }
     });
+
+    // --- Popovers repliés (issue #86) ---
+    // Câble un bouton déclencheur + son popover : ouverture/fermeture au clic sur
+    // le bouton, fermeture au clic hors du popover ou à la touche Échap. Met à
+    // jour aria-expanded pour l'accessibilité. `onOuvrir` (optionnel) est appelé
+    // à chaque ouverture (ex. donner le focus au champ de saisie).
+    function configurerPopover(bouton, popover, onOuvrir) {
+        if (!bouton || !popover) {
+            return;
+        }
+        const estOuvert = () => !popover.hidden;
+        const fermer = () => {
+            if (popover.hidden) {
+                return;
+            }
+            popover.hidden = true;
+            bouton.setAttribute('aria-expanded', 'false');
+        };
+        const ouvrir = () => {
+            popover.hidden = false;
+            bouton.setAttribute('aria-expanded', 'true');
+            if (typeof onOuvrir === 'function') {
+                onOuvrir();
+            }
+        };
+        bouton.addEventListener('click', (evt) => {
+            evt.stopPropagation();
+            estOuvert() ? fermer() : ouvrir();
+        });
+        // Un clic à l'intérieur du popover ne le referme pas (saisie, bouton…).
+        popover.addEventListener('click', (evt) => {
+            evt.stopPropagation();
+        });
+        // Clic n'importe où ailleurs dans la page : fermeture.
+        document.addEventListener('click', () => {
+            fermer();
+        });
+        // Touche Échap : fermeture (confort d'utilisation, accessibilité).
+        document.addEventListener('keydown', (evt) => {
+            if (evt.key === 'Escape' && estOuvert()) {
+                fermer();
+            }
+        });
+    }
+
+    // Vérification dictionnaire : à l'ouverture, focus sur le champ pour taper
+    // directement le mot à tester.
+    configurerPopover(btnOuvrirVerif, verifPopover, () => {
+        champVerif.focus();
+    });
+    // Aide du brouillon repliée derrière l'icône « i ».
+    configurerPopover(btnAideBrouillon, aideBrouillonPopover);
 
     // Remettre tout le chevalet dans le sac et passer (via Partie.echanger).
     btnEchangerTout.addEventListener('click', async () => {

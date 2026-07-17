@@ -18,6 +18,43 @@
          sac, l'historique, les panneaux ou le plateau. -->
     <div class="decor-scrabble" aria-hidden="true">SCRABBLE</div>
 
+    <!-- Vérification dictionnaire (issue #86) : sortie de la zone chevalet, où
+         elle n'avait rien à voir avec le tour de jeu en cours. Elle est logée
+         ici, dans l'espace vertical libre à gauche de l'écran (entre le décor
+         « SCRABBLE » et la barre du sac), derrière un bouton discret. Un clic
+         ouvre un petit popover contenant le champ + le bouton de vérification :
+         MÊME comportement qu'avant (même logique JS, mêmes id #champ-verif /
+         #btn-verifier / #message-brouillon), seul l'emplacement change.
+         Repli responsive (voir jeu.css) : quand la gouttière gauche est trop
+         étroite (fenêtre non maximisée), le bouton se réduit à sa seule icône
+         🔎 plutôt que de disparaître ou de casser la mise en page. -->
+    <div class="verif-dico-ancre">
+        <button id="btn-ouvrir-verif" class="btn btn-verif-dico"
+                aria-haspopup="dialog" aria-expanded="false"
+                title="Vérifier si un mot existe dans le dictionnaire">
+            <span class="verif-dico-icone" aria-hidden="true">🔎</span>
+            <span class="verif-dico-libelle">Vérification dictionnaire</span>
+        </button>
+        <div id="verif-dico-popover" class="verif-dico-popover" role="dialog"
+             aria-label="Vérification d'un mot dans le dictionnaire" hidden>
+            <!-- Champ + bouton IDENTIQUES à l'existant, simplement déplacés
+                 depuis la zone chevalet (issue #86, ex-issue #50). Le joueur tape
+                 LIBREMENT le mot à tester (n'importe quelles lettres, même
+                 absentes du chevalet) : outil de réflexion sans effet sur la
+                 partie. -->
+            <div class="zone-verif-dico">
+                <input type="text" id="champ-verif" class="champ-verif"
+                       placeholder="Tapez un mot à tester…"
+                       aria-label="Mot à vérifier dans le dictionnaire"
+                       autocomplete="off" spellcheck="false">
+                <button id="btn-verifier" class="btn btn-secondaire btn-petit">
+                    🔎 Vérifier le mot dans le dictionnaire
+                </button>
+            </div>
+            <p id="message-brouillon" class="message-brouillon" role="status" aria-live="polite"></p>
+        </div>
+    </div>
+
     <div class="container">
         <!-- Barre globale unique (issue #47, point 2) : le sac, l'accès à
              l'historique « Derniers coups » et le lien « Resynchroniser » sont
@@ -196,49 +233,59 @@
                         </div>
                         <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
 
-                        <!-- Vérification dictionnaire par saisie libre (issue #50).
-                             Déplacée ici, sous « Remettre toutes ses lettres et
-                             passer », depuis le panneau Brouillon qui n'avait plus
-                             de place. Le joueur tape LIBREMENT le mot à tester
-                             (n'importe quelles lettres, même absentes du chevalet) :
-                             cet outil de réflexion n'a aucun effet sur la partie et
-                             n'est plus alimenté par les cases du brouillon. -->
-                        <div class="zone-verif-dico">
-                            <input type="text" id="champ-verif" class="champ-verif"
-                                   placeholder="Tapez un mot à tester…"
-                                   aria-label="Mot à vérifier dans le dictionnaire"
-                                   autocomplete="off" spellcheck="false">
-                            <button id="btn-verifier" class="btn btn-secondaire btn-petit">
-                                🔎 Vérifier le mot dans le dictionnaire
-                            </button>
-                        </div>
-                        <p id="message-brouillon" class="message-brouillon" role="status" aria-live="polite"></p>
+                        <!-- La vérification dictionnaire par saisie libre
+                             (ex-issue #50) ne vit plus ici (issue #86) : champ +
+                             bouton + message ont été déplacés hors de la zone
+                             chevalet, derrière le bouton « Vérification
+                             dictionnaire » logé dans l'espace libre à gauche de
+                             l'écran (voir en haut de ce fichier). La zone du tour
+                             en cours ne porte plus que les actions de jeu. -->
                     </div>
                 </div>
 
                 <!-- Zone de brouillon : espace de réflexion SANS lien avec le
                      plateau ni la pose en attente (mécanique clic-clic). -->
                 <div id="bloc-brouillon" class="bloc-brouillon" hidden>
-                    <!-- Le panneau Brouillon ne porte plus le bouton de
-                         vérification (issue #50) : il ne sert qu'à la réflexion
-                         visuelle. Le champ de saisie + bouton de vérification
-                         dictionnaire ont été déplacés sous « Remettre toutes ses
-                         lettres et passer » (zone « À jouer »). -->
+                    <!-- Le panneau Brouillon ne sert qu'à la réflexion visuelle.
+                         Le champ + bouton de vérification dictionnaire (ex-issue
+                         #50) en sont sortis (issue #86) : ils vivent désormais
+                         derrière le bouton « Vérification dictionnaire » à gauche
+                         de l'écran. L'aide détaillée d'usage, jadis affichée en
+                         permanence sous le brouillon, est repliée derrière l'icône
+                         « i » du titre ci-dessous (issue #86). -->
                     <div class="brouillon-entete">
-                        <span class="brouillon-titre bloc-titre bloc-titre-brouillon">
-                            ✏️ Brouillon <span class="bloc-titre-note">— réflexion libre, sans effet sur la partie</span>
+                        <!-- Titre du brouillon suivi (en exposant) d'une icône
+                             « i » cliquable (issue #86). L'aide détaillée n'est
+                             plus affichée en permanence sous le brouillon : elle
+                             est repliée dans le popover ci-dessous, ouvert au clic
+                             sur l'icône (texte inchangé, juste déplacé). L'icône
+                             a une cible cliquable confortable (accessibilité,
+                             public 80+) et le popover se ferme au clic extérieur
+                             ou à la touche Échap. -->
+                        <span class="brouillon-titre-groupe">
+                            <span class="brouillon-titre bloc-titre bloc-titre-brouillon">
+                                ✏️ Brouillon <span class="bloc-titre-note">— réflexion libre, sans effet sur la partie</span>
+                            </span><button id="btn-aide-brouillon" class="btn-aide-info"
+                                    aria-haspopup="dialog" aria-expanded="false"
+                                    aria-label="Aide : comment utiliser le brouillon"
+                                    title="Aide : comment utiliser le brouillon">i</button>
+                            <div id="aide-brouillon-popover" class="aide-info-popover"
+                                 role="dialog" aria-label="Aide du brouillon" hidden>
+                                <p>
+                                    Réarrangez librement vos 7 lettres sur les 9
+                                    emplacements pour trouver l'inspiration :
+                                    cliquez une lettre puis un emplacement vide pour
+                                    l'y déplacer, ou deux lettres pour les échanger.
+                                    Clic droit sur une lettre : la renvoie vers le
+                                    vide le plus proche de la fin. Les 2 emplacements
+                                    vides (position libre) figurent une lettre déjà
+                                    posée sur le plateau à prendre en compte ; aucune
+                                    saisie possible.
+                                </p>
+                            </div>
                         </span>
                     </div>
                     <div id="brouillon" class="brouillon" aria-label="Zone de brouillon (réflexion)"></div>
-                    <p class="brouillon-aide">
-                        Réarrangez librement vos 7 lettres sur les 9 emplacements
-                        pour trouver l'inspiration : cliquez une lettre puis un
-                        emplacement vide pour l'y déplacer, ou deux lettres pour
-                        les échanger. Clic droit sur une lettre : la renvoie vers
-                        le vide le plus proche de la fin. Les 2 emplacements vides
-                        (position libre) figurent une lettre déjà posée sur le
-                        plateau à prendre en compte ; aucune saisie possible.
-                    </p>
                 </div>
             </div>
 
