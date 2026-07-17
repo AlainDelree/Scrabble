@@ -68,6 +68,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Zone de brouillon (réflexion indépendante du plateau)
     const blocBrouillon = document.getElementById('bloc-brouillon');
     const brouillonEl = document.getElementById('brouillon');
+    // Vérification dictionnaire par saisie libre (issue #50) : le mot testé est
+    // désormais le contenu de ce champ texte, plus les lettres du brouillon. Le
+    // champ + le bouton vivent sous « Remettre toutes ses lettres et passer ».
+    const champVerif = document.getElementById('champ-verif');
     const btnVerifier = document.getElementById('btn-verifier');
     const messageBrouillon = document.getElementById('message-brouillon');
     const chevaletAide = document.getElementById('chevalet-aide');
@@ -805,16 +809,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         rendreBrouillon();
     });
 
-    // Vérifier le mot du brouillon dans le dictionnaire (lecture seule).
-    // Les emplacements vides (null) NE font pas partie du mot : ils sont
-    // ignorés ici quelle que soit leur position (traités comme un simple
-    // « trou » dans la séquence). Seules les vraies lettres composent la
-    // chaîne testée.
+    // Vérifier un mot dans le dictionnaire (lecture seule, issue #50). Le mot
+    // testé est le contenu LIBRE du champ texte — plus les lettres du brouillon.
+    // Aucune contrainte : le joueur peut taper n'importe quelles lettres (même
+    // absentes de son chevalet), cet outil de réflexion n'a aucun effet sur la
+    // partie. La chaîne est normalisée côté Python (majuscules, accents).
     btnVerifier.addEventListener('click', async () => {
-        const lettres = brouillonLettres.filter(l => l !== null).map(l => l.lettre);
+        const mot = champVerif.value;
+        // Champ vide : message clair, pas d'appel ni d'erreur (équivalent de
+        // l'ancien cas « brouillon vide »).
+        if (!mot.trim()) {
+            afficherMessageBrouillon('Tapez un mot dans le champ pour le vérifier.', 'info');
+            return;
+        }
         let res;
         try {
-            res = await api.verifier_mot(lettres);
+            res = await api.verifier_mot(mot);
         } catch (err) {
             afficherMessageBrouillon('Erreur inattendue lors de la vérification.', 'invalide');
             return;

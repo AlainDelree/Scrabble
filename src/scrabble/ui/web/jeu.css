@@ -1046,6 +1046,38 @@ header {
     cursor: not-allowed;
 }
 
+/* Vérification dictionnaire par saisie libre (issue #50) : champ texte + bouton
+   déplacés sous « Remettre toutes ses lettres et passer », à l'intérieur de la
+   zone « À jouer ». Le champ s'étire pour occuper la largeur disponible, le
+   bouton reste calé à sa droite. Aide-mémoire de réflexion, sans effet sur la
+   partie. */
+.zone-verif-dico {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--couleur-bordure);
+}
+
+.champ-verif {
+    flex: 1 1 160px;
+    min-width: 120px;
+    padding: 6px 8px;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    border: 1px solid var(--couleur-bordure);
+    border-radius: 4px;
+    background: #fff;
+    color: inherit;
+}
+
+.champ-verif:focus {
+    outline: 2px solid var(--couleur-primaire);
+    outline-offset: 1px;
+}
+
 /* Message de retour (succès / erreur / info) sous les contrôles. */
 .message-coup {
     margin-top: 6px;

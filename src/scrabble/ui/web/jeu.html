@@ -165,19 +165,39 @@
                             </span>
                         </div>
                         <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
+
+                        <!-- Vérification dictionnaire par saisie libre (issue #50).
+                             Déplacée ici, sous « Remettre toutes ses lettres et
+                             passer », depuis le panneau Brouillon qui n'avait plus
+                             de place. Le joueur tape LIBREMENT le mot à tester
+                             (n'importe quelles lettres, même absentes du chevalet) :
+                             cet outil de réflexion n'a aucun effet sur la partie et
+                             n'est plus alimenté par les cases du brouillon. -->
+                        <div class="zone-verif-dico">
+                            <input type="text" id="champ-verif" class="champ-verif"
+                                   placeholder="Tapez un mot à tester…"
+                                   aria-label="Mot à vérifier dans le dictionnaire"
+                                   autocomplete="off" spellcheck="false">
+                            <button id="btn-verifier" class="btn btn-secondaire btn-petit">
+                                🔎 Vérifier le mot dans le dictionnaire
+                            </button>
+                        </div>
+                        <p id="message-brouillon" class="message-brouillon" role="status" aria-live="polite"></p>
                     </div>
                 </div>
 
                 <!-- Zone de brouillon : espace de réflexion SANS lien avec le
                      plateau ni la pose en attente (mécanique clic-clic). -->
                 <div id="bloc-brouillon" class="bloc-brouillon" hidden>
+                    <!-- Le panneau Brouillon ne porte plus le bouton de
+                         vérification (issue #50) : il ne sert qu'à la réflexion
+                         visuelle. Le champ de saisie + bouton de vérification
+                         dictionnaire ont été déplacés sous « Remettre toutes ses
+                         lettres et passer » (zone « À jouer »). -->
                     <div class="brouillon-entete">
                         <span class="brouillon-titre bloc-titre bloc-titre-brouillon">
                             ✏️ Brouillon <span class="bloc-titre-note">— réflexion libre, sans effet sur la partie</span>
                         </span>
-                        <button id="btn-verifier" class="btn btn-secondaire btn-petit">
-                            🔎 Vérifier dans le dictionnaire
-                        </button>
                     </div>
                     <div id="brouillon" class="brouillon" aria-label="Zone de brouillon (réflexion)"></div>
                     <p class="brouillon-aide">
@@ -189,7 +209,6 @@
                         (position libre) figurent une lettre déjà posée sur le
                         plateau à prendre en compte ; aucune saisie possible.
                     </p>
-                    <p id="message-brouillon" class="message-brouillon" role="status" aria-live="polite"></p>
                 </div>
             </div>
 
