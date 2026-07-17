@@ -281,13 +281,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             ? `<img class="panneau-avatar" src="avatars/${encodeURIComponent(joueur.avatar)}.svg"
                     alt="" width="26" height="26">`
             : `<span class="panneau-icone">${icone(joueur.humain)}</span>`;
-        // Ligne unique : avatar · nom · score · lettres · (indicateur à jouer).
-        // ``white-space: nowrap`` (CSS) garantit qu'elle ne se scinde jamais.
+        // Distinction humain/ordinateur renforcée (issue #59, point 2) : en plus
+        // du code couleur bordure/fond (bleu humain, violet ordinateur), les
+        // joueurs ORDINATEUR portent une icône « ordinateur » (🖥️) juste après
+        // leur nombre de lettres. Rien n'est ajouté pour un joueur humain, dont
+        // la distinction reste la couleur + l'avatar déjà présents. Le titre
+        // (info-bulle) explicite l'icône pour l'accessibilité.
+        const badgeOrdinateur = joueur.humain
+            ? ''
+            : '<span class="panneau-ordi" title="Joueur ordinateur" aria-label="Joueur ordinateur">🖥️</span>';
+        // Ligne unique : avatar · nom · score · lettres · (icône ordinateur) ·
+        // (indicateur à jouer). ``white-space: nowrap`` (CSS) garantit qu'elle ne
+        // se scinde jamais.
         item.innerHTML = `
             ${avatarHtml}
             <span class="panneau-nom">${escapeHtml(joueur.nom)}</span>
             <span class="panneau-score">${joueur.score} pts</span>
             <span class="panneau-lettres">🎴 ${joueur.nb_lettres}</span>
+            ${badgeOrdinateur}
             ${badgeTour}
         `;
         return item;
