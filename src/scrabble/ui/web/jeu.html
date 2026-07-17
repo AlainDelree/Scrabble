@@ -132,6 +132,14 @@
              terminée, hors de l'en-tête resté minimal. -->
         <div id="bandeau-fin" class="bandeau-fin" role="status" aria-live="polite" hidden></div>
 
+        <!-- Message éphémère de pose (issue #90) : la pose clic-clic se pilote
+             depuis la fenêtre chevalet (sélection) + la fenêtre plateau (case
+             cliquée). Comme la zone de message de tour vit désormais côté
+             chevalet, ce court retour (« sélectionnez d'abord une lettre »,
+             « case occupée », « choisissez la lettre du joker côté chevalet »)
+             s'affiche ici, en surimpression discrète, sans repousser la table. -->
+        <div id="message-plateau" class="message-plateau" role="status" aria-live="polite" hidden></div>
+
         <!-- Table de jeu : plateau central entouré des panneaux joueurs, chacun
              positionné sur le côté qui lui est assigné côté Python (issue #33).
              Le panneau du bas est celui du joueur humain de référence : il porte,

@@ -276,6 +276,42 @@ header {
     display: none;
 }
 
+/* Message éphémère de pose (issue #90) : court retour affiché en surimpression
+   au clic sur une case du plateau (« sélectionnez d'abord une lettre », « case
+   occupée », choix de joker à faire côté chevalet…). En ``position: fixed`` en
+   haut-centre : il ne repousse jamais la table et reste visible même quand la
+   fenêtre chevalet flotte en bas de l'écran. Retiré automatiquement après
+   quelques secondes (voir jeu.js). z-index sous les modales. */
+.message-plateau {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    max-width: 90vw;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: white;
+    color: var(--couleur-texte);
+    font-size: 0.92rem;
+    font-weight: 600;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.message-plateau[hidden] {
+    display: none;
+}
+
+.message-plateau.erreur {
+    background: #c62828;
+    color: white;
+}
+
+.message-plateau.info {
+    background: #1565c0;
+    color: white;
+}
+
 /* --------------------------------------------------------------------------- */
 /* Encart d'historique glissant des derniers coups (issue #37)                  */
 /* --------------------------------------------------------------------------- */
@@ -523,14 +559,21 @@ header {
     padding: 5px;
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
-    /* Taille agrandie (issue #55) : les passes de compaction #41/#47 avaient
-       trop réduit le plateau (min(52vw, 360px)), jugé illisible au test manuel.
-       Le plateau étant l'élément visuellement dominant (issue #45 point 7), on
-       revient à une taille nettement plus généreuse — quitte à accepter un peu
-       de défilement vertical à 4 joueurs plutôt que de sacrifier la lisibilité
-       des cases. Cette cible s'accorde à la fenêtre par défaut agrandie à
-       1320×980 (voir lancer_jeu). */
-    width: min(68vw, 560px);
+    /* Dimensionnement contraint par la LARGEUR *et* la HAUTEUR (issue #90).
+       Avant la séparation en deux fenêtres (issue #90), le plateau était calé sur
+       une fenêtre fixe 1320×980 (``min(68vw, 560px)``) : en fenêtre plateau
+       désormais MAXIMISÉE à une résolution logique plus modeste (cible ~1280×760
+       utilisables, cf. le portable de test), une taille purement en ``vw`` +
+       plafond fixe débordait en hauteur et forçait un défilement vertical.
+       On ajoute donc un terme en ``vh`` : le plateau (carré, ``aspect-ratio:
+       1 / 1``) ne dépasse jamais ~68 % de la hauteur du viewport, ce qui laisse
+       la place à la barre du sac/historique (haut), aux panneaux joueurs
+       haut/bas et à la zone d'attente IA sans scroll. Le plafond de 560px borne
+       la taille sur les grands écrans (lisibilité déjà généreuse, issue #55) ;
+       le terme en ``vw`` protège les fenêtres étroites. La plus petite des trois
+       bornes l'emporte, donc plateau + panneaux restent visibles d'un coup
+       d'œil quelle que soit la résolution logique. */
+    width: min(64vw, 68vh, 560px);
     aspect-ratio: 1 / 1;
 }
 
