@@ -745,10 +745,45 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (res && res.succes) {
             await rafraichir();
+            // Surbrillance brève du coup que l'ordinateur vient de jouer
+            // (issue #58) : après le rafraîchissement, la première entrée de
+            // l'historique (la plus récente) est le tour IA qu'on vient de
+            // jouer si nb_tours vaut 1. On flashe ses cases posées pour repérer
+            // en un coup d'œil où et quoi a été joué.
+            if (res.nb_tours && etat.historique && etat.historique[0]) {
+                flasherCoup(etat.historique[0].positions);
+            }
         } else {
             btnJouerIA.disabled = false;
         }
     });
+
+    /**
+     * Met brièvement en surbrillance (issue #58) les cases nouvellement posées
+     * par le dernier coup d'un ordinateur, une fois le plateau rafraîchi. Les
+     * ``positions`` sont fournies par l'API (``{ligne, colonne}``) et calculées
+     * par le moteur ; on ajoute une classe qui déclenche une animation CSS de
+     * fondu, retirée à la fin pour laisser la case dans son état normal.
+     */
+    function flasherCoup(positions) {
+        if (!Array.isArray(positions)) {
+            return;
+        }
+        positions.forEach(({ ligne, colonne }) => {
+            const caseEl = plateauEl.querySelector(
+                `.case[data-ligne="${ligne}"][data-colonne="${colonne}"]`
+            );
+            if (!caseEl) {
+                return;
+            }
+            caseEl.classList.add('case-flash-ia');
+            caseEl.addEventListener(
+                'animationend',
+                () => caseEl.classList.remove('case-flash-ia'),
+                { once: true }
+            );
+        });
+    }
 
     // --- Zone de brouillon (réflexion indépendante) ---
 

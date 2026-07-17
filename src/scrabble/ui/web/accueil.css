@@ -424,6 +424,16 @@ section h2 {
     padding: 8px 12px;
     border: 2px solid var(--couleur-bordure);
     border-radius: 6px;
+    /* État initial masqué : la ligne est révélée en fondu + léger glissement
+       quand le JS lui ajoute .visible, l'une après l'autre (issue #58). */
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.tirage-lettres li.visible {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 .tirage-nom {
@@ -444,6 +454,23 @@ section h2 {
 .tirage-ordre-resultat {
     font-weight: 600;
     color: var(--couleur-secondaire);
+    /* Apparaît en fondu une fois toutes les lettres révélées (issue #58). */
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.tirage-ordre-resultat.visible {
+    opacity: 1;
+}
+
+/* Accessibilité : sans mouvement, on affiche tout de suite sans transition. */
+@media (prefers-reduced-motion: reduce) {
+    .tirage-lettres li,
+    .tirage-lettres li.visible,
+    .tirage-ordre-resultat,
+    .tirage-ordre-resultat.visible {
+        transition: none;
+    }
 }
 
 /* Modale transition */

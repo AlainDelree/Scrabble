@@ -238,14 +238,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     function afficherTirageOrdre(tirage) {
         return new Promise((resolve) => {
             tirageLettres.innerHTML = '';
-            tirage.tirages.forEach(t => {
+            tirageOrdreResultat.textContent = '';
+            tirageOrdreResultat.classList.remove('visible');
+
+            // Révélation SÉQUENTIELLE (issue #58) : les lignes sont toutes
+            // créées dans un état masqué (opacité 0, léger décalage — voir
+            // accueil.css), puis dévoilées l'une après l'autre en fondu/
+            // glissement grâce à un décalage croissant. Le résultat « Ordre de
+            // jeu : … » n'apparaît qu'une fois TOUTES les lettres révélées.
+            const lignes = tirage.tirages.map(t => {
                 const li = document.createElement('li');
                 li.innerHTML = `<span class="tirage-nom">${escapeHtml(t.nom)}</span> a tiré <span class="tirage-lettre">${escapeHtml(t.lettre)}</span>`;
                 tirageLettres.appendChild(li);
+                return li;
             });
-            tirageOrdreResultat.textContent =
-                'Ordre de jeu : ' + tirage.ordre.map(String).join(', ');
+
             afficherModale(modaleTirage);
+
+            const DELAI_LIGNE = 450;  // ms entre deux révélations de lettre
+            lignes.forEach((li, i) => {
+                setTimeout(() => li.classList.add('visible'), DELAI_LIGNE * (i + 1));
+            });
+            const texteOrdre =
+                'Ordre de jeu : ' + tirage.ordre.map(String).join(', ');
+            setTimeout(() => {
+                tirageOrdreResultat.textContent = texteOrdre;
+                tirageOrdreResultat.classList.add('visible');
+            }, DELAI_LIGNE * (lignes.length + 1));
 
             btnContinuerTirage.onclick = () => {
                 cacherModale(modaleTirage);

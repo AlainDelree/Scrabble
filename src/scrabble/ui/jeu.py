@@ -363,6 +363,13 @@ def serialiser_entree_historique(
     sérialisation quand l'action en a un — le clic n'a alors besoin d'aucun
     aller-retour supplémentaire vers Python. Une passe ou un échange n'a pas de
     détail : ``detail`` vaut ``None`` (l'UI signale « rien à détailler »).
+
+    ``positions`` (issue #58) liste les cases ``{ligne, colonne}`` nouvellement
+    posées par le coup, reprises telles quelles de
+    :attr:`~scrabble.moteur.partie.EntreeHistorique.positions_posees` (calculées
+    par le moteur, sans recalcul ici). L'UI s'en sert pour mettre brièvement en
+    surbrillance le dernier coup d'un ordinateur sur le plateau. Liste vide pour
+    une passe ou un échange.
     """
     joueur = partie.joueurs[entree.index_joueur]
     score_action = entree.detail.total if entree.detail is not None else 0
@@ -379,6 +386,10 @@ def serialiser_entree_historique(
         "action": entree.action,
         "score_action": score_action,
         "mot": mot,
+        "positions": [
+            {"ligne": ligne, "colonne": colonne}
+            for (ligne, colonne) in entree.positions_posees
+        ],
         "detail": (
             serialiser_detail_score(entree.detail)
             if entree.detail is not None

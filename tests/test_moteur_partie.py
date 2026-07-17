@@ -148,6 +148,25 @@ def test_jouer_coup_met_a_jour_score_chevalet_et_historique():
     assert partie.historique == [entree]
 
 
+def test_jouer_coup_enregistre_les_positions_posees():
+    # Issue #58 : l'entrée d'historique d'un coup mémorise les cases NOUVELLES
+    # (celles renvoyées par PlateauPartie.poser_coup), sans recalcul. CADRE est
+    # posé horizontalement depuis le centre (7, 7).
+    partie = Partie([Joueur("Alice")], _trie("CADRE"), graine=1)
+    partie.joueurs[0].chevalet[:] = list("CADRE")
+    entree = partie.jouer_coup(_coup_cadre_au_centre())
+    assert entree.positions_posees == [(7, 7), (7, 8), (7, 9), (7, 10), (7, 11)]
+
+
+def test_passe_et_echange_sans_positions_posees():
+    # Une passe ou un échange ne pose aucune tuile : positions_posees vide.
+    partie = Partie([Joueur("Alice"), Joueur("Bob")], _trie("CADRE"), graine=1)
+    entree_passe = partie.passer()
+    assert entree_passe.positions_posees == []
+    entree_echange = partie.echanger(partie.joueurs[1].chevalet[:1])
+    assert entree_echange.positions_posees == []
+
+
 def test_jouer_coup_complement_limite_par_sac_presque_vide():
     partie = Partie([Joueur("Alice"), Joueur("Bob")], _trie("CADRE"), graine=1)
     partie.joueurs[0].chevalet[:] = list("CADRE")

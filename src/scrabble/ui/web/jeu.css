@@ -482,6 +482,39 @@ header {
     font-size: clamp(0.6rem, 2vw, 1rem);
 }
 
+/* Surbrillance brève du dernier coup d'un ordinateur (issue #58).
+   Posée par le JS (flasherCoup) sur chaque case nouvellement posée juste après
+   le rafraîchissement du plateau, puis retirée à la fin de l'animation. Un halo
+   doré pulse une fois puis s'estompe en ~1,6 s, sans déplacer la case ni gêner
+   la lecture de la tuile. z-index remonte la case flashée au-dessus de ses
+   voisines le temps que le halo soit visible. */
+.case.case-flash-ia {
+    animation: flash-coup-ia 1.6s ease-out both;
+    z-index: 2;
+}
+
+@keyframes flash-coup-ia {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 213, 79, 0);
+    }
+    15% {
+        box-shadow: 0 0 10px 4px rgba(255, 213, 79, 0.95);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 213, 79, 0);
+    }
+}
+
+/* Respect des préférences d'accessibilité : pas de pulsation animée si
+   l'utilisateur a demandé à réduire les mouvements — on garde juste un halo
+   fixe bref via une transition douce. */
+@media (prefers-reduced-motion: reduce) {
+    .case.case-flash-ia {
+        animation: none;
+        box-shadow: 0 0 8px 3px rgba(255, 213, 79, 0.9);
+    }
+}
+
 /* --------------------------------------------------------------------------- */
 /* Thèmes de plateau                                                           */
 /* --------------------------------------------------------------------------- */

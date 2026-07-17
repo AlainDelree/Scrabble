@@ -114,6 +114,14 @@ class EntreeHistorique:
     échangés : cette liste précise — pas seulement son cardinal — est ce qui
     permet de rejouer l'échange à l'identique lors d'une reprise après
     plantage (voir :mod:`scrabble.persistance.stockage`).
+
+    Pour un coup, ``positions_posees`` liste les cases ``(ligne, colonne)``
+    **nouvellement** remplies par ce coup (les tuiles déjà présentes traversées
+    par le mot en sont exclues) : c'est ce que renvoie
+    :meth:`~scrabble.moteur.plateau_partie.PlateauPartie.poser_coup`, réutilisé
+    tel quel sans recalcul. L'UI s'en sert pour mettre brièvement en évidence le
+    dernier coup d'un ordinateur sur le plateau (issue #58). Vide pour une passe
+    ou un échange.
     """
 
     index_joueur: int
@@ -123,6 +131,7 @@ class EntreeHistorique:
     detail: DetailScore | None = None
     lettres_echangees: int = 0
     jetons_echanges: list[str] = field(default_factory=list)
+    positions_posees: list[tuple[int, int]] = field(default_factory=list)
     score_cumule: int = 0
 
 
@@ -269,7 +278,13 @@ class Partie:
         _retirer_jetons(joueur.chevalet, requis)
         self._completer_chevalet(joueur)
         self.passes_consecutives = 0
-        entree = self._enregistrer(joueur, ACTION_COUP, coup=coup, detail=detail)
+        entree = self._enregistrer(
+            joueur,
+            ACTION_COUP,
+            coup=coup,
+            detail=detail,
+            positions_posees=nouvelles,
+        )
         if self.sac.est_vide() and not joueur.chevalet:
             self._terminer()
         else:
@@ -400,6 +415,7 @@ class Partie:
         detail: DetailScore | None = None,
         lettres_echangees: int = 0,
         jetons_echanges: list[str] | None = None,
+        positions_posees: list[tuple[int, int]] | None = None,
     ) -> EntreeHistorique:
         entree = EntreeHistorique(
             index_joueur=self.index_courant,
@@ -409,6 +425,7 @@ class Partie:
             detail=detail,
             lettres_echangees=lettres_echangees,
             jetons_echanges=list(jetons_echanges) if jetons_echanges else [],
+            positions_posees=list(positions_posees) if positions_posees else [],
             score_cumule=joueur.score,
         )
         self.historique.append(entree)

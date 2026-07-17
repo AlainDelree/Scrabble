@@ -1244,6 +1244,29 @@ class TestSerialiserHistorique:
         assert entree["score_action"] == entree["detail"]["total"]
         assert any(m["texte"] == "CHAT" for m in entree["detail"]["mots"])
 
+    def test_coup_expose_les_positions_posees(self):
+        # Issue #58 : un coup expose les cases nouvellement posées pour que l'UI
+        # puisse mettre en surbrillance le dernier coup d'un ordinateur. CHAT est
+        # posé horizontalement de (7, 7) à (7, 10).
+        partie = _partie_simple()
+        partie.index_courant = 0
+        _poser_chat_au_centre(partie)
+        entree = serialiser_historique(partie)[0]
+        assert entree["positions"] == [
+            {"ligne": 7, "colonne": 7},
+            {"ligne": 7, "colonne": 8},
+            {"ligne": 7, "colonne": 9},
+            {"ligne": 7, "colonne": 10},
+        ]
+
+    def test_passe_et_echange_sans_positions(self):
+        # Une passe ou un échange ne pose aucune tuile : positions vides (issue #58).
+        partie = _partie_simple()
+        _echanger_une_lettre(partie)  # échange
+        partie.passer()               # passe
+        for entree in serialiser_historique(partie):
+            assert entree["positions"] == []
+
     def test_flag_humain_distingue_joueurs(self):
         partie = _partie_simple()  # Alice (humaine) puis Robot (ordinateur)
         _echanger_une_lettre(partie)  # Alice
