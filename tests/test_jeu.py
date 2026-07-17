@@ -28,6 +28,8 @@ from scrabble.regles.lettres import JOKER
 from scrabble.regles.plateau import CENTRE, TAILLE, TypeCase
 from scrabble.ui.jeu import (
     AVATARS,
+    CHEVALET_HAUTEUR,
+    CHEVALET_LARGEUR,
     ApiJeu,
     calculer_avatars,
     calculer_positions,
@@ -1993,3 +1995,122 @@ class TestPersistanceEchecResteVisible:
         message, exc = erreurs[0]
         assert "partie #5" in message
         assert isinstance(exc, RuntimeError)
+
+
+class _FenetreDeplacable:
+    """Fenêtre pywebview factice avec position (x, y), ``move`` et ``on_top``.
+
+    Sert aux tests du déplacement applicatif et du maintien z-order de la fenêtre
+    chevalet (issue #91). ``move`` met à jour la position lue par ``x``/``y``, comme
+    le fait réellement pywebview. ``on_top`` est une propriété dont l'affectation
+    est comptée (``on_top_reassert``) pour vérifier la ré-affirmation par
+    ``_diffuser``.
+    """
+
+    def __init__(self, x: int = 0, y: int = 0) -> None:
+        self.x = x
+        self.y = y
+        self._on_top = True
+        self.on_top_reassert = 0
+
+    @property
+    def on_top(self) -> bool:
+        return self._on_top
+
+    @on_top.setter
+    def on_top(self, valeur: bool) -> None:
+        self._on_top = valeur
+        self.on_top_reassert += 1
+
+    def evaluate_js(self, script: str) -> None:  # pour _diffuser
+        pass
+
+    def move(self, x: int, y: int) -> None:
+        self.x = int(x)
+        self.y = int(y)
+
+
+class TestDeplacementChevalet:
+    """Déplacement applicatif de la fenêtre chevalet (issue #91 point 2)."""
+
+    def _api(self):
+        joueurs = [Joueur(nom="Alice", humain=True)]
+        partie = Partie(joueurs, _DicoFactice(), graine=1)
+        api = ApiJeu(partie, None)
+        fen = _FenetreDeplacable(x=200, y=500)
+        api.set_windows(_FenetreEspionne(), fen)
+        return api, fen
+
+    def test_debut_deplacement_renvoie_position_courante(self):
+        api, fen = self._api()
+        res = api.debut_deplacement_chevalet()
+        assert res == {"succes": True, "x": 200, "y": 500}
+
+    def test_debut_deplacement_sans_fenetre(self):
+        joueurs = [Joueur(nom="Alice", humain=True)]
+        api = ApiJeu(Partie(joueurs, _DicoFactice(), graine=1), None)
+        assert api.debut_deplacement_chevalet()["succes"] is False
+
+    def test_deplacer_deplace_la_fenetre_en_absolu(self):
+        api, fen = self._api()
+        res = api.deplacer_chevalet(340, 610)
+        assert res["succes"] is True
+        assert (fen.x, fen.y) == (340, 610)
+
+    def test_deplacer_borne_en_entiers(self):
+        api, fen = self._api()
+        api.deplacer_chevalet(12.9, 30.2)
+        assert (fen.x, fen.y) == (12, 30)
+
+    def test_deplacer_sans_fenetre_echoue_proprement(self):
+        joueurs = [Joueur(nom="Alice", humain=True)]
+        api = ApiJeu(Partie(joueurs, _DicoFactice(), graine=1), None)
+        assert api.deplacer_chevalet(1, 2)["succes"] is False
+
+
+class TestMaintienZOrderChevalet:
+    """Ré-affirmation d'``on_top`` après chaque interaction (issue #91 point 3)."""
+
+    def test_diffuser_reaffirme_on_top_du_chevalet(self):
+        joueurs = [Joueur(nom="Alice", humain=True)]
+        partie = Partie(joueurs, _DicoFactice(), graine=1)
+        partie.joueurs[0].chevalet = list("CHATSER")
+        api = ApiJeu(partie, None)
+        fen = _FenetreDeplacable()
+        api.set_windows(_FenetreEspionne(), fen)
+        avant = fen.on_top_reassert
+        api.selectionner_lettre(0)  # déclenche _diffuser
+        assert fen.on_top is True
+        assert fen.on_top_reassert > avant
+
+    def test_remonter_sans_fenetre_ne_plante_pas(self):
+        joueurs = [Joueur(nom="Alice", humain=True)]
+        api = ApiJeu(Partie(joueurs, _DicoFactice(), graine=1), None)
+        api._remonter_chevalet()  # ne doit rien lever
+
+
+class TestDimensionsChevalet:
+    """La fenêtre chevalet est assez large pour Brouillon + « À jouer » (point 4)."""
+
+    def test_position_centree_et_basse_sur_ecran_connu(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        class _Ecran:
+            width = 1920
+            height = 1080
+
+        monkeypatch.setattr(mod.webview, "screens", [_Ecran()])
+        x, y = mod._position_chevalet()
+        assert x == (1920 - CHEVALET_LARGEUR) // 2
+        assert y == 1080 - CHEVALET_HAUTEUR - mod.CHEVALET_MARGE_BAS
+
+    def test_repli_neutre_si_aucun_ecran(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        monkeypatch.setattr(mod.webview, "screens", [])
+        assert mod._position_chevalet() == (100, 100)
+
+    def test_largeur_suffisante_pour_deux_blocs(self):
+        # Deux blocs côte à côte (7 + 9 cases de 40 px + marges) : garde-fou pour
+        # éviter une régression qui rétrécirait la fenêtre sous le seuil utile.
+        assert CHEVALET_LARGEUR >= 830

@@ -9,12 +9,14 @@
 </head>
 <body>
     <!-- Fenêtre chevalet flottante (issue #90) : frameless + on_top + non
-         redimensionnable côté Python. Le SEUL moyen de la déplacer est cette zone
-         de drag en haut (classe .pywebview-drag-region reconnue par pywebview) ;
-         easy_drag=False (côté Python) garantit qu'un clic ailleurs — notamment sur
-         une lettre du chevalet (clic-clic de pose) — n'est JAMAIS interprété comme
-         un déplacement de fenêtre. -->
-    <div class="pywebview-drag-region barre-drag">
+         redimensionnable côté Python. Le déplacement se fait par glisser-déposer
+         APPLICATIF sur cette barre du haut (issue #91 point 2) : chevalet.js écoute
+         les événements pointeur et appelle api.deplacer_chevalet(). On n'utilise pas
+         .pywebview-drag-region, non géré par le backend WebKitGTK sous Linux (le
+         drag natif GTK n'existe que via easy_drag=True, qui déplacerait la fenêtre
+         au moindre glissé — y compris pendant un clic-clic de pose). Le drag reste
+         donc strictement confiné à cette barre. -->
+    <div class="barre-drag" id="barre-drag">
         <span class="barre-drag-titre">🎴 Mon chevalet</span>
         <span class="barre-drag-poignee" aria-hidden="true">⠿ déplacer</span>
     </div>

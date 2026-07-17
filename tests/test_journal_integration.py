@@ -320,7 +320,11 @@ class TestCycleSession:
             capture["api"] = js_api
             return object()
 
-        def fake_start():
+        def fake_start(func=None, args=None, **kwargs):
+            # Depuis l'issue #91, lancer_jeu appelle webview.start(func, args) pour
+            # repositionner la fenêtre chevalet après démarrage de la boucle. On ne
+            # rejoue pas ce callback ici (fenêtre factice) : on simule seulement
+            # l'effet « la boucle a tourné » via le hook on_start.
             if on_start is not None:
                 on_start(capture.get("api"))
 
@@ -374,7 +378,7 @@ class TestCycleSession:
             webview, "create_window", lambda *a, **k: object()
         )
 
-        def start_qui_plante():
+        def start_qui_plante(func=None, args=None, **kwargs):
             raise RuntimeError("backend HS")
 
         monkeypatch.setattr(webview, "start", start_qui_plante)

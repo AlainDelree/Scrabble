@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const C = window.Commun;
 
     // --- Éléments du DOM ---
+    const barreDrag = document.getElementById('barre-drag');
     const chevaletEl = document.getElementById('chevalet');
     const chevaletNom = document.getElementById('chevalet-nom');
     const btnVisibilite = document.getElementById('btn-visibilite');
@@ -354,6 +355,84 @@ document.addEventListener('DOMContentLoaded', async () => {
         brouillonSelection = null;
         rendreBrouillon();
     });
+
+    // ------------------------------------------------------------------ //
+    // Déplacement applicatif de la fenêtre (issue #91 point 2)
+    // ------------------------------------------------------------------ //
+    // Sous WebKitGTK, .pywebview-drag-region n'est pas géré : on déplace la
+    // fenêtre nous-mêmes en écoutant les événements pointeur sur la seule barre du
+    // haut, et en appelant api.deplacer_chevalet() en coordonnées écran absolues.
+    // Confiné à .barre-drag : un clic-clic sur une lettre ne déplace jamais la
+    // fenêtre. La capture de pointeur garantit le suivi même si le curseur sort
+    // brièvement de la fenêtre pendant un glissé rapide.
+    if (barreDrag) {
+        let dragActif = false;
+        let dragOrigWin = { x: 0, y: 0 };   // position fenêtre au début du drag
+        let dragOrigSouris = { x: 0, y: 0 }; // position souris (écran) au début
+        let dragPointerId = null;
+        let dragCible = null;                // {x, y} en attente d'envoi
+        let dragRafPlanifie = false;
+
+        function envoyerDeplacement() {
+            dragRafPlanifie = false;
+            if (dragCible) {
+                api.deplacer_chevalet(dragCible.x, dragCible.y);
+                dragCible = null;
+            }
+        }
+
+        barreDrag.addEventListener('pointerdown', async (evt) => {
+            if (evt.button !== 0) {
+                return; // clic gauche uniquement
+            }
+            let pos;
+            try {
+                pos = await api.debut_deplacement_chevalet();
+            } catch (err) {
+                return;
+            }
+            if (!pos || !pos.succes) {
+                return;
+            }
+            dragActif = true;
+            dragOrigWin = { x: pos.x, y: pos.y };
+            dragOrigSouris = { x: evt.screenX, y: evt.screenY };
+            dragPointerId = evt.pointerId;
+            try {
+                barreDrag.setPointerCapture(evt.pointerId);
+            } catch (err) { /* capture non supportée : le drag reste utilisable */ }
+        });
+
+        barreDrag.addEventListener('pointermove', (evt) => {
+            if (!dragActif) {
+                return;
+            }
+            dragCible = {
+                x: dragOrigWin.x + (evt.screenX - dragOrigSouris.x),
+                y: dragOrigWin.y + (evt.screenY - dragOrigSouris.y),
+            };
+            // rAF : on n'envoie qu'un déplacement par frame (évite d'inonder l'IPC).
+            if (!dragRafPlanifie) {
+                dragRafPlanifie = true;
+                requestAnimationFrame(envoyerDeplacement);
+            }
+        });
+
+        function finDrag() {
+            if (!dragActif) {
+                return;
+            }
+            dragActif = false;
+            if (dragPointerId !== null) {
+                try {
+                    barreDrag.releasePointerCapture(dragPointerId);
+                } catch (err) { /* rien à libérer */ }
+            }
+            dragPointerId = null;
+        }
+        barreDrag.addEventListener('pointerup', finDrag);
+        barreDrag.addEventListener('pointercancel', finDrag);
+    }
 
     // Aide du brouillon (icône « i »).
     C.configurerPopover(btnAideBrouillon, aideBrouillonPopover);

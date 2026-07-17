@@ -996,6 +996,13 @@ class ApiJeu:
         self._pousser(
             self._window_chevalet, "appliquerEtatChevalet", self._etat_chevalet()
         )
+        # Z-order (issue #91, point 3) : toute action de jeu passe par une des deux
+        # fenêtres. On en profite pour ré-affirmer que le chevalet reste au-dessus
+        # du plateau — sous certains gestionnaires de fenêtres Linux (WebKitGTK),
+        # ``on_top`` (``set_keep_above``) n'est qu'un indice que le plateau peut
+        # contourner en prenant le focus. Re-poser l'indicateur après chaque
+        # interaction est le repositionnement applicatif recommandé (issue #91).
+        self._remonter_chevalet()
 
     @staticmethod
     def _pousser(
@@ -1012,6 +1019,64 @@ class ApiJeu:
             window.evaluate_js(script)
         except Exception as e:  # noqa: BLE001 - une vue absente ne bloque pas le jeu
             journal.erreur("Jeu : échec de la diffusion d'un état à une fenêtre.", e)
+
+    def _remonter_chevalet(self) -> None:
+        """Ré-affirme que la fenêtre chevalet reste au premier plan (issue #91).
+
+        Point de vigilance #3 de l'issue #91 : sous WebKitGTK (Linux), ``on_top``
+        se traduit par ``Gtk.Window.set_keep_above(True)``, un simple **indice** de
+        pile que le gestionnaire de fenêtres peut contourner — la fenêtre plateau
+        peut alors repasser au-dessus du chevalet en prenant le focus. On re-pose
+        donc l'indicateur ``on_top`` après chaque interaction (appelé par
+        :meth:`_diffuser`). C'est délibérément non intrusif (aucun vol de focus) :
+        si le WM honore la ré-affirmation, le chevalet remonte ; sinon, il s'agit
+        d'une limite du backend/WM à confirmer en test manuel (voir rapport).
+        """
+        if self._window_chevalet is None:
+            return
+        try:
+            self._window_chevalet.on_top = True
+        except Exception as e:  # noqa: BLE001 - un z-order récalcitrant ne bloque pas le jeu
+            journal.erreur("Jeu : ré-affirmation on_top du chevalet impossible.", e)
+
+    def debut_deplacement_chevalet(self) -> dict[str, Any]:
+        """Position absolue actuelle de la fenêtre chevalet, au début d'un drag JS.
+
+        Correctif du point #2 de l'issue #91. Sous WebKitGTK, le mécanisme
+        ``.pywebview-drag-region`` **n'est pas implémenté** (le backend GTK ne câble
+        le déplacement d'une fenêtre ``frameless`` que via ``easy_drag=True``, qui
+        déplacerait la fenêtre au moindre glissé — y compris pendant un clic-clic de
+        pose). On implémente donc le déplacement côté application : le JS de la barre
+        de titre lit ici la position de départ, puis appelle
+        :meth:`deplacer_chevalet` en absolu à chaque mouvement. Portable sur tous les
+        backends (repose sur ``window.move``).
+        """
+        if self._window_chevalet is None:
+            return {"succes": False, "erreur": "Aucune fenêtre chevalet."}
+        try:
+            return {
+                "succes": True,
+                "x": int(self._window_chevalet.x),
+                "y": int(self._window_chevalet.y),
+            }
+        except Exception as e:  # noqa: BLE001 - position indisponible : le JS ignore le drag
+            return {"succes": False, "erreur": f"Position indisponible : {e}"}
+
+    def deplacer_chevalet(self, x: Any, y: Any) -> dict[str, Any]:
+        """Déplace la fenêtre chevalet à la position **absolue** ``(x, y)`` (issue #91).
+
+        Appelée en continu par le glisser-déposer JS de la barre de titre
+        (``.barre-drag``), pour le déplacement applicatif décrit dans
+        :meth:`debut_deplacement_chevalet`. Les coordonnées sont bornées à des
+        entiers ; tout échec est remonté au JS sans planter le jeu.
+        """
+        if self._window_chevalet is None:
+            return {"succes": False, "erreur": "Aucune fenêtre chevalet."}
+        try:
+            self._window_chevalet.move(int(x), int(y))
+            return {"succes": True}
+        except Exception as e:  # noqa: BLE001 - un déplacement raté ne bloque pas le jeu
+            return {"succes": False, "erreur": f"Déplacement impossible : {e}"}
 
     def selectionner_lettre(self, index: Any) -> dict[str, Any]:
         """Sélectionne (ou désélectionne) la lettre du chevalet d'index ``index``.
@@ -1537,12 +1602,15 @@ def _rouvrir_accueil(id_partie: int | None) -> None:
     lancer_accueil(reutiliser_session=True)
 
 
-# Dimensions par défaut de la fenêtre chevalet flottante (issue #90). Assez
-# large pour loger les 7 lettres + le brouillon (9 emplacements) sur une ligne,
-# et la zone de drag en haut. Non redimensionnable : ces valeurs sont donc la
-# taille réelle utilisée.
-CHEVALET_LARGEUR = 600
-CHEVALET_HAUTEUR = 340
+# Dimensions par défaut de la fenêtre chevalet flottante (issue #90, ajustées
+# issue #91 point 4). La fenêtre doit loger, **côte à côte et sans défilement**,
+# le bloc « À jouer » (chevalet 7 lettres + contrôles de tour) et le bloc
+# « Brouillon » (9 emplacements). À 40 px par case + espacements + marges, les
+# deux blocs alignés réclament ~830 px de large ; on prend une marge de sécurité.
+# La hauteur laisse tenir l'en-tête, la zone à deux blocs et le pied sans scroll.
+# Non redimensionnable : ces valeurs sont donc la taille réelle utilisée.
+CHEVALET_LARGEUR = 880
+CHEVALET_HAUTEUR = 400
 # Marge basse : la fenêtre chevalet est posée près du bas de l'écran, à cette
 # distance du bord inférieur de la zone de travail.
 CHEVALET_MARGE_BAS = 40
@@ -1559,6 +1627,13 @@ def _position_chevalet(
     d'écran exploitable (environnement sans affichage, ``webview.screens`` vide ou
     en erreur), on retombe sur un placement neutre ``(100, 100)`` plutôt que de
     faire échouer le lancement.
+
+    Point de vigilance #1 de l'issue #91 : sous WebKitGTK, ``webview.screens`` ne
+    renvoie des dimensions fiables **qu'une fois la boucle GUI démarrée**
+    (``webview.start``). Appelée trop tôt (avant ``start``), elle retombait sur le
+    repli neutre ``(100, 100)`` — d'où l'ouverture en haut à gauche. Cette fonction
+    est donc désormais rappelée **après** le démarrage de la boucle par
+    :func:`_repositionner_chevalet` pour corriger la position réelle de la fenêtre.
     """
     try:
         ecrans = webview.screens
@@ -1585,15 +1660,20 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
       tout défilement). Elle porte le plateau, les panneaux joueurs, la barre du
       sac/historique, « Faire jouer l'ordinateur » et la vérification dictionnaire.
     * Fenêtre **chevalet** : flottante ``frameless=True``, ``on_top=True`` (toujours
-      au-dessus), ``resizable=False`` et ``easy_drag=False`` (le déplacement ne
-      passe que par la zone de drag dédiée en haut, ``.pywebview-drag-region``, pour
-      qu'un clic-clic sur une lettre ne soit jamais interprété comme un déplacement
-      de fenêtre). Taille ~600×340, posée en bas-centre de l'écran.
+      au-dessus), ``resizable=False`` et ``easy_drag=False``. Le déplacement passe
+      par un glisser-déposer **applicatif** sur la barre du haut (``.barre-drag`` →
+      :meth:`ApiJeu.deplacer_chevalet`) : sous WebKitGTK, ``.pywebview-drag-region``
+      n'est pas géré (le backend GTK ne câble le drag d'une fenêtre ``frameless``
+      que via ``easy_drag=True``, qui déplacerait la fenêtre au moindre glissé, y
+      compris pendant un clic-clic de pose — issue #91 point 2). Taille ~880×400,
+      posée en bas-centre de l'écran.
 
     Les deux fenêtres sont créées **avant** l'unique ``webview.start()`` (exigence
     pywebview : toutes les fenêtres se déclarent avant de démarrer la boucle). Elles
     partagent la même instance ``api`` (``js_api=api``), source de vérité de l'état
-    de pose (issue #90).
+    de pose (issue #90). Un callback ``webview.start(func, …)`` repositionne la
+    fenêtre chevalet une fois la boucle démarrée (issue #91 point 1 : ``screens``
+    n'est fiable qu'à ce moment).
     """
     window_plateau = webview.create_window(
         "Scrabble - Plateau",
@@ -1617,10 +1697,31 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
         frameless=True,     # fenêtre sans cadre ni barre de titre
         on_top=True,        # toujours au-dessus du plateau
         resizable=False,    # non redimensionnable par erreur
-        easy_drag=False,    # déplacement uniquement via .pywebview-drag-region
+        easy_drag=False,    # pas de drag « corps entier » : drag applicatif ciblé
     )
     api.set_windows(window_plateau, window_chevalet)
-    webview.start()
+    # Repositionnement après démarrage de la boucle (issue #91 point 1) : c'est
+    # seulement une fois ``webview.start()`` en cours que ``webview.screens`` renvoie
+    # des dimensions fiables sous WebKitGTK.
+    webview.start(_repositionner_chevalet, (window_chevalet,))
+
+
+def _repositionner_chevalet(window_chevalet: "webview.Window") -> None:
+    """Replace la fenêtre chevalet en bas-centre une fois la boucle GUI démarrée.
+
+    Exécuté par ``webview.start(func, …)`` dans un fil dédié, **après** le démarrage
+    de la boucle : à ce stade seulement ``webview.screens`` renvoie sous WebKitGTK
+    les dimensions réelles de l'écran (issue #91 point 1). On recalcule donc la
+    position bas-centre (:func:`_position_chevalet`) et on déplace la fenêtre. Toute
+    erreur est journalisée sans interrompre le jeu (la position initiale, au pire
+    ``(100, 100)``, reste alors en place).
+    """
+    try:
+        x, y = _position_chevalet()
+        window_chevalet.move(x, y)
+        journal.info(f"Jeu : fenêtre chevalet repositionnée en ({x}, {y}).")
+    except Exception as e:  # noqa: BLE001 - un repositionnement raté ne bloque pas le jeu
+        journal.erreur("Jeu : repositionnement de la fenêtre chevalet impossible.", e)
 
 
 # Petit lexique du mode démonstration. Il doit contenir au minimum les mots

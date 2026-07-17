@@ -57,6 +57,11 @@ body {
 /* --------------------------------------------------------------------------- */
 .chevalet-fenetre {
     flex: 1 1 auto;
+    /* Colonne pleine hauteur : l'en-tête + la zone à deux blocs (tour humain) OU
+       le message d'attente (tour IA) occupent le même espace vertical, pour que la
+       fenêtre garde une structure stable entre les deux cas (issue #91 point 5). */
+    display: flex;
+    flex-direction: column;
     overflow: auto;
     padding: 8px 14px 10px;
 }
@@ -96,12 +101,15 @@ body {
     flex-wrap: wrap;
 }
 
-/* Deux zones côte à côte : chevalet (action) + brouillon (réflexion). */
+/* Deux zones côte à côte : chevalet (action) + brouillon (réflexion). La fenêtre
+   est dimensionnée (issue #91 point 4) pour que les deux blocs tiennent alignés
+   sans repli ; on force donc `nowrap` afin que le Brouillon reste TOUJOURS à côté
+   du bloc « À jouer » et jamais en dessous (ce qui imposait un défilement). */
 .zone-reflexion {
     display: flex;
     gap: 14px;
     align-items: stretch;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
 }
 
 .zone-reflexion[hidden] {
@@ -109,8 +117,9 @@ body {
 }
 
 .bloc-chevalet {
-    flex: 0 1 auto;
-    max-width: 100%;
+    /* Largeur naturelle (7 lettres + contrôles), sans rétrécir : le Brouillon
+       prend le reste de la largeur à droite. */
+    flex: 0 0 auto;
     padding: 8px 10px 10px;
     background: #f2f8f2;
     border: 1px solid rgba(46, 125, 50, 0.35);
@@ -133,8 +142,9 @@ body {
 /* Brouillon                                                                    */
 /* --------------------------------------------------------------------------- */
 .bloc-brouillon {
-    flex: 1 1 260px;
-    min-width: 240px;
+    /* Occupe la largeur restante à droite du bloc « À jouer » (issue #91 point 4). */
+    flex: 1 1 auto;
+    min-width: 0;
     padding: 8px 12px 10px;
     background: #f3eee4;
     border: 1px dashed #c9a961;
@@ -167,7 +177,9 @@ body {
 .brouillon {
     display: flex;
     gap: 6px;
-    flex-wrap: wrap;
+    /* Les 9 emplacements tiennent sur une seule ligne dans la fenêtre élargie
+       (issue #91 point 4) : pas de repli, sinon le bloc grandirait en hauteur. */
+    flex-wrap: nowrap;
     min-height: 46px;
     align-items: center;
 }
@@ -216,10 +228,17 @@ body {
 /* --------------------------------------------------------------------------- */
 /* Mode « attente d'un tour d'ordinateur »                                      */
 /* --------------------------------------------------------------------------- */
+/* Message d'attente pendant le tour d'un ordinateur. Il occupe le même espace
+   vertical que la zone interactive (flex: 1) et se centre, pour que la fenêtre
+   garde une structure et un remplissage stables entre tour humain et tour IA :
+   seul le CONTENU du corps change, pas la silhouette de la fenêtre (issue #91
+   point 5). */
 .zone-attente-ia {
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 8px;
     padding: 18px;
     margin: 6px 0;
