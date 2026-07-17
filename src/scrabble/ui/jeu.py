@@ -51,6 +51,11 @@ from scrabble.moteur.plateau_partie import (
     dans_plateau,
 )
 from scrabble.moteur.score import DetailMot, DetailScore, detailler_score
+from scrabble.persistance import (
+    CHEMIN_DEFAUT,
+    enregistrer_action,
+    finaliser_partie,
+)
 from scrabble.moteur.validation import CoupInvalide, DictionnaireMots, valider_coup
 from scrabble.regles.lettres import JOKER, valeur_lettre
 from scrabble.regles.plateau import TAILLE, type_case
@@ -791,12 +796,22 @@ class ApiJeu:
     d'**un seul** joueur (celui dont l'index est demandé) à la fois.
     """
 
-    def __init__(self, partie: Partie, id_partie: int | None) -> None:
+    def __init__(
+        self,
+        partie: Partie,
+        id_partie: int | None,
+        chemin_persistance: Any = CHEMIN_DEFAUT,
+    ) -> None:
         self._partie = partie
         self._id_partie = id_partie
+        # Base où sont persistées les actions (issue #81). Par défaut la base de
+        # l'application ; injectable pour les tests (base temporaire).
+        self._chemin_persistance = chemin_persistance
         self._window: webview.Window | None = None
         # Évite de journaliser plusieurs fois la même fin de partie (issue #66).
         self._fin_journalisee = False
+        # Évite de finaliser plusieurs fois la partie en base (issue #81).
+        self._fin_persistee = False
         # Vrai lorsque l'utilisateur a demandé « Retour au menu » (issue #74) :
         # une fois la fenêtre de jeu fermée, ``lancer_jeu`` rouvre alors l'écran
         # d'accueil (au lieu de clôturer la session) — voir ``lancer_jeu``.
@@ -862,6 +877,7 @@ class ApiJeu:
         Confidentialité : la réponse ne contient jamais l'identité des lettres
         d'un chevalet (``etat`` est l'état public, sans chevalet).
         """
+        nb_avant = len(self._partie.historique)
         resultat = jouer_placements(self._partie, placements)
         if resultat.get("succes"):
             detail = resultat.get("detail")
@@ -874,7 +890,9 @@ class ApiJeu:
                 f"Jeu : coup posé par {resultat.get('nom')} — "
                 f"{mot} ({resultat.get('points')} pts)."
             )
+            self._persister_entrees(self._partie.historique[nb_avant:])
             self._journaliser_fin_partie()
+            self._finaliser_si_terminee()
             resultat["etat"] = etat_public(self._partie, self._id_partie)
         else:
             # Un coup refusé (mot hors dictionnaire, placement illégal…) est un
@@ -940,9 +958,12 @@ class ApiJeu:
         modifié.
         """
         nom = self._partie.joueur_courant().nom
+        nb_avant = len(self._partie.historique)
         resultat = echanger_chevalet_complet(self._partie, self._id_partie)
         if resultat.get("succes"):
             journal.info(f"Jeu : échange complet du chevalet par {nom}.")
+            self._persister_entrees(self._partie.historique[nb_avant:])
+            self._finaliser_si_terminee()
         else:
             journal.info(f"Jeu : échange refusé pour {nom} — {resultat.get('erreur')}")
         return resultat
@@ -964,11 +985,69 @@ class ApiJeu:
         l'humain n'a jamais à manipuler le chevalet d'un ordinateur à sa place.
         """
         nom = self._partie.joueur_courant().nom
+        nb_avant = len(self._partie.historique)
         resultat = jouer_tours_ia_ui(self._partie, self._id_partie)
         if resultat.get("nb_tours"):
             journal.info(f"Jeu : tour d'ordinateur joué ({nom}).")
+            self._persister_entrees(self._partie.historique[nb_avant:])
             self._journaliser_fin_partie()
+            self._finaliser_si_terminee()
         return resultat
+
+    def _persister_entrees(self, entrees: list[EntreeHistorique]) -> None:
+        """Persiste en base chaque action produite par le moteur (issue #81).
+
+        Diagnostic de l'issue #81 : les :class:`EntreeHistorique` produites par le
+        moteur (un coup, un tour d'ordinateur, un échange) n'étaient jamais
+        transmises à la persistance — une reprise reconstruisait donc toujours un
+        plateau vide. Cette méthode branche
+        :func:`~scrabble.persistance.enregistrer_action` après chaque action
+        réussie, en préservant l'ordre.
+
+        L'écriture est encadrée par un ``try/except`` : l'action de jeu reste
+        valide côté joueur même si la persistance échoue, mais l'échec est rendu
+        **visible** dans le journal (``journal.erreur``) plutôt que d'être avalé
+        silencieusement. En mode démonstration (``_id_partie`` à ``None``), il n'y
+        a aucune partie suivie en base : rien n'est écrit.
+        """
+        if self._id_partie is None:
+            return
+        for entree in entrees:
+            try:
+                enregistrer_action(
+                    self._id_partie, entree, self._chemin_persistance
+                )
+            except Exception as e:  # noqa: BLE001 - on trace, sans planter le jeu
+                journal.erreur(
+                    f"Jeu : échec de l'enregistrement d'une action "
+                    f"(partie #{self._id_partie}).",
+                    e,
+                )
+
+    def _finaliser_si_terminee(self) -> None:
+        """Marque la partie terminée en base (une seule fois) — issue #81.
+
+        Appelée après chaque action susceptible de terminer la partie (coup,
+        tour d'ordinateur, échange). Tant que la partie n'est pas terminée, ou si
+        elle l'a déjà été persistée, la méthode est sans effet. Comme
+        :meth:`_persister_entrees`, l'échec d'écriture est journalisé sans planter
+        le jeu, et le mode démonstration (``_id_partie`` à ``None``) est ignoré.
+        """
+        if self._id_partie is None or self._fin_persistee:
+            return
+        if not self._partie.terminee:
+            return
+        self._fin_persistee = True
+        try:
+            finaliser_partie(
+                self._id_partie, self._partie, self._chemin_persistance
+            )
+        except Exception as e:  # noqa: BLE001 - on trace, sans planter le jeu
+            journal.erreur(
+                f"Jeu : échec de la finalisation de la partie "
+                f"#{self._id_partie}.",
+                e,
+            )
 
     def _journaliser_fin_partie(self) -> None:
         """Journalise (une seule fois) la fin de partie et son ou ses gagnants.
