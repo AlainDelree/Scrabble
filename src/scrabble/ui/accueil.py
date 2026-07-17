@@ -6,6 +6,9 @@ Point d'entrée de l'application de jeu Scrabble. Permet de :
 - lancer une partie avec la configuration choisie
 - reprendre une partie en cours
 
+Une fois la partie créée ou reprise, l'écran d'accueil se ferme et l'écran de
+jeu s'ouvre automatiquement avec la partie en cours (issue #52).
+
 Vocabulaire : l'écran dit « ordinateur » et jamais « IA » (moins intimidant).
 Les identifiants de code (Joueur.humain, Niveau) restent inchangés.
 
@@ -206,7 +209,12 @@ class ApiAccueil:
         return {"succes": True, "etat": self.obtenir_etat()}
 
     def lancer_partie(self) -> dict[str, Any]:
-        """Crée et démarre la partie avec la configuration actuelle."""
+        """Crée et démarre la partie avec la configuration actuelle.
+
+        En cas de succès, le champ ``pret`` vaut ``True`` : le JS doit alors
+        fermer la fenêtre d'accueil (``window.close()``) pour que l'écran de
+        jeu puisse s'ouvrir avec la partie créée.
+        """
         if not self.config_partie.peut_lancer():
             return {
                 "succes": False,
@@ -233,6 +241,7 @@ class ApiAccueil:
             self._id_partie = demarrer_suivi(self._partie)
             return {
                 "succes": True,
+                "pret": True,
                 "id_partie": self._id_partie,
                 "message": f"Partie #{self._id_partie} créée avec {len(self._partie.joueurs)} joueurs.",
             }
@@ -257,13 +266,19 @@ class ApiAccueil:
             return []
 
     def reprendre(self, id_partie: int) -> dict[str, Any]:
-        """Reprend une partie existante."""
+        """Reprend une partie existante.
+
+        En cas de succès, le champ ``pret`` vaut ``True`` : le JS doit alors
+        fermer la fenêtre d'accueil (``window.close()``) pour que l'écran de
+        jeu puisse s'ouvrir avec la partie reprise.
+        """
         try:
             trie = obtenir_trie()
             self._partie = reprendre_partie(id_partie, trie)
             self._id_partie = id_partie
             return {
                 "succes": True,
+                "pret": True,
                 "id_partie": id_partie,
                 "message": f"Partie #{id_partie} reprise.",
             }
@@ -277,12 +292,27 @@ class ApiAccueil:
         return list(NIVEAUX_LABELS.keys())
 
 
-def lancer_accueil() -> tuple[Partie | None, int | None]:
+def lancer_accueil(ouvrir_jeu: bool = True) -> tuple[Partie | None, int | None]:
     """Lance l'écran d'accueil et retourne la partie créée (ou None).
 
     Retourne un tuple (partie, id_partie). Les deux sont None si l'utilisateur
     a fermé la fenêtre sans lancer de partie.
+
+    Si ``ouvrir_jeu`` est ``True`` (défaut) et qu'une partie a été créée ou
+    reprise, l'écran de jeu s'ouvre automatiquement après la fermeture de
+    l'écran d'accueil. Le flux complet est alors :
+    accueil → création/reprise → fermeture accueil → ouverture jeu.
+
+    Cohabitation pywebview : ``webview.start()`` bloque jusqu'à la fermeture de
+    toutes les fenêtres. Pour enchaîner deux fenêtres (accueil puis jeu), on
+    laisse l'utilisateur fermer l'accueil (le JS appelle ``window.close()``
+    après un lancer/reprendre réussi), puis on rappelle ``webview.start()`` sur
+    la nouvelle fenêtre de jeu. Chaque écran gère ainsi sa propre boucle
+    pywebview, ce qui évite les complications d'ouverture de fenêtre secondaire
+    au sein d'une boucle déjà démarrée.
     """
+    from scrabble.ui.jeu import lancer_jeu
+
     api = ApiAccueil()
     chemin_html = DOSSIER_WEB / "accueil.html"
     window = webview.create_window(
@@ -295,7 +325,11 @@ def lancer_accueil() -> tuple[Partie | None, int | None]:
     )
     api.set_window(window)
     webview.start()
-    return api._partie, api._id_partie
+
+    partie, id_partie = api._partie, api._id_partie
+    if ouvrir_jeu and partie is not None:
+        lancer_jeu(partie, id_partie)
+    return partie, id_partie
 
 
 def main() -> int:

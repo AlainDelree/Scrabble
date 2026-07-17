@@ -28,7 +28,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Modales
     const modaleHumain = document.getElementById('modale-humain');
     const modaleOrdinateur = document.getElementById('modale-ordinateur');
-    const modaleTransition = document.getElementById('modale-transition');
 
     // Formulaires
     const formHumain = document.getElementById('form-humain');
@@ -291,21 +290,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const result = await api.lancer_partie();
 
-        if (result.succes) {
-            document.getElementById('message-transition').textContent = result.message;
-            afficherModale(modaleTransition);
-        } else {
+        if (result.succes && result.pret) {
+            // Fermer la fenêtre d'accueil — l'écran de jeu s'ouvrira
+            // automatiquement côté Python après la fermeture.
+            window.close();
+        } else if (!result.succes) {
             alert(result.erreur);
             btnLancer.disabled = false;
             btnLancer.textContent = 'Lancer la partie';
-        }
-    });
-
-    // Fermer modale transition
-    document.getElementById('btn-fermer-transition').addEventListener('click', () => {
-        // Fermer la fenêtre pywebview
-        if (window.pywebview) {
-            window.close();
         }
     });
 
@@ -313,12 +305,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     partiesEnCours.addEventListener('click', async (e) => {
         if (e.target.classList.contains('btn-reprendre')) {
             const id = parseInt(e.target.dataset.id, 10);
+            e.target.disabled = true;
+            e.target.textContent = 'Chargement...';
+
             const result = await api.reprendre(id);
-            if (result.succes) {
-                document.getElementById('message-transition').textContent = result.message;
-                afficherModale(modaleTransition);
-            } else {
+            if (result.succes && result.pret) {
+                // Fermer la fenêtre d'accueil — l'écran de jeu s'ouvrira
+                // automatiquement côté Python après la fermeture.
+                window.close();
+            } else if (!result.succes) {
                 alert(result.erreur);
+                e.target.disabled = false;
+                e.target.textContent = 'Reprendre';
             }
         }
     });

@@ -272,3 +272,80 @@ class TestExclusionPrenoms:
         assert "Camille" not in [p.casefold() for p in disponibles]
         # Mais les autres sont disponibles
         assert len(disponibles) == len(PRENOMS_ORDINATEUR) - 1
+
+
+class TestApiAccueilLancement:
+    """Tests de ApiAccueil.lancer_partie et .reprendre (issue #52).
+
+    Vérifie que les méthodes renvoient ``pret: True`` pour signaler au JS
+    qu'il doit fermer la fenêtre et laisser l'écran de jeu s'ouvrir.
+    """
+
+    def test_lancer_partie_renvoie_pret(self, tmp_path, monkeypatch):
+        """lancer_partie() renvoie pret=True en cas de succès."""
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+
+        # Stub du dictionnaire pour éviter le chargement complet
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda: Trie.depuis_iterable(["MAISON", "TEST"]),
+        )
+        # Stub de la persistance pour éviter d'écrire sur disque
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.demarrer_suivi",
+            lambda partie: 42,
+        )
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Intermédiaire")
+
+        result = api.lancer_partie()
+        assert result["succes"] is True
+        assert result["pret"] is True
+        assert result["id_partie"] == 42
+        assert api._partie is not None
+        assert api._id_partie == 42
+
+    def test_reprendre_renvoie_pret(self, tmp_path, monkeypatch):
+        """reprendre() renvoie pret=True en cas de succès."""
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.moteur.partie import Partie, Joueur
+
+        # Créer une partie factice à "reprendre"
+        partie_reprise = Partie(
+            joueurs=[Joueur(nom="Bob", humain=True)],
+            dictionnaire=Trie.depuis_iterable(["TEST"]),
+            graine=123,
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda: Trie.depuis_iterable(["TEST"]),
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.reprendre_partie",
+            lambda id_partie, trie: partie_reprise,
+        )
+
+        api = ApiAccueil()
+        result = api.reprendre(99)
+
+        assert result["succes"] is True
+        assert result["pret"] is True
+        assert result["id_partie"] == 99
+        assert api._partie is partie_reprise
+        assert api._id_partie == 99
+
+    def test_lancer_partie_echec_sans_humain(self):
+        """lancer_partie() échoue sans joueur humain (pas de pret)."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        # Pas de joueur ajouté
+        result = api.lancer_partie()
+
+        assert result["succes"] is False
+        assert "pret" not in result
+        assert "erreur" in result
