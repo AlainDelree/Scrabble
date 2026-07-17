@@ -128,11 +128,15 @@ header {
 
 /* Résumé cliquable : une petite pastille discrète cohérente avec le sac et le
    lien « Resynchroniser ». Le marqueur triangulaire natif est masqué au profit
-   d'un chevron ajouté après le titre. */
+   d'un chevron ajouté après le titre.
+   IMPORTANT (issue #49) : on ne change PAS le `display` du <summary> lui-même.
+   Sous WebKitGTK (moteur de pywebview sous Linux), donner à un <summary> un
+   `display: flex`/`inline-flex` casse le basculement natif ouvert/fermé du
+   <details> au clic. Le summary reste donc en `display: list-item` (défaut) et
+   n'est réduit à la largeur de son contenu que par `width: fit-content` ; la
+   mise en page en ligne est confiée à `.historique-resume-inner`. */
 .historique-resume {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+    width: fit-content;
     padding: 6px 12px;
     border-radius: 999px;
     background: white;
@@ -150,14 +154,22 @@ header {
     display: none;
 }
 
-.historique-resume::after {
+/* Wrapper interne : c'est LUI qui porte la disposition en ligne (titre,
+   compteur, chevron), pour laisser le <summary> à son display natif. */
+.historique-resume-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.historique-resume-inner::after {
     content: '▾';
     font-size: 0.7rem;
     color: #999;
     transition: transform 0.15s;
 }
 
-.historique-menu[open] .historique-resume::after {
+.historique-menu[open] .historique-resume-inner::after {
     transform: rotate(180deg);
 }
 

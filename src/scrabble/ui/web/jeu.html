@@ -31,9 +31,17 @@
                      surimpression. La plus RÉCENTE EN HAUT ; chaque ligne
                      cliquable rouvre le détail du score de CE coup (modale). -->
                 <details class="historique-menu" id="historique-menu">
+                    <!-- Le <summary> garde son display natif (list-item) : sous
+                         WebKitGTK (moteur de pywebview sous Linux), un <summary>
+                         dont le `display` est changé en flex/inline-flex perd le
+                         basculement natif ouvert/fermé au clic (issue #49). La
+                         mise en page en ligne (titre + compteur + chevron) est
+                         donc portée par un wrapper interne, pas par le summary. -->
                     <summary class="historique-resume">
-                        <span class="historique-resume-titre">🕑 Derniers coups</span>
-                        <span class="historique-resume-compte" id="historique-compte"></span>
+                        <span class="historique-resume-inner">
+                            <span class="historique-resume-titre">🕑 Derniers coups</span>
+                            <span class="historique-resume-compte" id="historique-compte"></span>
+                        </span>
                     </summary>
                     <ol id="historique-liste" class="historique-liste" aria-live="polite"></ol>
                 </details>

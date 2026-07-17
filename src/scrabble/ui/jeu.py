@@ -49,7 +49,7 @@ from scrabble.moteur.plateau_partie import (
     Tuile,
     dans_plateau,
 )
-from scrabble.moteur.score import DetailScore
+from scrabble.moteur.score import DetailMot, DetailScore
 from scrabble.moteur.validation import CoupInvalide, DictionnaireMots
 from scrabble.regles.lettres import JOKER, valeur_lettre
 from scrabble.regles.plateau import TAILLE, type_case
@@ -884,6 +884,74 @@ _MOTS_DEMO: tuple[str, ...] = (
 )
 
 
+#: Gabarits d'actions de démonstration pour l'historique glissant (issue #49) :
+#: chaque tuple est ``(action, mot, score)``. Un ``mot`` non nul ⇒ un coup
+#: cliquable (on lui fabrique un :class:`~scrabble.moteur.score.DetailScore` à la
+#: volée) ; ``None`` ⇒ passe ou échange, sans détail. La liste est volontairement
+#: plus longue que le plafond d'affichage (:data:`MAX_LIGNES_HISTORIQUE`) pour
+#: aussi vérifier le compteur « (N) » et le fait que seules les plus récentes
+#: sont montrées.
+_HISTORIQUE_DEMO: list[tuple[str, str | None, int]] = [
+    ("coup", "MAISON", 14),
+    ("coup", "OPUS", 8),
+    ("passe", None, 0),
+    ("coup", "JOKER", 19),
+    ("echange", None, 0),
+    ("coup", "PLATEAU", 24),
+    ("coup", "ZEN", 12),
+    ("passe", None, 0),
+    ("coup", "QUAI", 13),
+    ("coup", "FORT", 7),
+    ("echange", None, 0),
+    ("coup", "VICTOIRE", 31),
+]
+
+
+def _peupler_historique_demo(partie: Partie) -> None:
+    """Remplit ``partie.historique`` d'entrées de démonstration (issue #49).
+
+    But : disposer, en mode démo autonome, d'un « Derniers coups » déjà rempli
+    pour vérifier **visuellement** le rendu de la liste à pleine capacité (mélange
+    de coups, passes et échanges répartis en tourniquet sur tous les joueurs),
+    sans avoir à jouer plusieurs tours à la main à chaque vérification.
+
+    Purement local au mode démo : une vraie partie créée depuis l'écran d'accueil
+    démarre, elle, avec un historique vide et ne passe jamais par cette fonction.
+
+    Les :class:`~scrabble.moteur.partie.EntreeHistorique` sont construites
+    directement (pas de vrai coup rejoué sur le plateau, comme l'autorise l'issue
+    #49) : ``index_joueur``/``nom_joueur`` pointent toujours un joueur existant et
+    les scores restent plausibles, si bien que la sérialisation
+    (:func:`serialiser_entree_historique`) reste parfaitement cohérente.
+    """
+    nb = len(partie.joueurs)
+    cumuls = [0] * nb
+    for i, (action, mot, score) in enumerate(_HISTORIQUE_DEMO):
+        idx = i % nb
+        joueur = partie.joueurs[idx]
+        cumuls[idx] += score
+        detail = (
+            DetailScore(
+                mots=[DetailMot(texte=mot, score=score, cases_bonus=[])],
+                bonus_scrabble=0,
+                total=score,
+            )
+            if action == "coup" and mot is not None
+            else None
+        )
+        partie.historique.append(
+            EntreeHistorique(
+                index_joueur=idx,
+                nom_joueur=joueur.nom,
+                action=action,
+                detail=detail,
+                lettres_echangees=3 if action == "echange" else 0,
+                jetons_echanges=["A", "E", "R"] if action == "echange" else [],
+                score_cumule=cumuls[idx],
+            )
+        )
+
+
 def construire_partie_demo(nb_joueurs: int = 2) -> tuple[Partie, int | None]:
     """Construit une partie d'exemple (plateau partiellement rempli).
 
@@ -933,6 +1001,11 @@ def construire_partie_demo(nb_joueurs: int = 2) -> tuple[Partie, int | None]:
     for i, joueur in enumerate(partie.joueurs):
         joueur.score = scores[i % len(scores)]
     partie.index_courant = 0
+
+    # Historique de démonstration pré-rempli (issue #49) : permet de vérifier
+    # visuellement le rendu du menu « Derniers coups » une fois garni, sans jouer
+    # plusieurs tours à la main. Local au mode démo uniquement.
+    _peupler_historique_demo(partie)
     return partie, None
 
 
