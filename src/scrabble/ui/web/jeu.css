@@ -107,8 +107,8 @@ body {
     left: 8px;
     top: 18px;                 /* aligné sur la hauteur de la barre du sac */
     z-index: 0;                /* sur le tapis, derrière tout le contenu */
-    writing-mode: vertical-rl; /* axe d'écriture vertical : lettres tournées à 90° */
-    text-orientation: mixed;
+    writing-mode: vertical-rl; /* axe d'écriture vertical : lettres empilées de haut en bas */
+    text-orientation: upright; /* chaque lettre reste droite/lisible, pas de rotation à 90° */
     margin: 0;
     font-size: clamp(1.6rem, 3.4vw, 2.7rem);
     font-weight: 800;
