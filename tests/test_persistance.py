@@ -160,6 +160,33 @@ def test_lister_reflete_en_cours_et_joueurs(tmp_path):
     assert resume.joueurs[1]["niveau"] == Niveau.INTERMEDIAIRE.name
 
 
+def test_scores_actuels_refletent_historique(tmp_path):
+    """``scores_actuels`` donne le score courant de chaque joueur (issue #76).
+
+    Il est déduit du dernier ``score_cumule`` de l'historique sans rejouer la
+    partie : après un coup de p0 et un échange de p1, il doit correspondre aux
+    scores vivants de la partie, dans l'ordre des joueurs.
+    """
+    chemin = tmp_path / "parties.db"
+    partie, _id, _trie_ = _partie_coup_puis_echange(chemin)
+
+    resume = lister_parties(chemin)[0]
+    assert resume.scores_actuels == [j.score for j in partie.joueurs]
+    # p0 a marqué en posant un mot ; p1 a échangé (score nul).
+    assert resume.scores_actuels[0] > 0
+    assert resume.scores_actuels[1] == 0
+
+
+def test_scores_actuels_zero_sans_action(tmp_path):
+    """Une partie sans aucune action expose des scores à 0 pour chaque joueur."""
+    chemin = tmp_path / "parties.db"
+    partie = creer_partie(["Alice"], _trie(), nb_ia=1, graine=7)
+    demarrer_suivi(partie, chemin)
+
+    resume = lister_parties(chemin)[0]
+    assert resume.scores_actuels == [0, 0]
+
+
 def test_lister_trie_par_maj_decroissante(tmp_path):
     chemin = tmp_path / "parties.db"
     partie1 = creer_partie(["A"], _trie(), graine=1)

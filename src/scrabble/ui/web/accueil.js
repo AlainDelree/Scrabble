@@ -177,9 +177,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 minute: '2-digit'
             });
 
+            // Chaque joueur est un objet {nom, score} depuis l'issue #76 : on
+            // affiche le score courant à côté du nom (ex. « Alice (14 pts) »).
+            const joueursStr = partie.joueurs
+                .map(j => `${escapeHtml(j.nom)} (${j.score} pts)`)
+                .join(', ');
+
             item.innerHTML = `
                 <div class="partie-info">
-                    <div class="partie-joueurs">${partie.joueurs.map(escapeHtml).join(', ')}</div>
+                    <div class="partie-joueurs">${joueursStr}</div>
                     <div class="partie-date">Dernière activité : ${dateStr}</div>
                 </div>
                 <button class="btn btn-reprendre" data-id="${partie.id}">Reprendre</button>

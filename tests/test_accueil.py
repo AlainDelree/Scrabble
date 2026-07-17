@@ -505,7 +505,7 @@ class TestApiAccueilAnnulerPartie:
 class TestApiAccueilPartieUnique:
     """Tests de lister_parties_en_cours : une seule partie proposée (issue #54)."""
 
-    def _resume(self, id_partie, statut="en_cours"):
+    def _resume(self, id_partie, statut="en_cours", joueurs=None, scores_actuels=None):
         from scrabble.persistance.stockage import ResumePartie
 
         return ResumePartie(
@@ -514,7 +514,8 @@ class TestApiAccueilPartieUnique:
             graine=id_partie,
             date_creation="2026-07-01T10:00:00",
             date_maj=f"2026-07-{id_partie:02d}T10:00:00",
-            joueurs=[{"nom": "Alice", "humain": True, "niveau": None}],
+            joueurs=joueurs or [{"nom": "Alice", "humain": True, "niveau": None}],
+            scores_actuels=scores_actuels,
         )
 
     def test_ne_renvoie_que_la_plus_recente(self, monkeypatch):
@@ -564,6 +565,48 @@ class TestApiAccueilPartieUnique:
 
         api = ApiAccueil()
         assert api.lister_parties_en_cours() == []
+
+    def test_expose_le_score_de_chaque_joueur(self, monkeypatch):
+        """Chaque joueur est renvoyé avec son score courant (issue #76)."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        joueurs = [
+            {"nom": "Alice", "humain": True, "niveau": None},
+            {"nom": "Léon", "humain": False, "niveau": "FACILE"},
+        ]
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lister_parties",
+            lambda: [self._resume(9, joueurs=joueurs, scores_actuels=[14, 9])],
+        )
+
+        api = ApiAccueil()
+        parties = api.lister_parties_en_cours()
+
+        assert parties[0]["joueurs"] == [
+            {"nom": "Alice", "score": 14},
+            {"nom": "Léon", "score": 9},
+        ]
+
+    def test_score_defaut_zero_si_absent(self, monkeypatch):
+        """Sans ``scores_actuels``, chaque joueur reçoit un score de 0."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        joueurs = [
+            {"nom": "Alice", "humain": True, "niveau": None},
+            {"nom": "Bob", "humain": True, "niveau": None},
+        ]
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lister_parties",
+            lambda: [self._resume(9, joueurs=joueurs, scores_actuels=None)],
+        )
+
+        api = ApiAccueil()
+        parties = api.lister_parties_en_cours()
+
+        assert parties[0]["joueurs"] == [
+            {"nom": "Alice", "score": 0},
+            {"nom": "Bob", "score": 0},
+        ]
 
 
 class TestApiAccueilFermeture:

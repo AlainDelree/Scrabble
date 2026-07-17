@@ -360,19 +360,34 @@ class ApiAccueil:
         jour décroissante : on ne propose à la reprise que la plus récente. Le
         retour reste une liste (0 ou 1 élément) pour ne pas casser le contrat
         avec le JS.
+
+        Chaque joueur est renvoyé avec son **score courant** (issue #76) :
+        ``joueurs`` est une liste de ``{"nom", "score"}``, le score étant celui
+        exposé par ``ResumePartie.scores_actuels`` (déduit de l'historique sans
+        rejouer la partie). Si l'information manque, le score vaut 0.
         """
         try:
             toutes = lister_parties()
             en_cours = [p for p in toutes if not p.terminee]
-            return [
-                {
-                    "id": p.id,
-                    "date_maj": p.date_maj,
-                    "joueurs": [j["nom"] for j in p.joueurs],
-                    "nb_joueurs": len(p.joueurs),
-                }
-                for p in en_cours[:1]
-            ]
+            resultat = []
+            for p in en_cours[:1]:
+                scores = p.scores_actuels or []
+                joueurs = [
+                    {
+                        "nom": j["nom"],
+                        "score": scores[i] if i < len(scores) else 0,
+                    }
+                    for i, j in enumerate(p.joueurs)
+                ]
+                resultat.append(
+                    {
+                        "id": p.id,
+                        "date_maj": p.date_maj,
+                        "joueurs": joueurs,
+                        "nb_joueurs": len(p.joueurs),
+                    }
+                )
+            return resultat
         except Exception:
             return []
 

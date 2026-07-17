@@ -89,6 +89,12 @@ class ResumePartie:
     ``joueurs`` liste des dictionnaires ``{"nom", "humain", "niveau"}`` (niveau
     ``None`` pour un humain). ``scores_finaux`` et ``gagnants`` valent ``None``
     tant que la partie n'est pas terminée.
+
+    ``scores_actuels`` donne, dans l'ordre de ``joueurs``, le score courant de
+    chaque joueur (issue #76). Il est déduit sans rejeu de la partie : c'est le
+    ``score_cumule`` de la **dernière action** de chaque joueur dans la table
+    ``actions`` (0 pour un joueur qui n'a pas encore joué). Utile pour afficher
+    l'état d'une partie en cours avant de la reprendre.
     """
 
     id: int
@@ -99,6 +105,7 @@ class ResumePartie:
     joueurs: list[dict]
     scores_finaux: list[int] | None = None
     gagnants: list[str] | None = None
+    scores_actuels: list[int] | None = None
 
     @property
     def terminee(self) -> bool:
@@ -413,17 +420,57 @@ def supprimer_partie(id_partie: int, chemin: _TypeChemin = CHEMIN_DEFAUT) -> boo
         return curseur.rowcount > 0
 
 
+def _scores_actuels_par_partie(
+    connexion: sqlite3.Connection,
+) -> dict[int, dict[int, int]]:
+    """Score courant de chaque joueur de chaque partie, sans rejeu (issue #76).
+
+    Renvoie ``{id_partie: {index_joueur: score_cumule}}`` en ne retenant, pour
+    chaque couple (partie, joueur), que le ``score_cumule`` de sa **dernière**
+    action (indice maximal) — c'est-à-dire son score courant. Un joueur sans
+    action n'apparaît pas (score implicite 0, complété par l'appelant).
+
+    Une seule requête pour toutes les parties : la sous-requête agrège l'indice
+    maximal par (partie, joueur), la requête externe récupère le
+    ``score_cumule`` correspondant.
+    """
+    lignes = connexion.execute(
+        "SELECT a.id_partie, a.index_joueur, a.score_cumule "
+        "FROM actions a "
+        "JOIN (SELECT id_partie, index_joueur, MAX(indice) AS max_indice "
+        "      FROM actions GROUP BY id_partie, index_joueur) m "
+        "  ON a.id_partie = m.id_partie "
+        " AND a.index_joueur = m.index_joueur "
+        " AND a.indice = m.max_indice"
+    ).fetchall()
+    scores: dict[int, dict[int, int]] = {}
+    for ligne in lignes:
+        scores.setdefault(ligne["id_partie"], {})[ligne["index_joueur"]] = (
+            ligne["score_cumule"]
+        )
+    return scores
+
+
 def lister_parties(chemin: _TypeChemin = CHEMIN_DEFAUT) -> list[ResumePartie]:
-    """Résumé de chaque partie, triées par date de mise à jour décroissante."""
+    """Résumé de chaque partie, triées par date de mise à jour décroissante.
+
+    Chaque résumé porte ``scores_actuels`` : le score courant de chaque joueur
+    (dans l'ordre de ``joueurs``), déduit du dernier ``score_cumule`` de la
+    table ``actions`` sans rejouer la partie (issue #76).
+    """
     with _connexion(chemin) as connexion:
         lignes = connexion.execute(
             "SELECT id, statut, graine, date_creation, date_maj, joueurs, "
             "scores_finaux, gagnants FROM parties ORDER BY date_maj DESC, id DESC"
         ).fetchall()
+        scores_par_partie = _scores_actuels_par_partie(connexion)
     resumes: list[ResumePartie] = []
     for ligne in lignes:
         scores = ligne["scores_finaux"]
         gagnants = ligne["gagnants"]
+        joueurs = _joueurs_depuis_json(ligne["joueurs"])
+        scores_joueurs = scores_par_partie.get(ligne["id"], {})
+        scores_actuels = [scores_joueurs.get(i, 0) for i in range(len(joueurs))]
         resumes.append(
             ResumePartie(
                 id=ligne["id"],
@@ -431,9 +478,10 @@ def lister_parties(chemin: _TypeChemin = CHEMIN_DEFAUT) -> list[ResumePartie]:
                 graine=ligne["graine"],
                 date_creation=ligne["date_creation"],
                 date_maj=ligne["date_maj"],
-                joueurs=_joueurs_depuis_json(ligne["joueurs"]),
+                joueurs=joueurs,
                 scores_finaux=None if scores is None else json.loads(scores),
                 gagnants=None if gagnants is None else json.loads(gagnants),
+                scores_actuels=scores_actuels,
             )
         )
     return resumes
