@@ -339,12 +339,14 @@ header {
     padding: 5px;
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
-    /* Taille réduite (issue #41 point 4, resserrée issue #47) pour que plateau +
-       panneau humain + chevalet/brouillon tiennent ensemble dans ~750-800 px de
-       haut sans défilement, y compris à 4 joueurs, en gardant la lisibilité des
-       cases. Le plateau reste l'élément visuellement dominant (issue #45 point 7)
-       face aux panneaux désormais réduits à une ligne. */
-    width: min(52vw, 360px);
+    /* Taille agrandie (issue #55) : les passes de compaction #41/#47 avaient
+       trop réduit le plateau (min(52vw, 360px)), jugé illisible au test manuel.
+       Le plateau étant l'élément visuellement dominant (issue #45 point 7), on
+       revient à une taille nettement plus généreuse — quitte à accepter un peu
+       de défilement vertical à 4 joueurs plutôt que de sacrifier la lisibilité
+       des cases. Cette cible s'accorde à la fenêtre par défaut agrandie à
+       1320×980 (voir lancer_jeu). */
+    width: min(68vw, 560px);
     aspect-ratio: 1 / 1;
 }
 

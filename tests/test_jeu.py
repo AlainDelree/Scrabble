@@ -1012,21 +1012,29 @@ class TestJouerToursIaUi:
         assert partie.index_courant == 0  # rien n'a bougé
         assert res["etat"]["index_courant"] == 0
 
-    def test_enchaine_les_ia_jusqu_a_l_humain(self):
+    def test_un_seul_tour_ia_par_appel(self):
         partie = self._partie_ia()
         partie.index_courant = 1  # tour du premier ordinateur
         # Chevalets sans voyelle jouable : les IA passent leur tour (2 de 3 passes
         # consécutives ne terminent pas une partie à 3 joueurs).
         partie.joueurs[1].chevalet[:] = list("BCDFGHJ")
         partie.joueurs[2].chevalet[:] = list("BCDFGHJ")
+        # Un seul clic = un seul tour d'ordinateur (issue #55) : après cet appel,
+        # c'est au tour du DEUXIÈME ordinateur, pas encore à l'humain.
         res = jouer_tours_ia_ui(partie, None)
         assert res["succes"] is True
-        # Deux tours d'ordinateur enchaînés, puis la main revient à l'humain.
-        assert res["nb_tours"] == 2
-        assert partie.joueur_courant().humain is True
+        assert res["nb_tours"] == 1
+        assert partie.index_courant == 2
+        assert partie.joueur_courant().humain is False
+        assert res["etat"]["index_courant"] == 2
+        assert res["etat"]["tour_humain"] is False
+        # Deuxième clic : le second ordinateur joue, puis la main revient à
+        # l'humain.
+        res2 = jouer_tours_ia_ui(partie, None)
+        assert res2["nb_tours"] == 1
         assert partie.index_courant == 0
-        assert res["etat"]["index_courant"] == 0
-        assert res["etat"]["tour_humain"] is True
+        assert partie.joueur_courant().humain is True
+        assert res2["etat"]["tour_humain"] is True
 
     def test_api_faire_jouer_ia_delegue(self):
         partie = self._partie_ia()
@@ -1034,11 +1042,13 @@ class TestJouerToursIaUi:
         partie.joueurs[1].chevalet[:] = list("BCDFGHJ")
         partie.joueurs[2].chevalet[:] = list("BCDFGHJ")
         api = ApiJeu(partie, 99)
+        # Un seul tour joué par appel (issue #55) : reste au tour du 2e ordinateur.
         res = api.faire_jouer_ia()
         assert res["succes"] is True
-        assert res["nb_tours"] == 2
+        assert res["nb_tours"] == 1
         assert res["etat"]["id_partie"] == 99
-        assert partie.joueur_courant().humain is True
+        assert partie.index_courant == 2
+        assert partie.joueur_courant().humain is False
 
     def test_api_faire_jouer_ia_sans_effet_si_humain(self):
         partie = self._partie_ia()

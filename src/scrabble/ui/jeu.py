@@ -687,23 +687,30 @@ def echanger_chevalet_complet(
 
 
 def jouer_tours_ia_ui(partie: Partie, id_partie: int | None) -> dict[str, Any]:
-    """Enchaîne tous les tours IA consécutifs puis renvoie l'état rafraîchi.
+    """Joue **un seul** tour d'ordinateur puis renvoie l'état rafraîchi.
 
     Cœur non-UI de :meth:`ApiJeu.faire_jouer_ia`. Délègue à
-    :meth:`~scrabble.moteur.partie.Partie.jouer_tours_ia`, qui joue
-    automatiquement les tours des ordinateurs jusqu'au **prochain joueur humain**
-    ou la **fin de partie** (issue #22). Corrige le défaut d'exposition du tour
-    IA (issue #35) : c'est ce chemin — et non la manipulation manuelle du
-    chevalet d'un ordinateur — qui fait avancer le jeu pendant un tour IA.
+    :meth:`~scrabble.moteur.partie.Partie.jouer_tour_ia`, qui joue **exactement
+    un** tour d'ordinateur (issue #55). À l'origine (issue #22) ce chemin
+    enchaînait tous les tours IA consécutifs d'un coup ; le retour de test manuel
+    demande qu'un clic ne fasse jouer qu'un seul ordinateur à la fois, l'humain
+    recliquant pour chaque ordinateur suivant. Corrige toujours le défaut
+    d'exposition du tour IA (issue #35) : c'est ce chemin — et non la
+    manipulation manuelle du chevalet d'un ordinateur — qui fait avancer le jeu
+    pendant un tour IA.
 
-    Renvoie ``{"succes": True, "nb_tours": <int>, "etat": <état public>}``. Si le
+    Renvoie ``{"succes": True, "nb_tours": <int>, "etat": <état public>}`` où
+    ``nb_tours`` vaut 1 si un tour d'ordinateur vient d'être joué, 0 sinon. Si le
     joueur courant est déjà humain (ou la partie terminée), aucun tour n'est joué
     (``nb_tours`` = 0) : l'appel reste sans effet, l'état est simplement renvoyé.
     """
-    entrees = partie.jouer_tours_ia()
+    nb_tours = 0
+    if not partie.terminee and not partie.joueur_courant().humain:
+        partie.jouer_tour_ia()
+        nb_tours = 1
     return {
         "succes": True,
-        "nb_tours": len(entrees),
+        "nb_tours": nb_tours,
         "etat": etat_public(partie, id_partie),
     }
 
@@ -816,13 +823,17 @@ class ApiJeu:
         return echanger_chevalet_complet(self._partie, self._id_partie)
 
     def faire_jouer_ia(self) -> dict[str, Any]:
-        """Fait jouer les tours des ordinateurs jusqu'au prochain humain/fin.
+        """Fait jouer **un seul** tour d'ordinateur (celui du joueur courant).
 
-        Point d'entrée du bouton « ▶ Faire jouer l'ordinateur » (issue #35).
-        S'appuie sur :meth:`~scrabble.moteur.partie.Partie.jouer_tours_ia` :
-        enchaîne tous les tours IA consécutifs, puis renvoie
-        ``{"succes": True, "nb_tours": ..., "etat": <état public rafraîchi>}``.
-        Sans effet si le joueur courant est déjà humain (``nb_tours`` = 0).
+        Point d'entrée du bouton « ▶ Faire jouer l'ordinateur » (issue #35,
+        revu issue #55 : un clic = un seul ordinateur). S'appuie sur
+        :meth:`~scrabble.moteur.partie.Partie.jouer_tour_ia` : joue exactement le
+        tour de l'ordinateur courant, puis renvoie
+        ``{"succes": True, "nb_tours": ..., "etat": <état public rafraîchi>}``
+        (``nb_tours`` = 1 si un tour a été joué). Sans effet si le joueur courant
+        est déjà humain (``nb_tours`` = 0). Si l'ordinateur suivant est encore un
+        ordinateur, le bouton reste disponible : l'humain reclique pour le faire
+        jouer à son tour.
 
         C'est la seule façon prévue de faire avancer le jeu pendant un tour IA :
         l'humain n'a jamais à manipuler le chevalet d'un ordinateur à sa place.
@@ -848,12 +859,14 @@ def lancer_jeu(partie: Partie, id_partie: int | None) -> None:
         "Scrabble - Partie en cours",
         str(chemin_html),
         js_api=api,
-        # Fenêtre par défaut alignée sur la cible de l'issue #47 (~1000-1180 large,
-        # ~750-800 haut) : à cette taille, plateau + panneau du joueur humain +
-        # chevalet/brouillon tiennent ensemble sans défilement vertical, y compris
-        # à 4 joueurs (panneaux réduits à une ligne, en-tête/historique fusionnés).
-        width=1120,
-        height=800,
+        # Fenêtre par défaut agrandie (issue #55) : le plateau et la fenêtre de
+        # l'issue #47 (1120×800, plateau min(52vw, 360px)) étaient jugés trop
+        # petits au test manuel. On agrandit nettement pour redonner sa place au
+        # plateau (désormais min(68vw, 560px), voir jeu.css), quitte à accepter un
+        # léger défilement vertical à 4 joueurs plutôt que de sacrifier la
+        # lisibilité des cases. La fenêtre reste redimensionnable.
+        width=1320,
+        height=980,
         resizable=True,
     )
     api.set_window(window)

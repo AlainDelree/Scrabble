@@ -725,11 +725,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Tour d'un ordinateur (issue #35) ---
 
-    // « ▶ Faire jouer l'ordinateur » : enchaîne tous les tours IA consécutifs
-    // (via Partie.jouer_tours_ia côté moteur) jusqu'au prochain joueur humain ou
-    // la fin de partie, puis recharge l'écran. C'est la SEULE façon de faire
-    // avancer le jeu pendant un tour IA : à aucun moment l'humain ne manipule le
-    // chevalet d'un ordinateur à sa place (correction du défaut d'exposition).
+    // « ▶ Faire jouer l'ordinateur » : joue UN SEUL tour d'ordinateur (celui du
+    // joueur courant, via Partie.jouer_tour_ia côté moteur), puis recharge
+    // l'écran (issue #55). Si l'ordinateur suivant est encore un ordinateur, le
+    // rafraîchissement laisse le bouton visible et cliquable : l'humain reclique
+    // pour chaque ordinateur suivant, et le message « En attente du coup de
+    // [nom]… » reflète alors le nom de l'ordinateur dont c'est le tour. C'est la
+    // SEULE façon de faire avancer le jeu pendant un tour IA : à aucun moment
+    // l'humain ne manipule le chevalet d'un ordinateur à sa place (correction du
+    // défaut d'exposition).
     btnJouerIA.addEventListener('click', async () => {
         btnJouerIA.disabled = true;
         let res;
