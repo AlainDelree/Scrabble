@@ -440,6 +440,18 @@ header {
     box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.06);
 }
 
+/* Groupe identité (issue #63) : réunit le nom et — pour un ordinateur — son
+   niveau de difficulté. Par défaut (panneau du haut) les deux restent sur la
+   MÊME ligne, le niveau juste derrière le nom. Les panneaux latéraux les
+   empilent (voir la règle data-cote ci-dessous). */
+.panneau-identite {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 0 1 auto;
+}
+
 .panneau-nom {
     font-weight: 700;
     overflow: hidden;
@@ -448,6 +460,28 @@ header {
        jamais les autres éléments hors de la ligne. */
     min-width: 0;
     flex: 0 1 auto;
+}
+
+/* Niveau de difficulté de l'ordinateur (issue #63), en violet discret sous le
+   nom (latéraux) ou derrière lui (haut). Ne passe jamais à la ligne par
+   lui-même : c'est le groupe identité qui gère l'empilement. */
+.panneau-niveau {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--couleur-ordinateur);
+    flex-shrink: 0;
+    line-height: 1.1;
+}
+
+/* Panneaux LATÉRAUX (gauche/droite, issue #63) : le niveau passe SOUS le nom.
+   Le groupe identité s'empile en colonne, aligné à gauche. Le panneau du haut
+   n'est pas concerné et garde son groupe identité en ligne (niveau derrière le
+   nom) ; le panneau du bas (humain) n'a pas de niveau. */
+.panneau-joueur[data-cote="gauche"] .panneau-identite,
+.panneau-joueur[data-cote="droite"] .panneau-identite {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
 }
 
 .panneau-score {

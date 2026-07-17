@@ -290,12 +290,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         const badgeOrdinateur = joueur.humain
             ? ''
             : '<span class="panneau-ordi" title="Joueur ordinateur" aria-label="Joueur ordinateur">🖥️</span>';
-        // Ligne unique : avatar · nom · score · lettres · (icône ordinateur) ·
-        // (indicateur à jouer). ``white-space: nowrap`` (CSS) garantit qu'elle ne
-        // se scinde jamais.
+        // Niveau de difficulté de l'ordinateur (issue #63) : libellé français
+        // (rien pour un humain, dont ``joueur.niveau`` vaut ``null``). Le badge
+        // est TOUJOURS placé à l'intérieur du groupe identité, juste après le
+        // nom ; c'est le CSS qui décide de sa disposition selon le côté du
+        // panneau (``data-cote``) : SOUS le nom pour les panneaux latéraux
+        // (gauche/droite), DERRIÈRE le nom sur la même ligne pour le panneau du
+        // haut. Le panneau du bas est réservé à l'humain (aucun niveau).
+        const niveauLabel = joueur.niveau
+            ? ({
+                  DEBUTANT: 'Débutant',
+                  FACILE: 'Facile',
+                  INTERMEDIAIRE: 'Intermédiaire',
+                  EXPERT: 'Expert',
+              }[joueur.niveau] || joueur.niveau)
+            : '';
+        const badgeNiveau = niveauLabel
+            ? `<span class="panneau-niveau">${escapeHtml(niveauLabel)}</span>`
+            : '';
+        // Ligne unique : avatar · [nom (+ niveau)] · score · lettres · (icône
+        // ordinateur) · (indicateur à jouer). Le nom et son niveau sont réunis
+        // dans un groupe identité que le CSS empile (latéraux) ou aligne (haut).
+        // ``white-space: nowrap`` (CSS) garantit que la ligne ne se scinde pas.
         item.innerHTML = `
             ${avatarHtml}
-            <span class="panneau-nom">${escapeHtml(joueur.nom)}</span>
+            <span class="panneau-identite">
+                <span class="panneau-nom">${escapeHtml(joueur.nom)}</span>
+                ${badgeNiveau}
+            </span>
             <span class="panneau-score">${joueur.score} pts</span>
             <span class="panneau-lettres">🎴 ${joueur.nb_lettres}</span>
             ${badgeOrdinateur}
