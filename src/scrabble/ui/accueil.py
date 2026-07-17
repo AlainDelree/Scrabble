@@ -486,7 +486,16 @@ def lancer_accueil(
     complications d'ouverture de fenêtre secondaire au sein d'une boucle déjà
     démarrée.
     """
+    from scrabble.ui.backend_graphique import configurer_backend_graphique
     from scrabble.ui.jeu import lancer_jeu
+
+    # Sélection du backend graphique AVANT le premier ``webview.start()`` du
+    # processus (issue #93) : sous GNOME/Wayland, GTK tourne en client Wayland
+    # natif où ``move()``/``window.x``/``on_top`` sont ignorés. On bascule sur
+    # XWayland (``GDK_BACKEND=x11``) pour rétablir le positionnement du chevalet.
+    # Ici, à l'entrée de l'accueil, précède la toute première ouverture de
+    # display GTK de l'application (l'écran de jeu enchaîné en hérite ensuite).
+    configurer_backend_graphique()
 
     # Session de journalisation ouverte au tout début du lancement (issue #66).
     # Elle est réutilisée par l'écran de jeu en cas d'enchaînement normal (voir

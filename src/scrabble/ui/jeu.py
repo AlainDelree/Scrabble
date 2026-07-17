@@ -1038,9 +1038,14 @@ class ApiJeu:
         pile que le gestionnaire de fenêtres peut contourner — la fenêtre plateau
         peut alors repasser au-dessus du chevalet en prenant le focus. On re-pose
         donc l'indicateur ``on_top`` après chaque interaction (appelé par
-        :meth:`_diffuser`). C'est délibérément non intrusif (aucun vol de focus) :
-        si le WM honore la ré-affirmation, le chevalet remonte ; sinon, il s'agit
-        d'une limite du backend/WM à confirmer en test manuel (voir rapport).
+        :meth:`_diffuser`). C'est délibérément non intrusif (aucun vol de focus).
+
+        Cause racine confirmée (issue #93) : sous Wayland natif, ``set_keep_above``
+        n'est **jamais** honoré par Mutter (« always on top » applicatif ignoré par
+        conception), ce qui expliquait l'échec constant du point 3. La bascule sur
+        XWayland (``GDK_BACKEND=x11``, cf. :mod:`scrabble.ui.backend_graphique`)
+        restaure un client X11 pour lequel Mutter respecte
+        ``_NET_WM_STATE_ABOVE`` : la ré-affirmation ci-dessous reprend alors effet.
         """
         if self._window_chevalet is None:
             return
@@ -1594,6 +1599,12 @@ def lancer_jeu(partie: Partie, id_partie: int | None) -> None:
     cohérent avec l'issue #66). L'accueil rouvert se charge alors lui-même de
     clôturer la session à sa fermeture.
     """
+    # Bascule XWayland avant tout ``webview.start()`` en lancement autonome
+    # (``python -m scrabble.ui.jeu``) : voir issue #93. Sans effet si l'accueil
+    # l'a déjà fait (idempotente) ou hors session Wayland.
+    from scrabble.ui.backend_graphique import configurer_backend_graphique
+
+    configurer_backend_graphique()
     if journal.session_courante() is None:
         journal.demarrer_session()
     journal.info(f"Jeu : écran ouvert (partie #{id_partie}).")
@@ -1759,10 +1770,17 @@ def _repositionner_chevalet(window_chevalet: "webview.Window") -> None:
     try:
         # Sous WebKitGTK, le fil de ``webview.start`` démarre dès l'entrée dans la
         # boucle GUI, parfois AVANT que la fenêtre chevalet soit réellement mappée
-        # à l'écran. Un ``move()`` émis trop tôt est alors ignoré par le
-        # gestionnaire de fenêtres (la fenêtre garde sa position de création — d'où
-        # l'ouverture en haut à gauche constatée, issue #92). On attend donc
-        # explicitement l'événement ``shown`` de la fenêtre avant de la déplacer.
+        # à l'écran. Un ``move()`` émis trop tôt peut être ignoré par le
+        # gestionnaire de fenêtres. On attend donc explicitement l'événement
+        # ``shown`` de la fenêtre avant de la déplacer.
+        #
+        # NB (issue #93) : la cause racine de l'ouverture en haut à gauche n'était
+        # pas ce timing mais le backend Wayland natif, où ``move()`` est purement
+        # ignoré et ``window.x``/``window.y`` renvoient (0, 0). Cette fonction ne
+        # produit un repositionnement effectif qu'une fois l'application basculée
+        # sur XWayland (cf. :func:`scrabble.ui.backend_graphique.
+        # configurer_backend_graphique`, appelée au lancement) ; l'attente de
+        # ``shown`` reste une précaution utile sous X11.
         _attendre_fenetre_affichee(window_chevalet)
         x, y = _position_chevalet()
         journal.info(f"Jeu : repositionnement chevalet — cible calculée ({x}, {y}).")
