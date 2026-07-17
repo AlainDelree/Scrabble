@@ -424,8 +424,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 + (entree.mot ? ` — « ${entree.mot} »` : '');
             afficherDetailScore(entree.detail, titre);
         } else {
-            const quoi = entree.action === 'echange' ? 'un échange de lettres' : 'une passe';
-            afficherMessageSansDetail(entree.nom_joueur, quoi);
+            afficherMessageSansDetail(entree.nom_joueur, entree.action);
         }
     }
 
@@ -1091,13 +1090,19 @@ document.addEventListener('DOMContentLoaded', async () => {
      * (passe ou échange) cliquée dans l'historique (issue #37) : il n'y a alors
      * ni mot formé ni score à détailler.
      */
-    function afficherMessageSansDetail(nomJoueur, quoi) {
+    function afficherMessageSansDetail(nomJoueur, action) {
         scoreTitre.textContent = `Action de ${nomJoueur}`;
         scoreDetail.innerHTML = '';
         const ligne = document.createElement('div');
         ligne.className = 'score-mot';
+        // Le titre de la modale nomme déjà le joueur : le texte reste donc
+        // impersonnel et va droit au but, sans la tournure « Il s'agit de un
+        // échange… » (issue #60).
+        const texte = action === 'echange'
+            ? 'Échange de lettres, tour passé. 0 point.'
+            : 'Tour passé, aucune lettre jouée. 0 point.';
         ligne.innerHTML =
-            `<span class="score-mot-texte">Il s'agit de ${escapeHtml(quoi)}.</span>`;
+            `<span class="score-mot-texte">${escapeHtml(texte)}</span>`;
         scoreDetail.appendChild(ligne);
         scoreTotal.textContent = 'Aucun mot formé — rien à détailler.';
         scoreModale.hidden = false;
@@ -1114,32 +1119,47 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Encart d'historique glissant (issue #37) ---
 
-    // Fermeture/ouverture fiable du menu « Derniers coups » (issue #56).
+    // Fermeture/ouverture fiable du menu « Derniers coups » (issues #56, #60).
     //
-    // Diagnostic : ce <details> (#historique-menu) ne se refermait pas sous
-    // WebKitGTK (moteur de pywebview sous Linux). L'issue #51 ne le concernait
-    // pas (elle portait sur .chevalet-entete[hidden] / .zone-reflexion[hidden])
-    // et l'issue #49 n'avait traité que le <summary> lui-même. Or le piège
-    // WebKitGTK subsiste UN CRAN plus bas : le <summary> conserve bien son
-    // display natif, mais son unique enfant visible, .historique-resume-inner,
-    // est en display:inline-flex et occupe toute la surface cliquable (titre +
-    // compteur + chevron). Sous WebKitGTK, l'action native d'ouverture/fermeture
-    // d'un <details> n'est pas déclenchée de façon fiable quand le clic atterrit
-    // sur un descendant flex/inline-flex du <summary> : la première ouverture
-    // pouvait passer, mais la fermeture au reclic était perdue.
+    // Historique du diagnostic :
+    //  - #49 avait laissé au <summary> son `display: list-item` natif ;
+    //  - #56 avait ajouté `evt.preventDefault()` + bascule manuelle de `open`,
+    //    en supposant que preventDefault annulait à coup sûr l'action native.
     //
-    // Correctif : on cesse de dépendre de l'action native. On annule celle-ci
-    // (preventDefault) et on bascule l'attribut `open` nous-mêmes. Un seul
-    // basculement a lieu par clic dans tous les moteurs (pas de double-bascule),
-    // donc ouverture ET fermeture fonctionnent partout.
+    // Or le symptôme « s'ouvre mais ne se referme pas » a persisté après #56.
+    // Ce qui a été vérifié pour #60 :
+    //  1. Le gestionnaire de #56 est bien présent et unique — aucun second
+    //     `addEventListener` ni handler global ne touche ce <details> (grep du
+    //     projet : un seul point mute `historique-menu` / `.open`).
+    //  2. La liste dépliée (.historique-liste) est en `top: 100% + 6px`, donc
+    //     SOUS le résumé : elle n'intercepte pas le clic de fermeture.
+    //  3. Restait la seule hypothèse compatible avec l'asymétrie ouvre/ne-ferme :
+    //     sous WebKitGTK, `preventDefault()` sur le clic d'un <summary> n'annule
+    //     PAS toujours la bascule native du <details>. La bascule native se
+    //     produit alors quand même et mute déjà `historiqueMenu.open` ; comme
+    //     #56 recalculait la cible avec `!historiqueMenu.open` (donc à partir
+    //     d'un `open` déjà retourné par le moteur), les deux bascules se
+    //     composaient et l'état net repartait à « ouvert » à chaque reclic.
+    //
+    // Correctif #60 : ne plus JAMAIS déduire l'état cible du DOM (que le moteur
+    // peut avoir muté). On tient notre propre intention (`historiqueOuvert`),
+    // basculée d'un cran par clic, puis on force `open` dessus — une fois tout
+    // de suite (cas des moteurs où preventDefault marche) et une fois en
+    // requestAnimationFrame, APRÈS l'éventuelle bascule native, pour qu'elle ne
+    // puisse pas gagner la course. Ouverture ET fermeture deviennent fiables
+    // quel que soit le comportement de preventDefault.
     const historiqueMenu = document.getElementById('historique-menu');
     const historiqueResume = historiqueMenu
         ? historiqueMenu.querySelector('summary')
         : null;
     if (historiqueMenu && historiqueResume) {
+        let historiqueOuvert = historiqueMenu.open;
         historiqueResume.addEventListener('click', (evt) => {
             evt.preventDefault();
-            historiqueMenu.open = !historiqueMenu.open;
+            historiqueOuvert = !historiqueOuvert;
+            const cible = historiqueOuvert;
+            historiqueMenu.open = cible;
+            requestAnimationFrame(() => { historiqueMenu.open = cible; });
         });
     }
 
