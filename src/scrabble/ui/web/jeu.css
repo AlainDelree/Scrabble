@@ -1322,8 +1322,14 @@ header {
 }
 
 /* Le titre du brouillon reprend le gabarit .bloc-titre (voir plus haut) ; on
-   n'ajoute ici que sa marge nulle (il est déjà espacé par .brouillon-entete). */
+   n'ajoute ici que sa marge nulle (il est déjà espacé par .brouillon-entete).
+   On repasse toutefois en display: inline (le gabarit .bloc-titre est block) :
+   sinon le titre occupe toute la largeur de sa ligne et repousse l'icône « i »
+   (.btn-aide-info), pourtant inline, à la ligne du dessous. En inline, texte du
+   titre et icône s'enchaînent sur la même ligne et ne se replient qu'en cas de
+   manque réel de place (issue #88). */
 .brouillon-titre {
+    display: inline;
     margin-bottom: 0;
 }
 
