@@ -110,7 +110,16 @@ body {
     writing-mode: vertical-rl; /* axe d'écriture vertical : lettres empilées de haut en bas */
     text-orientation: upright; /* chaque lettre reste droite/lisible, pas de rotation à 90° */
     margin: 0;
-    font-size: clamp(1.6rem, 3.4vw, 2.7rem);
+    /* Taille agrandie (issue #78, suite de #70/#72) : le décor était jugé trop
+       petit. On monte les bornes du clamp() pour que la colonne des 8 lettres
+       « SCRABBLE » s'étende jusqu'à environ la moitié de la hauteur de l'écran
+       (fenêtre par défaut 980px → ~490px de haut : à la borne max 3.4rem ≈ 54px,
+       8 lettres empilées + interlettrage font ≈ 490px, soit la moitié). On reste
+       responsive (le clamp descend à 2.2rem sur les fenêtres plus étroites). La
+       colonne demeure logée dans la gouttière gauche vide (≈70px à 1320px, la
+       largeur de glyphe restant < 40px), sans toucher sac / historique /
+       panneaux / plateau, tous centrés dans la colonne de contenu. */
+    font-size: clamp(2.2rem, 4.6vw, 3.4rem);
     font-weight: 800;
     letter-spacing: 0.14em;
     line-height: 1;
@@ -949,24 +958,20 @@ header {
     cursor: not-allowed;
 }
 
-/* Contraste sur le tapis vert (issue #77, suite de #75/#70). Les liens discrets
-   de la barre globale (« ↻ Resynchroniser », « 🏠 Retour au menu ») reposent
-   directement sur le feutre vert : leur gris neutre par défaut (#6a6a6a, pensé
-   pour un fond clair) y est peu lisible, comme les textes de l'accueil corrigés
-   dans la même issue. Sur le vert, on les passe en blanc avec la même ombre
-   portée légère que le décor « SCRABBLE » (issue #70), pour un contraste net et
-   confortable adapté à un public âgé. Les autres liens discrets restent DANS des
-   cartes claires (ex. « Remettre ses lettres » dans .bloc-chevalet) et gardent
-   donc le gris d'origine : seul le lien de la barre globale est reciblé ici. */
-.barre-globale .lien-discret {
-    color: rgba(255, 255, 255, 0.92);
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-}
-
-.barre-globale .lien-discret:hover:not(:disabled) {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.15);
-    text-decoration: underline;
+/* Boutons utilitaires de la barre globale (« ↻ Resynchroniser », « 🏠 Retour au
+   menu »). Historique : d'abord liens discrets (issue #41/#74), puis passés en
+   blanc pour le contraste sur le tapis vert (issue #77) ; jugés malgré tout trop
+   peu visibles pour un public senior (issue #78), ils deviennent ici de vrais
+   boutons. On réutilise .btn + .btn-secondaire (fond gris neutre plein, bien
+   contrasté sur le feutre vert), et cette variante .btn-utilitaire les rend un
+   peu plus compacts que les boutons d'action de jeu — ils restent clairement
+   repérables et cliquables au premier coup d'œil, mais visuellement en retrait
+   du vert primaire (« Faire jouer l'ordinateur », « Jouer ») pour ne pas
+   suggérer une action de jeu aussi fréquente que poser un mot. */
+.btn-utilitaire {
+    padding: 8px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
 }
 
 /* Chevalet */

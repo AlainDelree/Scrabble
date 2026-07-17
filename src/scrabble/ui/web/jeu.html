@@ -57,27 +57,30 @@
                     <ol id="historique-liste" class="historique-liste" aria-live="polite"></ol>
                 </details>
 
-                <!-- Bouton « Resynchroniser » (issue #41, point 3). Décision :
-                     CONSERVÉ mais clarifié et rendu discret. L'affichage se met
-                     déjà à jour tout seul après chaque action (pose, passe,
-                     échange, tour d'ordinateur) ; son seul rôle légitime est de
-                     forcer un rechargement depuis le moteur en cas de doute sur
-                     la synchronisation de la vue. Libellé et style reflètent donc
-                     ce rôle secondaire : petit lien neutre plutôt qu'un bouton
-                     plein, comme le bouton d'échange complet. -->
-                <button id="btn-rafraichir" class="lien-discret"
+                <!-- Bouton « Resynchroniser » (issue #41, point 3 ; issue #78).
+                     CONSERVÉ. L'affichage se met déjà à jour tout seul après
+                     chaque action (pose, passe, échange, tour d'ordinateur) ; son
+                     seul rôle légitime est de forcer un rechargement depuis le
+                     moteur en cas de doute sur la synchronisation de la vue.
+                     Autrefois un lien discret : jugé trop peu visible pour un
+                     public senior (issue #78). Rendu ici en vrai bouton
+                     secondaire (fond neutre gris, padding confortable) —
+                     clairement repérable et cliquable, mais visuellement en
+                     retrait des boutons d'action de jeu (vert primaire) pour ne
+                     pas suggérer une action aussi fréquente que poser un mot. -->
+                <button id="btn-rafraichir" class="btn btn-secondaire btn-utilitaire"
                         title="Recharger l'affichage depuis le moteur (en cas de doute sur la synchronisation)">
                     ↻ Resynchroniser
                 </button>
 
-                <!-- Bouton « Retour au menu » (issue #74). Discret (même style
-                     que « Resynchroniser »), disponible à tout moment. Ferme
-                     l'écran de jeu et rouvre l'accueil ; la partie reste
-                     persistée et reprenable. Si des lettres sont posées mais non
-                     validées, un avertissement (modale légère ci-dessous) évite
-                     de perdre une réflexion en cours par erreur de clic ; sans
-                     lettre en attente, le retour est immédiat. -->
-                <button id="btn-retour-menu" class="lien-discret"
+                <!-- Bouton « Retour au menu » (issue #74 ; issue #78). Même style
+                     de bouton secondaire que « Resynchroniser », disponible à tout
+                     moment. Ferme l'écran de jeu et rouvre l'accueil ; la partie
+                     reste persistée et reprenable. Si des lettres sont posées mais
+                     non validées, un avertissement (modale légère ci-dessous)
+                     évite de perdre une réflexion en cours par erreur de clic ;
+                     sans lettre en attente, le retour est immédiat. -->
+                <button id="btn-retour-menu" class="btn btn-secondaire btn-utilitaire"
                         title="Fermer la partie et revenir au menu d'accueil (la partie reste reprenable)">
                     🏠 Retour au menu
                 </button>
