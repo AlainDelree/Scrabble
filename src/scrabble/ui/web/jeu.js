@@ -462,14 +462,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Rend la zone de brouillon : une case par lettre (dans l'ordre courant),
-     * cliquable pour un échange de deux positions. Le bloc entier est masqué
-     * tant que le chevalet n'est pas révélé (ou s'il est vide).
+     * Rend la zone de brouillon : une case par emplacement (dans l'ordre
+     * courant). Le bloc entier est masqué tant que le chevalet n'est pas révélé
+     * (ou s'il est vide).
      *
-     * Choix d'interaction retenu : échange par deux clics. Un premier clic
-     * sélectionne un emplacement (surbrillance), un second clic échange les deux
-     * lettres. Recliquer le même emplacement annule la sélection. Simple,
-     * sans dépendance à l'API de glisser-déposer (fiable sous pywebview).
+     * Modèle (issue #48) : ``brouillonLettres`` est un tableau de 9 emplacements
+     * (N lettres du chevalet + 2 emplacements vides, soit 7+2 = 9 en jeu
+     * normal). Chaque case est soit une lettre ``{lettre, valeur, joker}``, soit
+     * ``null`` (emplacement vide). Il y a TOUJOURS exactement 2 vides et jamais
+     * de saisie de nouvelle lettre : les vides ne se remplissent que par un
+     * déplacement depuis un autre emplacement.
+     *
+     * Interactions retenues (sans glisser-déposer, fiable sous pywebview) :
+     *  - clic sur une lettre puis clic sur un emplacement vide → déplacement ;
+     *  - clic sur une lettre puis clic sur une autre lettre → échange ;
+     *  - clic droit sur une lettre → renvoi vers le vide le plus proche de la
+     *    fin (voir gestionnaire ``contextmenu``).
+     * Un premier clic sélectionne (surbrillance), recliquer annule la sélection.
      */
     function rendreBrouillon() {
         const afficher = chevaletVisible && brouillonLettres.length > 0;
@@ -480,6 +489,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         brouillonEl.innerHTML = '';
         brouillonLettres.forEach((l, index) => {
+            // Emplacement vide : case cliquable (cible d'un déplacement) mais
+            // qui ne fait pas partie du « mot » — la vérification dictionnaire
+            // l'ignore (voir btnVerifier). Elle porte un data-index pour être
+            // reconnue comme cible par le gestionnaire de clic.
+            if (l === null) {
+                const vide = document.createElement('div');
+                vide.className = 'brouillon-case-vide';
+                vide.dataset.index = index;
+                vide.title = 'Emplacement vide : cliquez d\'abord une lettre, '
+                    + 'puis ici pour l\'y déplacer. Figure aussi une lettre déjà '
+                    + 'posée sur le plateau à intégrer à la réflexion.';
+                brouillonEl.appendChild(vide);
+                return;
+            }
             const c = document.createElement('div');
             c.className = 'brouillon-case' + (l.joker ? ' joker' : '');
             if (index === brouillonSelection) {
@@ -490,20 +513,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             c.dataset.index = index;
             brouillonEl.appendChild(c);
         });
-        // Deux cases vides d'aide visuelle (issue #45, point 6) : elles figurent
-        // « une lettre déjà présente sur le plateau » à prendre en compte dans la
-        // réflexion. PURE décoration — pas de classe « brouillon-case », donc
-        // aucun échange au clic ne les vise, et elles ne font pas partie de
-        // brouillonLettres : la vérification dictionnaire les ignore d'office
-        // (voir btnVerifier). Elles restent toujours en fin de ligne.
-        for (let i = 0; i < 2; i++) {
-            const vide = document.createElement('div');
-            vide.className = 'brouillon-case-vide';
-            vide.setAttribute('aria-hidden', 'true');
-            vide.title = 'Emplacement figurant une lettre déjà posée sur le '
-                + 'plateau (aide visuelle, sans saisie).';
-            brouillonEl.appendChild(vide);
-        }
     }
 
     /**
@@ -584,8 +593,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 chevaletLettres = res.lettres;
                 rendreChevaletRevele(chevaletLettres);
                 // Le brouillon reçoit une COPIE des lettres révélées (réflexion
-                // indépendante : réordonner ici n'affecte pas le chevalet).
+                // indépendante : réordonner ici n'affecte pas le chevalet), plus
+                // 2 emplacements vides finaux (issue #48) : 7 lettres + 2 vides
+                // = 9 emplacements en jeu normal. Les vides sont déplaçables
+                // librement par le joueur (voir gestionnaires de clic).
                 brouillonLettres = chevaletLettres.map(l => ({ ...l }));
+                if (brouillonLettres.length > 0) {
+                    brouillonLettres.push(null, null);
+                }
             } else {
                 chevaletVisible = false;
                 chevaletLettres = [];
@@ -719,17 +734,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Zone de brouillon (réflexion indépendante) ---
 
-    // Échange de deux emplacements du brouillon par deux clics successifs.
+    // Déplacement / échange par deux clics successifs (issue #48).
+    //  - 1er clic sur une lettre → sélection (surbrillance).
+    //  - 2e clic sur la MÊME case → annule la sélection.
+    //  - 2e clic sur une AUTRE lettre → échange des deux (comportement
+    //    historique).
+    //  - 2e clic sur un emplacement VIDE → déplacement de la lettre
+    //    sélectionnée vers ce vide, sa case d'origine devenant vide.
+    // Un premier clic sur un vide ne fait rien (rien à sélectionner). Aucune
+    // saisie de lettre : les vides ne se remplissent que par déplacement.
     brouillonEl.addEventListener('click', (evt) => {
-        const caseEl = evt.target.closest('.brouillon-case');
+        const caseEl = evt.target.closest('.brouillon-case, .brouillon-case-vide');
         if (!caseEl) {
             return;
         }
         const index = Number(caseEl.dataset.index);
+        const estVide = brouillonLettres[index] === null;
         if (brouillonSelection === null) {
-            brouillonSelection = index;
+            // On ne peut sélectionner qu'une lettre, jamais un vide.
+            if (!estVide) {
+                brouillonSelection = index;
+            }
         } else if (brouillonSelection === index) {
             brouillonSelection = null;  // reclic : on annule la sélection
+        } else if (estVide) {
+            // Déplacement : la lettre sélectionnée occupe le vide, son
+            // emplacement d'origine devient vide à son tour.
+            brouillonLettres[index] = brouillonLettres[brouillonSelection];
+            brouillonLettres[brouillonSelection] = null;
+            brouillonSelection = null;
         } else {
             // Échange des deux lettres, puis on efface la sélection.
             const tmp = brouillonLettres[brouillonSelection];
@@ -740,13 +773,45 @@ document.addEventListener('DOMContentLoaded', async () => {
         rendreBrouillon();
     });
 
+    // Clic droit sur une lettre → la renvoie vers l'emplacement vide le plus
+    // proche de la fin (issue #48). L'emplacement d'origine est libéré PUIS la
+    // lettre se place sur le plus grand index vide DISPONIBLE AVANT l'action
+    // (donc à l'exclusion de son propre emplacement d'origine). Le menu
+    // contextuel du navigateur est supprimé pour cet élément.
+    // Cas limite : s'il n'existe aucun autre vide (l'unique vide serait
+    // l'origine elle-même), on ne fait rien.
+    brouillonEl.addEventListener('contextmenu', (evt) => {
+        const caseEl = evt.target.closest('.brouillon-case');
+        if (!caseEl) {
+            return;  // clic droit hors d'une lettre : menu natif conservé
+        }
+        evt.preventDefault();
+        const origine = Number(caseEl.dataset.index);
+        // Vides disponibles AVANT l'action (l'origine est occupée, donc jamais
+        // dans cette liste : l'exclusion demandée est ainsi automatique).
+        const vides = [];
+        brouillonLettres.forEach((l, i) => {
+            if (l === null) {
+                vides.push(i);
+            }
+        });
+        if (vides.length === 0) {
+            return;  // aucun autre vide : rien à faire (cas limite un seul vide)
+        }
+        const cible = Math.max(...vides);
+        brouillonLettres[cible] = brouillonLettres[origine];
+        brouillonLettres[origine] = null;
+        brouillonSelection = null;
+        rendreBrouillon();
+    });
+
     // Vérifier le mot du brouillon dans le dictionnaire (lecture seule).
-    // Les deux cases vides d'aide visuelle (issue #45, point 6) NE font pas
-    // partie de brouillonLettres : elles sont donc naturellement ignorées ici
-    // (traitées comme un simple « trou » dans la séquence). Seules les vraies
-    // lettres du brouillon composent la chaîne testée.
+    // Les emplacements vides (null) NE font pas partie du mot : ils sont
+    // ignorés ici quelle que soit leur position (traités comme un simple
+    // « trou » dans la séquence). Seules les vraies lettres composent la
+    // chaîne testée.
     btnVerifier.addEventListener('click', async () => {
-        const lettres = brouillonLettres.map(l => l.lettre);
+        const lettres = brouillonLettres.filter(l => l !== null).map(l => l.lettre);
         let res;
         try {
             res = await api.verifier_mot(lettres);

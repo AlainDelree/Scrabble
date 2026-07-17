@@ -886,7 +886,8 @@ header {
     margin-bottom: 0;
 }
 
-/* Emplacements de brouillon : 7 cases où réordonner ses lettres. */
+/* Emplacements de brouillon : 9 cases (7 lettres + 2 vides) où réordonner et
+   déplacer librement ses lettres (issue #48). */
 .brouillon {
     display: flex;
     gap: 6px;
@@ -940,12 +941,12 @@ header {
     opacity: 0.8;
 }
 
-/* Cases vides d'aide visuelle en fin de brouillon (issue #45, point 6). Elles
-   figurent « une lettre déjà présente sur le plateau » à intégrer à la réflexion.
-   PURE décoration : mêmes dimensions qu'une case du brouillon mais vides,
-   pointillées et estompées, sans curseur pointeur ni effet de survol — aucune
-   interaction, aucune saisie (elles ne portent volontairement PAS la classe
-   .brouillon-case, donc le gestionnaire de clic les ignore). */
+/* Emplacements vides du brouillon (issue #48). Toujours au nombre de 2, leur
+   position est librement choisie par le joueur : ils figurent aussi « une lettre
+   déjà posée sur le plateau » à intégrer à la réflexion. Ce sont désormais des
+   CIBLES de déplacement : mêmes dimensions qu'une case, pointillées et estompées,
+   mais cliquables (curseur pointeur + léger survol) pour y déposer la lettre
+   préalablement sélectionnée. La vérification dictionnaire les ignore. */
 .brouillon-case-vide {
     width: 40px;
     height: 44px;
@@ -954,6 +955,14 @@ header {
     background: rgba(201, 169, 97, 0.10);
     opacity: 0.7;
     flex: 0 0 auto;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.1s, background 0.1s;
+}
+
+.brouillon-case-vide:hover {
+    transform: translateY(-2px);
+    opacity: 0.95;
+    background: rgba(201, 169, 97, 0.20);
 }
 
 .brouillon-vide {
