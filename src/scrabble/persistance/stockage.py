@@ -392,6 +392,27 @@ def finaliser_partie(
         )
 
 
+def supprimer_partie(id_partie: int, chemin: _TypeChemin = CHEMIN_DEFAUT) -> bool:
+    """Supprime définitivement la partie ``id_partie`` et toutes ses actions.
+
+    Renvoie ``True`` si une partie portait cet identifiant (et a donc été
+    supprimée), ``False`` sinon. Les actions rattachées sont retirées d'abord :
+    la contrainte de clé étrangère ``actions.id_partie -> parties.id``
+    (``PRAGMA foreign_keys = ON``) empêcherait sinon la suppression de la ligne
+    ``parties``.
+
+    Usage prévu (issue #67) : annuler une partie tout juste créée
+    (:func:`demarrer_suivi`) mais dont aucun coup n'a encore été joué, afin
+    qu'elle n'apparaisse pas comme partie fantôme dans la liste de reprise.
+    """
+    with _connexion(chemin) as connexion:
+        connexion.execute("DELETE FROM actions WHERE id_partie = ?", (id_partie,))
+        curseur = connexion.execute(
+            "DELETE FROM parties WHERE id = ?", (id_partie,)
+        )
+        return curseur.rowcount > 0
+
+
 def lister_parties(chemin: _TypeChemin = CHEMIN_DEFAUT) -> list[ResumePartie]:
     """Résumé de chaque partie, triées par date de mise à jour décroissante."""
     with _connexion(chemin) as connexion:

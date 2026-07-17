@@ -108,7 +108,12 @@
             <div id="tirage-sac-zone" class="tirage-sac-zone" hidden></div>
             <p id="tirage-ordre-resultat" class="tirage-ordre-resultat"></p>
             <div class="modale-actions">
-                <button type="button" class="btn btn-primaire" id="btn-continuer-tirage">
+                <button type="button" class="btn btn-secondaire" id="btn-annuler-tirage">
+                    Annuler
+                </button>
+                <!-- Désactivé jusqu'à la fin complète du tirage (issue #67) :
+                     réactivé par le JS une fois l'ordre de jeu affiché. -->
+                <button type="button" class="btn btn-primaire" id="btn-continuer-tirage" disabled>
                     Continuer
                 </button>
             </div>

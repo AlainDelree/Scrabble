@@ -42,6 +42,7 @@ from scrabble.persistance.stockage import (
     finaliser_partie,
     lister_parties,
     reprendre_partie,
+    supprimer_partie,
 )
 
 # Petit dictionnaire de mots plausibles à poser en ouverture : il en faut
@@ -274,3 +275,37 @@ def test_reprendre_partie_inconnue_leve(tmp_path):
     demarrer_suivi(creer_partie(["Alice"], _trie(), graine=5), chemin)
     with pytest.raises(KeyError):
         reprendre_partie(999, _trie(), chemin)
+
+
+# --------------------------------------------------------------------------- #
+# Suppression d'une partie (issue #67)
+# --------------------------------------------------------------------------- #
+
+def test_supprimer_partie_retire_de_la_liste(tmp_path):
+    chemin = tmp_path / "parties.db"
+    id1 = demarrer_suivi(creer_partie(["Alice"], _trie(), graine=1), chemin)
+    id2 = demarrer_suivi(creer_partie(["Bob"], _trie(), graine=2), chemin)
+
+    assert supprimer_partie(id1, chemin) is True
+    # Seule la partie non supprimée subsiste.
+    assert [r.id for r in lister_parties(chemin)] == [id2]
+
+
+def test_supprimer_partie_avec_actions(tmp_path):
+    """La suppression retire aussi les actions rattachées (clé étrangère)."""
+    chemin = tmp_path / "parties.db"
+    partie, id_partie, _trie_ = _partie_coup_puis_echange(chemin)
+
+    assert supprimer_partie(id_partie, chemin) is True
+    assert lister_parties(chemin) == []
+    # La partie n'est plus reprenable : plus aucune ligne.
+    with pytest.raises(KeyError):
+        reprendre_partie(id_partie, _trie_, chemin)
+
+
+def test_supprimer_partie_inconnue_renvoie_faux(tmp_path):
+    chemin = tmp_path / "parties.db"
+    demarrer_suivi(creer_partie(["Alice"], _trie(), graine=5), chemin)
+    assert supprimer_partie(999, chemin) is False
+    # Aucune partie existante n'a été touchée.
+    assert len(lister_parties(chemin)) == 1

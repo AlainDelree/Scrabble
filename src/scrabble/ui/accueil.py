@@ -58,6 +58,7 @@ from scrabble.persistance.stockage import (
     demarrer_suivi,
     lister_parties,
     reprendre_partie,
+    supprimer_partie,
 )
 from scrabble.reglages import lire_reglage, modifier_reglage
 from scrabble.ui.noms_ordinateur import tirer_prenoms
@@ -399,6 +400,39 @@ class ApiAccueil:
         except Exception as e:
             journal.erreur(f"Accueil : échec de la reprise de la partie #{id_partie}.", e)
             return {"succes": False, "erreur": str(e)}
+
+    def annuler_partie_creee(self) -> dict[str, Any]:
+        """Annule la partie tout juste créée et la retire de la persistance (issue #67).
+
+        Appelée quand l'utilisateur clique « Annuler » dans la modale de tirage
+        d'ordre : à ce stade la partie a déjà été créée (:func:`creer_partie`) et
+        suivie (:func:`demarrer_suivi`), mais aucun coup n'a encore été joué. On
+        la supprime donc de la base (:func:`supprimer_partie`) pour qu'elle
+        n'apparaisse pas comme partie fantôme dans « Reprendre une partie »
+        (rien à perdre). L'écran d'accueil reste ouvert : le JS ferme la modale
+        et ramène l'utilisateur à la configuration des joueurs.
+
+        Retourne ``{"succes": True, "supprimee": bool}`` (``supprimee`` faux s'il
+        n'y avait rien à supprimer) ou ``{"succes": False, "erreur": ...}``.
+        """
+        id_partie = self._id_partie
+        if id_partie is None:
+            # Rien à annuler : aucune partie n'a été créée/suivie.
+            return {"succes": True, "supprimee": False}
+        try:
+            supprimee = supprimer_partie(id_partie)
+        except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
+            journal.erreur(
+                f"Accueil : échec de l'annulation de la partie #{id_partie}.", e
+            )
+            return {"succes": False, "erreur": str(e)}
+        self._partie = None
+        self._id_partie = None
+        journal.info(
+            f"Accueil : partie #{id_partie} annulée et supprimée "
+            "(aucun coup joué)."
+        )
+        return {"succes": True, "supprimee": supprimee}
 
     def obtenir_niveaux(self) -> list[str]:
         """Retourne la liste des niveaux de difficulté (labels français)."""

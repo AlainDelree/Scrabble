@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tirageOrdreResultat = document.getElementById('tirage-ordre-resultat');
     const tirageSacZone = document.getElementById('tirage-sac-zone');
     const btnContinuerTirage = document.getElementById('btn-continuer-tirage');
+    const btnAnnulerTirage = document.getElementById('btn-annuler-tirage');
 
     // Formulaires
     const formHumain = document.getElementById('form-humain');
@@ -400,8 +401,17 @@ document.addEventListener('DOMContentLoaded', async () => {
      * reprend. Le résultat « Ordre de jeu : … » n'apparaît qu'une fois TOUTES
      * les lettres révélées.
      *
+     * Deux garde-fous (issue #67) :
+     * - « Continuer » reste désactivé tant que TOUS les tirages ne sont pas
+     *   terminés (y compris l'interaction « secouer puis tirer » du/des joueurs
+     *   humains) ; il ne devient actif qu'une fois l'ordre de jeu final affiché.
+     * - « Annuler » est actif à tout moment : un clic supprime la partie
+     *   fraîchement créée (``api.annuler_partie_creee()``) et interrompt la
+     *   séquence, même en plein tour humain, pour revenir à la configuration.
+     *
      * @param {{tirages: Array<{nom: string, lettre: string, humain: boolean}>, ordre: string[]}} tirage
-     * @returns {Promise<void>} résolue quand l'utilisateur valide la modale.
+     * @returns {Promise<boolean>} ``true`` si l'utilisateur valide (« Continuer »),
+     *   ``false`` s'il annule (« Annuler ») — la partie créée est alors supprimée.
      */
     async function afficherTirageOrdre(tirage) {
         tirageLettres.innerHTML = '';
@@ -409,6 +419,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         tirageOrdreResultat.classList.remove('visible');
         tirageSacZone.hidden = true;
         tirageSacZone.innerHTML = '';
+
+        // La modale est réutilisée d'un lancement à l'autre : on force « Continuer »
+        // à l'état désactivé tant que le tirage n'est pas mené à son terme.
+        btnContinuerTirage.disabled = true;
 
         const lignes = tirage.tirages.map(t => {
             const li = document.createElement('li');
@@ -419,28 +433,52 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         afficherModale(modaleTirage);
 
-        for (let i = 0; i < lignes.length; i++) {
-            const t = tirage.tirages[i];
-            if (t.humain) {
-                await tourHumain(lignes[i], t);
-            } else {
-                await attendre(DELAI_LIGNE);
-                lignes[i].classList.add('visible');
-            }
-        }
-
-        await attendre(DELAI_LIGNE);
-        tirageOrdreResultat.textContent =
-            'Ordre de jeu : ' + tirage.ordre.map(String).join(', ');
-        tirageOrdreResultat.classList.add('visible');
-
-        await new Promise((resolve) => {
-            btnContinuerTirage.onclick = () => {
-                cacherModale(modaleTirage);
-                btnContinuerTirage.onclick = null;
-                resolve();
-            };
+        // Promesse d'annulation : « Annuler » peut résoudre à tout instant, même
+        // pendant que la séquence de révélation attend un tour humain.
+        const annulation = new Promise((resolve) => {
+            btnAnnulerTirage.onclick = () => resolve(true);
         });
+
+        // Séquence de révélation, puis attente du clic « Continuer ».
+        const sequence = (async () => {
+            for (let i = 0; i < lignes.length; i++) {
+                const t = tirage.tirages[i];
+                if (t.humain) {
+                    await tourHumain(lignes[i], t);
+                } else {
+                    await attendre(DELAI_LIGNE);
+                    lignes[i].classList.add('visible');
+                }
+            }
+
+            await attendre(DELAI_LIGNE);
+            tirageOrdreResultat.textContent =
+                'Ordre de jeu : ' + tirage.ordre.map(String).join(', ');
+            tirageOrdreResultat.classList.add('visible');
+
+            // Tirage terminé : « Continuer » devient enfin actif.
+            btnContinuerTirage.disabled = false;
+            await new Promise((resolve) => {
+                btnContinuerTirage.onclick = () => resolve();
+            });
+            return false;  // validation normale
+        })();
+
+        const annule = await Promise.race([annulation, sequence]);
+
+        // Nettoyage des gestionnaires (la séquence peut rester orpheline si
+        // l'annulation l'emporte pendant un tour humain — la modale est cachée).
+        btnContinuerTirage.onclick = null;
+        btnAnnulerTirage.onclick = null;
+        tirageSacZone.hidden = true;
+        tirageSacZone.innerHTML = '';
+
+        if (annule) {
+            // Supprime la partie créée entre-temps de la persistance (issue #67).
+            await api.annuler_partie_creee();
+        }
+        cacherModale(modaleTirage);
+        return !annule;
     }
 
     /**
@@ -560,7 +598,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             // (issue #54) : l'utilisateur voit la lettre tirée par chaque
             // joueur et l'ordre de jeu qui en résulte, puis clique « Continuer ».
             if (result.tirage_ordre) {
-                await afficherTirageOrdre(result.tirage_ordre);
+                const continuer = await afficherTirageOrdre(result.tirage_ordre);
+                if (!continuer) {
+                    // Annulation (issue #67) : la partie créée a été supprimée de
+                    // la persistance. On revient à la configuration des joueurs
+                    // sans fermer l'accueil ni ouvrir l'écran de jeu. Le bouton
+                    // est réactivé et la liste de reprise rafraîchie (la partie
+                    // fantôme ne doit plus y figurer).
+                    btnLancer.disabled = false;
+                    btnLancer.textContent = 'Lancer la partie';
+                    await chargerPartiesEnCours();
+                    return;
+                }
             }
             // Fermer la fenêtre d'accueil depuis Python — l'écran de jeu
             // s'ouvrira automatiquement après la fermeture. En cas d'échec,

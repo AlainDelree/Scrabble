@@ -431,6 +431,77 @@ class TestApiAccueilTirageOrdre:
         assert lettres_dans_ordre == sorted(lettres_dans_ordre)
 
 
+class TestApiAccueilAnnulerPartie:
+    """Tests de annuler_partie_creee (issue #67).
+
+    Annuler depuis la modale de tirage doit supprimer la partie fraîchement
+    créée de la persistance et réinitialiser l'état interne, sans fermer
+    l'accueil.
+    """
+
+    def test_annuler_supprime_partie_et_reinitialise(self, monkeypatch):
+        """L'annulation supprime la partie suivie et remet l'état à zéro."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        supprimees = []
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.supprimer_partie",
+            lambda id_partie: supprimees.append(id_partie) or True,
+        )
+
+        api = ApiAccueil()
+        api._partie = object()  # partie factice, non utilisée par l'annulation
+        api._id_partie = 42
+
+        result = api.annuler_partie_creee()
+
+        assert result["succes"] is True
+        assert result["supprimee"] is True
+        assert supprimees == [42]
+        # État remis à zéro : plus de partie ni d'identifiant en mémoire.
+        assert api._partie is None
+        assert api._id_partie is None
+
+    def test_annuler_sans_partie_ne_fait_rien(self, monkeypatch):
+        """Sans partie créée, l'annulation réussit sans appeler la suppression."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        appels = []
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.supprimer_partie",
+            lambda id_partie: appels.append(id_partie) or True,
+        )
+
+        api = ApiAccueil()  # aucun _id_partie
+        result = api.annuler_partie_creee()
+
+        assert result["succes"] is True
+        assert result["supprimee"] is False
+        assert appels == []  # suppression jamais tentée
+
+    def test_annuler_remonte_erreur_de_suppression(self, monkeypatch):
+        """Une erreur de suppression est remontée sans réinitialiser l'état."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        def _echoue(id_partie):
+            raise RuntimeError("base verrouillée")
+
+        monkeypatch.setattr("scrabble.ui.accueil.supprimer_partie", _echoue)
+
+        api = ApiAccueil()
+        partie_factice = object()
+        api._partie = partie_factice
+        api._id_partie = 7
+
+        result = api.annuler_partie_creee()
+
+        assert result["succes"] is False
+        assert "erreur" in result
+        # L'état n'a pas été effacé : la partie reste connue.
+        assert api._partie is partie_factice
+        assert api._id_partie == 7
+
+
 class TestApiAccueilPartieUnique:
     """Tests de lister_parties_en_cours : une seule partie proposée (issue #54)."""
 
