@@ -1,0 +1,560 @@
+/* commun.css — variables et composants partagés par les deux fenêtres de jeu
+   (plateau + chevalet), issue #90. Chaque fenêtre charge d'abord ce fichier,
+   puis sa feuille spécifique (jeu.css / chevalet.css). On y regroupe : les
+   variables de thème, le reset, les tuiles, les boutons, les modales (choix du
+   joker + détail du score), les cases de chevalet/brouillon et les popovers
+   d'aide — tout ce qui a un rendu identique d'une fenêtre à l'autre. */
+
+:root {
+    --couleur-fond: #f5f5f0;
+    /* Tapis de jeu vert (issue #59, point 3). */
+    --tapis-vert: #35654d;
+    --tapis-vert-clair: #3f7359;
+    --tapis-vert-fonce: #2a4f3c;
+    --couleur-texte: #2c2c2c;
+    --couleur-primaire: #2e7d32;
+    --couleur-primaire-hover: #1b5e20;
+    --couleur-humain: #1565c0;
+    --couleur-humain-fond: #e3f2fd;
+    --couleur-ordinateur: #6a1b9a;
+    --couleur-ordinateur-fond: #f3e5f5;
+    --couleur-bordure: #ccc;
+    --rayon-bordure: 8px;
+    --ombre: 0 2px 8px rgba(0, 0, 0, 0.15);
+
+    /* Habillage des cases bonus : valeurs par défaut (thème « classique »). */
+    --plateau-fond: #b8935a;
+    --case-normale: #e8dcbf;
+    --case-md: #ef6d86;
+    --case-mt: #d21f24;
+    --case-ld: #7cc0ef;
+    --case-lt: #155fa8;
+    --case-centre: #ef6d86;
+    --label-sur-clair: rgba(0, 0, 0, 0.68);
+    --label-sur-fonce: rgba(255, 255, 255, 0.95);
+    --label-poids: 600;
+    --label-taille: clamp(0.4rem, 1.4vw, 0.62rem);
+
+    /* Tuiles posées : fond ivoire (issue #40). */
+    --tuile-fond: #fbf9f3;
+    --tuile-bordure: #c9a961;
+    --tuile-texte: #3b2f1a;
+    --tuile-joker-bordure: #8e44ad;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Tuiles (plateau + indices chevalet)                                          */
+/* --------------------------------------------------------------------------- */
+.tuile {
+    position: absolute;
+    inset: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--tuile-fond);
+    border: 1px solid var(--tuile-bordure);
+    border-radius: 3px;
+    color: var(--tuile-texte);
+    font-size: clamp(0.55rem, 1.9vw, 0.95rem);
+    font-weight: 700;
+    text-transform: uppercase;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.32);
+}
+
+.tuile-joker {
+    border: 2px dashed var(--tuile-joker-bordure);
+    color: var(--tuile-joker-bordure);
+}
+
+/* Tuile en attente de validation (orange vif, issue #44). */
+.tuile-attente {
+    background: #ffe1c2;
+    border: 2px solid #e8730c;
+    color: #a8420a;
+    box-shadow: 0 0 0 1px rgba(232, 115, 12, 0.45), 0 1px 2px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+}
+
+.tuile-attente.tuile-joker {
+    border-style: dashed;
+    border-color: var(--tuile-joker-bordure);
+    color: var(--tuile-joker-bordure);
+}
+
+.tuile-valeur {
+    position: absolute;
+    right: 1px;
+    bottom: 0;
+    font-size: 0.5em;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Boutons                                                                      */
+/* --------------------------------------------------------------------------- */
+.btn {
+    padding: 10px 18px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    border: none;
+    border-radius: var(--rayon-bordure);
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-bloc {
+    width: 100%;
+}
+
+.btn-primaire {
+    background: var(--couleur-primaire);
+    color: white;
+}
+
+.btn-primaire:hover {
+    background: var(--couleur-primaire-hover);
+}
+
+.btn-secondaire {
+    background: #e0e0e0;
+    color: var(--couleur-texte);
+}
+
+.btn-secondaire:hover {
+    background: #bdbdbd;
+}
+
+.btn-petit {
+    padding: 6px 12px;
+    font-size: 0.82rem;
+}
+
+/* Lien d'action discret (actions rares, issue #41). */
+.lien-discret {
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #6a6a6a;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.lien-discret:hover:not(:disabled) {
+    color: var(--couleur-texte);
+    text-decoration: underline;
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.lien-discret:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Intitulés de bloc (« À jouer » / « Brouillon »)                              */
+/* --------------------------------------------------------------------------- */
+.bloc-titre {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.bloc-titre-jouer {
+    color: var(--couleur-primaire);
+}
+
+.bloc-titre-brouillon {
+    color: #8a6d3b;
+}
+
+.bloc-titre-note {
+    font-weight: 500;
+    font-size: 0.74rem;
+    color: #888;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Cases de chevalet (masquée / révélée)                                        */
+/* --------------------------------------------------------------------------- */
+.chevalet-case {
+    width: 40px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    font-weight: 700;
+    position: relative;
+}
+
+.chevalet-case.masquee {
+    background: repeating-linear-gradient(
+        45deg, #b9a58f, #b9a58f 6px, #a8927a 6px, #a8927a 12px);
+    color: rgba(0, 0, 0, 0.35);
+    font-size: 1.3rem;
+    border: 1px solid #96806a;
+}
+
+.chevalet-case.revelee {
+    background: var(--tuile-fond);
+    border: 1px solid var(--tuile-bordure);
+    color: var(--tuile-texte);
+    font-size: 1.5rem;
+    text-transform: uppercase;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.chevalet-case.revelee.joker {
+    border: 2px dashed var(--tuile-joker-bordure);
+    color: var(--tuile-joker-bordure);
+}
+
+.chevalet-case.revelee:hover {
+    transform: translateY(-2px);
+}
+
+.chevalet-case.selectionnee {
+    outline: 3px solid var(--couleur-primaire);
+    outline-offset: 1px;
+    transform: translateY(-4px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.chevalet-case.utilisee {
+    opacity: 0.35;
+    cursor: default;
+    filter: grayscale(0.6);
+}
+
+.chevalet-case.utilisee:hover {
+    transform: none;
+}
+
+.chevalet-case .val {
+    position: absolute;
+    right: 3px;
+    bottom: 1px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+.chevalet-vide {
+    color: #f0e6d8;
+    font-style: italic;
+    font-size: 0.9rem;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Cases de brouillon                                                           */
+/* --------------------------------------------------------------------------- */
+.brouillon-case {
+    width: 40px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 1.4rem;
+    text-transform: uppercase;
+    position: relative;
+    cursor: pointer;
+    background: var(--tuile-fond);
+    border: 1px solid var(--tuile-bordure);
+    color: var(--tuile-texte);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.brouillon-case:hover {
+    transform: translateY(-2px);
+}
+
+.brouillon-case.joker {
+    border: 2px dashed var(--tuile-joker-bordure);
+    color: var(--tuile-joker-bordure);
+}
+
+.brouillon-case.selectionnee {
+    outline: 3px solid var(--couleur-primaire);
+    outline-offset: 1px;
+    transform: translateY(-4px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.brouillon-case .val {
+    position: absolute;
+    right: 3px;
+    bottom: 1px;
+    font-size: 0.55rem;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+.brouillon-case-vide {
+    width: 40px;
+    height: 44px;
+    border-radius: 4px;
+    border: 2px dashed #c9a961;
+    background: rgba(201, 169, 97, 0.10);
+    opacity: 0.7;
+    flex: 0 0 auto;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.1s, background 0.1s;
+}
+
+.brouillon-case-vide:hover {
+    transform: translateY(-2px);
+    opacity: 0.95;
+    background: rgba(201, 169, 97, 0.20);
+}
+
+.brouillon-vide {
+    color: #8a7a63;
+    font-style: italic;
+    font-size: 0.9rem;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Icône « i » d'aide + popover replié                                          */
+/* --------------------------------------------------------------------------- */
+.btn-aide-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    margin-left: 6px;
+    padding: 0;
+    vertical-align: super;
+    border: 2px solid var(--couleur-secondaire, #5d4037);
+    border-radius: 50%;
+    background: white;
+    color: var(--couleur-secondaire, #5d4037);
+    font-size: 0.85rem;
+    font-weight: 700;
+    font-style: italic;
+    font-family: Georgia, "Times New Roman", serif;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.btn-aide-info:hover {
+    background: var(--couleur-secondaire, #5d4037);
+    color: white;
+}
+
+.btn-aide-info:focus-visible {
+    outline: 3px solid var(--couleur-primaire);
+    outline-offset: 2px;
+}
+
+.aide-info-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 5;
+    width: min(320px, 80vw);
+    padding: 12px 14px;
+    background: white;
+    border-radius: var(--rayon-bordure);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+    font-size: 0.85rem;
+    color: #5b4a33;
+    font-style: normal;
+}
+
+.aide-info-popover[hidden] {
+    display: none;
+}
+
+.aide-info-popover p {
+    margin: 0;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Messages (retour d'action / vérification)                                    */
+/* --------------------------------------------------------------------------- */
+.message-coup {
+    margin-top: 6px;
+    font-size: 0.9rem;
+    min-height: 1.2em;
+}
+
+.message-coup.erreur {
+    color: #b71c1c;
+    font-weight: 600;
+}
+
+.message-coup.succes {
+    color: var(--couleur-primaire-hover);
+    font-weight: 600;
+}
+
+.message-coup.info {
+    color: #555;
+}
+
+.message-brouillon {
+    margin-top: 8px;
+    font-size: 0.9rem;
+    min-height: 1.2em;
+    font-weight: 600;
+}
+
+.message-brouillon.valide {
+    color: var(--couleur-primaire-hover);
+}
+
+.message-brouillon.invalide {
+    color: #b71c1c;
+}
+
+.message-brouillon.info {
+    color: #555;
+    font-weight: 500;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Modales (fond assombri, contenu, choix du joker, détail du score)            */
+/* --------------------------------------------------------------------------- */
+.modale {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modale[hidden] {
+    display: none;
+}
+
+.modale-contenu {
+    background: white;
+    border-radius: var(--rayon-bordure);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    padding: 20px 24px;
+    max-width: 360px;
+    text-align: center;
+}
+
+.modale-contenu h3 {
+    font-size: 1.05rem;
+    margin-bottom: 14px;
+    color: var(--couleur-secondaire, #5d4037);
+}
+
+.modale-actions {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.joker-grille {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    margin-bottom: 16px;
+}
+
+.joker-lettre {
+    padding: 8px 0;
+    font-size: 1rem;
+    font-weight: 700;
+    background: var(--tuile-fond);
+    border: 1px solid var(--tuile-bordure);
+    border-radius: 4px;
+    color: var(--tuile-texte);
+    cursor: pointer;
+    transition: background 0.1s, transform 0.1s;
+}
+
+.joker-lettre:hover {
+    background: #e8d09a;
+    transform: translateY(-1px);
+}
+
+/* Modale de détail du score (issue #35), dupliquée dans les deux fenêtres. */
+.modale-score {
+    max-width: 420px;
+    text-align: left;
+}
+
+.modale-score h3 {
+    text-align: center;
+}
+
+.score-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.score-mot {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: 4px 10px;
+    padding: 6px 10px;
+    background: var(--couleur-fond, #f5f5f0);
+    border-radius: 6px;
+}
+
+.score-mot-texte {
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.score-mot-points {
+    font-variant-numeric: tabular-nums;
+    color: var(--couleur-primaire, #2e7d32);
+    font-weight: 700;
+}
+
+.score-bonus {
+    grid-column: 1 / -1;
+    font-size: 0.85rem;
+    font-style: italic;
+    color: var(--couleur-texte, #2c2c2c);
+    opacity: 0.75;
+}
+
+.score-scrabble {
+    background: var(--couleur-humain-fond, #e3f2fd);
+}
+
+.score-total {
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 800;
+    margin-bottom: 16px;
+    color: var(--couleur-secondaire, #5d4037);
+}

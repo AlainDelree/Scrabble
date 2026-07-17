@@ -1,0 +1,247 @@
+/* chevalet.css — fenêtre flottante du chevalet (issue #90).
+   Fenêtre pywebview séparée, frameless + on_top + ~600×340px, non
+   redimensionnable. On soigne une mise en page compacte : barre de déplacement
+   en haut, puis chevalet + actions + brouillon. Les briques partagées (tuiles,
+   cases de chevalet/brouillon, boutons, modales) viennent de commun.css. */
+
+html, body {
+    height: 100%;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    /* Fond en feutre vert, cohérent avec la zone chevalet de l'ancienne fenêtre
+       unique (issue #59/#86) : la fenêtre flottante se lit comme un prolongement
+       du tapis, posée au-dessus du plateau. */
+    background: var(--tapis-vert);
+    color: var(--couleur-texte);
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Barre de déplacement (seule zone de drag de la fenêtre)                      */
+/* --------------------------------------------------------------------------- */
+/* .pywebview-drag-region est reconnue par pywebview comme zone déplaçable. Elle
+   est volontairement la SEULE zone de drag (easy_drag=False côté Python) pour
+   qu'un clic sur une lettre ne déplace jamais la fenêtre par erreur. */
+.barre-drag {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 14px;
+    background: var(--tapis-vert-fonce);
+    color: rgba(255, 255, 255, 0.92);
+    cursor: move;
+    user-select: none;
+    -webkit-user-select: none;
+    flex: 0 0 auto;
+}
+
+.barre-drag-titre {
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+
+.barre-drag-poignee {
+    font-size: 0.8rem;
+    opacity: 0.75;
+    letter-spacing: 0.05em;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Corps de la fenêtre chevalet                                                 */
+/* --------------------------------------------------------------------------- */
+.chevalet-fenetre {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 8px 14px 10px;
+}
+
+.chevalet-entete {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.chevalet-entete[hidden] {
+    display: none;
+}
+
+.chevalet-entete h2 {
+    font-size: 1.05rem;
+    color: #fff;
+}
+
+.chevalet-titre-groupe {
+    min-width: 0;
+}
+
+.chevalet-aide-pose {
+    margin-top: 2px;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.85);
+    line-height: 1.35;
+}
+
+.chevalet-actions {
+    display: inline-flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Deux zones côte à côte : chevalet (action) + brouillon (réflexion). */
+.zone-reflexion {
+    display: flex;
+    gap: 14px;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+.zone-reflexion[hidden] {
+    display: none;
+}
+
+.bloc-chevalet {
+    flex: 0 1 auto;
+    max-width: 100%;
+    padding: 8px 10px 10px;
+    background: #f2f8f2;
+    border: 1px solid rgba(46, 125, 50, 0.35);
+    border-radius: 8px;
+}
+
+.chevalet {
+    display: flex;
+    gap: 7px;
+    flex-wrap: nowrap;
+    width: fit-content;
+    min-height: 48px;
+    align-items: center;
+    padding: 6px;
+    background: #8a5a3b;
+    border-radius: 6px;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Brouillon                                                                    */
+/* --------------------------------------------------------------------------- */
+.bloc-brouillon {
+    flex: 1 1 260px;
+    min-width: 240px;
+    padding: 8px 12px 10px;
+    background: #f3eee4;
+    border: 1px dashed #c9a961;
+    border-radius: 8px;
+}
+
+.bloc-brouillon[hidden] {
+    display: none;
+}
+
+.brouillon-entete {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.brouillon-titre {
+    display: inline;
+    margin-bottom: 0;
+}
+
+.brouillon-titre-groupe {
+    position: relative;
+    display: inline;
+}
+
+.brouillon {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-height: 46px;
+    align-items: center;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Zone de pose (contrôles de tour)                                             */
+/* --------------------------------------------------------------------------- */
+.zone-jeu {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--couleur-bordure);
+    width: 100%;
+}
+
+.zone-jeu-controles {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.zone-jeu-actions {
+    margin-left: auto;
+    display: inline-flex;
+    gap: 10px;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Pied : aide de confidentialité                                               */
+/* --------------------------------------------------------------------------- */
+.chevalet-pied {
+    margin-top: 10px;
+}
+
+.chevalet-pied:has(> [hidden]) {
+    margin-top: 0;
+}
+
+.chevalet-aide {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.8);
+    font-style: italic;
+    margin: 0;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Mode « attente d'un tour d'ordinateur »                                      */
+/* --------------------------------------------------------------------------- */
+.zone-attente-ia {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 18px;
+    margin: 6px 0;
+    background: var(--couleur-ordinateur-fond, #f3e5f5);
+    border: 1px dashed var(--couleur-ordinateur, #6a1b9a);
+    border-radius: var(--rayon-bordure);
+    text-align: center;
+}
+
+.zone-attente-ia[hidden] {
+    display: none;
+}
+
+.attente-ia-message {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--couleur-ordinateur, #6a1b9a);
+}
+
+.attente-ia-note {
+    margin: 0;
+    font-size: 0.82rem;
+    color: #555;
+}

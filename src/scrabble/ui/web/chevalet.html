@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrabble - Chevalet</title>
+    <link rel="stylesheet" href="commun.css">
+    <link rel="stylesheet" href="chevalet.css">
+</head>
+<body>
+    <!-- Fenêtre chevalet flottante (issue #90) : frameless + on_top + non
+         redimensionnable côté Python. Le SEUL moyen de la déplacer est cette zone
+         de drag en haut (classe .pywebview-drag-region reconnue par pywebview) ;
+         easy_drag=False (côté Python) garantit qu'un clic ailleurs — notamment sur
+         une lettre du chevalet (clic-clic de pose) — n'est JAMAIS interprété comme
+         un déplacement de fenêtre. -->
+    <div class="pywebview-drag-region barre-drag">
+        <span class="barre-drag-titre">🎴 Mon chevalet</span>
+        <span class="barre-drag-poignee" aria-hidden="true">⠿ déplacer</span>
+    </div>
+
+    <div class="chevalet-fenetre">
+        <!-- Mode « attente » : affiché à la place de la mécanique interactive tant
+             que ce n'est pas le tour d'un joueur humain (tour d'un ordinateur). Le
+             chevalet d'un ordinateur n'est jamais exposé (issue #35). Le bouton
+             « Faire jouer l'ordinateur » vit désormais côté fenêtre plateau
+             (issue #90) : ici, seul un message d'attente. -->
+        <div id="zone-attente-ia" class="zone-attente-ia" hidden>
+            <p id="attente-ia-message" class="attente-ia-message" role="status" aria-live="polite"></p>
+            <p class="attente-ia-note">Utilisez « ▶ Faire jouer l'ordinateur » sur la fenêtre du plateau.</p>
+        </div>
+
+        <div class="chevalet-entete">
+            <div class="chevalet-titre-groupe">
+                <h2>Chevalet de <span id="chevalet-nom">—</span></h2>
+                <p class="chevalet-aide-pose">
+                    Cliquez une lettre puis une case vide du plateau pour la poser.
+                    Recliquez une lettre posée pour la retirer.
+                </p>
+            </div>
+            <div class="chevalet-actions">
+                <button id="btn-visibilite" class="btn btn-primaire">
+                    👁️ Voir mes lettres
+                </button>
+            </div>
+        </div>
+
+        <div class="zone-reflexion">
+            <!-- Zone « À jouer » : le chevalet, PUIS les actions de tour. -->
+            <div class="bloc-chevalet">
+                <div class="bloc-titre bloc-titre-jouer">
+                    🎯 À jouer <span class="bloc-titre-note">— cliquez une lettre pour la poser</span>
+                </div>
+                <div id="chevalet" class="chevalet" aria-label="Chevalet du joueur courant"></div>
+
+                <div id="zone-jeu" class="zone-jeu" hidden>
+                    <div class="zone-jeu-controles">
+                        <button id="btn-echanger-tout" class="lien-discret" hidden
+                                title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
+                            ♻️ Remettre toutes ses lettres et passer
+                        </button>
+                        <span class="zone-jeu-actions">
+                            <button id="btn-annuler" class="btn btn-secondaire" disabled>
+                                ✗ Annuler
+                            </button>
+                            <button id="btn-verifier-coup" class="btn btn-secondaire" disabled
+                                    title="Calcule les points du coup en attente sans le jouer (rien n'est perdu)">
+                                🔎 Vérifier et calculer
+                            </button>
+                            <button id="btn-valider" class="btn btn-primaire" disabled>
+                                ✓ Jouer
+                            </button>
+                        </span>
+                    </div>
+                    <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
+                </div>
+            </div>
+
+            <!-- Zone de brouillon : réflexion libre, sans lien avec le plateau. -->
+            <div id="bloc-brouillon" class="bloc-brouillon" hidden>
+                <div class="brouillon-entete">
+                    <span class="brouillon-titre-groupe">
+                        <span class="brouillon-titre bloc-titre bloc-titre-brouillon">
+                            ✏️ Brouillon <span class="bloc-titre-note">— réflexion libre, sans effet sur la partie</span>
+                        </span><button id="btn-aide-brouillon" class="btn-aide-info"
+                                aria-haspopup="dialog" aria-expanded="false"
+                                aria-label="Aide : comment utiliser le brouillon"
+                                title="Aide : comment utiliser le brouillon">i</button>
+                        <div id="aide-brouillon-popover" class="aide-info-popover"
+                             role="dialog" aria-label="Aide du brouillon" hidden>
+                            <p>
+                                Réarrangez librement vos 7 lettres sur les 9
+                                emplacements pour trouver l'inspiration : cliquez une
+                                lettre puis un emplacement vide pour l'y déplacer, ou
+                                deux lettres pour les échanger. Clic droit sur une
+                                lettre : la renvoie vers le vide le plus proche de la
+                                fin. Les 2 emplacements vides (position libre) figurent
+                                une lettre déjà posée sur le plateau à prendre en
+                                compte ; aucune saisie possible.
+                            </p>
+                        </div>
+                    </span>
+                </div>
+                <div id="brouillon" class="brouillon" aria-label="Zone de brouillon (réflexion)"></div>
+            </div>
+        </div>
+
+        <div class="chevalet-pied">
+            <p class="chevalet-aide" id="chevalet-aide">
+                Vos lettres restent masquées tant que vous ne cliquez pas sur
+                « Voir mes lettres ». Pensez à les cacher si un adversaire approche.
+            </p>
+        </div>
+    </div>
+
+    <!-- Modale de choix de la lettre représentée par un joker (issue #90 : la
+         lettre vient du chevalet, la modale s'ouvre donc côté chevalet). -->
+    <div id="joker-modale" class="modale" hidden>
+        <div class="modale-contenu">
+            <h3>Quelle lettre représente le joker ?</h3>
+            <div id="joker-grille" class="joker-grille"></div>
+            <button id="joker-annuler" class="btn btn-secondaire">Annuler</button>
+        </div>
+    </div>
+
+    <!-- Copie de la modale de détail du score (issue #90) : « Vérifier et
+         calculer » étant déclenché ici, son détail s'ouvre côté chevalet. -->
+    <div id="score-modale" class="modale" hidden>
+        <div class="modale-contenu modale-score">
+            <h3 id="score-titre">Détail du score</h3>
+            <div id="score-detail" class="score-detail"></div>
+            <div id="score-total" class="score-total"></div>
+            <button id="score-fermer" class="btn btn-primaire">Fermer</button>
+        </div>
+    </div>
+
+    <script src="commun.js"></script>
+    <script src="chevalet.js"></script>
+</body>
+</html>

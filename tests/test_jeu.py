@@ -1458,6 +1458,292 @@ class TestApiJeuRetourMenu:
 
 
 # --------------------------------------------------------------------------- #
+# Suite #90 : séparation plateau/chevalet en deux fenêtres. État de pose
+# centralisé côté Python (_selection / _en_attente) et diffusion vers la bonne
+# fenêtre (payload public au plateau, payload privé au chevalet).
+# --------------------------------------------------------------------------- #
+
+
+class _FenetreEspionne:
+    """Fenêtre pywebview factice qui enregistre les appels ``evaluate_js``."""
+
+    def __init__(self) -> None:
+        self.scripts: list[str] = []
+        self.detruite = False
+
+    def evaluate_js(self, script: str) -> None:
+        self.scripts.append(script)
+
+    def destroy(self) -> None:
+        self.detruite = True
+
+
+def _api_pose(lettres: str = "CHATSER") -> tuple[ApiJeu, _FenetreEspionne, _FenetreEspionne]:
+    """API prête pour la pose, avec deux fenêtres espionnes (plateau + chevalet).
+
+    Le joueur 0 (humain, courant) porte le chevalet ``lettres``. Renvoie
+    ``(api, fenetre_plateau, fenetre_chevalet)``.
+    """
+    joueurs = [
+        Joueur(nom="Alice", humain=True),
+        Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
+    ]
+    partie = Partie(joueurs, _DicoMots("CHAT", "CHATS"), graine=1)
+    partie.index_courant = 0
+    partie.joueurs[0].chevalet = list(lettres)
+    api = ApiJeu(partie, None)
+    plateau, chevalet = _FenetreEspionne(), _FenetreEspionne()
+    api.set_windows(plateau, chevalet)
+    return api, plateau, chevalet
+
+
+class TestApiJeuSelection:
+    """``ApiJeu.selectionner_lettre`` : centralisation de ``_selection`` (issue #90)."""
+
+    def test_selectionne_met_a_jour_et_diffuse(self):
+        api, plateau, chevalet = _api_pose()
+        res = api.selectionner_lettre(2)
+        assert res["succes"] is True
+        assert api._selection == 2
+        # Chaque fenêtre a reçu exactement une diffusion, vers la bonne fonction.
+        assert len(plateau.scripts) == 1
+        assert len(chevalet.scripts) == 1
+        assert "appliquerEtatPlateau" in plateau.scripts[-1]
+        assert "appliquerEtatChevalet" in chevalet.scripts[-1]
+
+    def test_reclic_meme_index_deselectionne(self):
+        api, _plateau, _chevalet = _api_pose()
+        api.selectionner_lettre(2)
+        api.selectionner_lettre(2)
+        assert api._selection is None
+
+    def test_index_none_annule_la_selection(self):
+        api, _plateau, _chevalet = _api_pose()
+        api.selectionner_lettre(1)
+        api.selectionner_lettre(None)
+        assert api._selection is None
+
+
+class TestApiJeuPoseEnAttente:
+    """Pose/retrait d'une lettre en attente pilotés par l'état interne (issue #90)."""
+
+    def test_pose_resout_la_lettre_depuis_la_selection(self):
+        api, plateau, chevalet = _api_pose("CHATSER")
+        api.selectionner_lettre(0)  # « C »
+        res = api.poser_lettre_en_attente(7, 7)
+        assert res["succes"] is True
+        assert len(api._en_attente) == 1
+        place = api._en_attente[0]
+        assert (place["ligne"], place["colonne"]) == (7, 7)
+        assert place["lettre"] == "C"
+        assert place["joker"] is False
+        assert place["index"] == 0
+        # La sélection est consommée et l'état rediffusé aux deux fenêtres.
+        assert api._selection is None
+        assert "appliquerEtatPlateau" in plateau.scripts[-1]
+        assert "appliquerEtatChevalet" in chevalet.scripts[-1]
+
+    def test_pose_sans_selection_refusee(self):
+        api, _plateau, _chevalet = _api_pose()
+        res = api.poser_lettre_en_attente(7, 7)
+        assert res["succes"] is False
+        assert api._en_attente == []
+
+    def test_pose_sur_case_occupee_refusee(self):
+        api, _plateau, _chevalet = _api_pose()
+        api._partie.plateau.poser_tuile(7, 7, Tuile("Z"))
+        api.selectionner_lettre(0)
+        res = api.poser_lettre_en_attente(7, 7)
+        assert res["succes"] is False
+        assert api._en_attente == []
+
+    def test_pose_hors_plateau_refusee(self):
+        api, _plateau, _chevalet = _api_pose()
+        api.selectionner_lettre(0)
+        res = api.poser_lettre_en_attente(-1, 7)
+        assert res["succes"] is False
+
+    def test_deux_lettres_sur_la_meme_case_refusee(self):
+        api, _plateau, _chevalet = _api_pose()
+        api.selectionner_lettre(0)
+        api.poser_lettre_en_attente(7, 7)
+        api.selectionner_lettre(1)
+        res = api.poser_lettre_en_attente(7, 7)
+        assert res["succes"] is False
+        assert len(api._en_attente) == 1
+
+    def test_retrait_supprime_le_placement_et_diffuse(self):
+        api, plateau, chevalet = _api_pose()
+        api.selectionner_lettre(0)
+        api.poser_lettre_en_attente(7, 7)
+        avant_plateau = len(plateau.scripts)
+        res = api.retirer_lettre_en_attente(7, 7)
+        assert res["succes"] is True
+        assert api._en_attente == []
+        # Le retrait effectif rediffuse l'état.
+        assert len(plateau.scripts) == avant_plateau + 1
+
+    def test_retrait_sans_placement_ne_diffuse_pas(self):
+        api, plateau, _chevalet = _api_pose()
+        avant = len(plateau.scripts)
+        res = api.retirer_lettre_en_attente(0, 0)
+        assert res["succes"] is True
+        assert len(plateau.scripts) == avant  # aucune mutation, aucune diffusion
+
+    def test_annuler_pose_vide_tout_et_diffuse(self):
+        api, plateau, chevalet = _api_pose()
+        api.selectionner_lettre(0)
+        api.poser_lettre_en_attente(7, 7)
+        api.selectionner_lettre(1)
+        res = api.annuler_pose()
+        assert res["succes"] is True
+        assert api._en_attente == []
+        assert api._selection is None
+        assert "appliquerEtatPlateau" in plateau.scripts[-1]
+        assert "appliquerEtatChevalet" in chevalet.scripts[-1]
+
+
+class TestApiJeuPoseJoker:
+    """Pose d'un joker : la modale de choix s'ouvre côté chevalet (issue #90)."""
+
+    def test_clic_plateau_sur_joker_differe_la_pose(self):
+        api, _plateau, _chevalet = _api_pose(JOKER + "CHATSE")
+        api.selectionner_lettre(0)  # le joker
+        res = api.poser_lettre_en_attente(7, 7)
+        assert res["succes"] is True
+        assert res["joker_requis"] is True
+        # Rien n'est encore posé ; la case visée est mémorisée pour le chevalet.
+        assert api._en_attente == []
+        assert api._joker_demande == {"ligne": 7, "colonne": 7, "index": 0}
+
+    def test_finalisation_joker_depuis_le_chevalet(self):
+        api, _plateau, _chevalet = _api_pose(JOKER + "CHATSE")
+        api.selectionner_lettre(0)
+        api.poser_lettre_en_attente(7, 7)
+        # Le chevalet renvoie la lettre choisie pour le joker.
+        res = api.poser_lettre_en_attente(7, 7, lettre="E", joker=True, valeur=0, index=0)
+        assert res["succes"] is True
+        assert len(api._en_attente) == 1
+        place = api._en_attente[0]
+        assert place["lettre"] == "E"
+        assert place["joker"] is True
+        assert place["valeur"] == 0
+        assert api._joker_demande is None
+
+
+class TestApiJeuDiffusionConfidentialite:
+    """``_diffuser`` : payload public au plateau, payload privé au chevalet (#90)."""
+
+    def test_payload_plateau_public_sans_lettres_de_chevalet(self):
+        api, _plateau, _chevalet = _api_pose("CHATSER")
+        etat = api._etat_plateau()
+        # Aucune identité de lettre de chevalet : ni au niveau racine, ni par joueur.
+        assert "lettres" not in etat
+        for joueur_pub in etat["joueurs"]:
+            assert "lettres" not in joueur_pub
+        # En revanche l'état de pose neutre (sélection, placements) y figure.
+        assert "en_attente" in etat
+        assert "selection" in etat
+
+    def test_payload_chevalet_contient_les_lettres_privees(self):
+        api, _plateau, _chevalet = _api_pose("CHATSER")
+        etat = api._etat_chevalet()
+        lettres = [c["lettre"] for c in etat["lettres"]]
+        assert lettres == list("CHATSER")
+        assert etat["selection"] is None
+        assert etat["en_attente"] == []
+
+    def test_chevalet_ordinateur_jamais_expose(self):
+        api, _plateau, _chevalet = _api_pose()
+        api._partie.index_courant = 1  # au tour de l'ordinateur
+        etat = api._etat_chevalet()
+        assert etat["tour_humain"] is False
+        assert etat["lettres"] == []  # jamais le chevalet d'une IA (issue #35)
+
+    def test_diffusion_route_le_bon_payload_vers_la_bonne_fenetre(self):
+        api, plateau, chevalet = _api_pose("CHATSER")
+        api._diffuser()
+        script_plateau = plateau.scripts[-1]
+        script_chevalet = chevalet.scripts[-1]
+        assert "appliquerEtatPlateau" in script_plateau
+        assert "appliquerEtatChevalet" in script_chevalet
+        # Le script du plateau ne transporte AUCUNE liste de lettres de chevalet ;
+        # celui du chevalet, si (clé JSON "lettres").
+        assert '"lettres"' not in script_plateau
+        assert '"lettres"' in script_chevalet
+
+    def test_fenetre_absente_ne_bloque_pas_la_diffusion(self):
+        api, _plateau, _chevalet = _api_pose()
+        api.set_windows(None, None)  # plus aucune fenêtre
+        # Ne doit pas lever, même sans fenêtre à qui pousser l'état.
+        api._diffuser()
+
+
+class TestApiJeuPoseViaEtatInterne:
+    """``poser_mot``/``verifier_coup`` lisent ``_en_attente`` (issue #90)."""
+
+    def test_poser_mot_sans_argument_lit_l_etat_interne(self):
+        api, _plateau, _chevalet = _api_pose("CHATSER")
+        for i, (lig, col, let) in enumerate(
+            [(7, 7, "C"), (7, 8, "H"), (7, 9, "A"), (7, 10, "T")]
+        ):
+            api.selectionner_lettre(i)
+            api.poser_lettre_en_attente(lig, col)
+        res = api.poser_mot()  # aucun placement passé : lecture de _en_attente
+        assert res["succes"] is True
+        assert "etat" in res
+        # Après un coup joué, l'état de pose est remis à zéro.
+        assert api._en_attente == []
+        assert api._selection is None
+
+    def test_verifier_coup_sans_argument_lit_l_etat_interne(self):
+        api, _plateau, _chevalet = _api_pose("CHATSER")
+        for i, (lig, col, _let) in enumerate(
+            [(7, 7, "C"), (7, 8, "H"), (7, 9, "A"), (7, 10, "T")]
+        ):
+            api.selectionner_lettre(i)
+            api.poser_lettre_en_attente(lig, col)
+        res = api.verifier_coup()  # non destructif : ne consomme pas l'attente
+        assert res["succes"] is True
+        assert res["detail"]["mots"][0]["texte"] == "CHAT"
+        assert len(api._en_attente) == 4  # rien n'est consommé
+        assert api._partie.plateau.case_vide(7, 7)
+
+    def test_poser_mot_reussi_diffuse_le_nouvel_etat(self):
+        api, plateau, chevalet = _api_pose("CHATSER")
+        for i, (lig, col) in enumerate([(7, 7), (7, 8), (7, 9), (7, 10)]):
+            api.selectionner_lettre(i)
+            api.poser_lettre_en_attente(lig, col)  # « CHAT »
+        avant = len(plateau.scripts)
+        res = api.poser_mot()
+        assert res["succes"] is True
+        # Le coup joué rediffuse aux deux fenêtres.
+        assert len(plateau.scripts) > avant
+        assert "appliquerEtatChevalet" in chevalet.scripts[-1]
+
+
+class TestApiJeuRetourMenuDeuxFenetres:
+    """``retour_menu`` détruit les DEUX fenêtres (issue #90)."""
+
+    def test_detruit_plateau_et_chevalet(self):
+        api, plateau, chevalet = _api_pose()
+        res = api.retour_menu()
+        assert res["succes"] is True
+        assert plateau.detruite is True
+        assert chevalet.detruite is True
+        assert api._retour_menu is True
+
+    def test_retour_menu_avec_seule_fenetre_plateau(self):
+        # Compat mono-fenêtre : set_window ne renseigne que le plateau.
+        api = ApiJeu(_partie_simple(), id_partie=1)
+        fake = _FenetreEspionne()
+        api.set_window(fake)
+        res = api.retour_menu()
+        assert res["succes"] is True
+        assert fake.detruite is True
+
+
+# --------------------------------------------------------------------------- #
 # Suite #81 : persistance des actions de jeu (branchement de enregistrer_action
 # et finaliser_partie dans ApiJeu) et reprise fidèle de l'état.
 # --------------------------------------------------------------------------- #

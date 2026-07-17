@@ -28,6 +28,7 @@ et ouvre l'écran de jeu sans passer par l'écran d'accueil.
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -789,11 +790,21 @@ def jouer_tours_ia_ui(partie: Partie, id_partie: int | None) -> dict[str, Any]:
 
 
 class ApiJeu:
-    """API Python exposée au JavaScript de l'écran de jeu (lecture seule).
+    """API Python exposée au JavaScript de l'écran de jeu (issue #90).
 
-    L'API respecte la règle de confidentialité : ``obtenir_etat`` ne révèle
-    aucune lettre de chevalet, et ``obtenir_chevalet`` n'expose que le chevalet
-    d'**un seul** joueur (celui dont l'index est demandé) à la fois.
+    Deux fenêtres pywebview partagent cette même instance d'API : la fenêtre
+    **plateau** (maximisée) et la fenêtre **chevalet** (flottante, frameless,
+    toujours au-dessus). L'API respecte la règle de confidentialité : l'état
+    poussé vers la fenêtre plateau est **public** (jamais les lettres du
+    chevalet, issues #33/#35) ; seul l'état poussé vers la fenêtre chevalet
+    contient les lettres privées du **seul** joueur courant.
+
+    Source de vérité de l'état de pose (option 1 du rapport #89, §2.2) :
+    ``ApiJeu`` centralise ``_selection`` (index de la lettre sélectionnée dans
+    le chevalet) et ``_en_attente`` (liste des placements en attente). Les deux
+    fenêtres ne sont que des vues : elles lisent/écrivent cet état via les
+    méthodes exposées, et toute mutation est rediffusée aux deux fenêtres par
+    :meth:`_diffuser`.
     """
 
     def __init__(
@@ -807,23 +818,70 @@ class ApiJeu:
         # Base où sont persistées les actions (issue #81). Par défaut la base de
         # l'application ; injectable pour les tests (base temporaire).
         self._chemin_persistance = chemin_persistance
-        self._window: webview.Window | None = None
+        # Deux fenêtres distinctes (issue #90) au lieu du ``_window`` unique.
+        self._window_plateau: webview.Window | None = None
+        self._window_chevalet: webview.Window | None = None
+        # État de pose centralisé côté Python (issue #90, option 1 du rapport
+        # #89). ``_selection`` : index de la lettre sélectionnée dans le chevalet
+        # du joueur courant, ou ``None``. ``_en_attente`` : placements en cours,
+        # chacun un dict ``{ligne, colonne, lettre, joker, valeur, index}`` (la
+        # ``lettre`` d'un placement est déjà la lettre affichée sur le plateau,
+        # même pour un joker dont la lettre a été choisie).
+        self._selection: int | None = None
+        self._en_attente: list[dict[str, Any]] = []
+        # Pose d'un joker en attente du choix de lettre (issue #90) : lorsqu'un
+        # clic sur une case du plateau (fenêtre plateau) porte sur un joker, la
+        # modale de choix s'ouvre côté chevalet. On mémorise ici la case visée en
+        # attendant ce choix : ``{ligne, colonne, index}`` ou ``None``.
+        self._joker_demande: dict[str, Any] | None = None
         # Évite de journaliser plusieurs fois la même fin de partie (issue #66).
         self._fin_journalisee = False
         # Évite de finaliser plusieurs fois la partie en base (issue #81).
         self._fin_persistee = False
         # Vrai lorsque l'utilisateur a demandé « Retour au menu » (issue #74) :
-        # une fois la fenêtre de jeu fermée, ``lancer_jeu`` rouvre alors l'écran
-        # d'accueil (au lieu de clôturer la session) — voir ``lancer_jeu``.
+        # une fois les fenêtres de jeu fermées, ``lancer_jeu`` rouvre alors
+        # l'écran d'accueil (au lieu de clôturer la session) — voir ``lancer_jeu``.
         self._retour_menu = False
 
+    def set_windows(
+        self,
+        plateau: webview.Window,
+        chevalet: webview.Window | None = None,
+    ) -> None:
+        """Associe les deux fenêtres pywebview (plateau + chevalet) — issue #90."""
+        self._window_plateau = plateau
+        self._window_chevalet = chevalet
+
     def set_window(self, window: webview.Window) -> None:
-        """Associe la fenêtre pywebview pour les callbacks."""
-        self._window = window
+        """Associe la fenêtre **plateau** (compat. mono-fenêtre, issue #74).
+
+        Conservée pour les appelants et tests historiques : elle ne renseigne que
+        la fenêtre plateau, la fenêtre chevalet restant à ``None``. Le point
+        d'entrée à privilégier depuis l'issue #90 est :meth:`set_windows`.
+        """
+        self._window_plateau = window
 
     def obtenir_etat(self) -> dict[str, Any]:
         """Retourne l'état public de la partie (sans lettres de chevalet)."""
         return etat_public(self._partie, self._id_partie)
+
+    def obtenir_etat_plateau(self) -> dict[str, Any]:
+        """État initial **public** pour la fenêtre plateau (issue #90).
+
+        Équivalent de la charge diffusée par :meth:`_diffuser` vers la fenêtre
+        plateau, exposé comme point d'entrée pour le chargement initial de cette
+        fenêtre (avant toute mutation). Voir :meth:`_etat_plateau`.
+        """
+        return self._etat_plateau()
+
+    def obtenir_etat_chevalet(self) -> dict[str, Any]:
+        """État initial **privé** pour la fenêtre chevalet (issue #90).
+
+        Équivalent de la charge diffusée par :meth:`_diffuser` vers la fenêtre
+        chevalet (lettres du seul joueur humain courant comprises), exposé pour le
+        chargement initial de cette fenêtre. Voir :meth:`_etat_chevalet`.
+        """
+        return self._etat_chevalet()
 
     def obtenir_theme_plateau(self) -> str:
         """Retourne le thème visuel du plateau choisi dans les réglages.
@@ -856,29 +914,286 @@ class ApiJeu:
             "lettres": serialiser_chevalet(joueur),
         }
 
-    def poser_mot(self, placements: list[Any]) -> dict[str, Any]:
-        """Pose le mot décrit par ``placements`` (mécanique clic-clic du JS).
+    # ------------------------------------------------------------------ #
+    # État de pose partagé et diffusion aux deux fenêtres (issue #90)
+    # ------------------------------------------------------------------ #
 
-        ``placements`` est la liste des lettres déposées sur des cases vides
-        (dicts ``{ligne, colonne, lettre, joker}``). Le sens du mot se déduit de
-        l'alignement des lettres ; pour une lettre unique il est fixé à
-        l'horizontale en interne (issue #43 : sans conséquence sur la validation
-        ni le score). Aucun paramètre de sens n'est plus attendu du JS. La
-        méthode construit un
+    def _placements_publics(self) -> list[dict[str, Any]]:
+        """Placements en attente **sans** l'index de chevalet (part côté plateau).
+
+        La fenêtre plateau n'a aucun besoin de connaître de quel emplacement du
+        chevalet provient une lettre posée (``index``) : elle n'affiche que la
+        tuile sur le plateau. On ne lui transmet donc que la position, la lettre
+        (déjà destinée à être visible sur le plateau), le drapeau joker et la
+        valeur en points. Les lettres *non posées* du chevalet, elles, ne partent
+        jamais vers la fenêtre plateau (issues #33/#35).
+        """
+        return [
+            {
+                "ligne": p["ligne"],
+                "colonne": p["colonne"],
+                "lettre": p["lettre"],
+                "joker": p["joker"],
+                "valeur": p["valeur"],
+            }
+            for p in self._en_attente
+        ]
+
+    def _etat_plateau(self) -> dict[str, Any]:
+        """État **public** destiné à la fenêtre plateau (issue #90).
+
+        C'est :func:`etat_public` (aucune identité de lettre de chevalet), enrichi
+        des seuls placements en attente déjà posés sur le plateau
+        (:meth:`_placements_publics`) et de l'index de la lettre sélectionnée
+        (``selection`` : une information neutre — un simple index — qui ne dévoile
+        aucune lettre).
+        """
+        etat = etat_public(self._partie, self._id_partie)
+        etat["en_attente"] = self._placements_publics()
+        etat["selection"] = self._selection
+        return etat
+
+    def _etat_chevalet(self) -> dict[str, Any]:
+        """État **complet** (lettres privées incluses) destiné à la fenêtre chevalet.
+
+        Contient les lettres du **seul** joueur courant — et seulement s'il est
+        humain (jamais le chevalet d'un ordinateur, issue #35) — ainsi que l'état
+        de pose complet (sélection, placements avec leur ``index`` de chevalet,
+        éventuelle demande de choix de lettre pour un joker). Les quelques champs
+        publics joints (nom du joueur courant, tour humain, nombre d'humains, fin
+        de partie) évitent à la fenêtre chevalet un aller-retour supplémentaire.
+        """
+        partie = self._partie
+        courant = partie.joueur_courant()
+        return {
+            "index_courant": partie.index_courant,
+            "nom": courant.nom,
+            "tour_humain": courant.humain,
+            "terminee": partie.terminee,
+            "nb_humains": compter_humains(partie),
+            "nb_lettres": len(courant.chevalet),
+            # Lettres privées : uniquement pour un joueur humain courant.
+            "lettres": serialiser_chevalet(courant) if courant.humain else [],
+            "selection": self._selection,
+            "en_attente": [dict(p) for p in self._en_attente],
+            "joker_demande": self._joker_demande,
+        }
+
+    def _diffuser(self) -> None:
+        """Pousse l'état pertinent à chaque fenêtre après toute mutation (issue #90).
+
+        Vers la fenêtre **plateau** : l'état **public** (:meth:`_etat_plateau`),
+        jamais de lettre du chevalet. Vers la fenêtre **chevalet** : l'état
+        **complet** (:meth:`_etat_chevalet`), lettres privées comprises. Chaque
+        fenêtre expose un point d'entrée JS (``window.appliquerEtatPlateau`` /
+        ``window.appliquerEtatChevalet``) que l'on appelle via ``evaluate_js``.
+        L'appel est encadré d'un ``try/except`` : une fenêtre fermée ou un JS pas
+        encore prêt ne doit jamais faire planter une action de jeu.
+        """
+        self._pousser(
+            self._window_plateau, "appliquerEtatPlateau", self._etat_plateau()
+        )
+        self._pousser(
+            self._window_chevalet, "appliquerEtatChevalet", self._etat_chevalet()
+        )
+
+    @staticmethod
+    def _pousser(
+        window: webview.Window | None, fonction: str, charge: dict[str, Any]
+    ) -> None:
+        """Appelle ``window.<fonction>(<charge JSON>)`` si la fenêtre existe."""
+        if window is None:
+            return
+        script = (
+            f"window.{fonction} && window.{fonction}("
+            f"{json.dumps(charge, ensure_ascii=False)})"
+        )
+        try:
+            window.evaluate_js(script)
+        except Exception as e:  # noqa: BLE001 - une vue absente ne bloque pas le jeu
+            journal.erreur("Jeu : échec de la diffusion d'un état à une fenêtre.", e)
+
+    def selectionner_lettre(self, index: Any) -> dict[str, Any]:
+        """Sélectionne (ou désélectionne) la lettre du chevalet d'index ``index``.
+
+        Appelée par la fenêtre chevalet au clic sur une lettre. ``index`` à
+        ``None`` (ou l'index déjà sélectionné) annule la sélection. Met à jour
+        ``_selection`` puis diffuse l'état aux deux fenêtres.
+        """
+        if index is None:
+            self._selection = None
+        elif not isinstance(index, int):
+            return {"succes": False, "erreur": "Index de lettre invalide."}
+        elif self._selection == index:
+            self._selection = None  # reclic sur la même lettre : on désélectionne
+        else:
+            self._selection = index
+        # Toute (re)sélection annule une demande de choix de lettre de joker en
+        # cours : elle permet notamment d'abandonner proprement la modale joker.
+        self._joker_demande = None
+        self._diffuser()
+        return {"succes": True, "selection": self._selection}
+
+    def poser_lettre_en_attente(
+        self,
+        ligne: Any,
+        colonne: Any,
+        lettre: Any = None,
+        joker: Any = None,
+        valeur: Any = None,
+        index: Any = None,
+    ) -> dict[str, Any]:
+        """Place une lettre en attente sur la case ``(ligne, colonne)`` — issue #90.
+
+        Deux modes d'appel, unifiés ici pour respecter strictement la séparation
+        de confidentialité (la fenêtre plateau ne connaît aucune lettre du
+        chevalet) :
+
+        * **Depuis la fenêtre plateau** (clic sur une case vide) : seuls
+          ``ligne``/``colonne`` sont fournis. La lettre est résolue côté Python à
+          partir de ``_selection`` et du chevalet du joueur courant. Si la lettre
+          sélectionnée est un **joker**, aucune lettre n'est encore posée : on
+          mémorise la case (``_joker_demande``) et on renvoie ``joker_requis`` —
+          la fenêtre chevalet ouvrira alors sa modale de choix.
+        * **Depuis la fenêtre chevalet** (après choix de la lettre d'un joker) :
+          ``lettre``/``joker``/``valeur``/``index`` sont fournis explicitement et
+          le placement est finalisé tel quel.
+
+        Renvoie ``{"succes": True}`` (ou ``joker_requis``) et diffuse le nouvel
+        état ; ``{"succes": False, "erreur": ...}`` si le placement est refusé
+        (aucune sélection, index invalide, case occupée…).
+        """
+        if not isinstance(ligne, int) or not isinstance(colonne, int):
+            return {"succes": False, "erreur": "Position de pose invalide."}
+        if not dans_plateau(ligne, colonne):
+            return {"succes": False, "erreur": "Position hors plateau."}
+        if not self._partie.plateau.case_vide(ligne, colonne):
+            return {
+                "succes": False,
+                "erreur": "Cette case porte déjà une tuile.",
+            }
+        if any(p["ligne"] == ligne and p["colonne"] == colonne for p in self._en_attente):
+            return {"succes": False, "erreur": "Une lettre est déjà posée ici."}
+
+        # Mode « finalisation » : la lettre (et son index) sont fournis.
+        if lettre is not None and index is not None:
+            self._joker_demande = None
+            return self._ajouter_placement(
+                ligne, colonne, str(lettre), bool(joker),
+                int(valeur) if valeur is not None else 0, int(index),
+            )
+
+        # Mode « clic plateau » : on résout la lettre via la sélection courante.
+        if self._selection is None:
+            return {
+                "succes": False,
+                "erreur": "Sélectionnez d'abord une lettre de votre chevalet.",
+            }
+        idx = self._selection
+        chevalet = self._partie.joueur_courant().chevalet
+        if not (0 <= idx < len(chevalet)):
+            return {"succes": False, "erreur": "Lettre sélectionnée invalide."}
+        jeton = chevalet[idx]
+        if jeton == JOKER:
+            # La lettre du joker se choisit côté chevalet : on diffère la pose.
+            self._joker_demande = {"ligne": ligne, "colonne": colonne, "index": idx}
+            self._diffuser()
+            return {
+                "succes": True,
+                "joker_requis": True,
+                "ligne": ligne,
+                "colonne": colonne,
+                "index": idx,
+            }
+        return self._ajouter_placement(
+            ligne, colonne, jeton, False, valeur_lettre(jeton), idx
+        )
+
+    def _ajouter_placement(
+        self,
+        ligne: int,
+        colonne: int,
+        lettre: str,
+        joker: bool,
+        valeur: int,
+        index: int,
+    ) -> dict[str, Any]:
+        """Ajoute un placement résolu à ``_en_attente``, réinitialise la sélection."""
+        self._en_attente.append(
+            {
+                "ligne": ligne,
+                "colonne": colonne,
+                "lettre": lettre,
+                "joker": joker,
+                "valeur": 0 if joker else valeur,
+                "index": index,
+            }
+        )
+        self._selection = None
+        self._joker_demande = None
+        self._diffuser()
+        return {"succes": True}
+
+    def retirer_lettre_en_attente(self, ligne: Any, colonne: Any) -> dict[str, Any]:
+        """Retire le placement en attente de la case ``(ligne, colonne)`` — issue #90.
+
+        Appelée au clic sur une tuile en attente (retrait de la pose). La lettre
+        redevient disponible au chevalet. Diffuse le nouvel état aux deux
+        fenêtres. Sans effet (mais succès) si aucune lettre n'attend sur la case.
+        """
+        avant = len(self._en_attente)
+        self._en_attente = [
+            p for p in self._en_attente
+            if not (p["ligne"] == ligne and p["colonne"] == colonne)
+        ]
+        if len(self._en_attente) != avant:
+            self._selection = None
+            self._diffuser()
+        return {"succes": True}
+
+    def annuler_pose(self) -> dict[str, Any]:
+        """Abandonne toute la pose en cours (sélection + placements) — issue #90.
+
+        Vide ``_selection`` et ``_en_attente`` (aucune lettre n'est consommée : le
+        moteur n'a rien joué) puis diffuse l'état remis à zéro aux deux fenêtres.
+        """
+        self._selection = None
+        self._en_attente = []
+        self._joker_demande = None
+        self._diffuser()
+        return {"succes": True}
+
+    def poser_mot(self, placements: list[Any] | None = None) -> dict[str, Any]:
+        """Pose le mot formé par les lettres en attente (``_en_attente``) — issue #90.
+
+        Depuis l'issue #90, la mécanique clic-clic est pilotée par l'état interne :
+        la fenêtre chevalet a construit ``_en_attente`` au fil des appels à
+        :meth:`poser_lettre_en_attente`, et cette méthode le lit directement — le
+        JS ne passe donc plus de ``placements``. Le paramètre ``placements`` reste
+        accepté (rétro-compatibilité et tests) : s'il est fourni, il **remplace**
+        l'état de pose courant avant le jeu.
+
+        Le sens du mot se déduit de l'alignement des lettres ; pour une lettre
+        unique il est fixé à l'horizontale en interne (issue #43 : sans
+        conséquence sur la validation ni le score). La méthode construit un
         :class:`~scrabble.moteur.plateau_partie.Coup`, appelle
         :meth:`~scrabble.moteur.partie.Partie.jouer_coup` et renvoie :
 
-        * en cas de succès : ``{"succes": True, "points": ..., "etat": ...}``
-          où ``etat`` est l'état public rafraîchi (plateau, scores, tour) ;
+        * en cas de succès : ``{"succes": True, "points": ..., "etat": ...}`` où
+          ``etat`` est l'état public rafraîchi. ``_selection``/``_en_attente`` sont
+          réinitialisés (le moteur a consommé les lettres) et le nouvel état est
+          diffusé aux deux fenêtres via :meth:`_diffuser` ;
         * en cas d'échec : ``{"succes": False, "erreur": <message clair>}`` — les
-          lettres en attente ne sont pas perdues (le JS les conserve pour
-          correction).
+          lettres en attente **ne sont pas perdues** (elles restent dans
+          ``_en_attente`` pour correction).
 
         Confidentialité : la réponse ne contient jamais l'identité des lettres
         d'un chevalet (``etat`` est l'état public, sans chevalet).
         """
+        if placements is not None:
+            self._en_attente = [self._normaliser_placement(p) for p in placements]
         nb_avant = len(self._partie.historique)
-        resultat = jouer_placements(self._partie, placements)
+        resultat = jouer_placements(self._partie, self._en_attente)
         if resultat.get("succes"):
             detail = resultat.get("detail")
             mot = (
@@ -893,7 +1208,13 @@ class ApiJeu:
             self._persister_entrees(self._partie.historique[nb_avant:])
             self._journaliser_fin_partie()
             self._finaliser_si_terminee()
+            # Le coup est joué : on repart d'un état de pose vierge et on
+            # rediffuse le nouvel état (public / privé) aux deux fenêtres.
+            self._selection = None
+            self._en_attente = []
+            self._joker_demande = None
             resultat["etat"] = etat_public(self._partie, self._id_partie)
+            self._diffuser()
         else:
             # Un coup refusé (mot hors dictionnaire, placement illégal…) est un
             # déroulé de jeu normal, pas un bug : on le trace en INFO pour pouvoir
@@ -902,16 +1223,46 @@ class ApiJeu:
             journal.info(f"Jeu : coup refusé — {resultat.get('erreur')}")
         return resultat
 
-    def verifier_coup(self, placements: list[Any]) -> dict[str, Any]:
+    @staticmethod
+    def _normaliser_placement(placement: Any) -> dict[str, Any]:
+        """Normalise un placement (dict JS ou interne) en placement interne complet.
+
+        Garantit la présence des clés attendues par ``_en_attente``
+        (``ligne, colonne, lettre, joker, valeur, index``) à partir d'un dict qui
+        peut n'en fournir qu'une partie (p. ex. ``{ligne, colonne, lettre, joker}``
+        venu d'un test ou d'un ancien appelant). ``valeur`` et ``index`` sont
+        déduits/comblés si absents.
+        """
+        if not isinstance(placement, dict):
+            return {"ligne": None, "colonne": None, "lettre": None,
+                    "joker": False, "valeur": 0, "index": None}
+        joker = bool(placement.get("joker", False))
+        lettre = placement.get("lettre")
+        if "valeur" in placement and placement["valeur"] is not None:
+            valeur = placement["valeur"]
+        elif joker or not isinstance(lettre, str):
+            valeur = 0
+        else:
+            valeur = valeur_lettre(lettre.upper())
+        return {
+            "ligne": placement.get("ligne"),
+            "colonne": placement.get("colonne"),
+            "lettre": lettre,
+            "joker": joker,
+            "valeur": 0 if joker else valeur,
+            "index": placement.get("index"),
+        }
+
+    def verifier_coup(self, placements: list[Any] | None = None) -> dict[str, Any]:
         """Calcule les points du coup en attente **sans le jouer** (issue #69).
 
-        Point d'entrée du bouton « 🔎 Vérifier et calculer ». ``placements`` est la
-        même liste que celle passée à :meth:`poser_mot` (dicts
-        ``{ligne, colonne, lettre, joker}``). Délègue à :func:`simuler_coup`, qui
-        valide le coup et calcule son score sur une **copie** du plateau, sans
-        rien modifier de la partie : ni le plateau réel, ni le chevalet, ni
-        l'historique, ni le tour. Les lettres en attente côté JS ne sont donc pas
-        perdues et aucun tour n'est consommé.
+        Point d'entrée du bouton « 🔎 Vérifier et calculer ». Depuis l'issue #90 la
+        méthode lit ``_en_attente`` (le JS ne passe plus de ``placements``) ;
+        ``placements`` reste accepté pour compat/tests et remplace alors l'état de
+        pose courant. Délègue à :func:`simuler_coup`, qui valide le coup et calcule
+        son score sur une **copie** du plateau, sans rien modifier de la partie :
+        ni le plateau réel, ni le chevalet, ni l'historique, ni le tour. Les
+        lettres en attente ne sont donc pas perdues et aucun tour n'est consommé.
 
         Renvoie, comme un coup réellement joué,
         ``{"succes": True, "points": ..., "nom": ..., "detail": ...}`` si le coup
@@ -919,7 +1270,9 @@ class ApiJeu:
         (aucun score affiché dans ce cas). La réponse ne contient jamais l'identité
         des lettres d'un chevalet.
         """
-        resultat = simuler_coup(self._partie, placements)
+        if placements is not None:
+            self._en_attente = [self._normaliser_placement(p) for p in placements]
+        resultat = simuler_coup(self._partie, self._en_attente)
         if resultat.get("succes"):
             detail = resultat.get("detail")
             mot = (
@@ -964,6 +1317,13 @@ class ApiJeu:
             journal.info(f"Jeu : échange complet du chevalet par {nom}.")
             self._persister_entrees(self._partie.historique[nb_avant:])
             self._finaliser_si_terminee()
+            # Nouveau tirage + tour suivant : on repart d'un état de pose vierge
+            # et on rediffuse le nouvel état public (plateau) et le nouveau
+            # chevalet (fenêtre chevalet) — issue #90.
+            self._selection = None
+            self._en_attente = []
+            self._joker_demande = None
+            self._diffuser()
         else:
             journal.info(f"Jeu : échange refusé pour {nom} — {resultat.get('erreur')}")
         return resultat
@@ -992,6 +1352,12 @@ class ApiJeu:
             self._persister_entrees(self._partie.historique[nb_avant:])
             self._journaliser_fin_partie()
             self._finaliser_si_terminee()
+            # Tour suivant : état de pose remis à zéro et rediffusé (nouvel état
+            # public au plateau, nouveau chevalet à la fenêtre chevalet) — #90.
+            self._selection = None
+            self._en_attente = []
+            self._joker_demande = None
+            self._diffuser()
         return resultat
 
     def _persister_entrees(self, entrees: list[EntreeHistorique]) -> None:
@@ -1063,39 +1429,46 @@ class ApiJeu:
             journal.info(f"Jeu : fin de partie — gagnant(s) : {gagnants}.")
 
     def retour_menu(self) -> dict[str, Any]:
-        """Ferme l'écran de jeu pour revenir à l'écran d'accueil (issue #74).
+        """Ferme **les deux** fenêtres de jeu pour revenir à l'accueil (issues #74/#90).
 
-        Point d'entrée du bouton « 🏠 Retour au menu ». Ferme la fenêtre de jeu
+        Point d'entrée du bouton « 🏠 Retour au menu ». Ferme les fenêtres de jeu
         **depuis Python** via ``window.destroy()`` — et non ``window.close()``
         côté JS, non honoré par tous les backends pywebview (GTK/WebKit sous
-        Linux, issues #53/#57). Une fois la fenêtre fermée, ``webview.start()``
-        rend la main à :func:`lancer_jeu`, qui, voyant le drapeau
-        ``_retour_menu``, rouvre l'écran d'accueil (:func:`lancer_accueil`) en
-        **réutilisant la session de journalisation** déjà ouverte (cohérent avec
-        l'issue #66) au lieu de la clôturer.
+        Linux, issues #53/#57). Depuis l'issue #90, il faut détruire **la fenêtre
+        plateau ET la fenêtre chevalet** : sans cela la fenêtre chevalet
+        ``on_top`` resterait orpheline, flottant au-dessus de l'accueil rouvert.
+        Une fois les fenêtres fermées, ``webview.start()`` rend la main à
+        :func:`lancer_jeu`, qui, voyant le drapeau ``_retour_menu``, rouvre
+        l'écran d'accueil (:func:`lancer_accueil`) en **réutilisant la session de
+        journalisation** déjà ouverte (cohérent avec l'issue #66).
 
         La partie n'est pas modifiée ici : elle reste persistée et reprenable
         via « Reprendre une partie » (le suivi en base est mis à jour en continu
         après chaque action, issues #22/#25). Un éventuel coup en attente (non
-        validé) côté JS est simplement abandonné — l'avertissement de confirmation
-        est géré côté interface.
+        validé) est simplement abandonné — l'avertissement de confirmation est
+        géré côté interface.
 
         Retourne ``{"succes": True}`` si la fermeture a été demandée, sinon
         ``{"succes": False, "erreur": ...}`` (le JS réactive alors le bouton
         plutôt que de rester bloqué).
         """
-        if self._window is None:
+        if self._window_plateau is None and self._window_chevalet is None:
             return {"succes": False, "erreur": "Aucune fenêtre associée."}
         try:
             journal.info(
                 f"Jeu : retour au menu demandé (partie #{self._id_partie})."
             )
             self._retour_menu = True
-            self._window.destroy()
+            # Détruire la fenêtre chevalet en premier : ``on_top``, elle doit
+            # disparaître avant l'accueil rouvert. La fenêtre plateau ensuite.
+            if self._window_chevalet is not None:
+                self._window_chevalet.destroy()
+            if self._window_plateau is not None:
+                self._window_plateau.destroy()
             return {"succes": True}
         except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
-            # La fermeture a échoué : on ne rouvrira pas l'accueil (la fenêtre de
-            # jeu reste ouverte et le JS réactive le bouton).
+            # La fermeture a échoué : on ne rouvrira pas l'accueil (les fenêtres
+            # de jeu restent ouvertes et le JS réactive le bouton).
             self._retour_menu = False
             return {"succes": False, "erreur": f"Fermeture impossible : {e}"}
 
@@ -1164,24 +1537,89 @@ def _rouvrir_accueil(id_partie: int | None) -> None:
     lancer_accueil(reutiliser_session=True)
 
 
+# Dimensions par défaut de la fenêtre chevalet flottante (issue #90). Assez
+# large pour loger les 7 lettres + le brouillon (9 emplacements) sur une ligne,
+# et la zone de drag en haut. Non redimensionnable : ces valeurs sont donc la
+# taille réelle utilisée.
+CHEVALET_LARGEUR = 600
+CHEVALET_HAUTEUR = 340
+# Marge basse : la fenêtre chevalet est posée près du bas de l'écran, à cette
+# distance du bord inférieur de la zone de travail.
+CHEVALET_MARGE_BAS = 40
+
+
+def _position_chevalet(
+    largeur: int = CHEVALET_LARGEUR, hauteur: int = CHEVALET_HAUTEUR
+) -> tuple[int, int]:
+    """Position (x, y) bas-centre de l'écran pour la fenêtre chevalet (issue #90).
+
+    Calculée à partir des dimensions d'écran disponibles via ``webview.screens``
+    (premier écran). Le chevalet est centré horizontalement et collé vers le bas
+    (à :data:`CHEVALET_MARGE_BAS` du bord inférieur). En l'absence d'information
+    d'écran exploitable (environnement sans affichage, ``webview.screens`` vide ou
+    en erreur), on retombe sur un placement neutre ``(100, 100)`` plutôt que de
+    faire échouer le lancement.
+    """
+    try:
+        ecrans = webview.screens
+        ecran = ecrans[0] if ecrans else None
+        larg_ecran = int(getattr(ecran, "width", 0) or 0)
+        haut_ecran = int(getattr(ecran, "height", 0) or 0)
+    except Exception:  # noqa: BLE001 - pas d'écran interrogeable : repli neutre
+        larg_ecran = haut_ecran = 0
+    if larg_ecran <= 0 or haut_ecran <= 0:
+        return 100, 100
+    x = max(0, (larg_ecran - largeur) // 2)
+    y = max(0, haut_ecran - hauteur - CHEVALET_MARGE_BAS)
+    return x, y
+
+
 def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
-    """Crée la fenêtre pywebview de l'écran de jeu et démarre la boucle (bloquant)."""
-    chemin_html = DOSSIER_WEB / "jeu.html"
-    window = webview.create_window(
-        "Scrabble - Partie en cours",
-        str(chemin_html),
+    """Crée les **deux** fenêtres de jeu (plateau + chevalet) et démarre la boucle.
+
+    Séparation plateau/chevalet en deux fenêtres pywebview (issue #90) :
+
+    * Fenêtre **plateau** : maximisée (``maximized=True``), sans ``width``/
+      ``height`` fixes, afin de s'adapter à n'importe quelle résolution logique
+      (le CSS contraint désormais le plateau par la hauteur disponible pour éviter
+      tout défilement). Elle porte le plateau, les panneaux joueurs, la barre du
+      sac/historique, « Faire jouer l'ordinateur » et la vérification dictionnaire.
+    * Fenêtre **chevalet** : flottante ``frameless=True``, ``on_top=True`` (toujours
+      au-dessus), ``resizable=False`` et ``easy_drag=False`` (le déplacement ne
+      passe que par la zone de drag dédiée en haut, ``.pywebview-drag-region``, pour
+      qu'un clic-clic sur une lettre ne soit jamais interprété comme un déplacement
+      de fenêtre). Taille ~600×340, posée en bas-centre de l'écran.
+
+    Les deux fenêtres sont créées **avant** l'unique ``webview.start()`` (exigence
+    pywebview : toutes les fenêtres se déclarent avant de démarrer la boucle). Elles
+    partagent la même instance ``api`` (``js_api=api``), source de vérité de l'état
+    de pose (issue #90).
+    """
+    window_plateau = webview.create_window(
+        "Scrabble - Plateau",
+        str(DOSSIER_WEB / "jeu.html"),
         js_api=api,
-        # Fenêtre par défaut agrandie (issue #55) : le plateau et la fenêtre de
-        # l'issue #47 (1120×800, plateau min(52vw, 360px)) étaient jugés trop
-        # petits au test manuel. On agrandit nettement pour redonner sa place au
-        # plateau (désormais min(68vw, 560px), voir jeu.css), quitte à accepter un
-        # léger défilement vertical à 4 joueurs plutôt que de sacrifier la
-        # lisibilité des cases. La fenêtre reste redimensionnable.
-        width=1320,
-        height=980,
+        # Maximisée, sans taille fixe : le plateau + les panneaux tiennent sans
+        # défilement à n'importe quelle résolution logique modeste (cf. jeu.css,
+        # dimensionnement contraint par vh). La fenêtre reste redimensionnable.
+        maximized=True,
         resizable=True,
     )
-    api.set_window(window)
+    x_chev, y_chev = _position_chevalet()
+    window_chevalet = webview.create_window(
+        "Scrabble - Chevalet",
+        str(DOSSIER_WEB / "chevalet.html"),
+        js_api=api,
+        width=CHEVALET_LARGEUR,
+        height=CHEVALET_HAUTEUR,
+        x=x_chev,
+        y=y_chev,
+        frameless=True,     # fenêtre sans cadre ni barre de titre
+        on_top=True,        # toujours au-dessus du plateau
+        resizable=False,    # non redimensionnable par erreur
+        easy_drag=False,    # déplacement uniquement via .pywebview-drag-region
+    )
+    api.set_windows(window_plateau, window_chevalet)
     webview.start()
 
 

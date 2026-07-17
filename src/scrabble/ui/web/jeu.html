@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scrabble - Partie en cours</title>
+    <title>Scrabble - Plateau</title>
+    <link rel="stylesheet" href="commun.css">
     <link rel="stylesheet" href="jeu.css">
 </head>
 <body>
@@ -157,146 +158,17 @@
             <footer class="panneau-bas" id="panneau-bas">
             <div id="slot-bas" class="slot slot-bas" aria-label="Votre panneau"></div>
 
-            <div class="zone-chevalet">
-            <!-- Mode « attente » : affiché à la place de toute la mécanique
-                 interactive tant que ce n'est pas le tour d'un joueur humain
-                 (tour d'un ordinateur). Le chevalet de l'ordinateur n'est
-                 jamais exposé ni manipulable ici (issue #35). -->
+            <!-- Mode « attente » d'un tour d'ordinateur (issue #35) déplacé côté
+                 fenêtre PLATEAU (issue #90) : le chevalet de l'ordinateur n'est
+                 jamais exposé, et faire avancer un tour IA relève du plateau
+                 (l'humain n'a rien à jouer). Le chevalet, le brouillon et les
+                 contrôles de pose vivent désormais dans la fenêtre chevalet
+                 flottante (chevalet.html) — voir issue #90. -->
             <div id="zone-attente-ia" class="zone-attente-ia" hidden>
                 <p id="attente-ia-message" class="attente-ia-message" role="status" aria-live="polite"></p>
                 <button id="btn-jouer-ia" class="btn btn-primaire">
                     ▶ Faire jouer l'ordinateur
                 </button>
-            </div>
-
-            <div class="chevalet-entete">
-                <div class="chevalet-titre-groupe">
-                    <h2>Chevalet de <span id="chevalet-nom">—</span></h2>
-                    <!-- Instruction de pose clic-clic (issue #42, point 4) :
-                         placée juste sous le titre « Chevalet de … », donc
-                         visible AVANT toute interaction (auparavant sous la zone
-                         de jeu, découverte trop tard). -->
-                    <p class="chevalet-aide-pose">
-                        Cliquez une lettre puis une case vide pour la poser.
-                        Recliquez une lettre posée pour la retirer.
-                    </p>
-                </div>
-                <div class="chevalet-actions">
-                    <button id="btn-visibilite" class="btn btn-primaire">
-                        👁️ Voir mes lettres
-                    </button>
-                </div>
-            </div>
-
-            <!-- Réorganisation issue #41, point 1 : deux zones nettement
-                 séparées et clairement identifiées. À GAUCHE le chevalet (vraies
-                 lettres à jouer, zone d'ACTION : cliquer ici pose sur le plateau) ;
-                 à DROITE le brouillon (zone de RÉFLEXION libre, sans effet sur la
-                 partie). Chaque zone porte un intitulé et un habillage distinct
-                 pour que le joueur ne confonde jamais « je joue » et « je réfléchis ». -->
-            <div class="zone-reflexion">
-                <!-- Zone « À jouer » (issue #45, point 5) : le chevalet, PUIS les
-                     actions de tour (Annuler / Valider / Remettre) regroupées
-                     juste en dessous. Les boutons comblent l'espace sous les
-                     lettres au lieu de le laisser vide, et restent solidaires de
-                     la zone d'action. -->
-                <div class="bloc-chevalet">
-                    <div class="bloc-titre bloc-titre-jouer">
-                        🎯 À jouer <span class="bloc-titre-note">— cliquez une lettre pour la poser</span>
-                    </div>
-                    <div id="chevalet" class="chevalet" aria-label="Chevalet du joueur courant"></div>
-
-                    <!-- Contrôles de pose d'un mot (clic-clic) : visibles
-                         uniquement lorsque le chevalet est révélé et la partie en
-                         cours. Regroupés en bas de la zone « À jouer » (issue #45,
-                         point 5). L'aide de pose est près du titre du chevalet. -->
-                    <div id="zone-jeu" class="zone-jeu" hidden>
-                        <div class="zone-jeu-controles">
-                            <!-- Action rare : reste un lien discret, jamais seul
-                                 sur sa ligne (issue #42, point 6). -->
-                            <button id="btn-echanger-tout" class="lien-discret" hidden
-                                    title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
-                                ♻️ Remettre toutes ses lettres et passer
-                            </button>
-                            <span class="zone-jeu-actions">
-                                <button id="btn-annuler" class="btn btn-secondaire" disabled>
-                                    ✗ Annuler
-                                </button>
-                                <button id="btn-verifier-coup" class="btn btn-secondaire" disabled
-                                        title="Calcule les points du coup en attente sans le jouer (rien n'est perdu)">
-                                    🔎 Vérifier et calculer
-                                </button>
-                                <button id="btn-valider" class="btn btn-primaire" disabled>
-                                    ✓ Jouer
-                                </button>
-                            </span>
-                        </div>
-                        <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
-
-                        <!-- La vérification dictionnaire par saisie libre
-                             (ex-issue #50) ne vit plus ici (issue #86) : champ +
-                             bouton + message ont été déplacés hors de la zone
-                             chevalet, derrière le bouton « Vérification
-                             dictionnaire » logé dans l'espace libre à gauche de
-                             l'écran (voir en haut de ce fichier). La zone du tour
-                             en cours ne porte plus que les actions de jeu. -->
-                    </div>
-                </div>
-
-                <!-- Zone de brouillon : espace de réflexion SANS lien avec le
-                     plateau ni la pose en attente (mécanique clic-clic). -->
-                <div id="bloc-brouillon" class="bloc-brouillon" hidden>
-                    <!-- Le panneau Brouillon ne sert qu'à la réflexion visuelle.
-                         Le champ + bouton de vérification dictionnaire (ex-issue
-                         #50) en sont sortis (issue #86) : ils vivent désormais
-                         derrière le bouton « Vérification dictionnaire » à gauche
-                         de l'écran. L'aide détaillée d'usage, jadis affichée en
-                         permanence sous le brouillon, est repliée derrière l'icône
-                         « i » du titre ci-dessous (issue #86). -->
-                    <div class="brouillon-entete">
-                        <!-- Titre du brouillon suivi (en exposant) d'une icône
-                             « i » cliquable (issue #86). L'aide détaillée n'est
-                             plus affichée en permanence sous le brouillon : elle
-                             est repliée dans le popover ci-dessous, ouvert au clic
-                             sur l'icône (texte inchangé, juste déplacé). L'icône
-                             a une cible cliquable confortable (accessibilité,
-                             public 80+) et le popover se ferme au clic extérieur
-                             ou à la touche Échap. -->
-                        <span class="brouillon-titre-groupe">
-                            <span class="brouillon-titre bloc-titre bloc-titre-brouillon">
-                                ✏️ Brouillon <span class="bloc-titre-note">— réflexion libre, sans effet sur la partie</span>
-                            </span><button id="btn-aide-brouillon" class="btn-aide-info"
-                                    aria-haspopup="dialog" aria-expanded="false"
-                                    aria-label="Aide : comment utiliser le brouillon"
-                                    title="Aide : comment utiliser le brouillon">i</button>
-                            <div id="aide-brouillon-popover" class="aide-info-popover"
-                                 role="dialog" aria-label="Aide du brouillon" hidden>
-                                <p>
-                                    Réarrangez librement vos 7 lettres sur les 9
-                                    emplacements pour trouver l'inspiration :
-                                    cliquez une lettre puis un emplacement vide pour
-                                    l'y déplacer, ou deux lettres pour les échanger.
-                                    Clic droit sur une lettre : la renvoie vers le
-                                    vide le plus proche de la fin. Les 2 emplacements
-                                    vides (position libre) figurent une lettre déjà
-                                    posée sur le plateau à prendre en compte ; aucune
-                                    saisie possible.
-                                </p>
-                            </div>
-                        </span>
-                    </div>
-                    <div id="brouillon" class="brouillon" aria-label="Zone de brouillon (réflexion)"></div>
-                </div>
-            </div>
-
-            <!-- Ligne de bas de zone : aide de confidentialité (parties à deux
-                 humains ou plus). -->
-            <div class="chevalet-pied">
-                <p class="chevalet-aide" id="chevalet-aide">
-                    Vos lettres restent masquées tant que vous ne cliquez pas sur
-                    « Voir mes lettres ». Pensez à les cacher si un adversaire approche.
-                </p>
-            </div>
             </div>
             </footer>
         </main>
@@ -338,14 +210,9 @@
         </div>
     </div>
 
-    <!-- Modale de choix de la lettre représentée par un joker. -->
-    <div id="joker-modale" class="modale" hidden>
-        <div class="modale-contenu">
-            <h3>Quelle lettre représente le joker ?</h3>
-            <div id="joker-grille" class="joker-grille"></div>
-            <button id="joker-annuler" class="btn btn-secondaire">Annuler</button>
-        </div>
-    </div>
+    <!-- La modale de choix de lettre d'un joker vit désormais côté fenêtre
+         chevalet (chevalet.html) : la lettre vient du chevalet, le choix s'y fait
+         donc (issue #90). -->
 
     <!-- Calque de célébration festive quand un Scrabble (7 lettres, +50 pts) est
          posé (issue #64, suite de #58). Superposé plein écran mais totalement
@@ -354,6 +221,7 @@
          sobre « 🎉 Scrabble ! » si prefers-reduced-motion est actif. -->
     <div id="scrabble-fete" class="scrabble-fete" aria-hidden="true"></div>
 
+    <script src="commun.js"></script>
     <script src="jeu.js"></script>
 </body>
 </html>
