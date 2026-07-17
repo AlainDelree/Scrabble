@@ -977,7 +977,12 @@ header {
 /* Chevalet */
 .zone-chevalet {
     margin-top: 8px;
-    background: white;
+    /* Repère visuel TEMPORAIRE (issue #85) : fond jaune vif pour identifier,
+       à l'ouverture du jeu, la zone exacte considérée comme « le chevalet »
+       (le brouillon du joueur humain courant) avant de la séparer dans sa
+       propre fenêtre. Remplace temporairement le `background: white` d'origine.
+       À retirer ou ajuster après validation visuelle. */
+    background: #fff176;
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
     padding: 8px 14px 10px;
