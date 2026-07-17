@@ -67,6 +67,8 @@ class TestSerialiserCase:
         assert case["type"] == "normale"
         assert case["lettre"] is None
         assert case["joker"] is False
+        # Case vide : valeur nulle (aucune tuile à afficher, issue #56).
+        assert case["valeur"] == 0
 
     def test_case_centrale(self):
         partie = _partie_simple()
@@ -89,6 +91,8 @@ class TestSerialiserCase:
         assert case["joker"] is False
         # Le type de bonus reste connu même sous une tuile.
         assert case["type"] == "centre"
+        # Valeur en points de la lettre posée (issue #56) : A vaut 1.
+        assert case["valeur"] == 1
 
     def test_case_avec_joker(self):
         partie = _partie_simple()
@@ -96,6 +100,9 @@ class TestSerialiserCase:
         case = serialiser_case(partie.plateau, 7, 8)
         assert case["lettre"] == "B"
         assert case["joker"] is True
+        # Un joker posé vaut toujours 0 point, même s'il affiche une lettre
+        # normalement valorisée (issue #56, cohérent avec le chevalet).
+        assert case["valeur"] == 0
 
 
 class TestSerialiserPlateau:

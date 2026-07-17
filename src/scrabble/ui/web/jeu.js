@@ -175,6 +175,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * Construit une tuile posée sur le plateau (avec sa valeur en indice).
      * ``enAttente`` marque une tuile non encore validée (style distinct).
+     *
+     * La valeur en points de la lettre est affichée en indice (classe
+     * ``.tuile-valeur``), comme sur les lettres du chevalet et du brouillon
+     * (issue #56). Un joker vaut toujours 0, cohérent avec le reste de
+     * l'application ; ``cell.valeur`` est fourni par Python (case du plateau)
+     * ou par le placement en attente (copié depuis le chevalet).
      */
     function creerTuile(cell, enAttente = false) {
         const tuile = document.createElement('div');
@@ -182,6 +188,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             + (cell.joker ? ' tuile-joker' : '')
             + (enAttente ? ' tuile-attente' : '');
         tuile.textContent = cell.lettre;
+        const valeur = document.createElement('span');
+        valeur.className = 'tuile-valeur';
+        valeur.textContent = cell.joker ? 0 : (cell.valeur || 0);
+        tuile.appendChild(valeur);
         return tuile;
     }
 
@@ -954,6 +964,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Encart d'historique glissant (issue #37) ---
 
+    // Fermeture/ouverture fiable du menu « Derniers coups » (issue #56).
+    //
+    // Diagnostic : ce <details> (#historique-menu) ne se refermait pas sous
+    // WebKitGTK (moteur de pywebview sous Linux). L'issue #51 ne le concernait
+    // pas (elle portait sur .chevalet-entete[hidden] / .zone-reflexion[hidden])
+    // et l'issue #49 n'avait traité que le <summary> lui-même. Or le piège
+    // WebKitGTK subsiste UN CRAN plus bas : le <summary> conserve bien son
+    // display natif, mais son unique enfant visible, .historique-resume-inner,
+    // est en display:inline-flex et occupe toute la surface cliquable (titre +
+    // compteur + chevron). Sous WebKitGTK, l'action native d'ouverture/fermeture
+    // d'un <details> n'est pas déclenchée de façon fiable quand le clic atterrit
+    // sur un descendant flex/inline-flex du <summary> : la première ouverture
+    // pouvait passer, mais la fermeture au reclic était perdue.
+    //
+    // Correctif : on cesse de dépendre de l'action native. On annule celle-ci
+    // (preventDefault) et on bascule l'attribut `open` nous-mêmes. Un seul
+    // basculement a lieu par clic dans tous les moteurs (pas de double-bascule),
+    // donc ouverture ET fermeture fonctionnent partout.
+    const historiqueMenu = document.getElementById('historique-menu');
+    const historiqueResume = historiqueMenu
+        ? historiqueMenu.querySelector('summary')
+        : null;
+    if (historiqueMenu && historiqueResume) {
+        historiqueResume.addEventListener('click', (evt) => {
+            evt.preventDefault();
+            historiqueMenu.open = !historiqueMenu.open;
+        });
+    }
+
     /**
      * Retrouve l'entrée d'historique correspondant à un élément <li> cliqué
      * (via son ``data-index``, l'index d'origine dans ``partie.historique``).
@@ -1089,6 +1128,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             colonne,
             lettre: valeurLettre,
             joker: estJoker,
+            // Valeur en points de la lettre, affichée en indice sur la tuile
+            // en attente (issue #56). Un joker vaut toujours 0 ; sinon on
+            // reprend la valeur de la lettre du chevalet.
+            valeur: estJoker ? 0 : (lettre.valeur || 0),
             index: selection,
         });
         selection = null;

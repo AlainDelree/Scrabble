@@ -70,14 +70,25 @@ def serialiser_case(plateau: PlateauPartie, ligne: int, colonne: int) -> dict[st
 
     Le champ ``type`` est la valeur du :class:`~scrabble.regles.plateau.TypeCase`
     (``"MT"``, ``"MD"``, ``"LT"``, ``"LD"``, ``"centre"`` ou ``"normale"``). Si
-    la case porte une tuile, ``lettre`` est la lettre affichée et ``joker`` dit
-    si c'est un joker (valeur nulle) ; sinon ``lettre`` vaut ``None``.
+    la case porte une tuile, ``lettre`` est la lettre affichée, ``joker`` dit si
+    c'est un joker (valeur nulle) et ``valeur`` est le nombre de points de la
+    tuile (0 pour un joker, cohérent avec le chevalet — voir
+    :func:`serialiser_chevalet`) ; sinon ``lettre`` vaut ``None`` et ``valeur``
+    vaut 0. Le JS affiche cette ``valeur`` en indice sur la tuile posée
+    (classe CSS ``.tuile-valeur``), comme sur les lettres du chevalet/brouillon.
     """
     tuile = plateau.tuile(ligne, colonne)
+    if tuile is None:
+        valeur = 0
+    elif tuile.joker:
+        valeur = 0
+    else:
+        valeur = valeur_lettre(tuile.lettre)
     return {
         "type": type_case(ligne, colonne).value,
         "lettre": tuile.lettre if tuile is not None else None,
         "joker": bool(tuile.joker) if tuile is not None else False,
+        "valeur": valeur,
     }
 
 

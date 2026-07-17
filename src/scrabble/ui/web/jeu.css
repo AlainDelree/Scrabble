@@ -285,12 +285,23 @@ header {
 /* --------------------------------------------------------------------------- */
 /* Grille 3×3 : le plateau au centre, un panneau par côté (haut / gauche /
    droite / bas) placé dans sa zone. Chaque panneau est rendu par le JS dans le
-   « slot » du côté que Python lui a assigné. Les colonnes latérales sont en
-   ``auto`` : un slot vide (moins de joueurs) se réduit à zéro et le plateau
-   reste centré. */
+   « slot » du côté que Python lui a assigné.
+
+   Alignement des panneaux autour du plateau (issue #56). Les colonnes latérales
+   sont en ``1fr`` (et non ``auto``) : la rangée du bas — qui porte la large zone
+   chevalet/brouillon (nettement plus large que le plateau) — étire la table
+   au-delà de la largeur du plateau. Avec des colonnes ``auto``, cet excédent se
+   répartissait de façon ASYMÉTRIQUE : le plateau se retrouvait décalé du centre
+   de la table, les panneaux haut/bas n'étaient plus centrés sur lui et les
+   panneaux gauche/droite « flottaient » à une distance variable de ses bords.
+   Deux colonnes ``1fr`` identiques encadrant le plateau garantissent au
+   contraire un excédent réparti SYMÉTRIQUEMENT : le plateau reste exactement
+   centré dans la table quelle que soit la largeur de la zone du bas ou du
+   contenu latéral. Les panneaux haut/bas se centrent alors sur le plateau, et
+   les panneaux gauche/droite se collent à ses bords (voir justify-self). */
 .table {
     display: grid;
-    grid-template-columns: auto auto auto;
+    grid-template-columns: 1fr auto 1fr;
     grid-template-rows: auto auto auto;
     grid-template-areas:
         ".      haut     ."
@@ -301,9 +312,18 @@ header {
     align-items: center;
 }
 
+/* Panneaux haut/bas : centrés horizontalement SUR LE PLATEAU. Le panneau du
+   haut vit dans la colonne centrale (celle du plateau) et s'y centre ; le
+   panneau du bas est centré par .slot-bas dans la rangée pleine largeur, elle
+   aussi symétrique autour du plateau (issue #56). */
 .slot-haut { grid-area: haut; justify-self: center; }
-.slot-gauche { grid-area: gauche; }
-.slot-droite { grid-area: droite; }
+/* Panneaux gauche/droite : collés contre les bords du plateau (issue #56).
+   ``justify-self: end`` colle le panneau de gauche contre le bord GAUCHE du
+   plateau (bord interne de sa colonne) ; ``start`` colle celui de droite contre
+   le bord DROIT. Ils ne « flottent » plus au milieu de leur colonne à une
+   distance variable : seul l'écart de grille (gap) les sépare du plateau. */
+.slot-gauche { grid-area: gauche; justify-self: end; }
+.slot-droite { grid-area: droite; justify-self: start; }
 .zone-plateau { grid-area: plateau; }
 .panneau-bas { grid-area: bas; }
 
