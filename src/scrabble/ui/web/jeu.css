@@ -699,31 +699,50 @@ header {
     }
 }
 
-/* Message sobre affiché à la place du feu d'artifice quand l'utilisateur
-   préfère moins de mouvement. Bref (retiré par le JS après ~1,8 s), centré,
-   sans particule ni translation. */
-.scrabble-fete .scrabble-message {
+/* Toast festif « Scrabble !! Félicitations » (issue #73), affiché EN COMPLÉMENT
+   du feu d'artifice pour renforcer l'effet festif. Bandeau textuel bien visible,
+   centré en haut du calque, purement visuel (le calque parent est en
+   pointer-events: none, donc le toast n'intercepte aucun clic). Il apparaît en
+   fondu, reste visible ~2 s, puis disparaît en fondu ; le JS vide le calque à la
+   fin. En mouvement réduit, il reste identique mais statique (voir plus bas). */
+.scrabble-fete .scrabble-toast {
     position: absolute;
-    top: 22%;
+    top: 18%;
     left: 50%;
     transform: translateX(-50%);
-    padding: 0.6rem 1.4rem;
+    padding: 0.7rem 1.6rem;
     background: var(--couleur-primaire);
     color: #fff;
-    font-size: clamp(1.1rem, 4vw, 1.8rem);
-    font-weight: 700;
+    font-size: clamp(1.2rem, 4.5vw, 2rem);
+    font-weight: 800;
+    letter-spacing: 0.02em;
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
     white-space: nowrap;
+    animation: scrabble-toast-apparition 2.6s ease-out both;
+}
+
+@keyframes scrabble-toast-apparition {
+    0%   { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.92); }
+    8%   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+    85%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.98); }
 }
 
 /* Accessibilité : si l'utilisateur préfère moins de mouvement, on n'injecte
-   pas de particules (le JS bascule sur le message). Par sécurité, on neutralise
-   aussi toute animation résiduelle du calque. */
+   pas de particules (le JS n'affiche que le toast). Par sécurité, on neutralise
+   toute animation résiduelle du calque, et le toast reste affiché statiquement
+   (pas de fondu d'apparition/disparition) le temps du nettoyage par le JS. */
 @media (prefers-reduced-motion: reduce) {
     .scrabble-fete .particule {
         animation: none;
         opacity: 0;
+    }
+
+    .scrabble-fete .scrabble-toast {
+        animation: none;
+        opacity: 1;
+        transform: translateX(-50%);
     }
 }
 

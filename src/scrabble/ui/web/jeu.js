@@ -944,13 +944,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         const reduit = window.matchMedia
             && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+        // Toast festif « Scrabble !! Félicitations » (issue #73), affiché EN
+        // COMPLÉMENT du feu d'artifice (pas à sa place). Purement visuel : il
+        // hérite du pointer-events: none du calque et n'intercepte aucun clic.
+        // Il est retiré avec le reste du calque par le setTimeout de nettoyage.
+        // En mouvement réduit, il reste identique mais sans fondu (voir CSS).
+        const toast = document.createElement('div');
+        toast.className = 'scrabble-toast';
+        toast.textContent = '🎉 Scrabble !! Félicitations 🥳';
+        calque.appendChild(toast);
+
         if (reduit) {
-            // Alternative sobre et statique : un message bref, aucun mouvement.
-            const message = document.createElement('div');
-            message.className = 'scrabble-message';
-            message.textContent = '🎉 Scrabble !';
-            calque.appendChild(message);
-            setTimeout(() => { calque.innerHTML = ''; }, 1800);
+            // Mouvement réduit : uniquement le toast statique, aucune particule.
+            setTimeout(() => { calque.innerHTML = ''; }, 2600);
             return;
         }
 
@@ -974,8 +980,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             p.style.setProperty('--col', couleurs[i % couleurs.length]);
             calque.appendChild(p);
         }
-        // Nettoyage après la fin de l'animation (1,6 s + délai max ~0,25 s).
-        setTimeout(() => { calque.innerHTML = ''; }, 2100);
+        // Nettoyage après la fin de l'animation (particules ~1,85 s, toast ~2,6 s).
+        setTimeout(() => { calque.innerHTML = ''; }, 2600);
     }
 
     // --- Zone de brouillon (réflexion indépendante) ---
