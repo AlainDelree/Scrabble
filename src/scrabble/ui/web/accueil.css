@@ -459,7 +459,33 @@ section h2 {
     margin-top: 20px;
 }
 
-/* Modale tirage d'ordre (issue #54) */
+/* Modale tirage d'ordre (issue #54).
+   Mise en page anti-débordement (issue #82) : la modale ne doit jamais
+   dépasser la fenêtre, même petite, sinon le bas — les boutons Annuler /
+   Continuer — se retrouve tronqué sous la bordure inférieure. On borne donc
+   la hauteur du contenu à la fenêtre et on rend seul le corps scrollable ;
+   le titre et la barre d'actions restent épinglés, toujours visibles. */
+#modale-tirage .modale-contenu {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 32px);
+}
+
+.modale-corps {
+    /* Prend la place restante entre le titre et les actions, et défile au
+       besoin. min-height: 0 est indispensable pour qu'un enfant flex puisse
+       réellement rétrécir sous sa hauteur de contenu et déclencher le scroll. */
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+#modale-tirage .modale-actions {
+    /* Ne se comprime jamais : la barre d'actions garde sa hauteur et reste
+       visible sous le corps scrollable. */
+    flex: 0 0 auto;
+}
+
 .tirage-intro {
     margin-bottom: 16px;
     color: #555;

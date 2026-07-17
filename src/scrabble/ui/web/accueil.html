@@ -98,15 +98,21 @@
     <div id="modale-tirage" class="modale" hidden>
         <div class="modale-contenu">
             <h3>Tirage de l'ordre de jeu</h3>
-            <p class="tirage-intro">
-                Chaque joueur a tiré une lettre. L'ordre de jeu suit l'ordre
-                alphabétique des lettres tirées.
-            </p>
-            <ul id="tirage-lettres" class="tirage-lettres"></ul>
-            <!-- Zone d'interaction « secouer puis tirer » (issue #61), remplie
-                 par le JS le temps du tour d'un joueur humain. -->
-            <div id="tirage-sac-zone" class="tirage-sac-zone" hidden></div>
-            <p id="tirage-ordre-resultat" class="tirage-ordre-resultat"></p>
+            <!-- Corps scrollable (issue #82) : si le contenu (sac + consigne sur
+                 deux lignes, liste des tirages) dépasse la hauteur de la fenêtre,
+                 c'est cette zone qui défile, et non toute la modale — ainsi les
+                 boutons Annuler / Continuer restent toujours visibles en bas. -->
+            <div class="modale-corps">
+                <p class="tirage-intro">
+                    Chaque joueur a tiré une lettre. L'ordre de jeu suit l'ordre
+                    alphabétique des lettres tirées.
+                </p>
+                <ul id="tirage-lettres" class="tirage-lettres"></ul>
+                <!-- Zone d'interaction « secouer puis tirer » (issue #61), remplie
+                     par le JS le temps du tour d'un joueur humain. -->
+                <div id="tirage-sac-zone" class="tirage-sac-zone" hidden></div>
+                <p id="tirage-ordre-resultat" class="tirage-ordre-resultat"></p>
+            </div>
             <div class="modale-actions">
                 <button type="button" class="btn btn-secondaire" id="btn-annuler-tirage">
                     Annuler

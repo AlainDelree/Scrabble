@@ -504,7 +504,13 @@ def lancer_accueil(
             str(chemin_html),
             js_api=api,
             width=700,
-            height=600,
+            # Hauteur relevée (issue #82) : la modale de tirage d'ordre affiche
+            # le sac (~280 px) plus une consigne pouvant tenir sur deux lignes ;
+            # 600 px tronquait les boutons Annuler / Continuer en bas. 720 px
+            # laisse tout le contenu visible dès l'ouverture, sans scroll. Le
+            # CSS (#modale-tirage, corps scrollable) reste le filet de sécurité
+            # pour les écrans plus courts.
+            height=720,
             resizable=True,
         )
         api.set_window(window)
