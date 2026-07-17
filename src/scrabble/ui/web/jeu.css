@@ -105,7 +105,17 @@ body {
     display: none;
     position: fixed;
     left: 8px;
-    top: 18px;                 /* aligné sur la hauteur de la barre du sac */
+    /* Décalé sous la zone du bouton « Vérification dictionnaire » (issue #87).
+       Ce bouton (.verif-dico-ancre) vit lui aussi en position: fixed dans le
+       coin haut-gauche : top:12px + min-height:40px + ombre → bord bas ≈ 52px.
+       À la largeur d'ouverture par défaut (1320px) et jusqu'au seuil de 1780px,
+       le bouton est en icône seule, épinglé dans le coin, et se superposait au
+       haut du décor (le « S » recouvert par la loupe). Plutôt que de dépendre
+       d'un seuil de largeur précis (fragile), on cale le décor à 64px du haut :
+       il commence TOUJOURS sous le bouton (icône seule ou libellé complet),
+       quelle que soit la largeur de la fenêtre. La marge de 12px sous le bord
+       bas du bouton couvre aussi l'ombre portée. */
+    top: 64px;
     z-index: 0;                /* sur le tapis, derrière tout le contenu */
     writing-mode: vertical-rl; /* axe d'écriture vertical : lettres empilées de haut en bas */
     text-orientation: upright; /* chaque lettre reste droite/lisible, pas de rotation à 90° */

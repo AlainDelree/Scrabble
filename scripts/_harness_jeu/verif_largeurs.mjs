@@ -15,11 +15,22 @@ const html = fs.readFileSync(path.join(web, 'jeu.html'), 'utf8')
   .replace('<script src="jeu.js"></script>',
     `<script>window.__THEME__='classique';${mock}</script><script>${js}</script>`);
 
-const largeurs = [1200, 1400, 1600, 1920];
+// La 1re entrée (1320×940) reproduit la taille de fenêtre par défaut à
+// l'ouverture du jeu (webview 1320×980, cf. lancer_jeu ; ~940px de contenu
+// après décor de fenêtre). C'est ce cas — icône seule, décor visible — qui
+// faisait chevaucher la loupe et le « S » du décor (issue #87). Les autres
+// largeurs couvrent le repli icône (<1780px) et le libellé complet (≥1780px).
+const cas = [
+  { w: 1320, h: 940, nom: 'ouverture' },
+  { w: 1200, h: 900 },
+  { w: 1400, h: 900 },
+  { w: 1600, h: 900 },
+  { w: 1920, h: 900 },
+];
 (async () => {
   const browser = await chromium.launch();
-  for (const w of largeurs) {
-    const page = await browser.newPage({ viewport: { width: w, height: 900 } });
+  for (const { w, h, nom } of cas) {
+    const page = await browser.newPage({ viewport: { width: w, height: h } });
     await page.setContent(html, { waitUntil: 'networkidle', baseURL: 'http://localhost/' });
     await page.waitForTimeout(250);
     const info = await page.evaluate(() => {
@@ -33,18 +44,28 @@ const largeurs = [1200, 1400, 1600, 1920];
       const rs = sac.getBoundingClientRect();
       const rd = decor.getBoundingClientRect();
       const decorVisible = getComputedStyle(decor).display !== 'none';
+      // Vrai chevauchement visuel = intersection des rectangles sur les DEUX
+      // axes (issue #87). L'ancien test ne regardait que l'axe horizontal : or
+      // le décor est désormais décalé vers le bas (top:64px) pour passer SOUS le
+      // bouton, si bien qu'ils peuvent partager la même bande horizontale sans
+      // jamais se recouvrir à l'écran.
+      const chevaucheDecor = decorVisible
+        && rb.left < rd.right && rb.right > rd.left
+        && rb.top < rd.bottom && rb.bottom > rd.top;
       return {
         btnLeft: Math.round(rb.left), btnRight: Math.round(rb.right),
+        btnBottom: Math.round(rb.bottom),
         sacLeft: Math.round(rs.left),
         decorRight: decorVisible ? Math.round(rd.right) : null,
+        decorTop: decorVisible ? Math.round(rd.top) : null,
         labelAffiche: getComputedStyle(lib).display !== 'none',
         chevaucheContenu: rb.right > rs.left,
-        chevaucheDecor: decorVisible ? rb.left < rd.right : false,
+        chevaucheDecor,
         surEcran: rb.left >= 0 && rb.right <= window.innerWidth,
       };
     });
-    console.log(`w=${w}`, JSON.stringify(info));
-    await page.screenshot({ path: path.join(here, `i86_w${w}.png`), clip: { x: 0, y: 0, width: Math.min(w, 700), height: 120 } });
+    console.log(`w=${w}${nom ? ' (' + nom + ')' : ''}`, JSON.stringify(info));
+    await page.screenshot({ path: path.join(here, `i86_w${w}.png`), clip: { x: 0, y: 0, width: Math.min(w, 700), height: 160 } });
     await page.close();
   }
   await browser.close();
