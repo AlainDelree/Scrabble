@@ -2114,3 +2114,109 @@ class TestDimensionsChevalet:
         # Deux blocs côte à côte (7 + 9 cases de 40 px + marges) : garde-fou pour
         # éviter une régression qui rétrécirait la fenêtre sous le seuil utile.
         assert CHEVALET_LARGEUR >= 830
+
+
+class _FenetreShown:
+    """Fenêtre factice exposant ``events.shown.wait`` (comme pywebview) — issue #92."""
+
+    class _Events:
+        class _Shown:
+            def __init__(self) -> None:
+                self.attentes: list = []
+
+            def wait(self, timeout=None):
+                self.attentes.append(timeout)
+                return True
+
+        def __init__(self) -> None:
+            self.shown = _FenetreShown._Events._Shown()
+
+    def __init__(self, x: int = 0, y: int = 0) -> None:
+        self.x = x
+        self.y = y
+        self.events = _FenetreShown._Events()
+        self.moves: list = []
+
+    def move(self, x: int, y: int) -> None:
+        self.x, self.y = int(x), int(y)
+        self.moves.append((self.x, self.y))
+
+
+class TestRepositionnementChevalet:
+    """Callback de repositionnement différé + attente d'affichage (issue #92 point 1)."""
+
+    def _ecran(self, monkeypatch, larg=1920, haut=1080):
+        from scrabble.ui import jeu as mod
+
+        class _Ecran:
+            width = larg
+            height = haut
+
+        monkeypatch.setattr(mod.webview, "screens", [_Ecran()])
+
+    def _capturer_info(self, monkeypatch):
+        infos: list = []
+        monkeypatch.setattr(
+            "scrabble.ui.jeu.journal.info", lambda message: infos.append(message)
+        )
+        return infos
+
+    def test_callback_attendu_atteint_et_deplace(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        self._ecran(monkeypatch)
+        infos = self._capturer_info(monkeypatch)
+        fen = _FenetreShown(x=100, y=100)
+        mod._repositionner_chevalet(fen)
+        # La fenêtre a bien été déplacée vers la position bas-centre calculée.
+        x_attendu = (1920 - CHEVALET_LARGEUR) // 2
+        y_attendu = 1080 - CHEVALET_HAUTEUR - mod.CHEVALET_MARGE_BAS
+        assert fen.moves == [(x_attendu, y_attendu)]
+        # Traces explicites : callback atteint + position lue après move.
+        assert any("_repositionner_chevalet atteint" in m for m in infos)
+        assert any("position lue après move" in m for m in infos)
+
+    def test_attend_l_affichage_avant_de_deplacer(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        self._ecran(monkeypatch)
+        self._capturer_info(monkeypatch)
+        fen = _FenetreShown()
+        mod._repositionner_chevalet(fen)
+        # On a bien attendu l'événement ``shown`` (au moins un appel à wait).
+        assert fen.events.shown.attentes  # non vide
+
+    def test_attente_toleree_sans_events(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        self._ecran(monkeypatch)
+        infos = self._capturer_info(monkeypatch)
+        # _FenetreDeplacable n'a pas d'attribut ``events`` : pas d'attente, pas de plantage.
+        fen = _FenetreDeplacable(x=100, y=100)
+        mod._repositionner_chevalet(fen)
+        assert any("'shown' indisponible" in m for m in infos)
+        assert (fen.x, fen.y) != (100, 100)  # déplacée malgré tout
+
+
+class TestTracesDeplacementChevalet:
+    """Traces du glisser-déposer applicatif (issue #92 point 2)."""
+
+    def _api(self):
+        joueurs = [Joueur(nom="Alice", humain=True)]
+        api = ApiJeu(Partie(joueurs, _DicoFactice(), graine=1), None)
+        api.set_windows(_FenetreEspionne(), _FenetreDeplacable(x=200, y=500))
+        return api
+
+    def test_debut_journalise_et_premier_deplacement_seulement(self, monkeypatch):
+        infos: list = []
+        monkeypatch.setattr(
+            "scrabble.ui.jeu.journal.info", lambda message: infos.append(message)
+        )
+        api = self._api()
+        api.debut_deplacement_chevalet()
+        api.deplacer_chevalet(210, 505)
+        api.deplacer_chevalet(220, 510)
+        api.deplacer_chevalet(230, 515)
+        assert any("début de déplacement" in m for m in infos)
+        # Une seule trace de déplacement (le premier), pas une par frame.
+        assert sum("premier déplacement" in m for m in infos) == 1

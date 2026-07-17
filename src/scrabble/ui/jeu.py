@@ -836,6 +836,16 @@ class ApiJeu:
         self._joker_demande: dict[str, Any] | None = None
         # Évite de journaliser plusieurs fois la même fin de partie (issue #66).
         self._fin_journalisee = False
+        # Évite d'inonder le log : la ré-affirmation d'``on_top`` (issue #91 point 3,
+        # tracée pour l'issue #92) a lieu à chaque interaction. On ne journalise donc
+        # que la PREMIÈRE réussite (preuve que le mécanisme s'exécute), puis les
+        # seuls échecs éventuels.
+        self._zorder_journalise = False
+        # Même logique anti-flood pour le glisser-déposer applicatif du chevalet
+        # (issue #91 point 2, tracé pour l'issue #92) : on journalise le début de
+        # chaque drag et son PREMIER déplacement effectif (preuve que les événements
+        # pointeur JS atteignent bien Python), pas chacune des frames suivantes.
+        self._drag_premier_deplacement = False
         # Évite de finaliser plusieurs fois la partie en base (issue #81).
         self._fin_persistee = False
         # Vrai lorsque l'utilisateur a demandé « Retour au menu » (issue #74) :
@@ -1036,6 +1046,12 @@ class ApiJeu:
             return
         try:
             self._window_chevalet.on_top = True
+            if not self._zorder_journalise:
+                self._zorder_journalise = True
+                journal.info(
+                    "Jeu : ré-affirmation on_top du chevalet effectuée (z-order "
+                    "maintenu ; premières trace, puis silencieux sauf échec)."
+                )
         except Exception as e:  # noqa: BLE001 - un z-order récalcitrant ne bloque pas le jeu
             journal.erreur("Jeu : ré-affirmation on_top du chevalet impossible.", e)
 
@@ -1054,11 +1070,16 @@ class ApiJeu:
         if self._window_chevalet is None:
             return {"succes": False, "erreur": "Aucune fenêtre chevalet."}
         try:
-            return {
-                "succes": True,
-                "x": int(self._window_chevalet.x),
-                "y": int(self._window_chevalet.y),
-            }
+            x, y = int(self._window_chevalet.x), int(self._window_chevalet.y)
+            # Trace (issue #92) : confirme que l'événement pointeur de la barre de
+            # drag a bien traversé le pont JS → Python. Réarme la trace du premier
+            # déplacement pour ce nouveau drag.
+            self._drag_premier_deplacement = False
+            journal.info(
+                f"Jeu : début de déplacement du chevalet demandé (position "
+                f"actuelle ({x}, {y}))."
+            )
+            return {"succes": True, "x": x, "y": y}
         except Exception as e:  # noqa: BLE001 - position indisponible : le JS ignore le drag
             return {"succes": False, "erreur": f"Position indisponible : {e}"}
 
@@ -1074,6 +1095,13 @@ class ApiJeu:
             return {"succes": False, "erreur": "Aucune fenêtre chevalet."}
         try:
             self._window_chevalet.move(int(x), int(y))
+            if not self._drag_premier_deplacement:
+                self._drag_premier_deplacement = True
+                journal.info(
+                    f"Jeu : premier déplacement du chevalet reçu et appliqué "
+                    f"(move vers ({int(x)}, {int(y)}) ; frames suivantes "
+                    f"silencieuses)."
+                )
             return {"succes": True}
         except Exception as e:  # noqa: BLE001 - un déplacement raté ne bloque pas le jeu
             return {"succes": False, "erreur": f"Déplacement impossible : {e}"}
@@ -1640,8 +1668,16 @@ def _position_chevalet(
         ecran = ecrans[0] if ecrans else None
         larg_ecran = int(getattr(ecran, "width", 0) or 0)
         haut_ecran = int(getattr(ecran, "height", 0) or 0)
-    except Exception:  # noqa: BLE001 - pas d'écran interrogeable : repli neutre
+    except Exception as e:  # noqa: BLE001 - pas d'écran interrogeable : repli neutre
+        journal.erreur("Jeu : lecture de webview.screens impossible.", e)
         larg_ecran = haut_ecran = 0
+    # Trace explicite (issue #92) : permet de vérifier après coup ce que
+    # ``webview.screens`` a réellement renvoyé au moment de l'appel (0×0 = écran
+    # non encore interrogeable, typiquement avant le démarrage de la boucle GUI).
+    journal.info(
+        f"Jeu : _position_chevalet — écran mesuré {larg_ecran}×{haut_ecran}px "
+        f"(nb écrans = {len(webview.screens) if getattr(webview, 'screens', None) else 0})."
+    )
     if larg_ecran <= 0 or haut_ecran <= 0:
         return 100, 100
     x = max(0, (larg_ecran - largeur) // 2)
@@ -1716,12 +1752,63 @@ def _repositionner_chevalet(window_chevalet: "webview.Window") -> None:
     erreur est journalisée sans interrompre le jeu (la position initiale, au pire
     ``(100, 100)``, reste alors en place).
     """
+    journal.info(
+        "Jeu : _repositionner_chevalet atteint (boucle GUI démarrée, "
+        "callback webview.start exécuté)."
+    )
     try:
+        # Sous WebKitGTK, le fil de ``webview.start`` démarre dès l'entrée dans la
+        # boucle GUI, parfois AVANT que la fenêtre chevalet soit réellement mappée
+        # à l'écran. Un ``move()`` émis trop tôt est alors ignoré par le
+        # gestionnaire de fenêtres (la fenêtre garde sa position de création — d'où
+        # l'ouverture en haut à gauche constatée, issue #92). On attend donc
+        # explicitement l'événement ``shown`` de la fenêtre avant de la déplacer.
+        _attendre_fenetre_affichee(window_chevalet)
         x, y = _position_chevalet()
+        journal.info(f"Jeu : repositionnement chevalet — cible calculée ({x}, {y}).")
         window_chevalet.move(x, y)
-        journal.info(f"Jeu : fenêtre chevalet repositionnée en ({x}, {y}).")
+        # Relire la position réellement prise par la fenêtre après le move : c'est
+        # la preuve, dans le log, que le déplacement a bien été honoré par le WM
+        # (ou, sinon, qu'il s'agit d'une limite backend/WM — voir issue #92).
+        pos_reelle = _lire_position_fenetre(window_chevalet)
+        journal.info(
+            f"Jeu : window.move({x}, {y}) exécuté ; position lue après move = "
+            f"{pos_reelle}."
+        )
     except Exception as e:  # noqa: BLE001 - un repositionnement raté ne bloque pas le jeu
         journal.erreur("Jeu : repositionnement de la fenêtre chevalet impossible.", e)
+
+
+def _attendre_fenetre_affichee(window: "webview.Window", timeout: float = 5.0) -> None:
+    """Attend l'événement ``shown`` de ``window`` (au plus ``timeout`` s) — issue #92.
+
+    ``webview.Window.events.shown`` est un événement pywebview signalé une fois la
+    fenêtre affichée par le backend. On l'attend avant tout ``move`` pour éviter un
+    repositionnement ignoré (fenêtre pas encore mappée sous WebKitGTK). Tolère
+    l'absence d'attribut ``events`` (backends/fenêtres factices des tests) : dans ce
+    cas on n'attend pas. Toute erreur est journalisée sans interrompre le jeu.
+    """
+    evenements = getattr(window, "events", None)
+    shown = getattr(evenements, "shown", None)
+    attendre = getattr(shown, "wait", None)
+    if attendre is None:
+        journal.info("Jeu : événement 'shown' indisponible — repositionnement immédiat.")
+        return
+    try:
+        signale = attendre(timeout)
+        journal.info(
+            f"Jeu : attente de l'affichage de la fenêtre chevalet — shown={signale!r}."
+        )
+    except Exception as e:  # noqa: BLE001 - une attente ratée ne bloque pas le jeu
+        journal.erreur("Jeu : attente de l'affichage de la fenêtre chevalet impossible.", e)
+
+
+def _lire_position_fenetre(window: "webview.Window") -> str:
+    """Position ``(x, y)`` lue sur ``window`` sous forme lisible pour le journal."""
+    try:
+        return f"({int(window.x)}, {int(window.y)})"
+    except Exception:  # noqa: BLE001 - position indisponible : trace neutre
+        return "(indisponible)"
 
 
 # Petit lexique du mode démonstration. Il doit contenir au minimum les mots

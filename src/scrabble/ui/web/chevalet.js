@@ -357,19 +357,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ------------------------------------------------------------------ //
-    // Déplacement applicatif de la fenêtre (issue #91 point 2)
+    // Déplacement applicatif de la fenêtre (issue #91 point 2, revu issue #92)
     // ------------------------------------------------------------------ //
     // Sous WebKitGTK, .pywebview-drag-region n'est pas géré : on déplace la
-    // fenêtre nous-mêmes en écoutant les événements pointeur sur la seule barre du
+    // fenêtre nous-mêmes en écoutant les événements souris sur la seule barre du
     // haut, et en appelant api.deplacer_chevalet() en coordonnées écran absolues.
-    // Confiné à .barre-drag : un clic-clic sur une lettre ne déplace jamais la
-    // fenêtre. La capture de pointeur garantit le suivi même si le curseur sort
-    // brièvement de la fenêtre pendant un glissé rapide.
+    //
+    // Issue #92 : on repasse des événements *pointeur* (+ setPointerCapture) aux
+    // événements *souris classiques* (mousedown/mousemove/mouseup), plus largement
+    // et fiablement supportés par le backend WebKitGTK. Le suivi hors de la barre
+    // (glissé rapide) est assuré en écoutant mousemove/mouseup sur `document` plutôt
+    // que par une capture de pointeur (potentiellement non honorée par WebKitGTK).
+    // Le drag reste strictement confiné : il ne démarre qu'au mousedown SUR la barre.
+    // Traces console (issue #92) : confirment que le JS reçoit bien les événements ;
+    // côté Python, debut_deplacement_chevalet/deplacer_chevalet journalisent aussi.
     if (barreDrag) {
         let dragActif = false;
         let dragOrigWin = { x: 0, y: 0 };   // position fenêtre au début du drag
         let dragOrigSouris = { x: 0, y: 0 }; // position souris (écran) au début
-        let dragPointerId = null;
         let dragCible = null;                // {x, y} en attente d'envoi
         let dragRafPlanifie = false;
 
@@ -381,14 +386,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        barreDrag.addEventListener('pointerdown', async (evt) => {
+        async function debutDrag(evt) {
             if (evt.button !== 0) {
                 return; // clic gauche uniquement
             }
+            console.log('[chevalet] mousedown sur barre-drag reçu — début de drag.');
             let pos;
             try {
                 pos = await api.debut_deplacement_chevalet();
             } catch (err) {
+                console.log('[chevalet] debut_deplacement_chevalet a échoué :', err);
                 return;
             }
             if (!pos || !pos.succes) {
@@ -397,13 +404,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             dragActif = true;
             dragOrigWin = { x: pos.x, y: pos.y };
             dragOrigSouris = { x: evt.screenX, y: evt.screenY };
-            dragPointerId = evt.pointerId;
-            try {
-                barreDrag.setPointerCapture(evt.pointerId);
-            } catch (err) { /* capture non supportée : le drag reste utilisable */ }
-        });
+        }
 
-        barreDrag.addEventListener('pointermove', (evt) => {
+        function bougerDrag(evt) {
             if (!dragActif) {
                 return;
             }
@@ -416,22 +419,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 dragRafPlanifie = true;
                 requestAnimationFrame(envoyerDeplacement);
             }
-        });
+        }
 
         function finDrag() {
             if (!dragActif) {
                 return;
             }
             dragActif = false;
-            if (dragPointerId !== null) {
-                try {
-                    barreDrag.releasePointerCapture(dragPointerId);
-                } catch (err) { /* rien à libérer */ }
-            }
-            dragPointerId = null;
+            console.log('[chevalet] fin de drag (mouseup).');
         }
-        barreDrag.addEventListener('pointerup', finDrag);
-        barreDrag.addEventListener('pointercancel', finDrag);
+
+        // Démarrage confiné à la barre ; suivi/fin sur le document entier pour ne
+        // pas « décrocher » si le curseur sort de la barre pendant un glissé.
+        barreDrag.addEventListener('mousedown', debutDrag);
+        document.addEventListener('mousemove', bougerDrag);
+        document.addEventListener('mouseup', finDrag);
     }
 
     // Aide du brouillon (icône « i »).

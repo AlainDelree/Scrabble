@@ -48,34 +48,18 @@
         </div>
 
         <div class="zone-reflexion">
-            <!-- Zone « À jouer » : le chevalet, PUIS les actions de tour. -->
+            <!-- Zone « À jouer » : uniquement le chevalet. Les actions de tour
+                 (Annuler/Vérifier/Jouer + « Remettre ses lettres ») sont sorties
+                 sous la zone de réflexion (issue #92 point 4) : placées DANS ce
+                 bloc, leur largeur naturelle (~645 px) forçait « À jouer » à ~667 px
+                 et écrasait le Brouillon à droite (débordement + scroll horizontal
+                 mesurés à 880 px). En pleine largeur sous les deux blocs, elles
+                 tiennent sans comprimer le Brouillon. -->
             <div class="bloc-chevalet">
                 <div class="bloc-titre bloc-titre-jouer">
                     🎯 À jouer <span class="bloc-titre-note">— cliquez une lettre pour la poser</span>
                 </div>
                 <div id="chevalet" class="chevalet" aria-label="Chevalet du joueur courant"></div>
-
-                <div id="zone-jeu" class="zone-jeu" hidden>
-                    <div class="zone-jeu-controles">
-                        <button id="btn-echanger-tout" class="lien-discret" hidden
-                                title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
-                            ♻️ Remettre toutes ses lettres et passer
-                        </button>
-                        <span class="zone-jeu-actions">
-                            <button id="btn-annuler" class="btn btn-secondaire" disabled>
-                                ✗ Annuler
-                            </button>
-                            <button id="btn-verifier-coup" class="btn btn-secondaire" disabled
-                                    title="Calcule les points du coup en attente sans le jouer (rien n'est perdu)">
-                                🔎 Vérifier et calculer
-                            </button>
-                            <button id="btn-valider" class="btn btn-primaire" disabled>
-                                ✓ Jouer
-                            </button>
-                        </span>
-                    </div>
-                    <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
-                </div>
             </div>
 
             <!-- Zone de brouillon : réflexion libre, sans lien avec le plateau. -->
@@ -105,6 +89,30 @@
                 </div>
                 <div id="brouillon" class="brouillon" aria-label="Zone de brouillon (réflexion)"></div>
             </div>
+        </div>
+
+        <!-- Actions de tour, en pleine largeur sous la zone de réflexion
+             (issue #92 point 4). -->
+        <div id="zone-jeu" class="zone-jeu" hidden>
+            <div class="zone-jeu-controles">
+                <button id="btn-echanger-tout" class="lien-discret" hidden
+                        title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
+                    ♻️ Remettre toutes ses lettres et passer
+                </button>
+                <span class="zone-jeu-actions">
+                    <button id="btn-annuler" class="btn btn-secondaire" disabled>
+                        ✗ Annuler
+                    </button>
+                    <button id="btn-verifier-coup" class="btn btn-secondaire" disabled
+                            title="Calcule les points du coup en attente sans le jouer (rien n'est perdu)">
+                        🔎 Vérifier et calculer
+                    </button>
+                    <button id="btn-valider" class="btn btn-primaire" disabled>
+                        ✓ Jouer
+                    </button>
+                </span>
+            </div>
+            <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
         </div>
 
         <div class="chevalet-pied">

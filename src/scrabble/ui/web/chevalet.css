@@ -24,9 +24,11 @@ body {
 /* --------------------------------------------------------------------------- */
 /* Barre de déplacement (seule zone de drag de la fenêtre)                      */
 /* --------------------------------------------------------------------------- */
-/* .pywebview-drag-region est reconnue par pywebview comme zone déplaçable. Elle
-   est volontairement la SEULE zone de drag (easy_drag=False côté Python) pour
-   qu'un clic sur une lettre ne déplace jamais la fenêtre par erreur. */
+/* Seule zone de déplacement de la fenêtre. Le drag est APPLICATIF (issue #91,
+   revu #92) : chevalet.js écoute mousedown/mousemove/mouseup et appelle
+   api.deplacer_chevalet() — .pywebview-drag-region n'est PAS géré par WebKitGTK.
+   Volontairement la SEULE zone de drag (easy_drag=False côté Python) pour qu'un
+   clic sur une lettre ne déplace jamais la fenêtre par erreur. */
 .barre-drag {
     display: flex;
     align-items: center;
@@ -228,13 +230,17 @@ body {
 /* --------------------------------------------------------------------------- */
 /* Mode « attente d'un tour d'ordinateur »                                      */
 /* --------------------------------------------------------------------------- */
-/* Message d'attente pendant le tour d'un ordinateur. Il occupe le même espace
-   vertical que la zone interactive (flex: 1) et se centre, pour que la fenêtre
-   garde une structure et un remplissage stables entre tour humain et tour IA :
-   seul le CONTENU du corps change, pas la silhouette de la fenêtre (issue #91
-   point 5). */
+/* Message d'attente pendant le tour d'un ordinateur (issue #91 point 5, revu
+   issue #92). Le corps est ancré en HAUT dans les deux cas : en tour humain, le
+   contenu (en-tête + réflexion + actions) occupe ~230 px puis laisse le tapis vert
+   apparaître dessous ; on donne donc ici à la zone d'attente une hauteur
+   ÉQUIVALENTE (min-height, mesurée), plutôt que `flex: 1` qui la faisait gonfler
+   jusqu'en bas et donnait l'impression d'une fenêtre plus grande/vide au tour IA.
+   Résultat : même empreinte verticale, même silhouette entre les deux tours (seul
+   le contenu change), sans étirement disgracieux. */
 .zone-attente-ia {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
+    min-height: 230px;   /* ≈ empreinte de la zone interactive du tour humain */
     display: flex;
     flex-direction: column;
     align-items: center;
