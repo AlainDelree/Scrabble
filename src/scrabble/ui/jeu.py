@@ -837,8 +837,12 @@ def lancer_jeu(partie: Partie, id_partie: int | None) -> None:
         "Scrabble - Partie en cours",
         str(chemin_html),
         js_api=api,
-        width=980,
-        height=820,
+        # Fenêtre par défaut alignée sur la cible de l'issue #47 (~1000-1180 large,
+        # ~750-800 haut) : à cette taille, plateau + panneau du joueur humain +
+        # chevalet/brouillon tiennent ensemble sans défilement vertical, y compris
+        # à 4 joueurs (panneaux réduits à une ligne, en-tête/historique fusionnés).
+        width=1120,
+        height=800,
         resizable=True,
     )
     api.set_window(window)

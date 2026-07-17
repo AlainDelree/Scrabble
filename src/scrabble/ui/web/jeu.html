@@ -8,19 +8,36 @@
 </head>
 <body>
     <div class="container">
-        <!-- En-tête réduit au strict minimum (issue #45, point 3) : uniquement
-             le nombre de lettres restantes dans le sac et le lien
-             « Resynchroniser ». Le titre de page « Scrabble » (issue #45,
-             point 1) et l'indicateur « Au tour de … » (issue #45, point 2, info
-             déjà portée par le cadre vert et le badge du panneau actif) ont été
-             retirés pour libérer de la hauteur. -->
+        <!-- Barre globale unique (issue #47, point 2) : le sac, l'accès à
+             l'historique « Derniers coups » et le lien « Resynchroniser » sont
+             fusionnés sur UNE seule ligne horizontale en haut de l'écran.
+             L'ancienne colonne d'historique verticale (issue #45, point 4) qui
+             prenait toute la hauteur de la table à gauche a disparu : la hauteur
+             est rendue au plateau et au chevalet/brouillon. L'historique est ici
+             un menu déroulant (<details>) qui, replié, ne consomme presque aucune
+             hauteur ; déplié, sa liste s'affiche en surimpression sous la barre
+             (position absolue) sans repousser la table vers le bas. -->
         <header>
-            <div class="barre-infos">
+            <div class="barre-globale">
                 <div class="sac">
                     <span class="sac-icone">🎒</span>
                     <span class="sac-nombre" id="sac-nombre">—</span>
                     <span class="sac-label">lettres</span>
                 </div>
+
+                <!-- Accès à l'historique glissant (issue #37) fusionné dans la
+                     barre (issue #47, point 2). <details> natif : replié par
+                     défaut (aucune hauteur), la liste s'ouvre au clic en
+                     surimpression. La plus RÉCENTE EN HAUT ; chaque ligne
+                     cliquable rouvre le détail du score de CE coup (modale). -->
+                <details class="historique-menu" id="historique-menu">
+                    <summary class="historique-resume">
+                        <span class="historique-resume-titre">🕑 Derniers coups</span>
+                        <span class="historique-resume-compte" id="historique-compte"></span>
+                    </summary>
+                    <ol id="historique-liste" class="historique-liste" aria-live="polite"></ol>
+                </details>
+
                 <!-- Bouton « Resynchroniser » (issue #41, point 3). Décision :
                      CONSERVÉ mais clarifié et rendu discret. L'affichage se met
                      déjà à jour tout seul après chaque action (pose, passe,
@@ -48,21 +65,10 @@
              Le panneau du bas est celui du joueur humain de référence : il porte,
              en plus de ses infos publiques, le chevalet + le brouillon + les
              actions de tour. Les panneaux haut/gauche/droite sont publics.
-             L'historique « Derniers coups » occupe une colonne verticale à
-             GAUCHE de la table (issue #45, point 4). -->
+             L'historique « Derniers coups » n'occupe plus de colonne à gauche
+             (issue #47, point 2) : il est fusionné dans la barre globale en haut,
+             ce qui rend la hauteur au plateau et au chevalet/brouillon. -->
         <main class="table">
-            <!-- Encart d'historique glissant (issue #37), déplacé en colonne
-                 verticale à gauche de l'écran (issue #45, point 4) : il profite
-                 de la hauteur libérée par la suppression du titre et de
-                 l'indicateur de tour, et laisse le chevalet/brouillon s'élargir
-                 en bas. Liste les dernières actions de tous les joueurs, la PLUS
-                 RÉCENTE EN HAUT ; chaque ligne est cliquable pour rouvrir le
-                 détail du score de CE coup (modale réutilisée). -->
-            <aside class="historique" id="historique-encart" aria-label="Historique des derniers coups">
-                <h2 class="historique-titre">🕑 Derniers coups</h2>
-                <ol id="historique-liste" class="historique-liste" aria-live="polite"></ol>
-            </aside>
-
             <div id="slot-haut" class="slot slot-haut" aria-label="Joueur du haut"></div>
             <div id="slot-gauche" class="slot slot-gauche" aria-label="Joueur de gauche"></div>
 

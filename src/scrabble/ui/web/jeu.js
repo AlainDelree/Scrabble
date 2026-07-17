@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Encart d'historique glissant (issue #37) : liste des dernières actions,
     // la plus récente en haut, chaque ligne cliquable pour le détail du coup.
     const historiqueListe = document.getElementById('historique-liste');
+    const historiqueCompte = document.getElementById('historique-compte');
     const chevaletEl = document.getElementById('chevalet');
     const chevaletNom = document.getElementById('chevalet-nom');
     const btnVisibilite = document.getElementById('btn-visibilite');
@@ -237,10 +238,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Construit le panneau d'information **public** d'un joueur : icône (humain
-     * ou ordinateur avec son niveau), nom, score, nombre de lettres au chevalet
-     * et, le cas échéant, l'indicateur « à qui le tour ». Aucune identité de
-     * lettre n'y figure jamais (confidentialité), quel que soit le côté.
+     * Construit le panneau d'information **public** d'un joueur sur UNE seule
+     * ligne horizontale compacte (issue #47, point 1), IDENTIQUE pour les quatre
+     * côtés (haut, gauche, droite, bas) et pour les deux natures (humain comme
+     * ordinateur). Contenu minimal aligné sur la même ligne : petit avatar, nom,
+     * score, nombre de lettres et — pour le joueur actif — un indicateur « à
+     * jouer » court qui ne passe JAMAIS à la ligne suivante. Aucune identité de
+     * lettre n'y figure (confidentialité). Les codes couleur (bordure/fond bleu
+     * pour l'humain, violet pour l'ordinateur) et le cadre vert du joueur actif
+     * sont conservés.
      */
     function creerPanneauJoueur(joueur) {
         const item = document.createElement('div');
@@ -248,46 +254,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         item.className = `panneau-joueur ${nature}${joueur.courant ? ' courant' : ''}`;
         item.dataset.cote = joueur.position || '';
 
-        let typeLabel = joueur.humain ? 'Joueur' : 'Ordinateur';
-        if (!joueur.humain && joueur.niveau) {
-            const niveauLabel = {
-                'DEBUTANT': 'Débutant',
-                'FACILE': 'Facile',
-                'INTERMEDIAIRE': 'Intermédiaire',
-                'EXPERT': 'Expert'
-            }[joueur.niveau] || joueur.niveau;
-            typeLabel += ` (${niveauLabel})`;
-        }
-
-        // Badge du joueur actif (issue #45, point 2) : libellé français naturel,
-        // « à vous de jouer » pour l'humain de référence, « c'est son tour » pour
-        // tout autre joueur (formulation courte et neutre en genre).
+        // Indicateur du joueur actif (issue #47, point 1) : reformulé TRÈS court
+        // pour tenir sur la ligne unique quelle que soit la largeur disponible
+        // (« à vous » pour l'humain de référence, « son tour » pour tout autre).
         const badgeTour = joueur.courant
-            ? `<span class="panneau-tour">● ${joueur.humain ? 'à vous de jouer' : "c'est son tour"}</span>`
+            ? `<span class="panneau-tour">● ${joueur.humain ? 'à vous' : 'son tour'}</span>`
             : '';
-        // Avatar SVG attribué côté Python (identifiant -> fichier). Repli sur
-        // l'icône emoji historique si aucun avatar n'est fourni (compat/robustesse).
+        // Avatar SVG attribué côté Python (identifiant -> fichier), en PETIT et
+        // intégré à la ligne (issue #47, point 1) plutôt qu'au-dessus. Repli sur
+        // l'icône emoji si aucun avatar n'est fourni (compat/robustesse).
         const avatarHtml = joueur.avatar
             ? `<img class="panneau-avatar" src="avatars/${encodeURIComponent(joueur.avatar)}.svg"
-                    alt="" width="40" height="40">`
+                    alt="" width="26" height="26">`
             : `<span class="panneau-icone">${icone(joueur.humain)}</span>`;
-        // Carte compacte et IDENTIQUE quel que soit le côté (issue #38, point 2) :
-        // avatar + identité (nom / type) sur une ligne, stats (score, lettres) sur
-        // la suivante. Le panneau du bas partage exactement ce gabarit ; seule sa
-        // position (au-dessus du chevalet) le distingue.
+        // Ligne unique : avatar · nom · score · lettres · (indicateur à jouer).
+        // ``white-space: nowrap`` (CSS) garantit qu'elle ne se scinde jamais.
         item.innerHTML = `
-            <div class="panneau-entete">
-                ${avatarHtml}
-                <div class="panneau-ident">
-                    <span class="panneau-nom">${escapeHtml(joueur.nom)}</span>
-                    <span class="panneau-detail">${typeLabel}</span>
-                </div>
-                ${badgeTour}
-            </div>
-            <div class="panneau-stats">
-                <span class="panneau-score">${joueur.score} pts</span>
-                <span class="panneau-lettres">🎴 ${joueur.nb_lettres}</span>
-            </div>
+            ${avatarHtml}
+            <span class="panneau-nom">${escapeHtml(joueur.nom)}</span>
+            <span class="panneau-score">${joueur.score} pts</span>
+            <span class="panneau-lettres">🎴 ${joueur.nb_lettres}</span>
+            ${badgeTour}
         `;
         return item;
     }
@@ -360,7 +347,13 @@ document.addEventListener('DOMContentLoaded', async () => {
      */
     function rendreHistorique(historique) {
         historiqueListe.innerHTML = '';
-        if (!Array.isArray(historique) || !historique.length) {
+        const nb = Array.isArray(historique) ? historique.length : 0;
+        // Compteur affiché sur le résumé de la barre (issue #47, point 2) : donne
+        // un aperçu sans déplier le menu, et n'apparaît pas quand il est vide.
+        if (historiqueCompte) {
+            historiqueCompte.textContent = nb ? `(${nb})` : '';
+        }
+        if (!nb) {
             const vide = document.createElement('li');
             vide.className = 'historique-vide';
             vide.textContent = 'Aucune action jouée pour le moment.';

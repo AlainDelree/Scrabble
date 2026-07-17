@@ -65,25 +65,25 @@ body {
     padding: 8px 20px 14px;
 }
 
-/* En-tête réduit au strict minimum (issue #45, point 3) : plus de titre ni
-   d'indicateur de tour, seulement le sac et le lien « Resynchroniser », calés à
-   droite. Se replie proprement si la fenêtre est trop étroite. */
+/* Barre globale unique (issue #47, point 2) : sac, accès à l'historique et lien
+   « Resynchroniser » fusionnés sur une seule ligne horizontale compacte. Se
+   replie proprement si la fenêtre est trop étroite. */
 header {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    gap: 8px 20px;
-    flex-wrap: wrap;
     margin-bottom: 8px;
 }
 
-/* Barre d'infos globales (sac, resynchroniser), calée à droite. */
-.barre-infos {
+/* Une seule ligne : sac à gauche, menu historique juste à côté, lien
+   « Resynchroniser » poussé à droite (margin-left auto). Reste sur une hauteur
+   minimale ; l'historique déplié s'ouvre en surimpression (position absolue) et
+   ne pousse donc pas la table vers le bas. */
+.barre-globale {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
+    gap: 10px 14px;
     flex-wrap: wrap;
+    width: 100%;
 }
 
 /* Bandeau de fin de partie (issue #45, point 2) : hors en-tête, masqué pendant
@@ -112,29 +112,76 @@ header {
    Chaque ligne cliquable rouvre le détail du coup dans la modale existante ; la
    couleur de bord distingue humain (bleu) et ordinateur (violet), comme partout
    ailleurs à l'écran. */
-/* Colonne verticale à GAUCHE de la table (issue #45, point 4) : l'historique
-   occupe désormais la première colonne de la grille de jeu, sur toute la hauteur
-   (grid-area « histo », voir .table). Il profite de la hauteur libérée par la
-   suppression du titre et de l'indicateur de tour et laisse la zone
-   chevalet/brouillon s'élargir en bas. Se replie au-dessus de la table quand la
-   fenêtre est étroite (voir media query). */
-.historique {
-    grid-area: histo;
-    align-self: stretch;
-    width: 220px;
-    background: white;
-    border-radius: 10px;
-    box-shadow: var(--ombre);
-    padding: 8px 12px 10px;
-    overflow-y: auto;
+/* Menu déroulant fusionné dans la barre globale (issue #47, point 2) :
+   l'historique n'est plus une colonne verticale à gauche de la table (issue #45,
+   point 4) mais un <details> compact dans la barre du haut. Replié, il n'occupe
+   que la hauteur de son résumé ; déplié, sa liste s'ouvre en surimpression sous
+   la barre (position absolue) sans repousser la table. Le lien « Resynchroniser »
+   est poussé tout à droite de la barre. */
+#btn-rafraichir {
+    margin-left: auto;
 }
 
-.historique-titre {
-    font-size: 0.82rem;
+.historique-menu {
+    position: relative;
+}
+
+/* Résumé cliquable : une petite pastille discrète cohérente avec le sac et le
+   lien « Resynchroniser ». Le marqueur triangulaire natif est masqué au profit
+   d'un chevron ajouté après le titre. */
+.historique-resume {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: white;
+    box-shadow: var(--ombre);
+    font-size: 0.85rem;
+    font-weight: 600;
     color: #555;
-    margin-bottom: 5px;
-    text-align: center;
-    font-weight: 700;
+    cursor: pointer;
+    list-style: none;
+    white-space: nowrap;
+}
+
+/* Masque le marqueur ▸ natif (WebKit et standard). */
+.historique-resume::-webkit-details-marker {
+    display: none;
+}
+
+.historique-resume::after {
+    content: '▾';
+    font-size: 0.7rem;
+    color: #999;
+    transition: transform 0.15s;
+}
+
+.historique-menu[open] .historique-resume::after {
+    transform: rotate(180deg);
+}
+
+.historique-resume-compte {
+    color: var(--couleur-primaire);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Liste déployée : surimpression sous le résumé, largeur fixe raisonnable,
+   défilement au-delà de quelques lignes. Ne consomme aucune hauteur de mise en
+   page (position absolue) tant qu'elle n'est pas ouverte. */
+.historique-menu[open] .historique-liste {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 60;
+    width: 320px;
+    max-width: 80vw;
+    max-height: 320px;
+    overflow-y: auto;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+    padding: 8px 10px;
 }
 
 .historique-liste {
@@ -142,6 +189,12 @@ header {
     display: flex;
     flex-direction: column;
     gap: 3px;
+}
+
+/* Repliée, la liste ne doit rien afficher ni occuper (le <details> fermé masque
+   déjà son contenu, mais on neutralise toute hauteur résiduelle par sécurité). */
+.historique-menu:not([open]) .historique-liste {
+    display: none;
 }
 
 .historique-ligne {
@@ -225,12 +278,12 @@ header {
    reste centré. */
 .table {
     display: grid;
-    grid-template-columns: auto auto auto auto;
+    grid-template-columns: auto auto auto;
     grid-template-rows: auto auto auto;
     grid-template-areas:
-        "histo .      haut     ."
-        "histo gauche plateau  droite"
-        "histo bas    bas      bas";
+        ".      haut     ."
+        "gauche plateau  droite"
+        "bas    bas      bas";
     gap: 8px;
     justify-content: center;
     align-items: center;
@@ -254,29 +307,40 @@ header {
     padding: 5px;
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
-    /* Taille réduite (issue #41, point 4) pour tenir dans ~750 px de haut sans
-       défilement, en gardant la lisibilité des cases. */
-    width: min(52vw, 400px);
+    /* Taille réduite (issue #41 point 4, resserrée issue #47) pour que plateau +
+       panneau humain + chevalet/brouillon tiennent ensemble dans ~750-800 px de
+       haut sans défilement, y compris à 4 joueurs, en gardant la lisibilité des
+       cases. Le plateau reste l'élément visuellement dominant (issue #45 point 7)
+       face aux panneaux désormais réduits à une ligne. */
+    width: min(52vw, 360px);
     aspect-ratio: 1 / 1;
 }
 
 /* --------------------------------------------------------------------------- */
 /* Panneaux d'information par joueur (autour du plateau)                        */
 /* --------------------------------------------------------------------------- */
-/* Carte joueur : gabarit UNIQUE partagé par les quatre côtés (haut, gauche,
-   droite ET bas), humain comme ordinateur (issue #40, point 1). Mêmes
-   proportions, mêmes marges internes, même niveau de détail (nom, type, score,
-   nombre de lettres). Volontairement compacte : son contenu tient dans peu de
-   hauteur, donc aucun côté — en particulier les panneaux ordinateur — ne doit
-   réserver plus d'espace vertical que nécessaire. Le panneau du bas reprend
-   exactement ce gabarit ; seule sa position (au-dessus du chevalet) le
-   distingue. */
+/* Panneau joueur en LIGNE UNIQUE compacte (issue #47, point 1) : gabarit
+   strictement identique pour les quatre côtés (haut, gauche, droite ET bas) et
+   les deux natures (humain comme ordinateur). Tout le contenu — petit avatar,
+   nom, score, nombre de lettres, indicateur « à jouer » — s'aligne sur une seule
+   ligne horizontale qui ne se scinde JAMAIS (``white-space: nowrap`` +
+   ``flex-wrap: nowrap``), quelle que soit la largeur disponible. La compacité
+   maximale libère la hauteur nécessaire pour voir plateau + panneau humain +
+   chevalet simultanément, sans sacrifier l'aspect soigné : codes couleur
+   conservés (bordure/fond bleu humain, violet ordinateur), avatar SVG intégré,
+   cadre vert du joueur actif. */
 .panneau-joueur {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    width: auto;
+    max-width: 100%;
     background: white;
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
-    padding: 8px 10px;
-    width: 160px;
+    padding: 5px 12px 5px 9px;
     border-left: 4px solid var(--couleur-bordure);
 }
 
@@ -290,29 +354,24 @@ header {
     border-left-color: var(--couleur-ordinateur);
 }
 
-/* Joueur dont c'est le tour : mis en avant quel que soit son côté. */
+/* Joueur dont c'est le tour : mis en avant quel que soit son côté (cadre vert
+   conservé, adapté au format ligne). */
 .panneau-joueur.courant {
     outline: 3px solid var(--couleur-primaire);
     outline-offset: 2px;
     box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.25), var(--ombre);
 }
 
-.panneau-entete {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 2px;
-}
-
 .panneau-icone {
-    font-size: 1.2rem;
+    font-size: 1.1rem;
+    flex-shrink: 0;
 }
 
-/* Avatar SVG du joueur (issue #34). Rond, il complète — sans la remplacer — la
-   distinction humain/ordinateur portée par la bordure de couleur du panneau. */
+/* Avatar SVG du joueur (issue #34), en PETIT et intégré à la ligne (issue #47).
+   Rond, il complète la distinction humain/ordinateur portée par la bordure. */
 .panneau-avatar {
-    width: 36px;
-    height: 36px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     flex-shrink: 0;
     background: white;
@@ -321,38 +380,31 @@ header {
 
 .panneau-nom {
     font-weight: 700;
-    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.panneau-detail {
-    font-size: 0.76rem;
-    color: #666;
-    margin-bottom: 4px;
-}
-
-.panneau-stats {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
+    /* Le nom peut se tronquer par ellipse si l'espace manque ; il ne repousse
+       jamais les autres éléments hors de la ligne. */
+    min-width: 0;
+    flex: 0 1 auto;
 }
 
 .panneau-score {
-    font-size: 1.2rem;
+    font-size: 1rem;
     font-weight: 700;
+    flex-shrink: 0;
 }
 
 .panneau-lettres {
     font-size: 0.82rem;
     color: #555;
+    flex-shrink: 0;
 }
 
-/* Badge « à jouer » du joueur actif (visible quel que soit le côté). */
+/* Indicateur « à jouer » du joueur actif : pastille verte compacte, sur la même
+   ligne, jamais scindée. */
 .panneau-tour {
     display: inline-block;
-    margin-top: 6px;
+    flex-shrink: 0;
     padding: 2px 8px;
     border-radius: 999px;
     background: var(--couleur-primaire);
@@ -361,43 +413,12 @@ header {
     font-weight: 700;
 }
 
-/* Panneau du bas (joueur humain de référence) : MÊME carte que les trois autres
-   côtés (issue #40). Il ne s'étale plus en bandeau horizontal ; il reprend le
-   gabarit compact commun et se contente d'être centré juste au-dessus du
-   chevalet, qu'il continue de précéder (sa fonction est préservée). */
+/* Panneau du bas (joueur humain de référence) : MÊME ligne compacte que les
+   trois autres côtés (issue #47, point 1). Centré juste au-dessus du chevalet,
+   qu'il continue de précéder (sa fonction est préservée). */
 .slot-bas {
     display: flex;
     justify-content: center;
-}
-
-/* Panneau adversaire du HAUT : étiré en largeur, aplati en hauteur (issue #42,
-   point 3). Au lieu de la carte compacte mais haute (entête au-dessus des
-   stats), son contenu s'aligne sur UNE seule ligne horizontale, ce qui réduit
-   d'autant sa hauteur. Borne de largeur MAXIMALE : l'alignement entre la 3ᵉ et
-   la 13ᵉ colonne du plateau. Le plateau vaut min(52vw, 400px) ; les colonnes
-   3→13 en couvrent ≈ 71 % (11 colonnes utiles + gouttières sur 15), soit
-   min(37vw, 285px). C'est un plafond, pas une largeur fixe : si le contenu tient
-   dans moins, le panneau reste plus étroit (sa hauteur ne remonte pas pour
-   autant). Seul le panneau du haut est concerné ; ceux de gauche/droite bordent
-   le plateau et gardent la carte compacte (leur largeur est contrainte par les
-   côtés, pas leur hauteur). */
-.slot-haut .panneau-joueur {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px 18px;
-    flex-wrap: wrap;
-    width: auto;
-    max-width: min(37vw, 285px);
-}
-
-.slot-haut .panneau-entete {
-    margin-bottom: 0;
-}
-
-.slot-haut .panneau-stats {
-    flex: 0 0 auto;
-    gap: 14px;
 }
 
 .case {
@@ -632,11 +653,11 @@ header {
 
 /* Chevalet */
 .zone-chevalet {
-    margin-top: 10px;
+    margin-top: 8px;
     background: white;
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
-    padding: 12px 14px;
+    padding: 8px 14px 10px;
 }
 
 .chevalet-entete {
@@ -644,7 +665,7 @@ header {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
     flex-wrap: wrap;
 }
 
@@ -724,9 +745,9 @@ header {
     gap: 7px;
     flex-wrap: nowrap;
     width: fit-content;
-    min-height: 54px;
+    min-height: 48px;
     align-items: center;
-    padding: 8px;
+    padding: 6px;
     background: #8a5a3b;
     border-radius: 6px;
 }
@@ -734,7 +755,7 @@ header {
 /* Case de chevalet masquée (nombre visible, identité cachée) */
 .chevalet-case {
     width: 40px;
-    height: 48px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -870,13 +891,13 @@ header {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
-    min-height: 50px;
+    min-height: 46px;
     align-items: center;
 }
 
 .brouillon-case {
     width: 40px;
-    height: 48px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -927,7 +948,7 @@ header {
    .brouillon-case, donc le gestionnaire de clic les ignore). */
 .brouillon-case-vide {
     width: 40px;
-    height: 48px;
+    height: 44px;
     border-radius: 4px;
     border: 2px dashed #c9a961;
     background: rgba(201, 169, 97, 0.10);
@@ -942,7 +963,7 @@ header {
 }
 
 .brouillon-aide {
-    margin-top: 6px;
+    margin-top: 4px;
     font-size: 0.76rem;
     color: #7a6b52;
     font-style: italic;
@@ -976,8 +997,8 @@ header {
    largeur de la carte, qui s'étire d'autant (le brouillon, plus large lui aussi,
    se replie alors sous la zone « À jouer » — issue #45, point 4). */
 .zone-jeu {
-    margin-top: 10px;
-    padding-top: 10px;
+    margin-top: 8px;
+    padding-top: 8px;
     border-top: 1px solid var(--couleur-bordure);
     width: 100%;
 }
@@ -1006,7 +1027,7 @@ header {
 
 /* Message de retour (succès / erreur / info) sous les contrôles. */
 .message-coup {
-    margin-top: 10px;
+    margin-top: 6px;
     font-size: 0.9rem;
     min-height: 1.2em;
 }
@@ -1178,8 +1199,7 @@ header {
             "gauche"
             "droite"
             "plateau"
-            "bas"
-            "histo";
+            "bas";
         gap: 10px;
         justify-items: center;
     }
@@ -1194,23 +1214,7 @@ header {
         width: min(92vw, 500px);
     }
 
-    /* Gabarit unique conservé en repli : les quatre côtés, panneau du bas
-       compris, gardent exactement la même carte (issue #40). */
-    .panneau-joueur {
-        width: min(92vw, 320px);
-    }
-
-    /* En repli, le panneau du haut n'est plus bridé par la largeur des colonnes
-       3→13 du plateau (la table est empilée) : on lui rend une borne cohérente
-       avec les autres cartes, tout en gardant sa disposition horizontale à plat
-       (issue #42, point 3). */
-    .slot-haut .panneau-joueur {
-        max-width: min(92vw, 360px);
-    }
-
-    /* En repli, l'historique n'est plus une colonne latérale : il passe en bas
-       de la pile (grid-area « histo »), sur toute la largeur disponible. */
-    .historique {
-        width: min(92vw, 500px);
-    }
+    /* Ligne unique conservée en repli : les quatre côtés, panneau du bas
+       compris, gardent exactement le même gabarit compact (issue #47, point 1).
+       Aucune largeur fixe : la ligne reste aussi étroite que son contenu. */
 }
