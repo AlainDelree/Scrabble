@@ -681,6 +681,15 @@ header {
     flex-wrap: wrap;
 }
 
+/* Masquage pendant un tour d'ordinateur (issue #51, suite #49) : le
+   « display: flex » ci-dessus l'emporterait sinon sur le « display: none »
+   implicite de l'attribut [hidden] (règle auteur > feuille du navigateur à
+   spécificité égale) et le titre « Chevalet de … » + l'aide de pose
+   resteraient visibles alors que majModeTour() les masque en JS. */
+.chevalet-entete[hidden] {
+    display: none;
+}
+
 .chevalet-entete h2 {
     font-size: 1.05rem;
     color: var(--couleur-secondaire, #5d4037);
@@ -714,6 +723,13 @@ header {
     gap: 14px;
     align-items: stretch;
     flex-wrap: wrap;
+}
+
+/* Idem (issue #51) : sans cette règle, le bloc « À jouer » (chevalet + zone de
+   jeu) resterait affiché pendant un tour d'ordinateur malgré le .hidden posé
+   par majModeTour(), car « display: flex » masque le [hidden] par défaut. */
+.zone-reflexion[hidden] {
+    display: none;
 }
 
 /* Intitulé commun aux deux zones : petite étiquette en tête de carte qui dit
