@@ -7,6 +7,17 @@
     <link rel="stylesheet" href="jeu.css">
 </head>
 <body>
+    <!-- Décor issue #70 (suite #66) : « SCRABBLE » en grand, blanc, orienté
+         verticalement (rotation 90°), plaqué sur le bord GAUCHE de l'écran, à
+         hauteur de la zone du sac de lettres (sur le tapis vert, issue #59).
+         Purement esthétique : aria-hidden (ignoré des lecteurs d'écran),
+         pointer-events:none + user-select:none (voir .decor-scrabble) → il
+         n'intercepte JAMAIS un clic et ne gêne aucune interaction. Placé dans
+         la gouttière verte à gauche du contenu centré ; masqué en dessous d'une
+         certaine largeur de fenêtre (media query) pour ne jamais chevaucher le
+         sac, l'historique, les panneaux ou le plateau. -->
+    <div class="decor-scrabble" aria-hidden="true">SCRABBLE</div>
+
     <div class="container">
         <!-- Barre globale unique (issue #47, point 2) : le sac, l'accès à
              l'historique « Derniers coups » et le lien « Resynchroniser » sont

@@ -81,6 +81,56 @@ body {
     padding: 8px 20px 14px;
 }
 
+/* --------------------------------------------------------------------------- */
+/* Décor « SCRABBLE » vertical (issue #70, suite de #66)                        */
+/* --------------------------------------------------------------------------- */
+/* Titre décoratif « SCRABBLE » en grand, blanc, tourné à 90° (writing-mode
+   vertical → lettres latines pivotées d'un quart de tour, lecture de haut en
+   bas), plaqué sur le bord gauche de l'écran à hauteur de la barre du sac. Il
+   vit dans la gouttière verte à gauche du contenu centré (.container est limité
+   à 1180px et centré ; l'espace restant montre le tapis, issue #59).
+
+   Contraintes impératives (issue #70) :
+   - purement esthétique : pointer-events:none + user-select:none + aria-hidden
+     → n'intercepte jamais un clic et reste invisible aux lecteurs d'écran ;
+   - z-index:0 → posé sur le tapis, derrière le contenu, jamais par-dessus ;
+   - masqué tant que la fenêtre n'est pas assez large pour loger la gouttière
+     sans toucher le contenu (voir la media query min-width plus bas) : à la
+     taille par défaut (1320px, voir lancer_jeu) la gouttière fait ~70px, de
+     quoi loger la colonne de texte ; en dessous il disparaît plutôt que de
+     chevaucher le sac / l'historique / les panneaux / le plateau. */
+.decor-scrabble {
+    /* Masqué par défaut : n'apparaît qu'au-delà du seuil de largeur (media
+       query ci-dessous), pour ne jamais empiéter sur le contenu fonctionnel. */
+    display: none;
+    position: fixed;
+    left: 8px;
+    top: 18px;                 /* aligné sur la hauteur de la barre du sac */
+    z-index: 0;                /* sur le tapis, derrière tout le contenu */
+    writing-mode: vertical-rl; /* axe d'écriture vertical : lettres tournées à 90° */
+    text-orientation: mixed;
+    margin: 0;
+    font-size: clamp(1.6rem, 3.4vw, 2.7rem);
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+    /* Décor pur : ne bloque jamais un clic et n'est pas sélectionnable. */
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Affiché uniquement quand la fenêtre est assez large pour que la gouttière
+   gauche (≈ (100vw − 1180px) / 2) loge la colonne de texte sans toucher le
+   contenu. En dessous, il reste masqué (display:none par défaut). */
+@media (min-width: 1300px) {
+    .decor-scrabble {
+        display: block;
+    }
+}
+
 /* Barre globale unique (issue #47, point 2) : sac, accès à l'historique et lien
    « Resynchroniser » fusionnés sur une seule ligne horizontale compacte. Se
    replie proprement si la fenêtre est trop étroite. */
