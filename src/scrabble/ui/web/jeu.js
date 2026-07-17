@@ -828,7 +828,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Aucune contrainte : le joueur peut taper n'importe quelles lettres (même
     // absentes de son chevalet), cet outil de réflexion n'a aucun effet sur la
     // partie. La chaîne est normalisée côté Python (majuscules, accents).
-    btnVerifier.addEventListener('click', async () => {
+    async function verifierMotDictionnaire() {
         const mot = champVerif.value;
         // Champ vide : message clair, pas d'appel ni d'erreur (équivalent de
         // l'ancien cas « brouillon vide »).
@@ -851,6 +851,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } else {
             afficherMessageBrouillon((res && res.erreur) || 'Vérification impossible.', 'info');
+        }
+    }
+
+    btnVerifier.addEventListener('click', verifierMotDictionnaire);
+
+    // Entrée dans le champ lance la vérification si le champ n'est pas vide
+    // (issue #57) : équivalent au clic sur le bouton, sans dupliquer la logique.
+    champVerif.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && champVerif.value.trim()) {
+            e.preventDefault();
+            verifierMotDictionnaire();
         }
     });
 

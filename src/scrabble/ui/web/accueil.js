@@ -193,33 +193,37 @@ document.addEventListener('DOMContentLoaded', async () => {
      * Python — plus fiable que `window.close()` côté JS, ignoré par certains
      * backends pywebview (GTK/WebKit sous Linux).
      *
-     * Filet de sécurité : si la fermeture échoue ou n'a pas lieu dans un délai
-     * raisonnable, on invoque `onEchec(message)` pour réactiver le bouton
-     * plutôt que de laisser l'utilisateur bloqué sur « Création en cours... ».
+     * Filet de sécurité : on ne signale un échec (via `onEchec(message)`, qui
+     * réactive le bouton) que si `fermer_fenetre()` renvoie explicitement un
+     * échec ou lève une exception. On se fie donc uniquement à la réponse de
+     * `fermer_fenetre()` : si elle réussit, `window.destroy()` a été demandé et
+     * la fenêtre est détruite — le reste du JS n'a plus d'effet visible.
      *
-     * @param {function(string): void} onEchec Rappel en cas d'échec/timeout.
+     * Historique (issue #57) : un timer de 3 s (issue #53) affichait à tort
+     * « La fenêtre n'a pas pu se fermer » sur une fermeture pourtant réussie.
+     * Cause : sur une fermeture réussie, `fermer_fenetre()` renvoie
+     * `{succes: true}` immédiatement mais la destruction effective de la fenêtre
+     * (backend GTK/WebKit) est traitée sur la boucle d'événements GUI, avec une
+     * latence variable (accentuée par l'ouverture concurrente de la fenêtre de
+     * jeu). Quand cette latence dépassait 3 s, le timer — laissé volontairement
+     * en place en cas de succès — se déclenchait alors que tout allait bien. Le
+     * timeout arbitraire est donc supprimé : `destroy()` ne peut pas « échouer
+     * en silence » (une vraie erreur remonte via l'exception capturée côté
+     * Python et renvoyée dans `result.erreur`).
+     *
+     * @param {function(string): void} onEchec Rappel en cas d'échec réel.
      */
     async function fermerFenetre(onEchec) {
-        // Si la fenêtre se ferme réellement, ce timer n'a pas le temps de se
-        // déclencher (la page est détruite). S'il se déclenche, c'est que la
-        // fermeture a silencieusement échoué.
-        const timeoutId = setTimeout(() => {
-            onEchec("La fenêtre n'a pas pu se fermer. Réessayez.");
-        }, 3000);
-
         try {
             const result = await api.fermer_fenetre();
             if (!result || !result.succes) {
-                clearTimeout(timeoutId);
                 const msg = (result && result.erreur)
                     ? result.erreur
                     : "Impossible de fermer la fenêtre.";
                 onEchec(msg);
             }
-            // En cas de succès, on laisse le timer en place : soit la fenêtre
-            // se ferme (timer jamais exécuté), soit le timer sert de filet.
+            // En cas de succès : la fenêtre est détruite, rien à faire de plus.
         } catch (err) {
-            clearTimeout(timeoutId);
             onEchec("Erreur lors de la fermeture : " + err);
         }
     }
