@@ -46,6 +46,7 @@ from typing import Any
 
 import webview
 
+from scrabble import journal
 from scrabble.config import charger_config
 from scrabble.dictionnaire.dictionnaire import charger_dictionnaire, obtenir_trie
 from scrabble.moteur.ia import Niveau
@@ -223,6 +224,7 @@ class ApiAccueil:
         if sauvegarder:
             self.sauvegarder_prenom_principal(nom)
         self.config_partie.ajouter_humain(nom)
+        journal.info(f"Accueil : joueur humain ajouté ({nom}).")
         return {"succes": True, "etat": self.obtenir_etat()}
 
     def ajouter_ordinateur(self, niveau_label: str) -> dict[str, Any]:
@@ -240,14 +242,17 @@ class ApiAccueil:
             prenoms = tirer_prenoms(1, noms_pris)
             nom = prenoms[0]
         except Exception as e:
+            journal.erreur("Accueil : échec du tirage de prénom d'ordinateur.", e)
             return {"succes": False, "erreur": f"Impossible de tirer un prénom : {e}"}
         self.config_partie.ajouter_ordinateur(nom, niveau)
+        journal.info(f"Accueil : ordinateur ajouté ({nom}, niveau {niveau.name}).")
         return {"succes": True, "etat": self.obtenir_etat()}
 
     def retirer_joueur(self, index: int) -> dict[str, Any]:
         """Retire le joueur à l'index donné."""
         if not self.config_partie.retirer(index):
             return {"succes": False, "erreur": "Index invalide."}
+        journal.info(f"Accueil : joueur retiré (index {index}).")
         return {"succes": True, "etat": self.obtenir_etat()}
 
     def lancer_partie(self) -> dict[str, Any]:
@@ -288,6 +293,10 @@ class ApiAccueil:
                 tirage_ordre=True,
             )
             self._id_partie = demarrer_suivi(self._partie)
+            journal.info(
+                f"Accueil : partie #{self._id_partie} lancée "
+                f"({len(self._partie.joueurs)} joueurs)."
+            )
             return {
                 "succes": True,
                 "pret": True,
@@ -298,6 +307,7 @@ class ApiAccueil:
                 "message": f"Partie #{self._id_partie} créée avec {len(self._partie.joueurs)} joueurs.",
             }
         except Exception as e:
+            journal.erreur("Accueil : échec du lancement de la partie.", e)
             return {"succes": False, "erreur": str(e)}
 
     @staticmethod
@@ -376,15 +386,18 @@ class ApiAccueil:
             trie = obtenir_trie()
             self._partie = reprendre_partie(id_partie, trie)
             self._id_partie = id_partie
+            journal.info(f"Accueil : partie #{id_partie} reprise.")
             return {
                 "succes": True,
                 "pret": True,
                 "id_partie": id_partie,
                 "message": f"Partie #{id_partie} reprise.",
             }
-        except KeyError:
+        except KeyError as e:
+            journal.erreur(f"Accueil : partie #{id_partie} introuvable à la reprise.", e)
             return {"succes": False, "erreur": f"Partie #{id_partie} introuvable."}
         except Exception as e:
+            journal.erreur(f"Accueil : échec de la reprise de la partie #{id_partie}.", e)
             return {"succes": False, "erreur": str(e)}
 
     def obtenir_niveaux(self) -> list[str]:
@@ -416,23 +429,34 @@ def lancer_accueil(ouvrir_jeu: bool = True) -> tuple[Partie | None, int | None]:
     """
     from scrabble.ui.jeu import lancer_jeu
 
-    api = ApiAccueil()
-    chemin_html = DOSSIER_WEB / "accueil.html"
-    window = webview.create_window(
-        "Scrabble - Nouvelle partie",
-        str(chemin_html),
-        js_api=api,
-        width=700,
-        height=600,
-        resizable=True,
-    )
-    api.set_window(window)
-    webview.start()
+    # Session de journalisation ouverte au tout début du lancement (issue #66).
+    # Elle est réutilisée par l'écran de jeu en cas d'enchaînement normal (voir
+    # ``lancer_jeu``), qui la clôture alors lui-même. Le ``try/finally`` garantit
+    # la clôture même si une exception non prévue traverse cette fonction :
+    # ``cloturer_session`` est idempotente, donc l'appel final est sans effet si
+    # l'écran de jeu a déjà clôturé la session.
+    journal.demarrer_session()
+    try:
+        api = ApiAccueil()
+        chemin_html = DOSSIER_WEB / "accueil.html"
+        window = webview.create_window(
+            "Scrabble - Nouvelle partie",
+            str(chemin_html),
+            js_api=api,
+            width=700,
+            height=600,
+            resizable=True,
+        )
+        api.set_window(window)
+        webview.start()
 
-    partie, id_partie = api._partie, api._id_partie
-    if ouvrir_jeu and partie is not None:
-        lancer_jeu(partie, id_partie)
-    return partie, id_partie
+        partie, id_partie = api._partie, api._id_partie
+        if ouvrir_jeu and partie is not None:
+            journal.info(f"Accueil : enchaînement vers l'écran de jeu (partie #{id_partie}).")
+            lancer_jeu(partie, id_partie)
+        return partie, id_partie
+    finally:
+        journal.cloturer_session()
 
 
 def main() -> int:

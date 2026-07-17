@@ -33,6 +33,7 @@ from typing import Any
 
 import webview
 
+from scrabble import journal
 from scrabble.config import THEMES_PLATEAU, charger_config
 from scrabble.dictionnaire.dictionnaire import Trie, normaliser_mot
 from scrabble.moteur.ia import Niveau
@@ -743,6 +744,8 @@ class ApiJeu:
         self._partie = partie
         self._id_partie = id_partie
         self._window: webview.Window | None = None
+        # Évite de journaliser plusieurs fois la même fin de partie (issue #66).
+        self._fin_journalisee = False
 
     def set_window(self, window: webview.Window) -> None:
         """Associe la fenêtre pywebview pour les callbacks."""
@@ -806,7 +809,24 @@ class ApiJeu:
         """
         resultat = jouer_placements(self._partie, placements)
         if resultat.get("succes"):
+            detail = resultat.get("detail")
+            mot = (
+                detail["mots"][0]["texte"]
+                if detail and detail.get("mots")
+                else "?"
+            )
+            journal.info(
+                f"Jeu : coup posé par {resultat.get('nom')} — "
+                f"{mot} ({resultat.get('points')} pts)."
+            )
+            self._journaliser_fin_partie()
             resultat["etat"] = etat_public(self._partie, self._id_partie)
+        else:
+            # Un coup refusé (mot hors dictionnaire, placement illégal…) est un
+            # déroulé de jeu normal, pas un bug : on le trace en INFO pour pouvoir
+            # reconstituer la session, sans déclencher la rétention du fichier
+            # (réservée aux vraies erreurs, voir module ``journal``).
+            journal.info(f"Jeu : coup refusé — {resultat.get('erreur')}")
         return resultat
 
     def verifier_mot(self, lettres: Any) -> dict[str, Any]:
@@ -831,7 +851,13 @@ class ApiJeu:
         ``{"succes": False, "erreur": <message clair>}`` — l'état n'est pas
         modifié.
         """
-        return echanger_chevalet_complet(self._partie, self._id_partie)
+        nom = self._partie.joueur_courant().nom
+        resultat = echanger_chevalet_complet(self._partie, self._id_partie)
+        if resultat.get("succes"):
+            journal.info(f"Jeu : échange complet du chevalet par {nom}.")
+        else:
+            journal.info(f"Jeu : échange refusé pour {nom} — {resultat.get('erreur')}")
+        return resultat
 
     def faire_jouer_ia(self) -> dict[str, Any]:
         """Fait jouer **un seul** tour d'ordinateur (celui du joueur courant).
@@ -849,7 +875,25 @@ class ApiJeu:
         C'est la seule façon prévue de faire avancer le jeu pendant un tour IA :
         l'humain n'a jamais à manipuler le chevalet d'un ordinateur à sa place.
         """
-        return jouer_tours_ia_ui(self._partie, self._id_partie)
+        nom = self._partie.joueur_courant().nom
+        resultat = jouer_tours_ia_ui(self._partie, self._id_partie)
+        if resultat.get("nb_tours"):
+            journal.info(f"Jeu : tour d'ordinateur joué ({nom}).")
+            self._journaliser_fin_partie()
+        return resultat
+
+    def _journaliser_fin_partie(self) -> None:
+        """Journalise (une seule fois) la fin de partie et son ou ses gagnants.
+
+        Appelée après chaque action susceptible de terminer la partie (pose d'un
+        coup humain, tour d'ordinateur). Le drapeau ``_fin_journalisee`` garantit
+        qu'on n'écrit la ligne « fin de partie » qu'une fois, même si l'UI
+        redéclenche des actions sans effet une fois la partie terminée.
+        """
+        if self._partie.terminee and not self._fin_journalisee:
+            self._fin_journalisee = True
+            gagnants = ", ".join(j.nom for j in self._partie.gagnants) or "aucun"
+            journal.info(f"Jeu : fin de partie — gagnant(s) : {gagnants}.")
 
 
 # --------------------------------------------------------------------------- #
@@ -863,7 +907,26 @@ def lancer_jeu(partie: Partie, id_partie: int | None) -> None:
     ``partie`` est typiquement celle créée par l'écran d'accueil (issue #27) ;
     ``id_partie`` est son identifiant de persistance (peut être ``None`` en
     mode démonstration autonome).
+
+    Session de journalisation (issue #66) : si une session est déjà ouverte
+    (lancement normal depuis l'accueil), on la **réutilise** ; sinon (lancement
+    autonome, ``python -m scrabble.ui.jeu``), on démarre une session propre.
+    Dans tous les cas la session est clôturée à la fermeture de la fenêtre de
+    jeu (= fin du programme), via ``try/finally`` pour garantir la clôture même
+    en cas d'exception. ``cloturer_session`` étant idempotente, la clôture par
+    l'accueil enchaîné reste sans effet redondant.
     """
+    if journal.session_courante() is None:
+        journal.demarrer_session()
+    journal.info(f"Jeu : écran ouvert (partie #{id_partie}).")
+    try:
+        _lancer_fenetre_jeu(partie, id_partie)
+    finally:
+        journal.cloturer_session()
+
+
+def _lancer_fenetre_jeu(partie: Partie, id_partie: int | None) -> None:
+    """Crée la fenêtre pywebview de l'écran de jeu et démarre la boucle (bloquant)."""
     api = ApiJeu(partie, id_partie)
     chemin_html = DOSSIER_WEB / "jeu.html"
     window = webview.create_window(
