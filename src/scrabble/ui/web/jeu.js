@@ -756,43 +756,132 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (res && res.succes) {
             await rafraichir();
-            // Surbrillance brève du coup que l'ordinateur vient de jouer
-            // (issue #58) : après le rafraîchissement, la première entrée de
-            // l'historique (la plus récente) est le tour IA qu'on vient de
-            // jouer si nb_tours vaut 1. On flashe ses cases posées pour repérer
-            // en un coup d'œil où et quoi a été joué.
+            // Animation de la pose du coup que l'ordinateur vient de jouer
+            // (issue #62, suite de #58) : après le rafraîchissement, la première
+            // entrée de l'historique (la plus récente) est le tour IA qu'on vient
+            // de jouer si nb_tours vaut 1. On révèle ses cases posées une par une
+            // sur ~2,5 s, avec un « tac » à chaque lettre.
             if (res.nb_tours && etat.historique && etat.historique[0]) {
-                flasherCoup(etat.historique[0].positions);
+                await animerPose(etat.historique[0].positions);
             }
         } else {
             btnJouerIA.disabled = false;
         }
     });
 
+    // --- Son de pose des tuiles (issue #62) ---
+    //
+    // Un « tac » synthétisé (Web Audio API, aucun fichier externe) joué à chaque
+    // lettre révélée. Le contexte audio est créé paresseusement et réveillé au
+    // premier usage : les navigateurs exigent un geste utilisateur pour démarrer
+    // le son, or l'animation est toujours déclenchée par un clic (« Valider le
+    // coup » ou « Faire jouer l'ordinateur »).
+    let audioCtx = null;
+
+    function contexteAudio() {
+        if (audioCtx === null) {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) {
+                return null;
+            }
+            try {
+                audioCtx = new AC();
+            } catch (err) {
+                return null;
+            }
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+        return audioCtx;
+    }
+
     /**
-     * Met brièvement en surbrillance (issue #58) les cases nouvellement posées
-     * par le dernier coup d'un ordinateur, une fois le plateau rafraîchi. Les
-     * ``positions`` sont fournies par l'API (``{ligne, colonne}``) et calculées
-     * par le moteur ; on ajoute une classe qui déclenche une animation CSS de
-     * fondu, retirée à la fin pour laisser la case dans son état normal.
+     * Joue un bref « tac » évoquant une tuile de bois qui se pose : une salve de
+     * bruit blanc très courte passée dans un filtre passe-bande, avec une
+     * enveloppe d'amplitude à attaque rapide et décroissance immédiate. Tout est
+     * synthétisé — aucun asset audio n'est chargé.
      */
-    function flasherCoup(positions) {
-        if (!Array.isArray(positions)) {
+    function jouerTac() {
+        const ctx = contexteAudio();
+        if (!ctx) {
             return;
         }
-        positions.forEach(({ ligne, colonne }) => {
-            const caseEl = plateauEl.querySelector(
-                `.case[data-ligne="${ligne}"][data-colonne="${colonne}"]`
-            );
-            if (!caseEl) {
+        const debut = ctx.currentTime;
+        const duree = 0.07;
+        const taille = Math.max(1, Math.floor(ctx.sampleRate * duree));
+        const buffer = ctx.createBuffer(1, taille, ctx.sampleRate);
+        const echantillons = buffer.getChannelData(0);
+        for (let i = 0; i < taille; i++) {
+            // Décroissance du bruit pour un transitoire net (« clic » de tuile).
+            echantillons[i] = (Math.random() * 2 - 1) * (1 - i / taille);
+        }
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        const filtre = ctx.createBiquadFilter();
+        filtre.type = 'bandpass';
+        filtre.frequency.value = 1800;
+        filtre.Q.value = 0.8;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.0001, debut);
+        gain.gain.exponentialRampToValueAtTime(0.45, debut + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.0001, debut + duree);
+        source.connect(filtre);
+        filtre.connect(gain);
+        gain.connect(ctx.destination);
+        source.start(debut);
+        source.stop(debut + duree);
+    }
+
+    /**
+     * Anime la pose d'un coup (humain ou ordinateur, issue #62) : révèle les
+     * cases nouvellement posées UNE PAR UNE dans l'ordre du mot (celui de la
+     * liste ``positions`` fournie par l'API, ``{ligne, colonne}``, calculée par
+     * le moteur), avec un « tac » synchronisé à chaque apparition.
+     *
+     * La révélation totale dure ~2,5 s quel que soit le nombre de lettres : le
+     * délai entre lettres vaut ``2500 / nb_lettres`` borné entre 120 et 500 ms
+     * (mot très long ou très court). Renvoie une Promesse résolue à la fin de
+     * l'animation, pour que l'appelant puisse considérer le tour terminé ensuite.
+     *
+     * Le plateau vient d'être rafraîchi : les tuiles sont déjà dans leur état
+     * final. On les masque donc d'abord (``case-pose-cachee``) puis on les
+     * dévoile successivement (``case-pose-revele``).
+     */
+    function animerPose(positions) {
+        return new Promise((resolve) => {
+            if (!Array.isArray(positions) || positions.length === 0) {
+                resolve();
                 return;
             }
-            caseEl.classList.add('case-flash-ia');
-            caseEl.addEventListener(
-                'animationend',
-                () => caseEl.classList.remove('case-flash-ia'),
-                { once: true }
-            );
+            const cases = positions
+                .map(({ ligne, colonne }) => plateauEl.querySelector(
+                    `.case[data-ligne="${ligne}"][data-colonne="${colonne}"]`
+                ))
+                .filter(Boolean);
+            if (cases.length === 0) {
+                resolve();
+                return;
+            }
+            // Masque toutes les tuiles concernées avant la révélation séquentielle.
+            cases.forEach((caseEl) => caseEl.classList.add('case-pose-cachee'));
+            const delai = Math.min(500, Math.max(120, Math.round(2500 / cases.length)));
+            cases.forEach((caseEl, i) => {
+                setTimeout(() => {
+                    caseEl.classList.remove('case-pose-cachee');
+                    caseEl.classList.add('case-pose-revele');
+                    caseEl.addEventListener(
+                        'animationend',
+                        () => caseEl.classList.remove('case-pose-revele'),
+                        { once: true }
+                    );
+                    jouerTac();
+                    if (i === cases.length - 1) {
+                        // Laisse l'animation de la dernière tuile se terminer.
+                        setTimeout(resolve, delai);
+                    }
+                }, i * delai);
+            });
         });
     }
 
@@ -1237,6 +1326,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             const points = res.points != null ? res.points : 0;
             await rafraichir();
             afficherMessage(`Coup joué (+${points} point${points > 1 ? 's' : ''}).`, 'succes');
+            // Animation de la pose du coup humain (issue #62) : identique à celle
+            // d'un coup IA. Après le rafraîchissement, la première entrée de
+            // l'historique est le coup qu'on vient de valider ; on révèle ses
+            // lettres une par une sur ~2,5 s (« tac » à chaque lettre) avant de
+            // considérer le tour visuellement terminé.
+            if (etat.historique && etat.historique[0]) {
+                await animerPose(etat.historique[0].positions);
+            }
         } else {
             // Échec : on conserve les lettres en attente pour correction.
             const message = (res && res.erreur) ? res.erreur : 'Coup refusé.';

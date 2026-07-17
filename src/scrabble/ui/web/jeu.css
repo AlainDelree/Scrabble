@@ -524,36 +524,42 @@ header {
     font-size: clamp(0.6rem, 2vw, 1rem);
 }
 
-/* Surbrillance brève du dernier coup d'un ordinateur (issue #58).
-   Posée par le JS (flasherCoup) sur chaque case nouvellement posée juste après
-   le rafraîchissement du plateau, puis retirée à la fin de l'animation. Un halo
-   doré pulse une fois puis s'estompe en ~1,6 s, sans déplacer la case ni gêner
-   la lecture de la tuile. z-index remonte la case flashée au-dessus de ses
-   voisines le temps que le halo soit visible. */
-.case.case-flash-ia {
-    animation: flash-coup-ia 1.6s ease-out both;
+/* Révélation lettre par lettre d'un coup posé (issue #62, suite de #58).
+   Le JS (animerPose) masque d'abord chaque case nouvellement posée
+   (``case-pose-cachee``) juste après le rafraîchissement du plateau, puis les
+   dévoile une par une (``case-pose-revele``) sur ~2,5 s au total, avec un
+   « tac » à chaque lettre. La tuile n'apparaît qu'à sa révélation, accompagnée
+   d'un léger « pop » doré. z-index remonte la case révélée au-dessus de ses
+   voisines le temps de l'animation. */
+.case.case-pose-cachee > .tuile {
+    visibility: hidden;
+}
+
+.case.case-pose-revele {
+    animation: pose-lettre 0.35s ease-out both;
     z-index: 2;
 }
 
-@keyframes flash-coup-ia {
+@keyframes pose-lettre {
     0% {
         box-shadow: 0 0 0 0 rgba(255, 213, 79, 0);
+        transform: scale(1.18);
     }
-    15% {
+    40% {
         box-shadow: 0 0 10px 4px rgba(255, 213, 79, 0.95);
     }
     100% {
         box-shadow: 0 0 0 0 rgba(255, 213, 79, 0);
+        transform: scale(1);
     }
 }
 
-/* Respect des préférences d'accessibilité : pas de pulsation animée si
-   l'utilisateur a demandé à réduire les mouvements — on garde juste un halo
-   fixe bref via une transition douce. */
+/* Respect des préférences d'accessibilité : la révélation reste séquentielle
+   (c'est le cœur de l'animation) mais sans pulsation ni changement d'échelle —
+   la tuile apparaît simplement, sans mouvement. */
 @media (prefers-reduced-motion: reduce) {
-    .case.case-flash-ia {
+    .case.case-pose-revele {
         animation: none;
-        box-shadow: 0 0 8px 3px rgba(255, 213, 79, 0.9);
     }
 }
 
