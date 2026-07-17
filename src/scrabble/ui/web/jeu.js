@@ -762,6 +762,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             // sur ~2,5 s, avec un « tac » à chaque lettre.
             if (res.nb_tours && etat.historique && etat.historique[0]) {
                 await animerPose(etat.historique[0].positions);
+                // Scrabble posé par l'ordinateur (bonus 50 pts, issue #64) :
+                // petit feu d'artifice une fois la pose révélée.
+                if (etat.historique[0].detail
+                        && etat.historique[0].detail.bonus_scrabble) {
+                    celebrerScrabble();
+                }
             }
         } else {
             btnJouerIA.disabled = false;
@@ -882,6 +888,68 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }, i * delai);
             });
         });
+    }
+
+    /**
+     * Célébration festive d'un « Scrabble » (issue #64, suite de #58) : les 7
+     * lettres du chevalet posées en un seul coup rapportent le bonus de 50 points
+     * (``detail.bonus_scrabble``, calculé côté moteur). Ce moment mérite mieux que
+     * de se fondre dans l'historique : on déclenche un bref feu d'artifice.
+     *
+     * L'effet vit dans le calque plein écran ``#scrabble-fete``, TOUJOURS
+     * transparent aux clics (``pointer-events: none`` en CSS) : il ne gêne jamais
+     * l'interaction avec le plateau ou les boutons. Une trentaine de particules
+     * colorées (palette du thème) jaillissent d'un point central puis s'effacent
+     * en ~1,8 s, après quoi le calque est vidé.
+     *
+     * Accessibilité : si l'utilisateur préfère moins de mouvement
+     * (``prefers-reduced-motion: reduce``, comme pour la pose lettre par lettre),
+     * on remplace le feu d'artifice par un simple message « 🎉 Scrabble ! » affiché
+     * brièvement, sans particule ni mouvement.
+     */
+    function celebrerScrabble() {
+        const calque = document.getElementById('scrabble-fete');
+        if (!calque) {
+            return;
+        }
+        // On repart d'un calque propre (au cas où deux Scrabbles s'enchaînent).
+        calque.innerHTML = '';
+
+        const reduit = window.matchMedia
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        if (reduit) {
+            // Alternative sobre et statique : un message bref, aucun mouvement.
+            const message = document.createElement('div');
+            message.className = 'scrabble-message';
+            message.textContent = '🎉 Scrabble !';
+            calque.appendChild(message);
+            setTimeout(() => { calque.innerHTML = ''; }, 1800);
+            return;
+        }
+
+        // Feu d'artifice : des particules projetées dans toutes les directions
+        // depuis le centre, avec des couleurs de la palette du thème.
+        const couleurs = ['#2e7d32', '#1565c0', '#6a1b9a', '#ffd54f', '#ef6d86', '#d21f24'];
+        const nb = 32;
+        for (let i = 0; i < nb; i += 1) {
+            const p = document.createElement('div');
+            p.className = 'particule';
+            // Direction aléatoire (angle + distance) : jaillissement radial.
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 120 + Math.random() * 160;
+            const dx = Math.cos(angle) * distance;
+            // On ajoute une composante « retombée » vers le bas façon gerbe.
+            const dy = Math.sin(angle) * distance + 40 + Math.random() * 80;
+            p.style.setProperty('--dx', `${Math.round(dx)}px`);
+            p.style.setProperty('--dy', `${Math.round(dy)}px`);
+            p.style.setProperty('--rot', `${Math.round((Math.random() - 0.5) * 720)}deg`);
+            p.style.setProperty('--delai', `${(Math.random() * 0.25).toFixed(2)}s`);
+            p.style.setProperty('--col', couleurs[i % couleurs.length]);
+            calque.appendChild(p);
+        }
+        // Nettoyage après la fin de l'animation (1,6 s + délai max ~0,25 s).
+        setTimeout(() => { calque.innerHTML = ''; }, 2100);
     }
 
     // --- Zone de brouillon (réflexion indépendante) ---
@@ -1353,6 +1421,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             // considérer le tour visuellement terminé.
             if (etat.historique && etat.historique[0]) {
                 await animerPose(etat.historique[0].positions);
+                // Scrabble posé par l'humain (bonus 50 pts, issue #64) : petit
+                // feu d'artifice une fois la pose révélée.
+                if (etat.historique[0].detail
+                        && etat.historique[0].detail.bonus_scrabble) {
+                    celebrerScrabble();
+                }
             }
         } else {
             // Échec : on conserve les lettres en attente pour correction.

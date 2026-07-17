@@ -246,6 +246,13 @@
         </div>
     </div>
 
+    <!-- Calque de célébration festive quand un Scrabble (7 lettres, +50 pts) est
+         posé (issue #64, suite de #58). Superposé plein écran mais totalement
+         transparent aux clics (pointer-events: none via .scrabble-fete) : le JS
+         y injecte brièvement des particules « feu d'artifice », ou un message
+         sobre « 🎉 Scrabble ! » si prefers-reduced-motion est actif. -->
+    <div id="scrabble-fete" class="scrabble-fete" aria-hidden="true"></div>
+
     <script src="jeu.js"></script>
 </body>
 </html>

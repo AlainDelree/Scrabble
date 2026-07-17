@@ -564,6 +564,86 @@ header {
 }
 
 /* --------------------------------------------------------------------------- */
+/* Célébration d'un Scrabble : feu d'artifice (issue #64, suite de #58)         */
+/* --------------------------------------------------------------------------- */
+/* Calque plein écran superposé au reste de l'interface. Il est TOUJOURS
+   transparent aux interactions (pointer-events: none) : la célébration ne
+   bloque jamais un clic sur le plateau, le chevalet ou un bouton. Le JS
+   (celebrerScrabble) y injecte pour ~1,8 s des particules colorées qui jaillissent
+   d'un point central façon feu d'artifice, puis vide le calque. Les couleurs
+   reprennent la palette du thème (vert primaire, bleu humain, violet ordinateur
+   et l'or déjà utilisé pour la pose des tuiles) pour rester cohérentes. */
+.scrabble-fete {
+    position: fixed;
+    inset: 0;
+    z-index: 50;             /* au-dessus du plateau, sous les modales (voir .modale) */
+    pointer-events: none;    /* n'intercepte jamais un clic */
+    overflow: hidden;
+}
+
+/* Une particule = un petit carré de confetti projeté depuis le centre. Sa
+   trajectoire (--dx, --dy), sa rotation (--rot), son délai (--delai) et sa
+   couleur (--col) sont fixés par le JS via des variables CSS inline. */
+.scrabble-fete .particule {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    width: 10px;
+    height: 10px;
+    background: var(--col, var(--couleur-primaire));
+    border-radius: 2px;
+    opacity: 0;
+    will-change: transform, opacity;
+    animation: scrabble-eclat 1.6s ease-out both;
+    animation-delay: var(--delai, 0s);
+}
+
+@keyframes scrabble-eclat {
+    0% {
+        transform: translate(-50%, -50%) scale(0.4) rotate(0deg);
+        opacity: 1;
+    }
+    15% {
+        opacity: 1;
+    }
+    100% {
+        /* jaillissement vers (--dx, --dy) avec une légère « retombée » verticale */
+        transform:
+            translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px)))
+            scale(1) rotate(var(--rot, 180deg));
+        opacity: 0;
+    }
+}
+
+/* Message sobre affiché à la place du feu d'artifice quand l'utilisateur
+   préfère moins de mouvement. Bref (retiré par le JS après ~1,8 s), centré,
+   sans particule ni translation. */
+.scrabble-fete .scrabble-message {
+    position: absolute;
+    top: 22%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.6rem 1.4rem;
+    background: var(--couleur-primaire);
+    color: #fff;
+    font-size: clamp(1.1rem, 4vw, 1.8rem);
+    font-weight: 700;
+    border-radius: var(--rayon-bordure);
+    box-shadow: var(--ombre);
+    white-space: nowrap;
+}
+
+/* Accessibilité : si l'utilisateur préfère moins de mouvement, on n'injecte
+   pas de particules (le JS bascule sur le message). Par sécurité, on neutralise
+   aussi toute animation résiduelle du calque. */
+@media (prefers-reduced-motion: reduce) {
+    .scrabble-fete .particule {
+        animation: none;
+        opacity: 0;
+    }
+}
+
+/* --------------------------------------------------------------------------- */
 /* Thèmes de plateau                                                           */
 /* --------------------------------------------------------------------------- */
 /* Chaque thème est une classe posée par le JS sur l'élément .plateau. Il ne
