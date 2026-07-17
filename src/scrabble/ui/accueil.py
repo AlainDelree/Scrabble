@@ -49,6 +49,7 @@ import webview
 from scrabble.config import charger_config
 from scrabble.dictionnaire.dictionnaire import charger_dictionnaire, obtenir_trie
 from scrabble.moteur.ia import Niveau
+from scrabble.moteur.ordre import determiner_ordre_jeu
 from scrabble.moteur.partie import MAX_JOUEURS, Partie, creer_partie
 from scrabble.persistance.stockage import (
     CHEMIN_DEFAUT,
@@ -252,6 +253,12 @@ class ApiAccueil:
     def lancer_partie(self) -> dict[str, Any]:
         """Crée et démarre la partie avec la configuration actuelle.
 
+        L'ordre de jeu est décidé par un **tirage d'ordre** (``creer_partie(...,
+        tirage_ordre=True)``, issue #33) : chaque joueur tire une lettre et
+        l'ordre de jeu suit l'ordre alphabétique des lettres tirées. Le détail
+        du tirage est exposé dans la réponse (clé ``tirage_ordre``) pour que le
+        JS l'affiche avant de fermer l'accueil (issue #54).
+
         En cas de succès, le champ ``pret`` vaut ``True`` : le JS doit alors
         fermer la fenêtre d'accueil (``api.fermer_fenetre()``) pour que l'écran
         de jeu puisse s'ouvrir avec la partie créée.
@@ -278,19 +285,55 @@ class ApiAccueil:
                 noms_ia=noms_ia,
                 niveaux_ia=niveaux_ia,
                 graine=graine,
+                tirage_ordre=True,
             )
             self._id_partie = demarrer_suivi(self._partie)
             return {
                 "succes": True,
                 "pret": True,
                 "id_partie": self._id_partie,
+                "tirage_ordre": self._detail_tirage_ordre(
+                    noms_humains + noms_ia, graine
+                ),
                 "message": f"Partie #{self._id_partie} créée avec {len(self._partie.joueurs)} joueurs.",
             }
         except Exception as e:
             return {"succes": False, "erreur": str(e)}
 
+    @staticmethod
+    def _detail_tirage_ordre(noms_creation: list[str], graine: int) -> dict[str, Any]:
+        """Reconstitue le détail du tirage d'ordre pour affichage côté JS.
+
+        ``creer_partie(tirage_ordre=True)`` réordonne bien les joueurs mais ne
+        renvoie pas le détail du tirage. On le rejoue ici avec **la même graine**
+        (``random.Random(graine)``) : ``determiner_ordre_jeu`` ne dépend que du
+        nombre de joueurs et de la graine, le résultat est donc identique à celui
+        appliqué à la partie (l'ordre reproduit exactement ``partie.joueurs``).
+
+        ``noms_creation`` est la liste des noms dans l'ordre de création (humains
+        puis ordinateurs), qui est l'ordre d'origine sur lequel raisonne
+        :class:`~scrabble.moteur.ordre.ResultatTirageOrdre` (``lettres[i]``
+        correspond au joueur ``i`` de cette liste ; ``ordre`` en donne les
+        indices rangés dans l'ordre de jeu).
+
+        Retourne ``{"tirages": [{"nom", "lettre"}, ...], "ordre": [nom, ...]}``.
+        """
+        resultat = determiner_ordre_jeu(noms_creation, random.Random(graine))
+        tirages = [
+            {"nom": noms_creation[i], "lettre": resultat.lettres[i]}
+            for i in range(len(noms_creation))
+        ]
+        ordre = [noms_creation[i] for i in resultat.ordre]
+        return {"tirages": tirages, "ordre": ordre}
+
     def lister_parties_en_cours(self) -> list[dict[str, Any]]:
-        """Liste les parties non terminées disponibles pour reprise."""
+        """Renvoie la seule partie en cours la plus récente (issue #54).
+
+        ``lister_parties()`` renvoie déjà les parties triées par date de mise à
+        jour décroissante : on ne propose à la reprise que la plus récente. Le
+        retour reste une liste (0 ou 1 élément) pour ne pas casser le contrat
+        avec le JS.
+        """
         try:
             toutes = lister_parties()
             en_cours = [p for p in toutes if not p.terminee]
@@ -301,7 +344,7 @@ class ApiAccueil:
                     "joueurs": [j["nom"] for j in p.joueurs],
                     "nb_joueurs": len(p.joueurs),
                 }
-                for p in en_cours
+                for p in en_cours[:1]
             ]
         except Exception:
             return []

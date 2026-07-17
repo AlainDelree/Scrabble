@@ -93,6 +93,25 @@
          ferment désormais directement la fenêtre d'accueil et ouvrent l'écran
          de jeu automatiquement. -->
 
+    <!-- Modale résultat du tirage d'ordre (issue #54) : montrée après création
+         de la partie et avant la fermeture de l'accueil. -->
+    <div id="modale-tirage" class="modale" hidden>
+        <div class="modale-contenu">
+            <h3>Tirage de l'ordre de jeu</h3>
+            <p class="tirage-intro">
+                Chaque joueur a tiré une lettre. L'ordre de jeu suit l'ordre
+                alphabétique des lettres tirées.
+            </p>
+            <ul id="tirage-lettres" class="tirage-lettres"></ul>
+            <p id="tirage-ordre-resultat" class="tirage-ordre-resultat"></p>
+            <div class="modale-actions">
+                <button type="button" class="btn btn-primaire" id="btn-continuer-tirage">
+                    Continuer
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script src="accueil.js"></script>
 </body>
 </html>

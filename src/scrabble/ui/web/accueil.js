@@ -28,6 +28,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Modales
     const modaleHumain = document.getElementById('modale-humain');
     const modaleOrdinateur = document.getElementById('modale-ordinateur');
+    const modaleTirage = document.getElementById('modale-tirage');
+    const tirageLettres = document.getElementById('tirage-lettres');
+    const tirageOrdreResultat = document.getElementById('tirage-ordre-resultat');
+    const btnContinuerTirage = document.getElementById('btn-continuer-tirage');
 
     // Formulaires
     const formHumain = document.getElementById('form-humain');
@@ -144,7 +148,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Charge et affiche les parties en cours
+     * Charge et affiche la partie en cours proposée à la reprise.
+     *
+     * Depuis l'issue #54, `api.lister_parties_en_cours()` ne renvoie que la
+     * partie la plus récente (liste de 0 ou 1 élément) : on n'affiche donc
+     * qu'un seul encart de reprise.
      */
     async function chargerPartiesEnCours() {
         const parties = await api.lister_parties_en_cours();
@@ -214,6 +222,33 @@ document.addEventListener('DOMContentLoaded', async () => {
             clearTimeout(timeoutId);
             onEchec("Erreur lors de la fermeture : " + err);
         }
+    }
+
+    /**
+     * Affiche le résultat du tirage d'ordre (issue #54) et attend que
+     * l'utilisateur clique « Continuer » avant de résoudre.
+     *
+     * @param {{tirages: Array<{nom: string, lettre: string}>, ordre: string[]}} tirage
+     * @returns {Promise<void>} résolue quand l'utilisateur valide la modale.
+     */
+    function afficherTirageOrdre(tirage) {
+        return new Promise((resolve) => {
+            tirageLettres.innerHTML = '';
+            tirage.tirages.forEach(t => {
+                const li = document.createElement('li');
+                li.innerHTML = `<span class="tirage-nom">${escapeHtml(t.nom)}</span> a tiré <span class="tirage-lettre">${escapeHtml(t.lettre)}</span>`;
+                tirageLettres.appendChild(li);
+            });
+            tirageOrdreResultat.textContent =
+                'Ordre de jeu : ' + tirage.ordre.map(String).join(', ');
+            afficherModale(modaleTirage);
+
+            btnContinuerTirage.onclick = () => {
+                cacherModale(modaleTirage);
+                btnContinuerTirage.onclick = null;
+                resolve();
+            };
+        });
     }
 
     /**
@@ -329,6 +364,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const result = await api.lancer_partie();
 
         if (result.succes && result.pret) {
+            // Montrer le résultat du tirage d'ordre avant de fermer l'accueil
+            // (issue #54) : l'utilisateur voit la lettre tirée par chaque
+            // joueur et l'ordre de jeu qui en résulte, puis clique « Continuer ».
+            if (result.tirage_ordre) {
+                await afficherTirageOrdre(result.tirage_ordre);
+            }
             // Fermer la fenêtre d'accueil depuis Python — l'écran de jeu
             // s'ouvrira automatiquement après la fermeture. En cas d'échec,
             // on réactive le bouton plutôt que de rester bloqué.

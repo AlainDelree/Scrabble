@@ -406,6 +406,46 @@ section h2 {
     margin-top: 20px;
 }
 
+/* Modale tirage d'ordre (issue #54) */
+.tirage-intro {
+    margin-bottom: 16px;
+    color: #555;
+}
+
+.tirage-lettres {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.tirage-lettres li {
+    padding: 8px 12px;
+    border: 2px solid var(--couleur-bordure);
+    border-radius: 6px;
+}
+
+.tirage-nom {
+    font-weight: 600;
+}
+
+.tirage-lettre {
+    display: inline-block;
+    min-width: 1.6em;
+    padding: 0 6px;
+    text-align: center;
+    font-weight: 700;
+    color: var(--couleur-primaire);
+    background: var(--couleur-ordinateur-fond);
+    border-radius: 4px;
+}
+
+.tirage-ordre-resultat {
+    font-weight: 600;
+    color: var(--couleur-secondaire);
+}
+
 /* Modale transition */
 .modale-transition {
     text-align: center;

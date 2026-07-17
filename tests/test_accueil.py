@@ -351,6 +351,143 @@ class TestApiAccueilLancement:
         assert "erreur" in result
 
 
+class TestApiAccueilTirageOrdre:
+    """Tests du tirage d'ordre exposé par lancer_partie (issue #54).
+
+    Vérifie que le tirage d'ordre est activé (``creer_partie(tirage_ordre=True)``)
+    et que le détail du tirage renvoyé au JS est cohérent avec l'ordre de jeu
+    réel de la partie créée.
+    """
+
+    def _api_prete(self, monkeypatch):
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda: Trie.depuis_iterable(["MAISON", "TEST"]),
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.demarrer_suivi",
+            lambda partie: 7,
+        )
+        return ApiAccueil()
+
+    def test_lancer_partie_expose_tirage_ordre(self, monkeypatch):
+        """lancer_partie() renvoie le détail du tirage d'ordre."""
+        api = self._api_prete(monkeypatch)
+        api.ajouter_humain("Alice")
+        api.ajouter_humain("Bob")
+        api.ajouter_ordinateur("Intermédiaire")  # nom tiré automatiquement
+
+        result = api.lancer_partie()
+
+        assert result["succes"] is True
+        tirage = result["tirage_ordre"]
+        # Une lettre par joueur, avec le nom associé.
+        assert len(tirage["tirages"]) == 3
+        for entree in tirage["tirages"]:
+            assert set(entree.keys()) == {"nom", "lettre"}
+            assert isinstance(entree["lettre"], str) and len(entree["lettre"]) == 1
+        # L'ordre annoncé contient tous les joueurs, une seule fois chacun.
+        noms_config = {j.nom for j in api.config_partie.joueurs}
+        assert set(tirage["ordre"]) == noms_config
+        assert len(tirage["ordre"]) == 3
+
+    def test_ordre_annonce_correspond_a_la_partie(self, monkeypatch):
+        """L'ordre du tirage annoncé reflète l'ordre réel de partie.joueurs."""
+        api = self._api_prete(monkeypatch)
+        api.ajouter_humain("Alice")
+        api.ajouter_humain("Bob")
+        api.ajouter_ordinateur("Expert")
+
+        result = api.lancer_partie()
+
+        ordre_partie = [j.nom for j in api._partie.joueurs]
+        assert result["tirage_ordre"]["ordre"] == ordre_partie
+
+    def test_lettres_dans_ordre_alphabetique(self, monkeypatch):
+        """Les lettres des joueurs départagés suivent l'ordre alphabétique."""
+        api = self._api_prete(monkeypatch)
+        api.ajouter_humain("Alice")
+        api.ajouter_humain("Bob")
+        api.ajouter_ordinateur("Facile")
+
+        result = api.lancer_partie()
+
+        tirage = result["tirage_ordre"]
+        lettre_par_nom = {t["nom"]: t["lettre"] for t in tirage["tirages"]}
+        lettres_dans_ordre = [lettre_par_nom[nom] for nom in tirage["ordre"]]
+        # L'ordre de jeu suit l'ordre alphabétique des lettres tirées (les
+        # égalités éventuelles sont départagées par retirage, non exposé, mais
+        # la séquence des premières lettres reste croissante ou égale).
+        assert lettres_dans_ordre == sorted(lettres_dans_ordre)
+
+
+class TestApiAccueilPartieUnique:
+    """Tests de lister_parties_en_cours : une seule partie proposée (issue #54)."""
+
+    def _resume(self, id_partie, statut="en_cours"):
+        from scrabble.persistance.stockage import ResumePartie
+
+        return ResumePartie(
+            id=id_partie,
+            statut=statut,
+            graine=id_partie,
+            date_creation="2026-07-01T10:00:00",
+            date_maj=f"2026-07-{id_partie:02d}T10:00:00",
+            joueurs=[{"nom": "Alice", "humain": True, "niveau": None}],
+        )
+
+    def test_ne_renvoie_que_la_plus_recente(self, monkeypatch):
+        """Seule la première partie en cours (la plus récente) est renvoyée."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        # lister_parties() renvoie déjà les parties triées date décroissante :
+        # la plus récente en tête.
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lister_parties",
+            lambda: [self._resume(9), self._resume(5), self._resume(3)],
+        )
+
+        api = ApiAccueil()
+        parties = api.lister_parties_en_cours()
+
+        assert len(parties) == 1
+        assert parties[0]["id"] == 9
+
+    def test_ignore_les_parties_terminees(self, monkeypatch):
+        """Une partie terminée n'est pas proposée, même si listée en tête."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lister_parties",
+            lambda: [
+                self._resume(9, statut="terminee"),
+                self._resume(4),
+                self._resume(2),
+            ],
+        )
+
+        api = ApiAccueil()
+        parties = api.lister_parties_en_cours()
+
+        assert len(parties) == 1
+        assert parties[0]["id"] == 4
+
+    def test_aucune_partie_en_cours(self, monkeypatch):
+        """Aucune partie en cours -> liste vide."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lister_parties",
+            lambda: [self._resume(9, statut="terminee")],
+        )
+
+        api = ApiAccueil()
+        assert api.lister_parties_en_cours() == []
+
+
 class TestApiAccueilFermeture:
     """Tests de ApiAccueil.fermer_fenetre (issue #53).
 
