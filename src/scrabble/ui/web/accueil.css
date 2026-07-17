@@ -499,9 +499,9 @@ section h2 {
    suivant le curseur pour une secousse nettement plus marquée. La taille est
    fixe mais bornée pour ne jamais déborder de la modale. */
 .tirage-sac-aire {
-    width: 240px;
-    height: 240px;
-    max-width: min(240px, 70vw);
+    width: 280px;
+    height: 280px;
+    max-width: min(280px, 70vw);
     aspect-ratio: 1 / 1;
     display: flex;
     align-items: center;

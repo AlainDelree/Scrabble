@@ -351,19 +351,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             // (issue #68) : bien plus perceptible qu'une simple rotation.
             function surMouvement(e) {
                 const rect = aire.getBoundingClientRect();
-                // Écart normalisé du curseur au centre de la zone, borné à [-1, 1].
-                const nx = Math.max(-1, Math.min(1,
-                    (e.clientX - (rect.left + rect.width / 2)) / (rect.width / 2)));
-                const ny = Math.max(-1, Math.min(1,
-                    (e.clientY - (rect.top + rect.height / 2)) / (rect.height / 2)));
                 // Amplitude max = espace libre entre le sac et les bords de la zone,
-                // pour que le sac suive le curseur sans jamais déborder.
+                // pour que le sac suive le curseur sans jamais déborder (issue #68).
                 const maxX = Math.max(0, (rect.width - sac.offsetWidth) / 2);
                 const maxY = Math.max(0, (rect.height - sac.offsetHeight) / 2);
-                const tx = nx * maxX;
-                const ty = ny * maxY;
-                // Rotation proportionnelle à l'écart horizontal (effet de balancement).
-                const angle = nx * 12;
+                // Suivi DIRECT du curseur (issue #71) : le sac se déplace pixel
+                // pour pixel vers le curseur, borné à l'amplitude disponible.
+                // L'ancien mappage normalisé (nx * maxX) appliquait un gain ~0,5
+                // et restait quasi immobile au centre — là où l'on secoue
+                // justement le sac ; d'où l'impression de mouvement statique.
+                const dx = e.clientX - (rect.left + rect.width / 2);
+                const dy = e.clientY - (rect.top + rect.height / 2);
+                const tx = Math.max(-maxX, Math.min(maxX, dx));
+                const ty = Math.max(-maxY, Math.min(maxY, dy));
+                // Rotation proportionnelle au déplacement horizontal (balancement).
+                const angle = (maxX ? tx / maxX : 0) * 12;
                 sac.style.transform =
                     `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) rotate(${angle.toFixed(1)}deg)`;
                 son.secouer();
