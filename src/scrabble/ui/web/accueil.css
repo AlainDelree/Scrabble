@@ -487,7 +487,7 @@ section h2 {
 }
 
 .tirage-intro {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     color: #555;
 }
 
@@ -563,8 +563,12 @@ section h2 {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
-    margin: 4px 0 18px;
+    gap: 10px;
+    /* Espacements resserrés (issue #83) : dans le cas courant — un seul joueur
+       humain, un seul tirage affiché — le trio consigne + sac + bouton doit
+       tenir sous la hauteur du corps sans déclencher le scroll de secours de
+       l'issue #82, qui sinon coupait le bouton « Tirer une lettre » en bas. */
+    margin: 4px 0 12px;
 }
 
 .tirage-sac-consigne {
@@ -578,9 +582,12 @@ section h2 {
    suivant le curseur pour une secousse nettement plus marquée. La taille est
    fixe mais bornée pour ne jamais déborder de la modale. */
 .tirage-sac-aire {
-    width: 280px;
-    height: 280px;
-    max-width: min(280px, 70vw);
+    /* Taille resserrée à 256px (issue #83, ex-280px de l'issue #68) : assez
+       grande pour secouer franchement le sac, mais l'ensemble consigne + aire
+       + bouton rentre désormais sans scroll dans le cas courant. */
+    width: 256px;
+    height: 256px;
+    max-width: min(256px, 70vw);
     aspect-ratio: 1 / 1;
     display: flex;
     align-items: center;
