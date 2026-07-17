@@ -179,6 +179,44 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
+     * Ferme la fenêtre d'accueil depuis Python (issue #53).
+     *
+     * Appelle `api.fermer_fenetre()` qui déclenche `window.destroy()` côté
+     * Python — plus fiable que `window.close()` côté JS, ignoré par certains
+     * backends pywebview (GTK/WebKit sous Linux).
+     *
+     * Filet de sécurité : si la fermeture échoue ou n'a pas lieu dans un délai
+     * raisonnable, on invoque `onEchec(message)` pour réactiver le bouton
+     * plutôt que de laisser l'utilisateur bloqué sur « Création en cours... ».
+     *
+     * @param {function(string): void} onEchec Rappel en cas d'échec/timeout.
+     */
+    async function fermerFenetre(onEchec) {
+        // Si la fenêtre se ferme réellement, ce timer n'a pas le temps de se
+        // déclencher (la page est détruite). S'il se déclenche, c'est que la
+        // fermeture a silencieusement échoué.
+        const timeoutId = setTimeout(() => {
+            onEchec("La fenêtre n'a pas pu se fermer. Réessayez.");
+        }, 3000);
+
+        try {
+            const result = await api.fermer_fenetre();
+            if (!result || !result.succes) {
+                clearTimeout(timeoutId);
+                const msg = (result && result.erreur)
+                    ? result.erreur
+                    : "Impossible de fermer la fenêtre.";
+                onEchec(msg);
+            }
+            // En cas de succès, on laisse le timer en place : soit la fenêtre
+            // se ferme (timer jamais exécuté), soit le timer sert de filet.
+        } catch (err) {
+            clearTimeout(timeoutId);
+            onEchec("Erreur lors de la fermeture : " + err);
+        }
+    }
+
+    /**
      * Affiche une modale
      */
     function afficherModale(modale) {
@@ -291,9 +329,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const result = await api.lancer_partie();
 
         if (result.succes && result.pret) {
-            // Fermer la fenêtre d'accueil — l'écran de jeu s'ouvrira
-            // automatiquement côté Python après la fermeture.
-            window.close();
+            // Fermer la fenêtre d'accueil depuis Python — l'écran de jeu
+            // s'ouvrira automatiquement après la fermeture. En cas d'échec,
+            // on réactive le bouton plutôt que de rester bloqué.
+            await fermerFenetre((msg) => {
+                alert(msg);
+                btnLancer.disabled = false;
+                btnLancer.textContent = 'Lancer la partie';
+            });
         } else if (!result.succes) {
             alert(result.erreur);
             btnLancer.disabled = false;
@@ -308,15 +351,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             e.target.disabled = true;
             e.target.textContent = 'Chargement...';
 
+            const btnReprendre = e.target;
             const result = await api.reprendre(id);
             if (result.succes && result.pret) {
-                // Fermer la fenêtre d'accueil — l'écran de jeu s'ouvrira
-                // automatiquement côté Python après la fermeture.
-                window.close();
+                // Fermer la fenêtre d'accueil depuis Python — l'écran de jeu
+                // s'ouvrira automatiquement après la fermeture. En cas
+                // d'échec, on réactive le bouton plutôt que de rester bloqué.
+                await fermerFenetre((msg) => {
+                    alert(msg);
+                    btnReprendre.disabled = false;
+                    btnReprendre.textContent = 'Reprendre';
+                });
             } else if (!result.succes) {
                 alert(result.erreur);
-                e.target.disabled = false;
-                e.target.textContent = 'Reprendre';
+                btnReprendre.disabled = false;
+                btnReprendre.textContent = 'Reprendre';
             }
         }
     });

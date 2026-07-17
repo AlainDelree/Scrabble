@@ -12,9 +12,29 @@ jeu s'ouvre automatiquement avec la partie en cours (issue #52).
 Vocabulaire : l'écran dit « ordinateur » et jamais « IA » (moins intimidant).
 Les identifiants de code (Joueur.humain, Niveau) restent inchangés.
 
+La fermeture de l'accueil après un lancer/reprendre se fait depuis Python via
+``ApiAccueil.fermer_fenetre()`` (``window.destroy()``) et non via
+``window.close()`` côté JS, qui n'est pas honoré par tous les backends
+pywebview (GTK/WebKit sous Linux) et laissait le bouton bloqué sur « Création
+en cours... » (issue #53).
+
 Lancement de l'écran pour test ::
 
     python -m scrabble.ui.accueil
+
+Test manuel (issue #53) — vérifier l'enchaînement accueil → jeu :
+
+1. Lancer ``python -m scrabble.ui.accueil`` (ou l'accueil depuis l'app).
+2. Ajouter au moins un joueur humain et un ordinateur (n'importe quel niveau).
+3. Cliquer « Lancer la partie ». Attendu : la fenêtre d'accueil se FERME
+   réellement (elle ne reste pas bloquée sur « Création en cours... ») et
+   l'écran de jeu s'ouvre avec les bons joueurs.
+4. Fermer le jeu, relancer l'accueil, puis dans « Parties en cours » cliquer
+   « Reprendre » sur une partie. Attendu : même comportement — l'accueil se
+   ferme (pas de blocage sur « Chargement... ») et l'écran de jeu s'ouvre sur
+   la partie reprise.
+5. Filet de sécurité : si ``destroy()`` échoue, le bouton se réactive avec un
+   message d'erreur (au lieu de rester figé indéfiniment).
 """
 
 from __future__ import annotations
@@ -134,6 +154,27 @@ class ApiAccueil:
         """Associe la fenêtre pywebview pour les callbacks."""
         self._window = window
 
+    def fermer_fenetre(self) -> dict[str, Any]:
+        """Ferme la fenêtre d'accueil depuis Python (issue #53).
+
+        Appelée par le JS après un lancer/reprendre réussi. Fermer la fenêtre
+        côté Python via ``window.destroy()`` est plus fiable que ``window.close()``
+        côté JS, qui n'est pas intercepté par tous les backends pywebview
+        (notamment GTK/WebKit sous Linux). Une fois toutes les fenêtres fermées,
+        ``webview.start()`` retourne et ``lancer_jeu(...)`` peut s'exécuter.
+
+        Retourne ``{"succes": True}`` si la fermeture a été demandée, sinon
+        ``{"succes": False, "erreur": ...}`` pour que le JS réactive le bouton
+        plutôt que de rester bloqué.
+        """
+        if self._window is None:
+            return {"succes": False, "erreur": "Aucune fenêtre associée."}
+        try:
+            self._window.destroy()
+            return {"succes": True}
+        except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
+            return {"succes": False, "erreur": f"Fermeture impossible : {e}"}
+
     def obtenir_prenom_principal(self) -> str:
         """Retourne le prénom principal configuré, ou chaîne vide."""
         try:
@@ -212,8 +253,8 @@ class ApiAccueil:
         """Crée et démarre la partie avec la configuration actuelle.
 
         En cas de succès, le champ ``pret`` vaut ``True`` : le JS doit alors
-        fermer la fenêtre d'accueil (``window.close()``) pour que l'écran de
-        jeu puisse s'ouvrir avec la partie créée.
+        fermer la fenêtre d'accueil (``api.fermer_fenetre()``) pour que l'écran
+        de jeu puisse s'ouvrir avec la partie créée.
         """
         if not self.config_partie.peut_lancer():
             return {
@@ -269,8 +310,8 @@ class ApiAccueil:
         """Reprend une partie existante.
 
         En cas de succès, le champ ``pret`` vaut ``True`` : le JS doit alors
-        fermer la fenêtre d'accueil (``window.close()``) pour que l'écran de
-        jeu puisse s'ouvrir avec la partie reprise.
+        fermer la fenêtre d'accueil (``api.fermer_fenetre()``) pour que l'écran
+        de jeu puisse s'ouvrir avec la partie reprise.
         """
         try:
             trie = obtenir_trie()
@@ -305,11 +346,14 @@ def lancer_accueil(ouvrir_jeu: bool = True) -> tuple[Partie | None, int | None]:
 
     Cohabitation pywebview : ``webview.start()`` bloque jusqu'à la fermeture de
     toutes les fenêtres. Pour enchaîner deux fenêtres (accueil puis jeu), on
-    laisse l'utilisateur fermer l'accueil (le JS appelle ``window.close()``
-    après un lancer/reprendre réussi), puis on rappelle ``webview.start()`` sur
-    la nouvelle fenêtre de jeu. Chaque écran gère ainsi sa propre boucle
-    pywebview, ce qui évite les complications d'ouverture de fenêtre secondaire
-    au sein d'une boucle déjà démarrée.
+    ferme l'accueil depuis Python (le JS appelle ``api.fermer_fenetre()`` après
+    un lancer/reprendre réussi, ce qui déclenche ``window.destroy()``), puis on
+    rappelle ``webview.start()`` sur la nouvelle fenêtre de jeu. Fermer via
+    ``destroy()`` côté Python est plus fiable que ``window.close()`` côté JS,
+    qui n'est pas honoré par tous les backends (GTK/WebKit sous Linux, issue
+    #53). Chaque écran gère ainsi sa propre boucle pywebview, ce qui évite les
+    complications d'ouverture de fenêtre secondaire au sein d'une boucle déjà
+    démarrée.
     """
     from scrabble.ui.jeu import lancer_jeu
 

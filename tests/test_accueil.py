@@ -349,3 +349,59 @@ class TestApiAccueilLancement:
         assert result["succes"] is False
         assert "pret" not in result
         assert "erreur" in result
+
+
+class TestApiAccueilFermeture:
+    """Tests de ApiAccueil.fermer_fenetre (issue #53).
+
+    Vérifie que la fenêtre est fermée depuis Python via ``window.destroy()``
+    plutôt que via ``window.close()`` côté JS (non fiable sous GTK/WebKit).
+    Testé sans vraie fenêtre grâce à un objet factice exposant ``destroy()``.
+    """
+
+    def test_fermer_fenetre_appelle_destroy(self):
+        """fermer_fenetre() appelle window.destroy() et renvoie succes."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        class FakeWindow:
+            def __init__(self):
+                self.detruite = False
+
+            def destroy(self):
+                self.detruite = True
+
+        api = ApiAccueil()
+        fake = FakeWindow()
+        api.set_window(fake)
+
+        result = api.fermer_fenetre()
+
+        assert result["succes"] is True
+        assert fake.detruite is True
+
+    def test_fermer_fenetre_sans_fenetre(self):
+        """fermer_fenetre() échoue proprement si aucune fenêtre n'est associée."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        result = api.fermer_fenetre()
+
+        assert result["succes"] is False
+        assert "erreur" in result
+
+    def test_fermer_fenetre_exception_destroy(self):
+        """fermer_fenetre() capture l'exception de destroy() (filet JS)."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        class FakeWindow:
+            def destroy(self):
+                raise RuntimeError("backend HS")
+
+        api = ApiAccueil()
+        api.set_window(FakeWindow())
+
+        result = api.fermer_fenetre()
+
+        assert result["succes"] is False
+        assert "erreur" in result
+        assert "backend HS" in result["erreur"]
