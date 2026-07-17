@@ -42,7 +42,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         bas: document.getElementById('slot-bas'),
     };
     const sacNombre = document.getElementById('sac-nombre');
-    const tourJoueur = document.getElementById('tour-joueur');
+    // Bandeau de fin de partie (issue #45, point 2) : masqué pendant la partie,
+    // il n'affiche l'annonce de fin et les gagnants qu'une fois la partie finie.
+    const bandeauFin = document.getElementById('bandeau-fin');
     // Encart d'historique glissant (issue #37) : liste des dernières actions,
     // la plus récente en haut, chaque ligne cliquable pour le détail du coup.
     const historiqueListe = document.getElementById('historique-liste');
@@ -257,8 +259,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             typeLabel += ` (${niveauLabel})`;
         }
 
+        // Badge du joueur actif (issue #45, point 2) : libellé français naturel,
+        // « à vous de jouer » pour l'humain de référence, « c'est son tour » pour
+        // tout autre joueur (formulation courte et neutre en genre).
         const badgeTour = joueur.courant
-            ? '<span class="panneau-tour">● à jouer</span>'
+            ? `<span class="panneau-tour">● ${joueur.humain ? 'à vous de jouer' : "c'est son tour"}</span>`
             : '';
         // Avatar SVG attribué côté Python (identifiant -> fichier). Repli sur
         // l'icône emoji historique si aucun avatar n'est fourni (compat/robustesse).
@@ -306,21 +311,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Met à jour l'indicateur « à qui le tour ».
+     * Rend le bandeau de fin de partie (issue #45, point 2). L'indicateur « Au
+     * tour de … » a été retiré (information déjà portée par le cadre vert et le
+     * badge du panneau actif) ; seule reste l'annonce de fin de partie, qui n'est
+     * pas redondante. Pendant la partie, le bandeau est masqué (aucune place
+     * prise) ; à la fin, il affiche le ou les gagnants.
      */
-    function rendreTour(joueurs, indexCourant, terminee, gagnants) {
-        if (terminee) {
-            tourJoueur.textContent = gagnants && gagnants.length
-                ? `Partie terminée — ${gagnants.join(', ')}`
-                : 'Partie terminée';
-            tourJoueur.className = 'tour-joueur';
-            document.querySelector('.tour-label').textContent = '🏁';
+    function rendreFinPartie(terminee, gagnants) {
+        if (!terminee) {
+            bandeauFin.hidden = true;
+            bandeauFin.textContent = '';
             return;
         }
-        const courant = joueurs[indexCourant];
-        document.querySelector('.tour-label').textContent = 'Au tour de';
-        tourJoueur.textContent = `${icone(courant.humain)} ${courant.nom}`;
-        tourJoueur.className = 'tour-joueur ' + (courant.humain ? 'humain' : 'ordinateur');
+        bandeauFin.hidden = false;
+        bandeauFin.textContent = gagnants && gagnants.length
+            ? `🏁 Partie terminée — ${gagnants.join(', ')}`
+            : '🏁 Partie terminée';
     }
 
     // Libellés lisibles du type d'action pour l'historique glissant (issue #37).
@@ -491,6 +497,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             c.dataset.index = index;
             brouillonEl.appendChild(c);
         });
+        // Deux cases vides d'aide visuelle (issue #45, point 6) : elles figurent
+        // « une lettre déjà présente sur le plateau » à prendre en compte dans la
+        // réflexion. PURE décoration — pas de classe « brouillon-case », donc
+        // aucun échange au clic ne les vise, et elles ne font pas partie de
+        // brouillonLettres : la vérification dictionnaire les ignore d'office
+        // (voir btnVerifier). Elles restent toujours en fin de ligne.
+        for (let i = 0; i < 2; i++) {
+            const vide = document.createElement('div');
+            vide.className = 'brouillon-case-vide';
+            vide.setAttribute('aria-hidden', 'true');
+            vide.title = 'Emplacement figurant une lettre déjà posée sur le '
+                + 'plateau (aide visuelle, sans saisie).';
+            brouillonEl.appendChild(vide);
+        }
     }
 
     /**
@@ -663,7 +683,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         afficherMessageBrouillon('');
         rendrePlateau();
         rendrePanneaux(etat.joueurs);
-        rendreTour(etat.joueurs, etat.index_courant, etat.terminee, etat.gagnants);
+        rendreFinPartie(etat.terminee, etat.gagnants);
         rendreHistorique(etat.historique);
         sacNombre.textContent = etat.jetons_sac;
         majModeTour();
@@ -728,6 +748,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Vérifier le mot du brouillon dans le dictionnaire (lecture seule).
+    // Les deux cases vides d'aide visuelle (issue #45, point 6) NE font pas
+    // partie de brouillonLettres : elles sont donc naturellement ignorées ici
+    // (traitées comme un simple « trou » dans la séquence). Seules les vraies
+    // lettres du brouillon composent la chaîne testée.
     btnVerifier.addEventListener('click', async () => {
         const lettres = brouillonLettres.map(l => l.lettre);
         let res;

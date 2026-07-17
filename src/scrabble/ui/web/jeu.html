@@ -8,17 +8,14 @@
 </head>
 <body>
     <div class="container">
-        <!-- En-tête sur UNE seule ligne horizontale (issue #42, point 1) : le
-             titre à gauche, les infos globales (tour courant, sac, resync) à
-             droite. Objectif : exploiter la largeur plutôt que la hauteur pour
-             libérer de la place verticale au reste de l'écran. -->
+        <!-- En-tête réduit au strict minimum (issue #45, point 3) : uniquement
+             le nombre de lettres restantes dans le sac et le lien
+             « Resynchroniser ». Le titre de page « Scrabble » (issue #45,
+             point 1) et l'indicateur « Au tour de … » (issue #45, point 2, info
+             déjà portée par le cadre vert et le badge du panneau actif) ont été
+             retirés pour libérer de la hauteur. -->
         <header>
-            <h1>Scrabble</h1>
             <div class="barre-infos">
-                <div class="bandeau-tour" id="bandeau-tour">
-                    <span class="tour-label">Au tour de</span>
-                    <span class="tour-joueur" id="tour-joueur">—</span>
-                </div>
                 <div class="sac">
                     <span class="sac-icone">🎒</span>
                     <span class="sac-nombre" id="sac-nombre">—</span>
@@ -39,12 +36,33 @@
             </div>
         </header>
 
+        <!-- Bandeau de fin de partie (issue #45, point 2) : l'ancien indicateur
+             de tour a disparu, mais l'annonce de fin de partie et des gagnants
+             reste une information à part entière. Masqué pendant toute la partie
+             (ne prend donc aucune place) ; il n'apparaît qu'une fois la partie
+             terminée, hors de l'en-tête resté minimal. -->
+        <div id="bandeau-fin" class="bandeau-fin" role="status" aria-live="polite" hidden></div>
+
         <!-- Table de jeu : plateau central entouré des panneaux joueurs, chacun
              positionné sur le côté qui lui est assigné côté Python (issue #33).
              Le panneau du bas est celui du joueur humain de référence : il porte,
              en plus de ses infos publiques, le chevalet + le brouillon + les
-             actions de tour. Les panneaux haut/gauche/droite sont publics. -->
+             actions de tour. Les panneaux haut/gauche/droite sont publics.
+             L'historique « Derniers coups » occupe une colonne verticale à
+             GAUCHE de la table (issue #45, point 4). -->
         <main class="table">
+            <!-- Encart d'historique glissant (issue #37), déplacé en colonne
+                 verticale à gauche de l'écran (issue #45, point 4) : il profite
+                 de la hauteur libérée par la suppression du titre et de
+                 l'indicateur de tour, et laisse le chevalet/brouillon s'élargir
+                 en bas. Liste les dernières actions de tous les joueurs, la PLUS
+                 RÉCENTE EN HAUT ; chaque ligne est cliquable pour rouvrir le
+                 détail du score de CE coup (modale réutilisée). -->
+            <aside class="historique" id="historique-encart" aria-label="Historique des derniers coups">
+                <h2 class="historique-titre">🕑 Derniers coups</h2>
+                <ol id="historique-liste" class="historique-liste" aria-live="polite"></ol>
+            </aside>
+
             <div id="slot-haut" class="slot slot-haut" aria-label="Joueur du haut"></div>
             <div id="slot-gauche" class="slot slot-gauche" aria-label="Joueur de gauche"></div>
 
@@ -54,16 +72,12 @@
 
             <div id="slot-droite" class="slot slot-droite" aria-label="Joueur de droite"></div>
 
-            <!-- Panneau du bas : joueur humain de référence. Réorganisé en deux
-                 colonnes (issue #42, point 2) : à GAUCHE la zone d'action du
-                 joueur (son panneau + chevalet + pose), à DROITE l'historique
-                 « Derniers coups ». L'historique n'est plus une carte flottante
-                 entre le titre et le plateau : il est désormais visuellement
-                 rattaché à la zone d'action humaine et occupe la largeur
-                 disponible au lieu d'ajouter de la hauteur. -->
+            <!-- Panneau du bas : joueur humain de référence. Il porte, sous son
+                 panneau public, le chevalet + le brouillon + les actions de tour.
+                 L'historique n'y est plus (issue #45, point 4 : déplacé en colonne
+                 à gauche de la table) : la zone chevalet/brouillon s'élargit donc
+                 sur toute la largeur disponible sous le plateau. -->
             <footer class="panneau-bas" id="panneau-bas">
-            <div class="zone-humaine">
-            <div class="colonne-action">
             <div id="slot-bas" class="slot slot-bas" aria-label="Votre panneau"></div>
 
             <div class="zone-chevalet">
@@ -104,12 +118,40 @@
                  partie). Chaque zone porte un intitulé et un habillage distinct
                  pour que le joueur ne confonde jamais « je joue » et « je réfléchis ». -->
             <div class="zone-reflexion">
-                <!-- Chevalet compact (à peine plus large que 7 lettres). -->
+                <!-- Zone « À jouer » (issue #45, point 5) : le chevalet, PUIS les
+                     actions de tour (Annuler / Valider / Remettre) regroupées
+                     juste en dessous. Les boutons comblent l'espace sous les
+                     lettres au lieu de le laisser vide, et restent solidaires de
+                     la zone d'action. -->
                 <div class="bloc-chevalet">
                     <div class="bloc-titre bloc-titre-jouer">
                         🎯 À jouer <span class="bloc-titre-note">— cliquez une lettre pour la poser</span>
                     </div>
                     <div id="chevalet" class="chevalet" aria-label="Chevalet du joueur courant"></div>
+
+                    <!-- Contrôles de pose d'un mot (clic-clic) : visibles
+                         uniquement lorsque le chevalet est révélé et la partie en
+                         cours. Regroupés en bas de la zone « À jouer » (issue #45,
+                         point 5). L'aide de pose est près du titre du chevalet. -->
+                    <div id="zone-jeu" class="zone-jeu" hidden>
+                        <div class="zone-jeu-controles">
+                            <!-- Action rare : reste un lien discret, jamais seul
+                                 sur sa ligne (issue #42, point 6). -->
+                            <button id="btn-echanger-tout" class="lien-discret" hidden
+                                    title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
+                                ♻️ Remettre toutes ses lettres et passer
+                            </button>
+                            <span class="zone-jeu-actions">
+                                <button id="btn-annuler" class="btn btn-secondaire" disabled>
+                                    ✗ Annuler
+                                </button>
+                                <button id="btn-valider" class="btn btn-primaire" disabled>
+                                    ✓ Valider le coup
+                                </button>
+                            </span>
+                        </div>
+                        <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
+                    </div>
                 </div>
 
                 <!-- Zone de brouillon : espace de réflexion SANS lien avec le
@@ -126,60 +168,24 @@
                     <div id="brouillon" class="brouillon" aria-label="Zone de brouillon (réflexion)"></div>
                     <p class="brouillon-aide">
                         Réarrangez librement vos lettres pour trouver l'inspiration
-                        (cliquez deux emplacements pour les échanger).
+                        (cliquez deux emplacements pour les échanger). Les deux
+                        cases vides en fin de ligne figurent une lettre déjà posée
+                        sur le plateau à prendre en compte : simple aide visuelle,
+                        rien à y saisir.
                     </p>
                     <p id="message-brouillon" class="message-brouillon" role="status" aria-live="polite"></p>
                 </div>
             </div>
 
             <!-- Ligne de bas de zone : aide de confidentialité (parties à deux
-                 humains ou plus). L'action rare « remettre toutes ses lettres »
-                 a quitté cette ligne (issue #42, point 6) : elle rejoint la barre
-                 de contrôles de jeu ci-dessous pour ne plus paraître orpheline
-                 quand l'aide de confidentialité est masquée (un seul humain). -->
+                 humains ou plus). -->
             <div class="chevalet-pied">
                 <p class="chevalet-aide" id="chevalet-aide">
                     Vos lettres restent masquées tant que vous ne cliquez pas sur
                     « Voir mes lettres ». Pensez à les cacher si un adversaire approche.
                 </p>
             </div>
-
-            <!-- Contrôles de pose d'un mot (clic-clic) : visibles uniquement
-                 lorsque le chevalet est révélé et la partie en cours. L'aide de
-                 pose est désormais près du titre du chevalet (issue #42, point 4). -->
-            <div id="zone-jeu" class="zone-jeu" hidden>
-                <div class="zone-jeu-controles">
-                    <!-- Action rare regroupée avec les autres actions de tour
-                         (issue #42, point 6) : reste un lien discret, calé à
-                         gauche de la barre, jamais seul sur sa ligne. -->
-                    <button id="btn-echanger-tout" class="lien-discret" hidden
-                            title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
-                        ♻️ Remettre toutes ses lettres et passer
-                    </button>
-                    <span class="zone-jeu-actions">
-                        <button id="btn-annuler" class="btn btn-secondaire" disabled>
-                            ✗ Annuler
-                        </button>
-                        <button id="btn-valider" class="btn btn-primaire" disabled>
-                            ✓ Valider le coup
-                        </button>
-                    </span>
-                </div>
-                <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
             </div>
-            </div>
-            </div><!-- .colonne-action -->
-
-            <!-- Encart d'historique glissant (issue #37), déplacé ici (issue #42,
-                 point 2) : rattaché à la zone d'action humaine, à droite de
-                 celle-ci. Liste les dernières actions de tous les joueurs, la
-                 PLUS RÉCENTE EN HAUT ; chaque ligne est cliquable pour rouvrir le
-                 détail du score de CE coup (modale réutilisée). -->
-            <aside class="historique" id="historique-encart" aria-label="Historique des derniers coups">
-                <h2 class="historique-titre">🕑 Derniers coups</h2>
-                <ol id="historique-liste" class="historique-liste" aria-live="polite"></ol>
-            </aside>
-            </div><!-- .zone-humaine -->
             </footer>
         </main>
     </div>
