@@ -10,8 +10,10 @@
  * Pose d'un mot (mécanique clic-clic) : une fois le chevalet révélé, un clic
  * sur une lettre la sélectionne, un clic sur une case vide du plateau l'y place
  * (en attente, non validée). Recliquer une lettre en attente la retire. Le sens
- * du mot se déduit dès deux lettres alignées ; pour une seule, un bouton bascule
- * horizontal/vertical. Un joker demande la lettre représentée à la pose. Les
+ * du mot se déduit de l'alignement des lettres et, pour une lettre unique, est
+ * fixé en interne côté Python (issue #43 : sans effet sur la validation ni le
+ * score) — aucun contrôle de sens n'est présenté au joueur. Un joker demande la
+ * lettre représentée à la pose. Les
  * boutons « Valider »/« Annuler » confirment ou abandonnent la saisie ; en cas
  * d'erreur du moteur, le message est affiché sans perdre les lettres en attente.
  */
@@ -69,7 +71,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Contrôles de pose d'un mot (mécanique clic-clic)
     const zoneJeu = document.getElementById('zone-jeu');
-    const btnSens = document.getElementById('btn-sens');
     const btnValider = document.getElementById('btn-valider');
     const btnAnnuler = document.getElementById('btn-annuler');
     const messageCoup = document.getElementById('message-coup');
@@ -147,7 +148,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     let chevaletLettres = [];   // lettres révélées du joueur courant (ordre chevalet)
     let selection = null;       // index (dans chevaletLettres) de la lettre sélectionnée
     let enAttente = [];          // placements en cours : {ligne, colonne, lettre, joker, index}
-    let sensForce = 'H';         // sens choisi quand une seule lettre est en attente
 
     /**
      * Échappe le HTML pour éviter les injections.
@@ -621,48 +621,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Sens du mot effectivement utilisé : déduit dès qu'au moins deux lettres
-     * sont alignées (ligne -> horizontal, colonne -> vertical) ; sinon le sens
-     * choisi manuellement (``sensForce``) pour une seule lettre.
-     */
-    function sensCourant() {
-        if (enAttente.length >= 2) {
-            const memeLigne = enAttente.every(p => p.ligne === enAttente[0].ligne);
-            return memeLigne ? 'H' : 'V';
-        }
-        return sensForce;
-    }
-
-    /**
-     * Met à jour les contrôles de pose (visibilité, indicateur de sens, boutons)
-     * selon l'état courant : jouable seulement si le chevalet est révélé et la
-     * partie non terminée.
+     * Met à jour les contrôles de pose (visibilité, boutons) selon l'état
+     * courant : jouable seulement si le chevalet est révélé et la partie non
+     * terminée.
+     *
+     * Aucun contrôle de sens n'est présenté (issue #43) : le sens du mot se
+     * déduit de l'alignement des lettres et, pour une lettre unique, est fixé en
+     * interne côté Python — ce choix est sans conséquence sur la validation ni le
+     * score, donc rien à demander au joueur.
      */
     function majControlesJeu() {
         const jouable = chevaletVisible && etat && !etat.terminee;
         zoneJeu.hidden = !jouable;
         if (!jouable) {
             return;
-        }
-        // Indicateur de sens (issue #42, point 5). Décision : ne montrer un
-        // contrôle de sens QUE dans le seul cas où l'information n'est pas déjà
-        // évidente à l'écran — une unique lettre en attente, dont on ne peut
-        // deviner si elle prolonge un mot horizontalement ou verticalement. Dès
-        // deux lettres alignées, le sens saute aux yeux sur le plateau : on
-        // n'affiche plus alors le libellé « (déduit) », devenu redondant. Le
-        // libellé du bouton est explicite (ce que le mot « se lira ») plutôt
-        // qu'un « sens vertical » cru et sans contexte.
-        const sens = sensCourant();
-        if (enAttente.length === 1) {
-            const libelle = sens === 'H'
-                ? 'Le mot se lira → à l\'horizontale (cliquer pour la verticale)'
-                : 'Le mot se lira ↓ à la verticale (cliquer pour l\'horizontale)';
-            btnSens.hidden = false;
-            btnSens.textContent = libelle;
-        } else {
-            // 0 lettre (rien à orienter) ou ≥2 lettres (sens visible sur le
-            // plateau) : aucun contrôle de sens affiché.
-            btnSens.hidden = true;
         }
         btnValider.disabled = enAttente.length === 0;
         btnAnnuler.disabled = enAttente.length === 0;
@@ -688,7 +660,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Toute pose en cours est abandonnée lors d'un rechargement d'état.
         enAttente = [];
         selection = null;
-        sensForce = 'H';
         afficherMessageBrouillon('');
         rendrePlateau();
         rendrePanneaux(etat.joueurs);
@@ -1033,17 +1004,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         rendrePose();
     });
 
-    // Bascule du sens (seulement pertinent pour une unique lettre en attente).
-    btnSens.addEventListener('click', () => {
-        sensForce = (sensForce === 'H') ? 'V' : 'H';
-        majControlesJeu();
-    });
-
     // Annuler : retire toutes les lettres en attente (retour au chevalet).
     btnAnnuler.addEventListener('click', () => {
         enAttente = [];
         selection = null;
-        sensForce = 'H';
         afficherMessage('');
         rendrePose();
     });
@@ -1062,7 +1026,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }));
         let res;
         try {
-            res = await api.poser_mot(placements, sensCourant());
+            res = await api.poser_mot(placements);
         } catch (err) {
             afficherMessage('Erreur inattendue lors de la validation du coup.', 'erreur');
             majControlesJeu();

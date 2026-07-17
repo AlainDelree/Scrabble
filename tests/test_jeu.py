@@ -14,7 +14,7 @@ import pytest
 from scrabble.dictionnaire.dictionnaire import Trie
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import Joueur, Partie
-from scrabble.moteur.plateau_partie import Direction, Tuile
+from scrabble.moteur.plateau_partie import Coup, Direction, Tuile
 from scrabble.moteur.score import DetailMot, DetailScore
 from scrabble.regles.lettres import JOKER
 from scrabble.regles.plateau import CENTRE, TAILLE, TypeCase
@@ -369,12 +369,17 @@ class TestConstruireCoup:
         assert (coup.ligne, coup.colonne) == (7, 7)
         assert "".join(t.lettre for t in coup.tuiles) == "CAT"
 
-    def test_une_seule_lettre_sens_impose(self):
+    def test_une_seule_lettre_direction_horizontale_fixee(self):
+        # Issue #43 : plus aucun paramètre de sens. Pour une lettre unique, la
+        # direction est fixée en interne à l'horizontale (choix arbitraire sans
+        # conséquence sur la validation ni le score, cf.
+        # TestSymetrieSensLettreUnique). Le coup couvre bien la seule case posée.
         partie = _partie_simple()
-        coup_h = construire_coup(partie.plateau, [_placement(7, 7, "A")], "H")
-        assert coup_h.direction is Direction.HORIZONTALE
-        coup_v = construire_coup(partie.plateau, [_placement(7, 7, "A")], "V")
-        assert coup_v.direction is Direction.VERTICALE
+        coup = construire_coup(partie.plateau, [_placement(7, 7, "A")])
+        assert coup.direction is Direction.HORIZONTALE
+        assert (coup.ligne, coup.colonne) == (7, 7)
+        assert len(coup.tuiles) == 1
+        assert coup.tuiles[0].lettre == "A"
 
     def test_joker_conserve_le_drapeau(self):
         partie = _partie_simple()
@@ -500,6 +505,78 @@ class TestJouerPlacements:
         resultat = jouer_placements(partie, placements)
         assert resultat["succes"] is False
         assert "erreur" in resultat
+
+
+class TestSymetrieSensLettreUnique:
+    """Symétrie du sens pour une lettre unique (issue #43).
+
+    Le contrôle de sens a été retiré de l'UI : pour une lettre unique, la
+    direction est désormais fixée en interne (horizontale) sans intervention du
+    joueur. Ces tests démontrent la propriété qui rend ce choix légitime : pour
+    une lettre unique posée créant un mot valide dans les DEUX sens (une lettre
+    reliant deux mots perpendiculaires existants), le résultat — validité ET
+    score total — est rigoureusement identique quel que soit le sens joué. Le
+    moteur calcule de toute façon le mot dans le sens choisi ET le mot
+    transversal, tous deux devant être valides et étant comptés à l'identique.
+    """
+
+    def _partie_reliant_deux_mots(self) -> Partie:
+        """Plateau où « E » en (7,7) forme LES (→) et DES (↓), tous deux valides.
+
+        Deux mots incomplets se croisent sur la case centrale vide : « L_S »
+        horizontal en (7,6)/(7,8) et « D_S » vertical en (6,7)/(8,7). Poser
+        l'unique lettre « E » au croisement complète simultanément les deux.
+        """
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
+        ]
+        partie = Partie(joueurs, _DicoMots("LES", "DES"), graine=1)
+        partie.index_courant = 0
+        partie.joueurs[0].chevalet = list("E")
+        partie.plateau.poser_tuile(7, 6, Tuile("L"))
+        partie.plateau.poser_tuile(7, 8, Tuile("S"))
+        partie.plateau.poser_tuile(6, 7, Tuile("D"))
+        partie.plateau.poser_tuile(8, 7, Tuile("S"))
+        return partie
+
+    def _jouer_dans_le_sens(self, direction: Direction) -> dict:
+        """Joue la lettre unique « E » dans le sens imposé et renvoie le bilan."""
+        partie = self._partie_reliant_deux_mots()
+        if direction is Direction.HORIZONTALE:
+            coup = Coup(
+                7, 6, Direction.HORIZONTALE,
+                (Tuile("L"), Tuile("E"), Tuile("S")),
+            )
+        else:
+            coup = Coup(
+                6, 7, Direction.VERTICALE,
+                (Tuile("D"), Tuile("E"), Tuile("S")),
+            )
+        entree = partie.jouer_coup(coup)
+        return {
+            "score_coup": entree.detail.total,
+            "score_joueur": partie.joueurs[0].score,
+            "mots": sorted(mot.texte for mot in entree.detail.mots),
+        }
+
+    def test_validite_et_score_identiques_quel_que_soit_le_sens(self):
+        # Cœur de l'issue #43 : jouer la même lettre unique à l'horizontale ou à
+        # la verticale donne EXACTEMENT le même bilan (validité, score total, et
+        # même ensemble de mots formés). Le sens fixé en interne est indifférent.
+        resultat_h = self._jouer_dans_le_sens(Direction.HORIZONTALE)
+        resultat_v = self._jouer_dans_le_sens(Direction.VERTICALE)
+        assert resultat_h == resultat_v
+        assert resultat_h["mots"] == ["DES", "LES"]
+
+    def test_lettre_unique_sans_sens_reussit(self):
+        # La direction fixée en interne (horizontale, aucun paramètre transmis)
+        # produit un coup jouable dans ce scénario symétrique : jouer_placements
+        # réussit et score les deux mots croisés.
+        partie = self._partie_reliant_deux_mots()
+        resultat = jouer_placements(partie, [_placement(7, 7, "E")])
+        assert resultat["succes"] is True
+        assert resultat["points"] > 0
 
 
 class TestApiPoserMot:

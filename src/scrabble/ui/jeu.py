@@ -441,22 +441,6 @@ def serialiser_detail_score(detail: DetailScore) -> dict[str, Any]:
 # structure du coup est cohérente (lettres alignées et contiguës).
 
 
-def _direction_depuis_valeur(valeur: Any) -> Direction | None:
-    """Convertit ``"H"``/``"V"`` (ou une :class:`Direction`) en direction.
-
-    Renvoie ``None`` si ``valeur`` ne désigne aucune direction connue (cas d'un
-    coup à plusieurs lettres où la direction se déduit du placement).
-    """
-    if isinstance(valeur, Direction):
-        return valeur
-    if isinstance(valeur, str):
-        try:
-            return Direction(valeur.upper())
-        except ValueError:
-            return None
-    return None
-
-
 def _lire_placement(placement: Any) -> tuple[int, int, str, bool]:
     """Valide et normalise un placement JS en ``(ligne, colonne, lettre, joker)``.
 
@@ -484,21 +468,26 @@ def _lire_placement(placement: Any) -> tuple[int, int, str, bool]:
 
 
 def _deduire_direction(
-    placements: list[tuple[int, int, str, bool]], direction: Direction | None
+    placements: list[tuple[int, int, str, bool]],
 ) -> Direction:
     """Déduit le sens du mot depuis les cases posées (ou l'impose si une seule).
 
     * Deux lettres ou plus : le sens se déduit de leur alignement (même ligne →
-      horizontal, même colonne → vertical). Une seule lettre en attente laisse
-      le choix libre — ``direction`` (fournie par l'UI) est alors utilisée, à
-      défaut l'horizontale.
+      horizontal, même colonne → vertical).
+    * Une seule lettre en attente : le sens est fixé arbitrairement à
+      l'horizontale. Ce choix est **sans conséquence** sur la validation ou le
+      score (issue #43) : le moteur calcule de toute façon le mot dans le sens
+      choisi ET le mot transversal autour de la lettre, les deux devant être
+      valides et étant comptés à l'identique — quel que soit le sens fixé, le
+      résultat (validité, score total) est rigoureusement le même. Aucun choix
+      de sens n'est donc demandé au joueur pour une lettre unique.
     * Lève :class:`ValueError` si les lettres ne sont ni alignées en ligne ni en
       colonne.
     """
     lignes = {ligne for ligne, _, _, _ in placements}
     colonnes = {colonne for _, colonne, _, _ in placements}
     if len(placements) == 1:
-        return direction if direction is not None else Direction.HORIZONTALE
+        return Direction.HORIZONTALE
     meme_ligne = len(lignes) == 1
     meme_colonne = len(colonnes) == 1
     if meme_ligne and not meme_colonne:
@@ -513,7 +502,6 @@ def _deduire_direction(
 def construire_coup(
     plateau: PlateauPartie,
     placements: list[Any],
-    direction: Any = None,
 ) -> Coup:
     """Construit un :class:`Coup` à partir des placements en attente du JS.
 
@@ -521,8 +509,10 @@ def construire_coup(
     ``{ligne, colonne, lettre, joker}``). Le coup renvoyé couvre le segment
     contigu du mot principal, de la première à la dernière lettre nouvelle, en
     **incluant les tuiles déjà présentes** que le mot enjambe (leur lettre est
-    reprise telle quelle). ``direction`` (``"H"``/``"V"``) ne sert qu'au cas
-    d'une seule lettre en attente ; sinon le sens se déduit de l'alignement.
+    reprise telle quelle). Le sens se déduit de l'alignement des lettres ; pour
+    une lettre unique il est fixé à l'horizontale en interne (issue #43 : ce
+    choix n'a aucune conséquence sur la validation ou le score, voir
+    :func:`_deduire_direction`) — aucun paramètre de sens n'est attendu du JS.
 
     :raises ValueError: liste vide, position hors plateau, lettre invalide, deux
         lettres sur la même case, pose sur une case déjà occupée, lettres non
@@ -546,7 +536,7 @@ def construire_coup(
             )
         poses[(ligne, colonne)] = Tuile(lettre, joker=joker)
 
-    sens = _deduire_direction(lus, _direction_depuis_valeur(direction))
+    sens = _deduire_direction(lus)
     if sens is Direction.HORIZONTALE:
         ligne = lus[0][0]
         colonnes = [colonne for _, colonne, _, _ in lus]
@@ -578,7 +568,6 @@ def construire_coup(
 def jouer_placements(
     partie: Partie,
     placements: list[Any],
-    direction: Any = None,
 ) -> dict[str, Any]:
     """Construit le coup, le fait jouer par ``partie`` et renvoie succès/erreur.
 
@@ -595,7 +584,7 @@ def jouer_placements(
     n'est perdu côté attente puisque le moteur a consommé les lettres.
     """
     try:
-        coup = construire_coup(partie.plateau, placements, direction)
+        coup = construire_coup(partie.plateau, placements)
     except ValueError as err:
         return {"succes": False, "erreur": str(err)}
     try:
@@ -765,15 +754,15 @@ class ApiJeu:
             "lettres": serialiser_chevalet(joueur),
         }
 
-    def poser_mot(
-        self, placements: list[Any], direction: Any = None
-    ) -> dict[str, Any]:
+    def poser_mot(self, placements: list[Any]) -> dict[str, Any]:
         """Pose le mot décrit par ``placements`` (mécanique clic-clic du JS).
 
         ``placements`` est la liste des lettres déposées sur des cases vides
-        (dicts ``{ligne, colonne, lettre, joker}``) ; ``direction`` (``"H"`` ou
-        ``"V"``) ne sert que pour une seule lettre en attente, le sens se
-        déduisant sinon de l'alignement. La méthode construit un
+        (dicts ``{ligne, colonne, lettre, joker}``). Le sens du mot se déduit de
+        l'alignement des lettres ; pour une lettre unique il est fixé à
+        l'horizontale en interne (issue #43 : sans conséquence sur la validation
+        ni le score). Aucun paramètre de sens n'est plus attendu du JS. La
+        méthode construit un
         :class:`~scrabble.moteur.plateau_partie.Coup`, appelle
         :meth:`~scrabble.moteur.partie.Partie.jouer_coup` et renvoie :
 
@@ -786,7 +775,7 @@ class ApiJeu:
         Confidentialité : la réponse ne contient jamais l'identité des lettres
         d'un chevalet (``etat`` est l'état public, sans chevalet).
         """
-        resultat = jouer_placements(self._partie, placements, direction)
+        resultat = jouer_placements(self._partie, placements)
         if resultat.get("succes"):
             resultat["etat"] = etat_public(self._partie, self._id_partie)
         return resultat
