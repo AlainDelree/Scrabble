@@ -1395,3 +1395,55 @@ class TestSerialiserHistorique:
         # Même fenêtrage et même ordre que serialiser_historique.
         assert etat["historique"] == serialiser_historique(partie)
         assert len(etat["historique"]) == 8
+
+
+class TestApiJeuRetourMenu:
+    """Tests de ``ApiJeu.retour_menu`` (issue #74).
+
+    Vérifie que la fenêtre de jeu est fermée depuis Python via
+    ``window.destroy()`` (fiable sous GTK/WebKit, issues #53/#57) et que le
+    drapeau ``_retour_menu`` est positionné pour que ``lancer_jeu`` rouvre
+    l'accueil. Testé sans vraie fenêtre grâce à un objet factice.
+    """
+
+    def test_retour_menu_appelle_destroy_et_marque_le_drapeau(self):
+        class FakeWindow:
+            def __init__(self):
+                self.detruite = False
+
+            def destroy(self):
+                self.detruite = True
+
+        api = ApiJeu(_partie_simple(), id_partie=7)
+        fake = FakeWindow()
+        api.set_window(fake)
+
+        resultat = api.retour_menu()
+
+        assert resultat["succes"] is True
+        assert fake.detruite is True
+        assert api._retour_menu is True
+
+    def test_retour_menu_sans_fenetre(self):
+        api = ApiJeu(_partie_simple(), id_partie=None)
+        resultat = api.retour_menu()
+
+        assert resultat["succes"] is False
+        assert "erreur" in resultat
+        # Aucune fenêtre : pas de retour au menu déclenché.
+        assert api._retour_menu is False
+
+    def test_retour_menu_exception_destroy_naboutit_pas(self):
+        class FakeWindow:
+            def destroy(self):
+                raise RuntimeError("backend HS")
+
+        api = ApiJeu(_partie_simple(), id_partie=1)
+        api.set_window(FakeWindow())
+
+        resultat = api.retour_menu()
+
+        assert resultat["succes"] is False
+        assert "backend HS" in resultat["erreur"]
+        # La fermeture a échoué : on ne rouvrira PAS l'accueil.
+        assert api._retour_menu is False

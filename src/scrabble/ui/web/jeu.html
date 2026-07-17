@@ -69,6 +69,18 @@
                         title="Recharger l'affichage depuis le moteur (en cas de doute sur la synchronisation)">
                     ↻ Resynchroniser
                 </button>
+
+                <!-- Bouton « Retour au menu » (issue #74). Discret (même style
+                     que « Resynchroniser »), disponible à tout moment. Ferme
+                     l'écran de jeu et rouvre l'accueil ; la partie reste
+                     persistée et reprenable. Si des lettres sont posées mais non
+                     validées, un avertissement (modale légère ci-dessous) évite
+                     de perdre une réflexion en cours par erreur de clic ; sans
+                     lettre en attente, le retour est immédiat. -->
+                <button id="btn-retour-menu" class="lien-discret"
+                        title="Fermer la partie et revenir au menu d'accueil (la partie reste reprenable)">
+                    🏠 Retour au menu
+                </button>
             </div>
         </header>
 
@@ -249,6 +261,30 @@
             <div id="score-detail" class="score-detail"></div>
             <div id="score-total" class="score-total"></div>
             <button id="score-fermer" class="btn btn-primaire">Fermer</button>
+        </div>
+    </div>
+
+    <!-- Modale d'avertissement avant un « Retour au menu » alors que des lettres
+         sont posées mais non validées (issue #74). N'apparaît QUE dans ce cas :
+         sans lettre en attente, le bouton revient au menu sans confirmation.
+         Réutilise .modale / .modale-contenu. Fermeture par « Rester » ou clic
+         dehors ; « Revenir au menu » confirme et ferme l'écran de jeu. -->
+    <div id="retour-modale" class="modale" hidden>
+        <div class="modale-contenu">
+            <h3>Revenir au menu ?</h3>
+            <p class="retour-message">
+                Des lettres sont posées sur le plateau mais pas encore validées.
+                Si vous revenez au menu maintenant, ce coup en attente sera
+                abandonné. La partie, elle, reste enregistrée et reprenable.
+            </p>
+            <div class="modale-actions">
+                <button id="retour-annuler" class="btn btn-secondaire">
+                    Rester sur la partie
+                </button>
+                <button id="retour-confirmer" class="btn btn-primaire">
+                    🏠 Revenir au menu
+                </button>
+            </div>
         </div>
     </div>
 

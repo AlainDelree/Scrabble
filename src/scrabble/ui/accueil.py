@@ -454,7 +454,9 @@ class ApiAccueil:
         return list(NIVEAUX_LABELS.keys())
 
 
-def lancer_accueil(ouvrir_jeu: bool = True) -> tuple[Partie | None, int | None]:
+def lancer_accueil(
+    ouvrir_jeu: bool = True, reutiliser_session: bool = False
+) -> tuple[Partie | None, int | None]:
     """Lance l'écran d'accueil et retourne la partie créée (ou None).
 
     Retourne un tuple (partie, id_partie). Les deux sont None si l'utilisateur
@@ -464,6 +466,14 @@ def lancer_accueil(ouvrir_jeu: bool = True) -> tuple[Partie | None, int | None]:
     reprise, l'écran de jeu s'ouvre automatiquement après la fermeture de
     l'écran d'accueil. Le flux complet est alors :
     accueil → création/reprise → fermeture accueil → ouverture jeu.
+
+    ``reutiliser_session`` (issue #74) : quand l'accueil est rouvert depuis
+    l'écran de jeu après un « Retour au menu » (:func:`~scrabble.ui.jeu.
+    lancer_jeu`), la session de journalisation déjà ouverte est **réutilisée**
+    plutôt que d'en démarrer une nouvelle (cohérent avec l'issue #66). Le
+    ``try/finally`` la clôture ensuite normalement à la fermeture de cet accueil.
+    Par sécurité, si aucune session n'est ouverte alors qu'on demande la réutiliser,
+    on en démarre malgré tout une (invariant : une session vivante pendant l'écran).
 
     Cohabitation pywebview : ``webview.start()`` bloque jusqu'à la fermeture de
     toutes les fenêtres. Pour enchaîner deux fenêtres (accueil puis jeu), on
@@ -484,7 +494,8 @@ def lancer_accueil(ouvrir_jeu: bool = True) -> tuple[Partie | None, int | None]:
     # la clôture même si une exception non prévue traverse cette fonction :
     # ``cloturer_session`` est idempotente, donc l'appel final est sans effet si
     # l'écran de jeu a déjà clôturé la session.
-    journal.demarrer_session()
+    if not reutiliser_session or journal.session_courante() is None:
+        journal.demarrer_session()
     try:
         api = ApiAccueil()
         chemin_html = DOSSIER_WEB / "accueil.html"

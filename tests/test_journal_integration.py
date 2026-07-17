@@ -431,3 +431,64 @@ class TestCycleSession:
         # Clôturée une seule fois (par le jeu ; le finally de l'accueil est neutre).
         assert esp.clotures == 1
         assert esp.session_courante() is None
+
+    def test_retour_menu_rouvre_accueil_et_reutilise_la_session(self, monkeypatch):
+        """« Retour au menu » (issue #74) : le jeu rouvre l'accueil sans nouvelle session.
+
+        Le jeu ne clôture PAS sa session quand ``_retour_menu`` est vrai ; il
+        rouvre l'accueil, qui réutilise la même session et la clôture à sa propre
+        fermeture. Une seule session vit sur tout le cycle jeu → accueil.
+        """
+        esp = _EspionJournal(session_existante=object())
+        session_initiale = esp.session_courante()
+        monkeypatch.setattr(mod_accueil, "journal", esp)
+        monkeypatch.setattr(mod_jeu, "journal", esp)
+
+        sessions_vues: list = []
+
+        def on_start(api):
+            sessions_vues.append(esp.session_courante())
+            # Côté jeu : simule le clic « Retour au menu » avant fermeture.
+            # Côté accueil rouvert : rien à faire (fermé sans lancer de partie).
+            if isinstance(api, ApiJeu):
+                api._retour_menu = True
+
+        self._neutraliser_webview(monkeypatch, on_start=on_start)
+
+        mod_jeu.lancer_jeu(_partie_simple(), 7)
+
+        # Session préexistante réutilisée par le jeu ET par l'accueil rouvert.
+        assert esp.demarrages == 0
+        # Jeu puis accueil ont tourné sur la MÊME session (jamais redémarrée).
+        assert len(sessions_vues) == 2
+        assert sessions_vues[0] is session_initiale
+        assert sessions_vues[1] is session_initiale
+        # Clôturée une seule fois, par l'accueil rouvert (le jeu ne l'a pas fait).
+        assert esp.clotures == 1
+        assert esp.session_courante() is None
+        assert esp.a_info_contenant("retour au menu")
+
+    def test_retour_menu_demarre_session_si_absente(self, monkeypatch):
+        """Filet de sécurité : réutilisation demandée mais aucune session ouverte.
+
+        En lancement autonome du jeu (``python -m scrabble.ui.jeu``) suivi d'un
+        « Retour au menu », le jeu a démarré la session ; il la garde ouverte pour
+        l'accueil rouvert, qui la clôture. Une seule session sur tout le cycle.
+        """
+        esp = _EspionJournal(session_existante=None)
+        monkeypatch.setattr(mod_accueil, "journal", esp)
+        monkeypatch.setattr(mod_jeu, "journal", esp)
+
+        def on_start(api):
+            if isinstance(api, ApiJeu):
+                api._retour_menu = True
+
+        self._neutraliser_webview(monkeypatch, on_start=on_start)
+
+        mod_jeu.lancer_jeu(_partie_simple(), None)
+
+        # Le jeu démarre la session (aucune préalable), l'accueil rouvert la
+        # réutilise sans en redémarrer une (une seule au total).
+        assert esp.demarrages == 1
+        assert esp.clotures == 1
+        assert esp.session_courante() is None

@@ -54,6 +54,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnVisibilite = document.getElementById('btn-visibilite');
     const btnRafraichir = document.getElementById('btn-rafraichir');
     const btnEchangerTout = document.getElementById('btn-echanger-tout');
+    // Retour au menu (issue #74) : bouton discret de la barre du haut + modale
+    // d'avertissement affichée uniquement s'il reste un coup en attente.
+    const btnRetourMenu = document.getElementById('btn-retour-menu');
+    const retourModale = document.getElementById('retour-modale');
+    const retourAnnuler = document.getElementById('retour-annuler');
+    const retourConfirmer = document.getElementById('retour-confirmer');
 
     // Mode « attente d'un tour d'ordinateur » (issue #35) : bloc affiché à la
     // place de toute la mécanique interactive quand le joueur courant n'est pas
@@ -758,6 +764,60 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Rafraîchir l'état de la partie
     btnRafraichir.addEventListener('click', rafraichir);
+
+    // --- Retour au menu (issue #74) ---
+
+    /**
+     * Demande à Python de fermer l'écran de jeu et de rouvrir l'accueil.
+     * En cas de succès, la fenêtre se ferme (rien de plus à faire côté JS) ;
+     * en cas d'échec de la fermeture, on réactive le bouton et on le signale
+     * plutôt que de laisser l'utilisateur bloqué (même filet que l'accueil).
+     */
+    async function retournerAuMenu() {
+        btnRetourMenu.disabled = true;
+        let res;
+        try {
+            res = await api.retour_menu();
+        } catch (err) {
+            btnRetourMenu.disabled = false;
+            afficherMessage('Retour au menu impossible : ' + err, 'erreur');
+            return;
+        }
+        if (res && res.succes === false) {
+            btnRetourMenu.disabled = false;
+            afficherMessage(
+                'Retour au menu impossible : ' + (res.erreur || 'erreur inconnue'),
+                'erreur'
+            );
+        }
+        // Succès : la fenêtre de jeu se ferme, l'accueil se rouvre côté Python.
+    }
+
+    // Clic sur « 🏠 Retour au menu » : si un coup est en attente (lettres posées
+    // non validées), on demande confirmation via la modale ; sinon retour direct.
+    btnRetourMenu.addEventListener('click', () => {
+        if (enAttente.length > 0) {
+            retourModale.hidden = false;
+        } else {
+            retournerAuMenu();
+        }
+    });
+
+    // « Rester sur la partie » ou clic hors de la boîte : on referme la modale.
+    retourAnnuler.addEventListener('click', () => {
+        retourModale.hidden = true;
+    });
+    retourModale.addEventListener('click', (evt) => {
+        if (evt.target === retourModale) {
+            retourModale.hidden = true;
+        }
+    });
+
+    // « Revenir au menu » : on confirme, on referme la modale et on retourne.
+    retourConfirmer.addEventListener('click', () => {
+        retourModale.hidden = true;
+        retournerAuMenu();
+    });
 
     // --- Tour d'un ordinateur (issue #35) ---
 

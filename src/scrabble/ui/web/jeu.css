@@ -1431,6 +1431,23 @@ header {
     color: var(--couleur-secondaire, #5d4037);
 }
 
+/* Avertissement avant un « Retour au menu » avec un coup en attente (issue #74).
+   Réutilise .modale / .modale-contenu ; message explicatif + deux actions en
+   ligne (rester / confirmer). */
+.retour-message {
+    font-size: 0.92rem;
+    line-height: 1.4;
+    color: var(--couleur-texte);
+    margin-bottom: 16px;
+}
+
+.modale-actions {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
 .joker-grille {
     display: grid;
     grid-template-columns: repeat(7, 1fr);

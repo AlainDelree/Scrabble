@@ -797,6 +797,10 @@ class ApiJeu:
         self._window: webview.Window | None = None
         # Évite de journaliser plusieurs fois la même fin de partie (issue #66).
         self._fin_journalisee = False
+        # Vrai lorsque l'utilisateur a demandé « Retour au menu » (issue #74) :
+        # une fois la fenêtre de jeu fermée, ``lancer_jeu`` rouvre alors l'écran
+        # d'accueil (au lieu de clôturer la session) — voir ``lancer_jeu``.
+        self._retour_menu = False
 
     def set_window(self, window: webview.Window) -> None:
         """Associe la fenêtre pywebview pour les callbacks."""
@@ -979,6 +983,43 @@ class ApiJeu:
             gagnants = ", ".join(j.nom for j in self._partie.gagnants) or "aucun"
             journal.info(f"Jeu : fin de partie — gagnant(s) : {gagnants}.")
 
+    def retour_menu(self) -> dict[str, Any]:
+        """Ferme l'écran de jeu pour revenir à l'écran d'accueil (issue #74).
+
+        Point d'entrée du bouton « 🏠 Retour au menu ». Ferme la fenêtre de jeu
+        **depuis Python** via ``window.destroy()`` — et non ``window.close()``
+        côté JS, non honoré par tous les backends pywebview (GTK/WebKit sous
+        Linux, issues #53/#57). Une fois la fenêtre fermée, ``webview.start()``
+        rend la main à :func:`lancer_jeu`, qui, voyant le drapeau
+        ``_retour_menu``, rouvre l'écran d'accueil (:func:`lancer_accueil`) en
+        **réutilisant la session de journalisation** déjà ouverte (cohérent avec
+        l'issue #66) au lieu de la clôturer.
+
+        La partie n'est pas modifiée ici : elle reste persistée et reprenable
+        via « Reprendre une partie » (le suivi en base est mis à jour en continu
+        après chaque action, issues #22/#25). Un éventuel coup en attente (non
+        validé) côté JS est simplement abandonné — l'avertissement de confirmation
+        est géré côté interface.
+
+        Retourne ``{"succes": True}`` si la fermeture a été demandée, sinon
+        ``{"succes": False, "erreur": ...}`` (le JS réactive alors le bouton
+        plutôt que de rester bloqué).
+        """
+        if self._window is None:
+            return {"succes": False, "erreur": "Aucune fenêtre associée."}
+        try:
+            journal.info(
+                f"Jeu : retour au menu demandé (partie #{self._id_partie})."
+            )
+            self._retour_menu = True
+            self._window.destroy()
+            return {"succes": True}
+        except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
+            # La fermeture a échoué : on ne rouvrira pas l'accueil (la fenêtre de
+            # jeu reste ouverte et le JS réactive le bouton).
+            self._retour_menu = False
+            return {"succes": False, "erreur": f"Fermeture impossible : {e}"}
+
 
 # --------------------------------------------------------------------------- #
 # Point d'entrée
@@ -995,23 +1036,57 @@ def lancer_jeu(partie: Partie, id_partie: int | None) -> None:
     Session de journalisation (issue #66) : si une session est déjà ouverte
     (lancement normal depuis l'accueil), on la **réutilise** ; sinon (lancement
     autonome, ``python -m scrabble.ui.jeu``), on démarre une session propre.
-    Dans tous les cas la session est clôturée à la fermeture de la fenêtre de
-    jeu (= fin du programme), via ``try/finally`` pour garantir la clôture même
-    en cas d'exception. ``cloturer_session`` étant idempotente, la clôture par
+    La session est clôturée à la fermeture de la fenêtre de jeu (= fin du
+    programme), via ``try/finally`` pour garantir la clôture même en cas
+    d'exception. ``cloturer_session`` étant idempotente, la clôture par
     l'accueil enchaîné reste sans effet redondant.
+
+    Retour au menu (issue #74) : si l'utilisateur a cliqué « 🏠 Retour au menu »
+    (drapeau ``ApiJeu._retour_menu``), la fenêtre de jeu a été fermée mais le
+    programme ne se termine pas : on **ne clôture pas** la session et on rouvre
+    l'écran d'accueil (:func:`lancer_accueil`), qui **réutilise** cette même
+    session (symétrique de l'enchaînement accueil → jeu de l'issue #52, et
+    cohérent avec l'issue #66). L'accueil rouvert se charge alors lui-même de
+    clôturer la session à sa fermeture.
     """
     if journal.session_courante() is None:
         journal.demarrer_session()
     journal.info(f"Jeu : écran ouvert (partie #{id_partie}).")
-    try:
-        _lancer_fenetre_jeu(partie, id_partie)
-    finally:
-        journal.cloturer_session()
-
-
-def _lancer_fenetre_jeu(partie: Partie, id_partie: int | None) -> None:
-    """Crée la fenêtre pywebview de l'écran de jeu et démarre la boucle (bloquant)."""
     api = ApiJeu(partie, id_partie)
+    retour_menu = False
+    try:
+        _lancer_fenetre_jeu(api)
+        retour_menu = api._retour_menu
+    finally:
+        # Cas « retour au menu » : la session reste ouverte pour être réutilisée
+        # par l'accueil rouvert. Dans tous les autres cas (fermeture normale de
+        # la fenêtre, ou exception traversant la boucle), on clôture la session.
+        if not retour_menu:
+            journal.cloturer_session()
+    if retour_menu:
+        _rouvrir_accueil(id_partie)
+
+
+def _rouvrir_accueil(id_partie: int | None) -> None:
+    """Rouvre l'écran d'accueil après un « Retour au menu » (issue #74).
+
+    Import local de :func:`~scrabble.ui.accueil.lancer_accueil` pour éviter le
+    cycle d'import (l'accueil importe déjà ``lancer_jeu``). La session de
+    journalisation courante est **réutilisée** (``reutiliser_session=True``) :
+    elle n'est ni redémarrée ni clôturée ici, l'accueil la clôturant à sa propre
+    fermeture (cohérent avec l'issue #66).
+    """
+    from scrabble.ui.accueil import lancer_accueil
+
+    journal.info(
+        f"Jeu : réouverture de l'écran d'accueil (retour au menu, "
+        f"partie #{id_partie})."
+    )
+    lancer_accueil(reutiliser_session=True)
+
+
+def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
+    """Crée la fenêtre pywebview de l'écran de jeu et démarre la boucle (bloquant)."""
     chemin_html = DOSSIER_WEB / "jeu.html"
     window = webview.create_window(
         "Scrabble - Partie en cours",
