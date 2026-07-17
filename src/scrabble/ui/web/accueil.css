@@ -495,12 +495,29 @@ section h2 {
     text-align: center;
 }
 
+/* Zone carrée large autour du sac (issue #68) : le sac s'y déplace en
+   suivant le curseur pour une secousse nettement plus marquée. La taille est
+   fixe mais bornée pour ne jamais déborder de la modale. */
+.tirage-sac-aire {
+    width: 240px;
+    height: 240px;
+    max-width: min(240px, 70vw);
+    aspect-ratio: 1 / 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--rayon-bordure);
+    background: rgba(124, 78, 33, 0.06);
+    border: 2px dashed rgba(124, 78, 33, 0.28);
+}
+
 .tirage-sac {
     cursor: grab;
-    /* Léger flottement quand la souris ne le secoue pas activement. */
+    /* Suivi fluide du curseur pendant le déplacement dans la zone. */
     transform-origin: 50% 20%;
-    transition: transform 0.12s ease-out;
+    transition: transform 0.08s ease-out;
     filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.25));
+    will-change: transform;
 }
 
 .tirage-sac:active {

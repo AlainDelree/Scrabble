@@ -328,28 +328,43 @@ document.addEventListener('DOMContentLoaded', async () => {
             tirageSacZone.hidden = false;
             tirageSacZone.innerHTML = `
                 <p class="tirage-sac-consigne">À toi, ${escapeHtml(t.nom)} ! Secoue le sac, puis tire ta lettre.</p>
-                <div class="tirage-sac" title="Secoue-moi !" role="img" aria-label="Sac de lettres à secouer">
-                    <svg viewBox="0 0 100 110" width="120" height="132" aria-hidden="true">
-                        <path class="tirage-sac-corps" d="M22 42 Q50 28 78 42 L88 96 Q50 112 12 96 Z"/>
-                        <path class="tirage-sac-col" d="M34 40 Q50 22 66 40 Q50 34 34 40 Z"/>
-                        <line class="tirage-sac-cordon" x1="34" y1="40" x2="66" y2="40"/>
-                        <text class="tirage-sac-glyphe" x="50" y="80" text-anchor="middle">?</text>
-                    </svg>
+                <div class="tirage-sac-aire" aria-hidden="true">
+                    <div class="tirage-sac" title="Secoue-moi !" role="img" aria-label="Sac de lettres à secouer">
+                        <svg viewBox="0 0 100 110" width="120" height="132" aria-hidden="true">
+                            <path class="tirage-sac-corps" d="M22 42 Q50 28 78 42 L88 96 Q50 112 12 96 Z"/>
+                            <path class="tirage-sac-col" d="M34 40 Q50 22 66 40 Q50 34 34 40 Z"/>
+                            <line class="tirage-sac-cordon" x1="34" y1="40" x2="66" y2="40"/>
+                            <text class="tirage-sac-glyphe" x="50" y="80" text-anchor="middle">?</text>
+                        </svg>
+                    </div>
                 </div>
                 <button type="button" class="btn btn-primaire tirage-sac-bouton">Tirer une lettre</button>
             `;
 
+            const aire = tirageSacZone.querySelector('.tirage-sac-aire');
             const sac = tirageSacZone.querySelector('.tirage-sac');
             const bouton = tirageSacZone.querySelector('.tirage-sac-bouton');
             const son = creerSonSac();
 
+            // Le sac se déplace dans une large zone carrée en suivant le curseur
+            // (issue #68) : bien plus perceptible qu'une simple rotation.
             function surMouvement(e) {
-                const rect = sac.getBoundingClientRect();
-                // Angle proportionnel à l'écart horizontal du curseur au centre.
-                const dx = (e.clientX - (rect.left + rect.width / 2)) / (rect.width / 2);
-                const angle = Math.max(-1, Math.min(1, dx)) * 9;
-                const dy = Math.max(-1, Math.min(1, dx)) * 2;
-                sac.style.transform = `rotate(${angle.toFixed(1)}deg) translateY(${dy.toFixed(1)}px)`;
+                const rect = aire.getBoundingClientRect();
+                // Écart normalisé du curseur au centre de la zone, borné à [-1, 1].
+                const nx = Math.max(-1, Math.min(1,
+                    (e.clientX - (rect.left + rect.width / 2)) / (rect.width / 2)));
+                const ny = Math.max(-1, Math.min(1,
+                    (e.clientY - (rect.top + rect.height / 2)) / (rect.height / 2)));
+                // Amplitude max = espace libre entre le sac et les bords de la zone,
+                // pour que le sac suive le curseur sans jamais déborder.
+                const maxX = Math.max(0, (rect.width - sac.offsetWidth) / 2);
+                const maxY = Math.max(0, (rect.height - sac.offsetHeight) / 2);
+                const tx = nx * maxX;
+                const ty = ny * maxY;
+                // Rotation proportionnelle à l'écart horizontal (effet de balancement).
+                const angle = nx * 12;
+                sac.style.transform =
+                    `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) rotate(${angle.toFixed(1)}deg)`;
                 son.secouer();
             }
             function surSortie() {
@@ -358,12 +373,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 son.arreter();
             }
 
-            sac.addEventListener('mousemove', surMouvement);
-            sac.addEventListener('mouseleave', surSortie);
+            aire.addEventListener('mousemove', surMouvement);
+            aire.addEventListener('mouseleave', surSortie);
 
             bouton.addEventListener('click', () => {
-                sac.removeEventListener('mousemove', surMouvement);
-                sac.removeEventListener('mouseleave', surSortie);
+                aire.removeEventListener('mousemove', surMouvement);
+                aire.removeEventListener('mouseleave', surSortie);
                 son.arreter();
                 son.fermer();
                 li.classList.remove('en-attente-tirage');  // dévoile la lettre
