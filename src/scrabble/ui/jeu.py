@@ -50,8 +50,8 @@ from scrabble.moteur.plateau_partie import (
     Tuile,
     dans_plateau,
 )
-from scrabble.moteur.score import DetailMot, DetailScore
-from scrabble.moteur.validation import CoupInvalide, DictionnaireMots
+from scrabble.moteur.score import DetailMot, DetailScore, detailler_score
+from scrabble.moteur.validation import CoupInvalide, DictionnaireMots, valider_coup
 from scrabble.regles.lettres import JOKER, valeur_lettre
 from scrabble.regles.plateau import TAILLE, type_case
 
@@ -629,6 +629,57 @@ def jouer_placements(
     }
 
 
+def simuler_coup(
+    partie: Partie,
+    placements: list[Any],
+) -> dict[str, Any]:
+    """Valide un coup en attente et calcule son score **sans le jouer** (issue #69).
+
+    Cœur non-UI de :meth:`ApiJeu.verifier_coup`. Contrairement à
+    :func:`jouer_placements`, cette fonction ne modifie **rien** de la vraie
+    partie : ni le plateau réel, ni le chevalet du joueur, ni l'historique, ni le
+    tour. Elle réutilise :func:`construire_coup` et
+    :func:`~scrabble.moteur.validation.valider_coup` (qui raisonne déjà sur une
+    copie de travail interne) pour décider de la légalité, puis calcule le détail
+    du score sur une **copie** du plateau — jamais sur le plateau réel.
+
+    Tous les échecs prévisibles sont transformés en
+    ``{"succes": False, "erreur": <message clair>}`` sans lever, de la même
+    nature que ceux de :func:`jouer_placements` :
+
+    * structure de coup incohérente (:class:`ValueError` de
+      :func:`construire_coup`) ;
+    * placement illégal ou mot hors dictionnaire
+      (:class:`~scrabble.moteur.validation.CoupInvalide`).
+
+    En cas de succès, renvoie ``{"succes": True, "points": ..., "nom": ...,
+    "detail": ...}`` **de la même forme** qu'un coup réellement joué (``detail``
+    sérialisé par :func:`serialiser_detail_score`), pour que l'UI puisse réutiliser
+    l'affichage déjà en place. Le contrôle « les lettres viennent du chevalet »
+    n'est volontairement pas rejoué : les lettres en attente proviennent par
+    construction du chevalet du joueur (mécanique clic-clic), et cette simulation
+    ne consomme aucun jeton.
+    """
+    try:
+        coup = construire_coup(partie.plateau, placements)
+    except ValueError as err:
+        return {"succes": False, "erreur": str(err)}
+    try:
+        valider_coup(partie.plateau, coup, partie.dictionnaire)
+    except CoupInvalide as err:
+        return {"succes": False, "erreur": str(err)}
+    # Score calculé sur une copie : le plateau réel n'est jamais touché.
+    travail = partie.plateau.copie()
+    nouvelles = travail.poser_coup(coup)
+    detail = detailler_score(travail, nouvelles, coup.direction)
+    return {
+        "succes": True,
+        "points": detail.total,
+        "nom": partie.joueur_courant().nom,
+        "detail": serialiser_detail_score(detail),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Zone de brouillon et actions de tour supplémentaires (logique non-UI)
 # --------------------------------------------------------------------------- #
@@ -827,6 +878,39 @@ class ApiJeu:
             # reconstituer la session, sans déclencher la rétention du fichier
             # (réservée aux vraies erreurs, voir module ``journal``).
             journal.info(f"Jeu : coup refusé — {resultat.get('erreur')}")
+        return resultat
+
+    def verifier_coup(self, placements: list[Any]) -> dict[str, Any]:
+        """Calcule les points du coup en attente **sans le jouer** (issue #69).
+
+        Point d'entrée du bouton « 🔎 Vérifier et calculer ». ``placements`` est la
+        même liste que celle passée à :meth:`poser_mot` (dicts
+        ``{ligne, colonne, lettre, joker}``). Délègue à :func:`simuler_coup`, qui
+        valide le coup et calcule son score sur une **copie** du plateau, sans
+        rien modifier de la partie : ni le plateau réel, ni le chevalet, ni
+        l'historique, ni le tour. Les lettres en attente côté JS ne sont donc pas
+        perdues et aucun tour n'est consommé.
+
+        Renvoie, comme un coup réellement joué,
+        ``{"succes": True, "points": ..., "nom": ..., "detail": ...}`` si le coup
+        est valide, ou ``{"succes": False, "erreur": <message clair>}`` sinon
+        (aucun score affiché dans ce cas). La réponse ne contient jamais l'identité
+        des lettres d'un chevalet.
+        """
+        resultat = simuler_coup(self._partie, placements)
+        if resultat.get("succes"):
+            detail = resultat.get("detail")
+            mot = (
+                detail["mots"][0]["texte"]
+                if detail and detail.get("mots")
+                else "?"
+            )
+            journal.info(
+                f"Jeu : coup vérifié (non joué) — {mot} "
+                f"({resultat.get('points')} pts)."
+            )
+        else:
+            journal.info(f"Jeu : vérification de coup — {resultat.get('erreur')}")
         return resultat
 
     def verifier_mot(self, lettres: Any) -> dict[str, Any]:

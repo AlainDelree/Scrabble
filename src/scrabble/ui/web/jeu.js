@@ -79,6 +79,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Contrôles de pose d'un mot (mécanique clic-clic)
     const zoneJeu = document.getElementById('zone-jeu');
     const btnValider = document.getElementById('btn-valider');
+    const btnVerifierCoup = document.getElementById('btn-verifier-coup');
     const btnAnnuler = document.getElementById('btn-annuler');
     const messageCoup = document.getElementById('message-coup');
 
@@ -711,6 +712,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         btnValider.disabled = enAttente.length === 0;
+        // « Vérifier et calculer » (issue #69) : actif dans les mêmes conditions
+        // que « Jouer » (au moins une lettre en attente), mais ne joue pas le coup.
+        btnVerifierCoup.disabled = enAttente.length === 0;
         btnAnnuler.disabled = enAttente.length === 0;
     }
 
@@ -1456,6 +1460,46 @@ document.addEventListener('DOMContentLoaded', async () => {
             afficherMessage(message, 'erreur');
             majControlesJeu();
         }
+    });
+
+    // Vérifier et calculer (issue #69) : calcule les points du coup en attente
+    // SANS le jouer. Aucune lettre en attente n'est perdue, aucun tour n'est
+    // consommé : on affiche seulement les points (si valide) ou un message
+    // d'erreur clair (si invalide), puis on restaure les contrôles.
+    btnVerifierCoup.addEventListener('click', async () => {
+        if (!enAttente.length) {
+            return;
+        }
+        btnVerifierCoup.disabled = true;
+        const placements = enAttente.map(p => ({
+            ligne: p.ligne,
+            colonne: p.colonne,
+            lettre: p.lettre,
+            joker: p.joker,
+        }));
+        let res;
+        try {
+            res = await api.verifier_coup(placements);
+        } catch (err) {
+            afficherMessage('Erreur inattendue lors de la vérification du coup.', 'erreur');
+            majControlesJeu();
+            return;
+        }
+        if (res && res.succes) {
+            const points = res.points != null ? res.points : 0;
+            const mot = (res.detail && res.detail.mots && res.detail.mots[0])
+                ? res.detail.mots[0].texte : null;
+            const detailMot = mot ? ` (${mot})` : '';
+            afficherMessage(
+                `Coup valide${detailMot} : +${points} point${points > 1 ? 's' : ''}. `
+                + `Cliquez « Jouer » pour le poser.`,
+                'succes');
+        } else {
+            const message = (res && res.erreur) ? res.erreur : 'Coup invalide.';
+            afficherMessage(message, 'erreur');
+        }
+        // Les lettres en attente restent en place : on réactive les contrôles.
+        majControlesJeu();
     });
 
     /**

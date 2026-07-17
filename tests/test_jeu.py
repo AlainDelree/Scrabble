@@ -38,6 +38,7 @@ from scrabble.ui.jeu import (
     serialiser_detail_score,
     serialiser_joueur_public,
     serialiser_plateau,
+    simuler_coup,
     verifier_mot_dictionnaire,
 )
 
@@ -514,6 +515,84 @@ class TestJouerPlacements:
         assert "erreur" in resultat
 
 
+class TestSimulerCoup:
+    """``simuler_coup`` : calcul du score d'un coup en attente SANS le jouer (issue #69)."""
+
+    def _partie_avec_chevalet(self, lettres: str, mots: tuple[str, ...]) -> Partie:
+        """Partie déterministe dont le joueur courant a un chevalet imposé."""
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
+        ]
+        partie = Partie(joueurs, _DicoMots(*mots), graine=1)
+        partie.index_courant = 0
+        partie.joueurs[0].chevalet = list(lettres)
+        return partie
+
+    def test_coup_valide_renvoie_le_bon_score(self):
+        partie = self._partie_avec_chevalet("CHATSER", mots=("CHAT",))
+        placements = [
+            _placement(7, 7, "C"),
+            _placement(7, 8, "H"),
+            _placement(7, 9, "A"),
+            _placement(7, 10, "T"),
+        ]
+        resultat = simuler_coup(partie, placements)
+        assert resultat["succes"] is True
+        assert resultat["nom"] == "Alice"
+        # Le score simulé est exactement celui du même coup réellement joué.
+        detail = resultat["detail"]
+        assert detail["mots"][0]["texte"] == "CHAT"
+        assert resultat["points"] == detail["total"]
+        temoin = self._partie_avec_chevalet("CHATSER", mots=("CHAT",))
+        joue = jouer_placements(temoin, placements)
+        assert resultat["points"] == joue["points"]
+
+    def test_coup_invalide_renvoie_message_sans_score(self):
+        # Structure correcte (couvre le centre) mais mot absent du dictionnaire.
+        partie = self._partie_avec_chevalet("XYZWKQJ", mots=("CHAT",))
+        placements = [
+            _placement(7, 7, "X"),
+            _placement(7, 8, "Y"),
+            _placement(7, 9, "Z"),
+        ]
+        resultat = simuler_coup(partie, placements)
+        assert resultat["succes"] is False
+        assert resultat.get("erreur")
+        assert "points" not in resultat
+        assert "detail" not in resultat
+
+    def test_structure_incoherente_traitee_comme_echec(self):
+        # Lettres non alignées : ValueError de construire_coup → échec propre.
+        partie = self._partie_avec_chevalet("ABCDEFG", mots=("AB",))
+        placements = [_placement(7, 7, "A"), _placement(9, 9, "B")]
+        resultat = simuler_coup(partie, placements)
+        assert resultat["succes"] is False
+        assert resultat.get("erreur")
+
+    def test_aucune_mutation_de_la_partie(self):
+        partie = self._partie_avec_chevalet("CHATSER", mots=("CHAT",))
+        chevalet_avant = list(partie.joueurs[0].chevalet)
+        index_avant = partie.index_courant
+        score_avant = partie.joueurs[0].score
+        nb_historique_avant = len(partie.historique)
+        placements = [
+            _placement(7, 7, "C"),
+            _placement(7, 8, "H"),
+            _placement(7, 9, "A"),
+            _placement(7, 10, "T"),
+        ]
+        resultat = simuler_coup(partie, placements)
+        assert resultat["succes"] is True
+        # Rien n'a bougé : plateau, chevalet, tour, score, historique intacts.
+        assert partie.plateau.case_vide(7, 7)
+        assert partie.plateau.est_vide()
+        assert partie.joueurs[0].chevalet == chevalet_avant
+        assert partie.index_courant == index_avant
+        assert partie.joueurs[0].score == score_avant
+        assert len(partie.historique) == nb_historique_avant
+
+
 class TestSymetrieSensLettreUnique:
     """Symétrie du sens pour une lettre unique (issue #43).
 
@@ -627,6 +706,37 @@ class TestApiPoserMot:
         assert res.get("erreur")
         # Pas d'état renvoyé en cas d'échec : le JS conserve son attente.
         assert "etat" not in res
+
+    def test_verifier_coup_valide_ne_joue_pas(self):
+        # ApiJeu.verifier_coup (issue #69) : calcule les points sans jouer.
+        api = self._api_avec_chevalet("CHATSER", mots=("CHAT",))
+        placements = [
+            _placement(7, 7, "C"),
+            _placement(7, 8, "H"),
+            _placement(7, 9, "A"),
+            _placement(7, 10, "T"),
+        ]
+        res = api.verifier_coup(placements)
+        assert res["succes"] is True
+        assert res["points"] > 0
+        assert res["detail"]["mots"][0]["texte"] == "CHAT"
+        # Le coup n'a pas été joué : plateau vide, tour et chevalet inchangés.
+        partie = api._partie
+        assert partie.plateau.case_vide(7, 7)
+        assert partie.index_courant == 0
+        assert partie.joueurs[0].chevalet == list("CHATSER")
+
+    def test_verifier_coup_invalide_renvoie_erreur(self):
+        api = self._api_avec_chevalet("XYZWKQJ", mots=("CHAT",))
+        placements = [
+            _placement(7, 7, "X"),
+            _placement(7, 8, "Y"),
+            _placement(7, 9, "Z"),
+        ]
+        res = api.verifier_coup(placements)
+        assert res["succes"] is False
+        assert res.get("erreur")
+        assert "points" not in res
 
 
 # --------------------------------------------------------------------------- #
