@@ -59,15 +59,26 @@ header {
     margin-bottom: 24px;
 }
 
+/* Textes sur le tapis vert (issue #77, suite de #75). Le titre était en vert
+   primaire (var(--couleur-primaire)) : vert sur vert, quasi illisible depuis
+   l'ajout du fond en feutre (issue #75). On le passe en blanc franc avec une
+   ombre portée légère, reprenant EXACTEMENT le traitement du décor « SCRABBLE »
+   de l'écran de jeu (issue #70) : contraste large et confortable, pensé pour une
+   lecture aisée par un public âgé (> 80 ans). Blanc pur (#fff) sur le vert
+   #35654d ≈ 6:1, au-delà du seuil WCAG AA (4.5:1). */
 header h1 {
     font-size: 2rem;
-    color: var(--couleur-primaire);
+    color: #ffffff;
     margin-bottom: 4px;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
+/* Sous-titre : gris #666 (prévu pour un fond clair) illisible sur le vert. Blanc
+   très légèrement adouci + ombre portée pour rester net sans dureté. */
 .subtitle {
-    color: #666;
+    color: rgba(255, 255, 255, 0.92);
     font-size: 0.95rem;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 /* Sections */
@@ -75,12 +86,18 @@ section {
     margin-bottom: 24px;
 }
 
+/* Titres de section (« Joueurs autour de la table », « Reprendre une partie »)
+   posés directement sur le tapis vert : le brun (var(--couleur-secondaire)) et
+   le liseré gris clair (var(--couleur-bordure)) ressortaient mal sur le vert
+   (issue #77). Blanc + ombre portée pour le texte, liseré blanc translucide pour
+   le trait de séparation : nets sur le feutre, cohérents avec le titre. */
 section h2 {
     font-size: 1.1rem;
     margin-bottom: 12px;
-    color: var(--couleur-secondaire);
-    border-bottom: 2px solid var(--couleur-bordure);
+    color: #ffffff;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.35);
     padding-bottom: 6px;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 /* Liste des joueurs */
@@ -92,11 +109,28 @@ section h2 {
     padding: 12px;
 }
 
+/* État vide intégré au tapis vert (issue #77, point 2). Vide, la carte blanche
+   pleine « jurait » avec le feutre : on la remplace par un cadre translucide
+   discret, façon emplacement en attente posé sur le tapis (fond très légèrement
+   voilé, liseré blanc pointillé, sans ombre de carte). Dès qu'un joueur est
+   ajouté, le paragraphe .vide disparaît (voir accueil.js) : la carte blanche
+   pleine revient alors porter les items. :has() est déjà employé sur l'écran de
+   jeu (jeu.css) et supporté par WebKitGTK (moteur de pywebview sous Linux). */
+.liste-joueurs:has(.vide),
+.parties-en-cours:has(.vide) {
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: none;
+    border: 2px dashed rgba(255, 255, 255, 0.4);
+}
+
+/* Texte de l'état vide : blanc légèrement adouci + ombre portée, lisible sur le
+   cadre translucide comme sur le tapis (issue #77). */
 .liste-joueurs .vide {
-    color: #888;
+    color: rgba(255, 255, 255, 0.9);
     text-align: center;
     padding: 20px;
     font-style: italic;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .joueur-item {
@@ -170,7 +204,10 @@ section h2 {
     text-align: center;
     margin-top: 10px;
     font-size: 0.9rem;
-    color: #666;
+    /* Sur le tapis vert (issue #77) : gris #666 illisible, passé en blanc adouci
+       + ombre portée, comme les autres textes libres de l'écran. */
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* Actions */
@@ -257,10 +294,11 @@ section h2 {
 }
 
 .parties-en-cours .vide {
-    color: #888;
+    color: rgba(255, 255, 255, 0.9);
     text-align: center;
     padding: 12px;
     font-style: italic;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .partie-item {
@@ -608,8 +646,12 @@ section h2 {
 
 /* Message désactivé */
 .message-limite {
-    color: var(--couleur-danger);
+    /* Message d'alerte posé sur le tapis vert (issue #77) : le rouge foncé
+       (var(--couleur-danger)) ressortait mal sur le vert. Rouge très clair
+       (garde la sémantique d'alerte) + ombre portée pour un contraste net. */
+    color: #ffd0d0;
     font-size: 0.85rem;
     text-align: center;
     margin-top: 8px;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }

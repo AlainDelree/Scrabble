@@ -949,6 +949,26 @@ header {
     cursor: not-allowed;
 }
 
+/* Contraste sur le tapis vert (issue #77, suite de #75/#70). Les liens discrets
+   de la barre globale (« ↻ Resynchroniser », « 🏠 Retour au menu ») reposent
+   directement sur le feutre vert : leur gris neutre par défaut (#6a6a6a, pensé
+   pour un fond clair) y est peu lisible, comme les textes de l'accueil corrigés
+   dans la même issue. Sur le vert, on les passe en blanc avec la même ombre
+   portée légère que le décor « SCRABBLE » (issue #70), pour un contraste net et
+   confortable adapté à un public âgé. Les autres liens discrets restent DANS des
+   cartes claires (ex. « Remettre ses lettres » dans .bloc-chevalet) et gardent
+   donc le gris d'origine : seul le lien de la barre globale est reciblé ici. */
+.barre-globale .lien-discret {
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.barre-globale .lien-discret:hover:not(:disabled) {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.15);
+    text-decoration: underline;
+}
+
 /* Chevalet */
 .zone-chevalet {
     margin-top: 8px;
