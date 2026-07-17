@@ -23,6 +23,9 @@ data/dictionnaire/*
 data/parties.db
 data/*.db
 
+# Journaux de diagnostic par session (scrabble.journal) — jamais commités
+logs/
+
 # Photos de plateaux réels fournies pour inspiration visuelle (non commitées)
 Exemples plateau/
 
