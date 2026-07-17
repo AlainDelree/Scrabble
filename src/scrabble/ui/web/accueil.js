@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const modaleTirage = document.getElementById('modale-tirage');
     const tirageLettres = document.getElementById('tirage-lettres');
     const tirageOrdreResultat = document.getElementById('tirage-ordre-resultat');
+    const tirageSacZone = document.getElementById('tirage-sac-zone');
     const btnContinuerTirage = document.getElementById('btn-continuer-tirage');
 
     // Formulaires
@@ -228,44 +229,197 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    const DELAI_LIGNE = 450;  // ms entre deux révélations de lettre
+
+    /** Petite promesse d'attente (ms). */
+    function attendre(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * Fabrique un générateur de son « sac de lettres secoué » (issue #61).
+     *
+     * Web Audio pur, sans fichier externe : chaque appel à `secouer()` déclenche
+     * une courte bouffée de bruit blanc filtrée (passe-bande) avec une enveloppe
+     * de gain qui monte puis retombe — l'illusion de lettres qui s'entrechoquent.
+     * Les bouffées sont **bridées** (une toutes les ~90 ms max) et de faible
+     * volume pour éviter tout son continu strident. Rien de continu n'est joué :
+     * `arreter()` n'a donc qu'à cesser d'en planifier, et `fermer()` libère le
+     * contexte audio quand on a fini (clic « Tirer » ou sortie de zone).
+     */
+    function creerSonSac() {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        let ctx = null;
+        let bufferBruit = null;
+        let dernierBruit = -Infinity;
+
+        function assurerContexte() {
+            if (!AC) return null;
+            if (!ctx) {
+                ctx = new AC();
+                // Buffer de bruit blanc réutilisé pour toutes les bouffées.
+                const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.3), ctx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < data.length; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                bufferBruit = buf;
+            }
+            if (ctx.state === 'suspended') ctx.resume();
+            return ctx;
+        }
+
+        return {
+            secouer() {
+                const c = assurerContexte();
+                if (!c) return;
+                const now = c.currentTime;
+                if (now - dernierBruit < 0.09) return;  // bridage anti-strident
+                dernierBruit = now;
+
+                const duree = 0.05 + Math.random() * 0.05;
+                const src = c.createBufferSource();
+                src.buffer = bufferBruit;
+
+                const filtre = c.createBiquadFilter();
+                filtre.type = 'bandpass';
+                filtre.frequency.value = 2200 + Math.random() * 2600;
+                filtre.Q.value = 0.7;
+
+                const gain = c.createGain();
+                const volume = 0.05 + Math.random() * 0.04;  // faible
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.linearRampToValueAtTime(volume, now + 0.006);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + duree);
+
+                src.connect(filtre).connect(gain).connect(c.destination);
+                src.start(now);
+                src.stop(now + duree + 0.02);
+            },
+            arreter() {
+                // Les bouffées sont brèves et s'auto-terminent : il suffit de
+                // cesser d'en planifier (l'appelant arrête d'appeler secouer()).
+                dernierBruit = -Infinity;
+            },
+            fermer() {
+                if (ctx) {
+                    ctx.close().catch(() => {});
+                    ctx = null;
+                }
+            },
+        };
+    }
+
+    /**
+     * Tour d'un joueur HUMAIN dans le tirage d'ordre (issue #61) : au lieu de
+     * révéler automatiquement sa lettre, on affiche un sac que le joueur secoue
+     * en passant la souris dessus (secousse visuelle + son) puis un bouton
+     * « Tirer une lettre » qui dévoile sa lettre.
+     *
+     * @param {HTMLElement} li Ligne de résultat correspondante (nom + lettre).
+     * @param {{nom: string, lettre: string}} t Tirage du joueur humain.
+     * @returns {Promise<void>} résolue une fois la lettre tirée.
+     */
+    function tourHumain(li, t) {
+        return new Promise((resolve) => {
+            // La ligne apparaît, mais la lettre reste masquée jusqu'au tirage.
+            li.classList.add('visible', 'en-attente-tirage');
+
+            tirageSacZone.hidden = false;
+            tirageSacZone.innerHTML = `
+                <p class="tirage-sac-consigne">À toi, ${escapeHtml(t.nom)} ! Secoue le sac, puis tire ta lettre.</p>
+                <div class="tirage-sac" title="Secoue-moi !" role="img" aria-label="Sac de lettres à secouer">
+                    <svg viewBox="0 0 100 110" width="120" height="132" aria-hidden="true">
+                        <path class="tirage-sac-corps" d="M22 42 Q50 28 78 42 L88 96 Q50 112 12 96 Z"/>
+                        <path class="tirage-sac-col" d="M34 40 Q50 22 66 40 Q50 34 34 40 Z"/>
+                        <line class="tirage-sac-cordon" x1="34" y1="40" x2="66" y2="40"/>
+                        <text class="tirage-sac-glyphe" x="50" y="80" text-anchor="middle">?</text>
+                    </svg>
+                </div>
+                <button type="button" class="btn btn-primaire tirage-sac-bouton">Tirer une lettre</button>
+            `;
+
+            const sac = tirageSacZone.querySelector('.tirage-sac');
+            const bouton = tirageSacZone.querySelector('.tirage-sac-bouton');
+            const son = creerSonSac();
+
+            function surMouvement(e) {
+                const rect = sac.getBoundingClientRect();
+                // Angle proportionnel à l'écart horizontal du curseur au centre.
+                const dx = (e.clientX - (rect.left + rect.width / 2)) / (rect.width / 2);
+                const angle = Math.max(-1, Math.min(1, dx)) * 9;
+                const dy = Math.max(-1, Math.min(1, dx)) * 2;
+                sac.style.transform = `rotate(${angle.toFixed(1)}deg) translateY(${dy.toFixed(1)}px)`;
+                son.secouer();
+            }
+            function surSortie() {
+                // Désactivation propre si l'on quitte la zone avant de tirer.
+                sac.style.transform = '';
+                son.arreter();
+            }
+
+            sac.addEventListener('mousemove', surMouvement);
+            sac.addEventListener('mouseleave', surSortie);
+
+            bouton.addEventListener('click', () => {
+                sac.removeEventListener('mousemove', surMouvement);
+                sac.removeEventListener('mouseleave', surSortie);
+                son.arreter();
+                son.fermer();
+                li.classList.remove('en-attente-tirage');  // dévoile la lettre
+                tirageSacZone.hidden = true;
+                tirageSacZone.innerHTML = '';
+                resolve();
+            }, { once: true });
+        });
+    }
+
     /**
      * Affiche le résultat du tirage d'ordre (issue #54) et attend que
      * l'utilisateur clique « Continuer » avant de résoudre.
      *
-     * @param {{tirages: Array<{nom: string, lettre: string}>, ordre: string[]}} tirage
+     * Les joueurs ordinateurs sont révélés séquentiellement en fondu (issue
+     * #58). Pour chaque joueur HUMAIN, la révélation automatique est remplacée
+     * par une interaction « secouer le sac puis tirer » (issue #61) : la
+     * séquence se met en pause jusqu'au clic sur « Tirer une lettre », puis
+     * reprend. Le résultat « Ordre de jeu : … » n'apparaît qu'une fois TOUTES
+     * les lettres révélées.
+     *
+     * @param {{tirages: Array<{nom: string, lettre: string, humain: boolean}>, ordre: string[]}} tirage
      * @returns {Promise<void>} résolue quand l'utilisateur valide la modale.
      */
-    function afficherTirageOrdre(tirage) {
-        return new Promise((resolve) => {
-            tirageLettres.innerHTML = '';
-            tirageOrdreResultat.textContent = '';
-            tirageOrdreResultat.classList.remove('visible');
+    async function afficherTirageOrdre(tirage) {
+        tirageLettres.innerHTML = '';
+        tirageOrdreResultat.textContent = '';
+        tirageOrdreResultat.classList.remove('visible');
+        tirageSacZone.hidden = true;
+        tirageSacZone.innerHTML = '';
 
-            // Révélation SÉQUENTIELLE (issue #58) : les lignes sont toutes
-            // créées dans un état masqué (opacité 0, léger décalage — voir
-            // accueil.css), puis dévoilées l'une après l'autre en fondu/
-            // glissement grâce à un décalage croissant. Le résultat « Ordre de
-            // jeu : … » n'apparaît qu'une fois TOUTES les lettres révélées.
-            const lignes = tirage.tirages.map(t => {
-                const li = document.createElement('li');
-                li.innerHTML = `<span class="tirage-nom">${escapeHtml(t.nom)}</span> a tiré <span class="tirage-lettre">${escapeHtml(t.lettre)}</span>`;
-                tirageLettres.appendChild(li);
-                return li;
-            });
+        const lignes = tirage.tirages.map(t => {
+            const li = document.createElement('li');
+            li.innerHTML = `<span class="tirage-nom">${escapeHtml(t.nom)}</span> a tiré <span class="tirage-lettre">${escapeHtml(t.lettre)}</span>`;
+            tirageLettres.appendChild(li);
+            return li;
+        });
 
-            afficherModale(modaleTirage);
+        afficherModale(modaleTirage);
 
-            const DELAI_LIGNE = 450;  // ms entre deux révélations de lettre
-            lignes.forEach((li, i) => {
-                setTimeout(() => li.classList.add('visible'), DELAI_LIGNE * (i + 1));
-            });
-            const texteOrdre =
-                'Ordre de jeu : ' + tirage.ordre.map(String).join(', ');
-            setTimeout(() => {
-                tirageOrdreResultat.textContent = texteOrdre;
-                tirageOrdreResultat.classList.add('visible');
-            }, DELAI_LIGNE * (lignes.length + 1));
+        for (let i = 0; i < lignes.length; i++) {
+            const t = tirage.tirages[i];
+            if (t.humain) {
+                await tourHumain(lignes[i], t);
+            } else {
+                await attendre(DELAI_LIGNE);
+                lignes[i].classList.add('visible');
+            }
+        }
 
+        await attendre(DELAI_LIGNE);
+        tirageOrdreResultat.textContent =
+            'Ordre de jeu : ' + tirage.ordre.map(String).join(', ');
+        tirageOrdreResultat.classList.add('visible');
+
+        await new Promise((resolve) => {
             btnContinuerTirage.onclick = () => {
                 cacherModale(modaleTirage);
                 btnContinuerTirage.onclick = null;

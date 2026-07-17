@@ -463,13 +463,95 @@ section h2 {
     opacity: 1;
 }
 
+/* Tour du joueur humain : la lettre reste cachée tant que le sac n'a pas été
+   tiré (issue #61). On garde la place avec un point d'interrogation. */
+.tirage-lettres li.en-attente-tirage .tirage-lettre {
+    color: transparent;
+    position: relative;
+}
+
+.tirage-lettres li.en-attente-tirage .tirage-lettre::after {
+    content: '?';
+    color: var(--couleur-primaire);
+    position: absolute;
+    left: 0;
+    right: 0;
+    text-align: center;
+}
+
+/* Zone « secouer le sac puis tirer » du joueur humain (issue #61). */
+.tirage-sac-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin: 4px 0 18px;
+}
+
+.tirage-sac-consigne {
+    margin: 0;
+    font-weight: 600;
+    color: var(--couleur-secondaire);
+    text-align: center;
+}
+
+.tirage-sac {
+    cursor: grab;
+    /* Léger flottement quand la souris ne le secoue pas activement. */
+    transform-origin: 50% 20%;
+    transition: transform 0.12s ease-out;
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.25));
+}
+
+.tirage-sac:active {
+    cursor: grabbing;
+}
+
+.tirage-sac-corps {
+    fill: #b5793e;
+    stroke: #7c4e21;
+    stroke-width: 2;
+}
+
+.tirage-sac-col {
+    fill: #cd9256;
+    stroke: #7c4e21;
+    stroke-width: 2;
+}
+
+.tirage-sac-cordon {
+    stroke: #5b3512;
+    stroke-width: 3;
+    stroke-linecap: round;
+}
+
+.tirage-sac-glyphe {
+    fill: #fff7e6;
+    font-size: 34px;
+    font-weight: 700;
+}
+
+.tirage-sac-bouton {
+    animation: tirage-sac-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tirage-sac-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
 /* Accessibilité : sans mouvement, on affiche tout de suite sans transition. */
 @media (prefers-reduced-motion: reduce) {
     .tirage-lettres li,
     .tirage-lettres li.visible,
     .tirage-ordre-resultat,
-    .tirage-ordre-resultat.visible {
+    .tirage-ordre-resultat.visible,
+    .tirage-sac {
         transition: none;
+    }
+
+    .tirage-sac-bouton {
+        animation: none;
     }
 }
 

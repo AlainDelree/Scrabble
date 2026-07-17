@@ -293,7 +293,7 @@ class ApiAccueil:
                 "pret": True,
                 "id_partie": self._id_partie,
                 "tirage_ordre": self._detail_tirage_ordre(
-                    noms_humains + noms_ia, graine
+                    noms_humains + noms_ia, graine, set(noms_humains)
                 ),
                 "message": f"Partie #{self._id_partie} créée avec {len(self._partie.joueurs)} joueurs.",
             }
@@ -301,7 +301,11 @@ class ApiAccueil:
             return {"succes": False, "erreur": str(e)}
 
     @staticmethod
-    def _detail_tirage_ordre(noms_creation: list[str], graine: int) -> dict[str, Any]:
+    def _detail_tirage_ordre(
+        noms_creation: list[str],
+        graine: int,
+        noms_humains: set[str] | None = None,
+    ) -> dict[str, Any]:
         """Reconstitue le détail du tirage d'ordre pour affichage côté JS.
 
         ``creer_partie(tirage_ordre=True)`` réordonne bien les joueurs mais ne
@@ -316,11 +320,23 @@ class ApiAccueil:
         correspond au joueur ``i`` de cette liste ; ``ordre`` en donne les
         indices rangés dans l'ordre de jeu).
 
-        Retourne ``{"tirages": [{"nom", "lettre"}, ...], "ordre": [nom, ...]}``.
+        ``noms_humains`` (optionnel) est l'ensemble des noms de joueurs humains :
+        chaque tirage porte alors un booléen ``humain`` pour que le JS remplace,
+        côté joueur humain, la révélation automatique par une interaction
+        « secouer le sac puis tirer » (issue #61). Absent, tous les tirages sont
+        considérés non humains (rétrocompatibilité).
+
+        Retourne
+        ``{"tirages": [{"nom", "lettre", "humain"}, ...], "ordre": [nom, ...]}``.
         """
+        humains = noms_humains or set()
         resultat = determiner_ordre_jeu(noms_creation, random.Random(graine))
         tirages = [
-            {"nom": noms_creation[i], "lettre": resultat.lettres[i]}
+            {
+                "nom": noms_creation[i],
+                "lettre": resultat.lettres[i],
+                "humain": noms_creation[i] in humains,
+            }
             for i in range(len(noms_creation))
         ]
         ordre = [noms_creation[i] for i in resultat.ordre]

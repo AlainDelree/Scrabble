@@ -384,11 +384,18 @@ class TestApiAccueilTirageOrdre:
 
         assert result["succes"] is True
         tirage = result["tirage_ordre"]
-        # Une lettre par joueur, avec le nom associé.
+        # Une lettre par joueur, avec le nom associé et un drapeau humain
+        # (issue #61 : le JS distingue les tours humains des ordinateurs).
         assert len(tirage["tirages"]) == 3
         for entree in tirage["tirages"]:
-            assert set(entree.keys()) == {"nom", "lettre"}
+            assert set(entree.keys()) == {"nom", "lettre", "humain"}
             assert isinstance(entree["lettre"], str) and len(entree["lettre"]) == 1
+            assert isinstance(entree["humain"], bool)
+        # Les deux humains sont marqués humain=True, l'ordinateur humain=False.
+        humain_par_nom = {t["nom"]: t["humain"] for t in tirage["tirages"]}
+        assert humain_par_nom["Alice"] is True
+        assert humain_par_nom["Bob"] is True
+        assert sum(1 for v in humain_par_nom.values() if v) == 2
         # L'ordre annoncé contient tous les joueurs, une seule fois chacun.
         noms_config = {j.nom for j in api.config_partie.joueurs}
         assert set(tirage["ordre"]) == noms_config
