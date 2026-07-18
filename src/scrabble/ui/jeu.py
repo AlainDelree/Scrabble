@@ -852,6 +852,12 @@ class ApiJeu:
         # une fois les fenêtres de jeu fermées, ``lancer_jeu`` rouvre alors
         # l'écran d'accueil (au lieu de clôturer la session) — voir ``lancer_jeu``.
         self._retour_menu = False
+        # Garde-fou anti-boucle de la fermeture croisée par la croix (issue #94) :
+        # fermer une fenêtre par sa croix détruit l'autre, dont la destruction
+        # re-déclenche l'événement ``closing`` (sous GTK, ``destroy()`` passe aussi
+        # par ``close_window``). Ce drapeau, posé au premier passage, fait
+        # court-circuiter les déclenchements suivants pour éviter une récursion.
+        self._fermeture_en_cours = False
 
     def set_windows(
         self,
@@ -870,6 +876,79 @@ class ApiJeu:
         d'entrée à privilégier depuis l'issue #90 est :meth:`set_windows`.
         """
         self._window_plateau = window
+
+    def installer_fermeture_croisee(self) -> None:
+        """Câble la fermeture native (croix ✕) des deux fenêtres — issue #94.
+
+        Avant l'issue #90, l'écran de jeu était une **fenêtre unique** : la fermer
+        par sa croix quittait proprement l'application (issue #74). Depuis la
+        séparation en deux fenêtres, fermer « Scrabble - Plateau » par sa croix
+        laissait « Scrabble - Chevalet » (``on_top``) orpheline, et inversement —
+        seul le bouton applicatif « Retour au menu » détruisait bien les deux.
+
+        On s'abonne donc à l'événement pywebview ``events.closing`` de **chacune**
+        des deux fenêtres : à la fermeture native de l'une, on détruit l'autre
+        (:meth:`_sur_fermeture_native`). Contrairement à « Retour au menu », une
+        fermeture par la croix **quitte l'application** (on ne positionne pas
+        ``_retour_menu``, donc :func:`lancer_jeu` ne rouvre pas l'accueil) —
+        comportement attendu d'une croix, cohérent avec la fenêtre unique d'avant
+        l'issue #90.
+
+        Tolère les fenêtres factices des tests (pas d'attribut ``events`` ou pas
+        d'événement ``closing``) : dans ce cas on n'abonne rien.
+        """
+        for fenetre in (self._window_plateau, self._window_chevalet):
+            evenements = getattr(fenetre, "events", None)
+            closing = getattr(evenements, "closing", None)
+            if closing is None:
+                continue
+            # ``Event.__iadd__`` (pywebview) ajoute un abonné et renvoie l'événement
+            # lui-même : ``closing += handler`` mute l'événement en place. Le
+            # handler déclare un paramètre ``window`` : pywebview lui passe alors la
+            # fenêtre émettrice, ce qui permet de détruire *l'autre*.
+            closing += self._sur_fermeture_native
+
+    def _sur_fermeture_native(self, window: "webview.Window") -> None:
+        """Ferme la fenêtre jumelle quand ``window`` est fermée par sa croix (issue #94).
+
+        Abonné à ``events.closing`` des deux fenêtres par
+        :meth:`installer_fermeture_croisee`. La fenêtre qui reçoit la croix se
+        ferme d'elle-même (on ne la détruit pas ici, pour éviter une double
+        fermeture) ; on se contente de détruire **l'autre** fenêtre si elle est
+        encore ouverte, afin qu'aucune ne reste orpheline.
+
+        Garde-fou anti-boucle (``_fermeture_en_cours``) : sous GTK, ``destroy()``
+        repasse par ``close_window`` et re-déclenche ``closing``. Sans ce drapeau,
+        détruire la fenêtre B depuis la fermeture de A relancerait le traitement
+        pour B (qui tenterait de re-détruire A), etc. Au premier passage on lève le
+        drapeau ; les déclenchements suivants ressortent immédiatement.
+
+        On ne renvoie jamais ``False`` : l'événement ``closing`` de pywebview
+        n'annule la fermeture que si un abonné renvoie ``False``. Renvoyer ``None``
+        laisse donc la fermeture se poursuivre normalement.
+        """
+        if self._fermeture_en_cours:
+            return
+        self._fermeture_en_cours = True
+        journal.info(
+            "Jeu : fermeture native (croix) détectée — fermeture des deux "
+            f"fenêtres et sortie (partie #{self._id_partie})."
+        )
+        autre = (
+            self._window_chevalet
+            if window is self._window_plateau
+            else self._window_plateau
+        )
+        if autre is None:
+            return
+        try:
+            autre.destroy()
+        except Exception as e:  # noqa: BLE001 - une fermeture ratée ne doit rien bloquer
+            journal.erreur(
+                "Jeu : destruction de la fenêtre jumelle (fermeture croisée) "
+                "impossible.",
+                e,
+            )
 
     def obtenir_etat(self) -> dict[str, Any]:
         """Retourne l'état public de la partie (sans lettres de chevalet)."""
@@ -1557,6 +1636,14 @@ class ApiJeu:
                 f"Jeu : retour au menu demandé (partie #{self._id_partie})."
             )
             self._retour_menu = True
+            # On détruit nous-mêmes les deux fenêtres : on lève donc le garde-fou
+            # anti-boucle (issue #94) pour que l'événement ``closing`` déclenché par
+            # ces ``destroy()`` (sous GTK, ``destroy`` repasse par ``close_window``)
+            # ne relance pas :meth:`_sur_fermeture_native`, qui tenterait de
+            # re-détruire l'autre fenêtre — un double ``destroy`` lèverait une
+            # exception qui, ici, ferait basculer ``_retour_menu`` à ``False`` et
+            # empêcherait la réouverture de l'accueil.
+            self._fermeture_en_cours = True
             # Détruire la fenêtre chevalet en premier : ``on_top``, elle doit
             # disparaître avant l'accueil rouvert. La fenêtre plateau ensuite.
             if self._window_chevalet is not None:
@@ -1642,14 +1729,25 @@ def _rouvrir_accueil(id_partie: int | None) -> None:
 
 
 # Dimensions par défaut de la fenêtre chevalet flottante (issue #90, ajustées
-# issue #91 point 4). La fenêtre doit loger, **côte à côte et sans défilement**,
-# le bloc « À jouer » (chevalet 7 lettres + contrôles de tour) et le bloc
-# « Brouillon » (9 emplacements). À 40 px par case + espacements + marges, les
-# deux blocs alignés réclament ~830 px de large ; on prend une marge de sécurité.
-# La hauteur laisse tenir l'en-tête, la zone à deux blocs et le pied sans scroll.
-# Non redimensionnable : ces valeurs sont donc la taille réelle utilisée.
+# issue #91 point 4, hauteur re-mesurée issue #94). La fenêtre doit loger,
+# **côte à côte et sans défilement**, le bloc « À jouer » (chevalet 7 lettres +
+# contrôles de tour) et le bloc « Brouillon » (9 emplacements). À 40 px par case +
+# espacements + marges, les deux blocs alignés réclament ~830 px de large ; on
+# prend une marge de sécurité.
+#
+# Hauteur (issue #94) : la valeur de #92 (400 px) avait été fixée avant que le
+# layout du point 4 soit corrigé structurellement et n'avait jamais été vérifiée
+# dans une fenêtre correctement dimensionnée (bug Wayland #93) ; elle laissait un
+# vide important sous la barre d'actions. Rendu à sa taille réelle, le contenu le
+# plus haut descend à ~280 px (tour humain, chevalet révélé + brouillon + actions +
+# message de statut). On fixe donc 300 px : ~20 px de marge de sécurité, sans le
+# calcul pile-poil déconseillé, et une empreinte identique entre tour humain et
+# tour IA (cf. `.zone-attente-ia` de chevalet.css). Non redimensionnable : ces
+# valeurs sont la taille réelle utilisée. Un garde-fou de test (voir
+# ``test_hauteur_suffisante_pour_le_contenu``) empêche une future régression de
+# repasser sous la hauteur du contenu.
 CHEVALET_LARGEUR = 880
-CHEVALET_HAUTEUR = 400
+CHEVALET_HAUTEUR = 300
 # Marge basse : la fenêtre chevalet est posée près du bas de l'écran, à cette
 # distance du bord inférieur de la zone de travail.
 CHEVALET_MARGE_BAS = 40
@@ -1712,7 +1810,7 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
       :meth:`ApiJeu.deplacer_chevalet`) : sous WebKitGTK, ``.pywebview-drag-region``
       n'est pas géré (le backend GTK ne câble le drag d'une fenêtre ``frameless``
       que via ``easy_drag=True``, qui déplacerait la fenêtre au moindre glissé, y
-      compris pendant un clic-clic de pose — issue #91 point 2). Taille ~880×400,
+      compris pendant un clic-clic de pose — issue #91 point 2). Taille ~880×300,
       posée en bas-centre de l'écran.
 
     Les deux fenêtres sont créées **avant** l'unique ``webview.start()`` (exigence
@@ -1747,6 +1845,9 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
         easy_drag=False,    # pas de drag « corps entier » : drag applicatif ciblé
     )
     api.set_windows(window_plateau, window_chevalet)
+    # Fermeture croisée par la croix (issue #94) : fermer nativement l'une des deux
+    # fenêtres détruit l'autre et quitte l'application (plus de fenêtre orpheline).
+    api.installer_fermeture_croisee()
     # Repositionnement après démarrage de la boucle (issue #91 point 1) : c'est
     # seulement une fois ``webview.start()`` en cours que ``webview.screens`` renvoie
     # des dimensions fiables sous WebKitGTK.

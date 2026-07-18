@@ -1,5 +1,5 @@
 /* chevalet.css — fenêtre flottante du chevalet (issue #90).
-   Fenêtre pywebview séparée, frameless + on_top + ~600×340px, non
+   Fenêtre pywebview séparée, frameless + on_top + ~880×300px (issue #94), non
    redimensionnable. On soigne une mise en page compacte : barre de déplacement
    en haut, puis chevalet + actions + brouillon. Les briques partagées (tuiles,
    cases de chevalet/brouillon, boutons, modales) viennent de commun.css. */
@@ -231,16 +231,23 @@ body {
 /* Mode « attente d'un tour d'ordinateur »                                      */
 /* --------------------------------------------------------------------------- */
 /* Message d'attente pendant le tour d'un ordinateur (issue #91 point 5, revu
-   issue #92). Le corps est ancré en HAUT dans les deux cas : en tour humain, le
-   contenu (en-tête + réflexion + actions) occupe ~230 px puis laisse le tapis vert
-   apparaître dessous ; on donne donc ici à la zone d'attente une hauteur
-   ÉQUIVALENTE (min-height, mesurée), plutôt que `flex: 1` qui la faisait gonfler
-   jusqu'en bas et donnait l'impression d'une fenêtre plus grande/vide au tour IA.
-   Résultat : même empreinte verticale, même silhouette entre les deux tours (seul
-   le contenu change), sans étirement disgracieux. */
+   issue #92, re-mesuré issue #94). Le corps est ancré en HAUT dans les deux cas :
+   en tour humain, le contenu (en-tête + réflexion + actions) occupe une empreinte
+   donnée puis laisse le tapis vert apparaître dessous ; on donne donc ici à la zone
+   d'attente une hauteur ÉQUIVALENTE (min-height, mesurée), plutôt que `flex: 1` qui
+   la faisait gonfler jusqu'en bas et donnait l'impression d'une fenêtre plus
+   grande/vide au tour IA. Résultat : même empreinte verticale, même silhouette
+   entre les deux tours (seul le contenu change), sans étirement disgracieux.
+
+   Valeur re-mesurée (issue #94) : la calibration de #92 (230 px) avait été faite
+   contre une fenêtre mal dimensionnée par le bug Wayland (#93) et jamais vérifiée
+   en conditions réelles. Rendu dans la fenêtre à sa taille réelle, le bas du
+   contenu tombait à 285 px au tour IA contre 276 px au tour humain (9 px d'écart
+   visible). On abaisse donc min-height à 221 px pour que le bas de la zone
+   d'attente coïncide avec celui de la zone interactive → silhouette identique. */
 .zone-attente-ia {
     flex: 0 0 auto;
-    min-height: 230px;   /* ≈ empreinte de la zone interactive du tour humain */
+    min-height: 221px;   /* empreinte de la zone interactive du tour humain (mesurée #94) */
     display: flex;
     flex-direction: column;
     align-items: center;

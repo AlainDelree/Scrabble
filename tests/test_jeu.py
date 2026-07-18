@@ -1459,6 +1459,96 @@ class TestApiJeuRetourMenu:
         assert api._retour_menu is False
 
 
+class _FenetreFermable:
+    """Fenêtre factice avec un vrai ``events.closing`` pywebview (issue #94).
+
+    Reproduit fidèlement le mécanisme testé : ``events.closing`` est un
+    ``webview.event.Event`` réel (donc ``+=`` et ``set()`` se comportent comme en
+    production, y compris le passage de la fenêtre émettrice au handler). Et,
+    comme le backend GTK où ``destroy()`` repasse par ``close_window`` et
+    re-déclenche ``closing``, notre ``destroy()`` **re-émet** l'événement : c'est
+    exactement le scénario que le garde-fou anti-boucle doit neutraliser.
+    """
+
+    def __init__(self, nom: str) -> None:
+        from webview.event import Event
+
+        self.nom = nom
+        self.detruite = False
+        self.events = type("_Ev", (), {})()
+        self.events.closing = Event(self, True)
+
+    def destroy(self) -> None:
+        self.detruite = True
+        # Comme GTK : la destruction programmatique repasse par ``closing``.
+        self.events.closing.set()
+
+
+def _api_deux_fenetres_fermables() -> tuple[ApiJeu, _FenetreFermable, _FenetreFermable]:
+    api = ApiJeu(_partie_simple(), id_partie=3)
+    plateau, chevalet = _FenetreFermable("plateau"), _FenetreFermable("chevalet")
+    api.set_windows(plateau, chevalet)
+    api.installer_fermeture_croisee()
+    return api, plateau, chevalet
+
+
+class TestFermetureCroisee:
+    """Fermeture native (croix ✕) de l'une des deux fenêtres — issue #94.
+
+    Fermer nativement une fenêtre doit détruire l'autre (plus d'orpheline) et
+    **quitter** l'application (contrairement à « Retour au menu » qui rouvre
+    l'accueil) : ``_retour_menu`` reste donc ``False``.
+    """
+
+    def test_fermer_plateau_detruit_le_chevalet(self):
+        api, plateau, chevalet = _api_deux_fenetres_fermables()
+        # Simule la croix sur la fenêtre plateau (GTK émet ``closing``).
+        plateau.events.closing.set()
+        assert chevalet.detruite is True
+        assert api._fermeture_en_cours is True
+        # Fermeture par la croix ≠ retour au menu : on ne rouvre pas l'accueil.
+        assert api._retour_menu is False
+
+    def test_fermer_chevalet_detruit_le_plateau(self):
+        api, plateau, chevalet = _api_deux_fenetres_fermables()
+        chevalet.events.closing.set()
+        assert plateau.detruite is True
+        assert api._retour_menu is False
+
+    def test_pas_de_boucle_infinie(self):
+        # ``destroy()`` de la fenêtre jumelle re-émet ``closing`` (comme GTK) : le
+        # garde-fou doit empêcher de re-détruire la première fenêtre en retour.
+        api, plateau, chevalet = _api_deux_fenetres_fermables()
+        plateau.events.closing.set()  # ne doit ni boucler ni lever
+        # Le chevalet est détruit une fois ; le plateau n'est pas re-détruit par le
+        # handler (il se ferme de lui-même côté backend, pas via ``destroy`` ici).
+        assert chevalet.detruite is True
+        assert plateau.detruite is False
+
+    def test_installer_tolere_une_fenetre_sans_events(self):
+        # Fenêtre factice sans attribut ``events`` (comme les tests historiques) :
+        # l'installation ne doit rien lever.
+        api = ApiJeu(_partie_simple(), id_partie=None)
+
+        class _Nue:
+            def destroy(self):  # pragma: no cover - jamais appelée ici
+                pass
+
+        api.set_window(_Nue())
+        api.installer_fermeture_croisee()  # ne doit pas lever
+
+    def test_retour_menu_reste_prioritaire(self):
+        # « Retour au menu » détruit les deux fenêtres ET rouvre l'accueil : le
+        # garde-fou anti-boucle ne doit pas empêcher ``_retour_menu`` de rester vrai
+        # malgré les ``closing`` re-émis par les ``destroy()``.
+        api, plateau, chevalet = _api_deux_fenetres_fermables()
+        resultat = api.retour_menu()
+        assert resultat["succes"] is True
+        assert plateau.detruite is True
+        assert chevalet.detruite is True
+        assert api._retour_menu is True
+
+
 # --------------------------------------------------------------------------- #
 # Suite #90 : séparation plateau/chevalet en deux fenêtres. État de pose
 # centralisé côté Python (_selection / _en_attente) et diffusion vers la bonne
@@ -2114,6 +2204,16 @@ class TestDimensionsChevalet:
         # Deux blocs côte à côte (7 + 9 cases de 40 px + marges) : garde-fou pour
         # éviter une régression qui rétrécirait la fenêtre sous le seuil utile.
         assert CHEVALET_LARGEUR >= 830
+
+    def test_hauteur_suffisante_pour_le_contenu(self):
+        # Garde-fou hauteur (issue #94) : le contenu le plus haut de la fenêtre
+        # (tour humain, chevalet révélé + brouillon + actions + message de statut)
+        # descend à ~280 px, mesuré dans la fenêtre à sa taille réelle (harnais
+        # build/mesure_chevalet.py). La hauteur doit rester au-dessus pour ne pas
+        # rogner le contenu ; on garde une petite marge. Empêche autant une
+        # régression qui rognerait le bas (trop bas) qu'un retour au vide de #92
+        # (trop haut, ~400 px).
+        assert 280 <= CHEVALET_HAUTEUR <= 340
 
 
 class _FenetreShown:
