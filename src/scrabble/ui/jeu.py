@@ -857,12 +857,7 @@ class ApiJeu:
         self._joker_demande: dict[str, Any] | None = None
         # Évite de journaliser plusieurs fois la même fin de partie (issue #66).
         self._fin_journalisee = False
-        # Évite d'inonder le log : la ré-affirmation d'``on_top`` (issue #91 point 3,
-        # tracée pour l'issue #92) a lieu à chaque interaction. On ne journalise donc
-        # que la PREMIÈRE réussite (preuve que le mécanisme s'exécute), puis les
-        # seuls échecs éventuels.
-        self._zorder_journalise = False
-        # Même logique anti-flood pour le glisser-déposer applicatif du chevalet
+        # Anti-flood pour le glisser-déposer applicatif du chevalet
         # (issue #91 point 2, tracé pour l'issue #92) : on journalise le début de
         # chaque drag et son PREMIER déplacement effectif (preuve que les événements
         # pointeur JS atteignent bien Python), pas chacune des frames suivantes.
@@ -1114,13 +1109,11 @@ class ApiJeu:
         self._pousser(
             self._window_chevalet, "appliquerEtatChevalet", self._etat_chevalet()
         )
-        # Z-order (issue #91, point 3) : toute action de jeu passe par une des deux
-        # fenêtres. On en profite pour ré-affirmer que le chevalet reste au-dessus
-        # du plateau — sous certains gestionnaires de fenêtres Linux (WebKitGTK),
-        # ``on_top`` (``set_keep_above``) n'est qu'un indice que le plateau peut
-        # contourner en prenant le focus. Re-poser l'indicateur après chaque
-        # interaction est le repositionnement applicatif recommandé (issue #91).
-        self._remonter_chevalet()
+        # Z-order : plus de ré-affirmation applicative d'``on_top`` ici (issue #105).
+        # Le chevalet est désormais lié au plateau par une relation transiente
+        # (``set_transient_for``, cf. :func:`_lier_chevalet_au_plateau`), honorée
+        # une fois pour toutes par le gestionnaire de fenêtres — inutile de la
+        # re-poser après chaque interaction.
 
     @staticmethod
     def _pousser(
@@ -1137,36 +1130,6 @@ class ApiJeu:
             window.evaluate_js(script)
         except Exception as e:  # noqa: BLE001 - une vue absente ne bloque pas le jeu
             journal.erreur("Jeu : échec de la diffusion d'un état à une fenêtre.", e)
-
-    def _remonter_chevalet(self) -> None:
-        """Ré-affirme que la fenêtre chevalet reste au premier plan (issue #91).
-
-        Point de vigilance #3 de l'issue #91 : sous WebKitGTK (Linux), ``on_top``
-        se traduit par ``Gtk.Window.set_keep_above(True)``, un simple **indice** de
-        pile que le gestionnaire de fenêtres peut contourner — la fenêtre plateau
-        peut alors repasser au-dessus du chevalet en prenant le focus. On re-pose
-        donc l'indicateur ``on_top`` après chaque interaction (appelé par
-        :meth:`_diffuser`). C'est délibérément non intrusif (aucun vol de focus).
-
-        Cause racine confirmée (issue #93) : sous Wayland natif, ``set_keep_above``
-        n'est **jamais** honoré par Mutter (« always on top » applicatif ignoré par
-        conception), ce qui expliquait l'échec constant du point 3. La bascule sur
-        XWayland (``GDK_BACKEND=x11``, cf. :mod:`scrabble.ui.backend_graphique`)
-        restaure un client X11 pour lequel Mutter respecte
-        ``_NET_WM_STATE_ABOVE`` : la ré-affirmation ci-dessous reprend alors effet.
-        """
-        if self._window_chevalet is None:
-            return
-        try:
-            self._window_chevalet.on_top = True
-            if not self._zorder_journalise:
-                self._zorder_journalise = True
-                journal.info(
-                    "Jeu : ré-affirmation on_top du chevalet effectuée (z-order "
-                    "maintenu ; premières trace, puis silencieux sauf échec)."
-                )
-        except Exception as e:  # noqa: BLE001 - un z-order récalcitrant ne bloque pas le jeu
-            journal.erreur("Jeu : ré-affirmation on_top du chevalet impossible.", e)
 
     def debut_deplacement_chevalet(self) -> dict[str, Any]:
         """Position absolue actuelle de la fenêtre chevalet, au début d'un drag JS.
@@ -1897,8 +1860,10 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
       (le CSS contraint désormais le plateau par la hauteur disponible pour éviter
       tout défilement). Elle porte le plateau, les panneaux joueurs, la barre du
       sac/historique, « Faire jouer l'ordinateur » et la vérification dictionnaire.
-    * Fenêtre **chevalet** : flottante ``frameless=True``, ``on_top=True`` (toujours
-      au-dessus), ``resizable=False`` et ``easy_drag=False``. Le déplacement passe
+    * Fenêtre **chevalet** : flottante ``frameless=True``, ``resizable=False`` et
+      ``easy_drag=False``. Elle n'est plus « toujours au-dessus » globalement
+      (``on_top`` retiré, issue #105) : elle est liée au plateau par une relation
+      transiente (:func:`_lier_chevalet_au_plateau`). Le déplacement passe
       par un glisser-déposer **applicatif** sur la barre du haut (``.barre-drag`` →
       :meth:`ApiJeu.deplacer_chevalet`) : sous WebKitGTK, ``.pywebview-drag-region``
       n'est pas géré (le backend GTK ne câble le drag d'une fenêtre ``frameless``
@@ -1934,7 +1899,10 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
         x=x_chev,
         y=y_chev,
         frameless=True,     # fenêtre sans cadre ni barre de titre
-        on_top=True,        # toujours au-dessus du plateau
+        # Plus d'``on_top`` global (issue #105) : le chevalet est lié au plateau
+        # par une relation transiente (:func:`_lier_chevalet_au_plateau`), posée
+        # une fois les deux fenêtres affichées — il reste au-dessus du plateau
+        # sans être forcé au-dessus de toutes les applications du système.
         resizable=False,    # non redimensionnable par erreur
         easy_drag=False,    # pas de drag « corps entier » : drag applicatif ciblé
     )
@@ -1953,7 +1921,8 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
     # (la fenêtre n'est donc pas encore mappée), et pour le plateau sans ``width``/
     # ``height`` la taille initiale non maximisée est le défaut ~800×600. Sous XWayland
     # (backend forcé #93), cette maximisation pré-mappage est un no-op → fenêtre petite.
-    # La création du chevalet juste après (frameless + on_top + ``set_keep_above``) est
+    # La création du chevalet juste après (frameless, lié au plateau par transient
+    # depuis #105) est
     # INDÉPENDANTE : rien dans le backend ne lie l'état maximisé du plateau à la seconde
     # fenêtre. Le correctif (:func:`_maximiser_plateau`) est donc appliqué ici pour les
     # DEUX chemins de lancement — autonome (``python -m scrabble.ui.jeu``) et normal
@@ -1977,9 +1946,83 @@ def _finaliser_fenetres(
     2. **Repositionnement du chevalet** (:func:`_repositionner_chevalet`) : la
        position bas-centre n'est calculable qu'une fois ``webview.screens`` fiable
        (issue #91 point 1).
+    3. **Liaison chevalet↔plateau** (:func:`_lier_chevalet_au_plateau`) : le
+       chevalet est déclaré fenêtre transiente du plateau (``set_transient_for``,
+       issue #105), ce qui remplace l'ancien « always-on-top » global.
     """
     _maximiser_plateau(window_plateau)
     _repositionner_chevalet(window_chevalet)
+    _lier_chevalet_au_plateau(window_plateau, window_chevalet)
+
+
+def _lier_chevalet_au_plateau(
+    window_plateau: "webview.Window", window_chevalet: "webview.Window"
+) -> None:
+    """Lie la fenêtre chevalet au plateau via ``set_transient_for`` (issue #105).
+
+    Remplace l'ancien « always-on-top » global (``on_top`` / ``set_keep_above``,
+    issues #91/#93, ré-affirmé après chaque interaction) par une relation
+    **transiente** : le chevalet est déclaré fenêtre transitoire (au sens des
+    boîtes de dialogue) du plateau. Le gestionnaire de fenêtres empile alors les
+    deux ensemble — le chevalet reste au-dessus du plateau, mais passe **sous**
+    une autre application lorsque celle-ci prend le focus (contrairement à
+    ``on_top``, qui le forçait au-dessus de tout le système).
+
+    Les deux fenêtres doivent être affichées (``shown``) avant l'appel : sous GTK,
+    ``set_transient_for`` opère sur les ``Gtk.Window`` natives, disponibles une
+    fois les fenêtres mappées. On réutilise donc :func:`_attendre_fenetre_affichee`
+    (déjà en place pour la maximisation/le repositionnement). En renfort optionnel
+    (évoqué par #103), on pose aussi l'indice ``Gdk.WindowTypeHint.UTILITY``, qui
+    invite le WM à traiter le chevalet comme une fenêtre utilitaire et non comme
+    une fenêtre principale (importé comme dans :func:`_zone_travail_ecran`).
+
+    Tolère les fenêtres factices des tests, dépourvues d'attribut ``native``
+    (garde ``getattr``) : la liaison est alors simplement ignorée. Toute erreur est
+    journalisée sans interrompre le jeu.
+
+    Point d'incertitude (issue #103/#105) : la fiabilité réelle du ré-empilement
+    sous Mutter/XWayland ne peut être garantie qu'après une vérification visuelle —
+    ce correctif n'est pas à considérer comme définitivement validé tant qu'Alain
+    n'a pas confirmé en pratique que le chevalet reste bien au-dessus du plateau
+    (et seulement du plateau) après ce changement.
+    """
+    _attendre_fenetre_affichee(window_plateau, "plateau")
+    _attendre_fenetre_affichee(window_chevalet, "chevalet")
+
+    natif_plateau = getattr(window_plateau, "native", None)
+    natif_chevalet = getattr(window_chevalet, "native", None)
+    if natif_plateau is None or natif_chevalet is None:
+        journal.info(
+            "Jeu : liaison chevalet↔plateau ignorée — fenêtre native indisponible "
+            "(backend non-GTK ou fenêtre factice de test)."
+        )
+        return
+
+    try:
+        natif_chevalet.set_transient_for(natif_plateau)
+        journal.info(
+            "Jeu : chevalet lié au plateau via set_transient_for (issue #105) ; "
+            "fiabilité du ré-empilement à confirmer visuellement."
+        )
+    except Exception as e:  # noqa: BLE001 - une liaison ratée ne bloque pas le jeu
+        journal.erreur("Jeu : liaison transiente chevalet↔plateau impossible.", e)
+
+    # Renfort optionnel (#103) : indice UTILITY au gestionnaire de fenêtres. GDK est
+    # importé à la demande, comme dans _zone_travail_ecran ; son absence (tests,
+    # backend non-GTK) n'est pas bloquante.
+    try:
+        import gi
+
+        gi.require_version("Gdk", "3.0")
+        from gi.repository import Gdk
+
+        natif_chevalet.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        journal.info("Jeu : indice type_hint UTILITY posé sur le chevalet (issue #105).")
+    except Exception as e:  # noqa: BLE001 - renfort optionnel : l'absence de GDK n'est pas bloquante
+        journal.info(
+            f"Jeu : indice type_hint UTILITY non posé sur le chevalet ({e!r}) — "
+            "renfort optionnel ignoré."
+        )
 
 
 def _zone_travail_ecran() -> tuple[int, int, int, int] | None:

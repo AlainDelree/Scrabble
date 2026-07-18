@@ -2222,29 +2222,15 @@ class TestPersistanceEchecResteVisible:
 
 
 class _FenetreDeplacable:
-    """Fenêtre pywebview factice avec position (x, y), ``move`` et ``on_top``.
+    """Fenêtre pywebview factice avec position (x, y) et ``move`` (issue #91).
 
-    Sert aux tests du déplacement applicatif et du maintien z-order de la fenêtre
-    chevalet (issue #91). ``move`` met à jour la position lue par ``x``/``y``, comme
-    le fait réellement pywebview. ``on_top`` est une propriété dont l'affectation
-    est comptée (``on_top_reassert``) pour vérifier la ré-affirmation par
-    ``_diffuser``.
+    Sert aux tests du déplacement applicatif de la fenêtre chevalet. ``move`` met à
+    jour la position lue par ``x``/``y``, comme le fait réellement pywebview.
     """
 
     def __init__(self, x: int = 0, y: int = 0) -> None:
         self.x = x
         self.y = y
-        self._on_top = True
-        self.on_top_reassert = 0
-
-    @property
-    def on_top(self) -> bool:
-        return self._on_top
-
-    @on_top.setter
-    def on_top(self, valeur: bool) -> None:
-        self._on_top = valeur
-        self.on_top_reassert += 1
 
     def evaluate_js(self, script: str) -> None:  # pour _diffuser
         pass
@@ -2292,25 +2278,55 @@ class TestDeplacementChevalet:
         assert api.deplacer_chevalet(1, 2)["succes"] is False
 
 
-class TestMaintienZOrderChevalet:
-    """Ré-affirmation d'``on_top`` après chaque interaction (issue #91 point 3)."""
+class _NatifEspion:
+    """Faux ``Gtk.Window`` : espionne ``set_transient_for`` / ``set_type_hint``."""
 
-    def test_diffuser_reaffirme_on_top_du_chevalet(self):
-        joueurs = [Joueur(nom="Alice", humain=True)]
-        partie = Partie(joueurs, _DicoFactice(), graine=1)
-        partie.joueurs[0].chevalet = list("CHATSER")
-        api = ApiJeu(partie, None)
-        fen = _FenetreDeplacable()
-        api.set_windows(_FenetreEspionne(), fen)
-        avant = fen.on_top_reassert
-        api.selectionner_lettre(0)  # déclenche _diffuser
-        assert fen.on_top is True
-        assert fen.on_top_reassert > avant
+    def __init__(self) -> None:
+        self.transient_for = "NON-APPELE"
+        self.type_hints: list = []
 
-    def test_remonter_sans_fenetre_ne_plante_pas(self):
-        joueurs = [Joueur(nom="Alice", humain=True)]
-        api = ApiJeu(Partie(joueurs, _DicoFactice(), graine=1), None)
-        api._remonter_chevalet()  # ne doit rien lever
+    def set_transient_for(self, parent) -> None:
+        self.transient_for = parent
+
+    def set_type_hint(self, hint) -> None:
+        self.type_hints.append(hint)
+
+
+class _FenetreNative:
+    """Fenêtre factice dotée (ou non) d'un faux attribut ``.native`` — issue #105."""
+
+    def __init__(self, native=None) -> None:
+        if native is not None:
+            self.native = native
+
+
+class TestLierChevaletAuPlateau:
+    """Liaison transiente chevalet↔plateau via ``set_transient_for`` (issue #105)."""
+
+    def test_appelle_set_transient_for_avec_le_plateau_natif(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        # Neutralise l'attente de ``shown`` (fenêtres factices sans events).
+        monkeypatch.setattr(mod, "_attendre_fenetre_affichee", lambda *a, **k: None)
+        natif_plateau = _NatifEspion()
+        natif_chevalet = _NatifEspion()
+        plateau = _FenetreNative(natif_plateau)
+        chevalet = _FenetreNative(natif_chevalet)
+
+        mod._lier_chevalet_au_plateau(plateau, chevalet)
+
+        # Le chevalet est déclaré transient de la fenêtre native du plateau.
+        assert natif_chevalet.transient_for is natif_plateau
+
+    def test_tolere_une_fenetre_sans_native(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        monkeypatch.setattr(mod, "_attendre_fenetre_affichee", lambda *a, **k: None)
+        plateau = _FenetreNative()  # aucune ``.native``
+        chevalet = _FenetreNative(_NatifEspion())
+
+        # Ne doit pas lever : la liaison est simplement ignorée.
+        mod._lier_chevalet_au_plateau(plateau, chevalet)
 
 
 class TestDimensionsChevalet:
@@ -2554,8 +2570,17 @@ class TestFinaliserFenetres:
         monkeypatch.setattr(
             mod, "_repositionner_chevalet", lambda w: appels.append(("chevalet", w))
         )
+        monkeypatch.setattr(
+            mod,
+            "_lier_chevalet_au_plateau",
+            lambda p, c: appels.append(("liaison", p, c)),
+        )
         mod._finaliser_fenetres("PLAT", "CHEV")
-        assert appels == [("plateau", "PLAT"), ("chevalet", "CHEV")]
+        assert appels == [
+            ("plateau", "PLAT"),
+            ("chevalet", "CHEV"),
+            ("liaison", "PLAT", "CHEV"),
+        ]
 
 
 class TestZoneTravailEcran:
