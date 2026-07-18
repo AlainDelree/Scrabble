@@ -1,16 +1,20 @@
 /**
- * chevalet.js — fenêtre flottante du chevalet (issue #90).
+ * chevalet.js — fenêtre flottante du chevalet (issue #90, fusion #100).
  *
- * Cette fenêtre est la vue « privée » : elle affiche les lettres du joueur
- * humain courant, la zone de brouillon (réflexion) et les contrôles de tour
- * (Annuler / Vérifier et calculer / Jouer, + « remettre ses lettres »). Le clic
- * sur une lettre la sélectionne côté Python (source de vérité, issue #90) ; la
- * pose effective se fait au clic sur une case de la fenêtre PLATEAU. L'état est
- * poussé par Python via ``window.appliquerEtatChevalet`` après chaque mutation.
+ * Cette fenêtre est la vue « privée » du joueur humain de référence : elle
+ * affiche un panneau unique de ses lettres, toujours visible et réarrangeable
+ * librement (y compris hors tour), ainsi que les contrôles de tour (Annuler /
+ * Vérifier et calculer / Jouer, + « remettre ses lettres »). Le clic sur une
+ * lettre la sélectionne côté Python (source de vérité) ; la pose effective se
+ * fait au clic sur une case de la fenêtre PLATEAU. Un second clic sur une autre
+ * case du panneau réarrange localement les lettres (réflexion), sans effet sur
+ * la partie. L'état est poussé par Python via ``window.appliquerEtatChevalet``
+ * après chaque mutation.
  *
- * Confidentialité (issues #33/#35) : seules les lettres du joueur humain courant
- * transitent jusqu'ici ; jamais le chevalet d'un ordinateur. La bascule
- * « voir / cacher mes lettres » reste locale (parties à ≥ 2 humains).
+ * Confidentialité (issues #33/#35, #99) : seules les lettres du joueur humain
+ * de référence transitent jusqu'ici ; jamais le chevalet d'un ordinateur ni d'un
+ * autre humain. Depuis la fusion #100, il n'y a plus de bascule « voir/cacher »
+ * ni de boîte d'attente : le panneau du joueur de référence est toujours exposé.
  */
 document.addEventListener('DOMContentLoaded', async () => {
     await window.Commun.pretPywebview();
@@ -19,23 +23,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Éléments du DOM ---
     const barreDrag = document.getElementById('barre-drag');
-    const chevaletEl = document.getElementById('chevalet');
     const chevaletNom = document.getElementById('chevalet-nom');
-    const btnVisibilite = document.getElementById('btn-visibilite');
-    const chevaletEntete = document.querySelector('.chevalet-entete');
-    const zoneReflexion = document.querySelector('.zone-reflexion');
-    const chevaletAide = document.getElementById('chevalet-aide');
+    const badgeHorsTour = document.getElementById('badge-hors-tour');
 
-    const zoneAttenteIA = document.getElementById('zone-attente-ia');
-    const attenteMessageIA = document.getElementById('attente-ia-message');
-    const zoneInteractive = document.getElementById('zone-interactive');
-    const chevaletFenetre = document.querySelector('.chevalet-fenetre');
-    const chevaletPied = document.querySelector('.chevalet-pied');
-
-    const blocBrouillon = document.getElementById('bloc-brouillon');
-    const brouillonEl = document.getElementById('brouillon');
-    const btnAideBrouillon = document.getElementById('btn-aide-brouillon');
-    const aideBrouillonPopover = document.getElementById('aide-brouillon-popover');
+    const panneauEl = document.getElementById('panneau');
+    const btnAidePanneau = document.getElementById('btn-aide-panneau');
+    const aidePanneauPopover = document.getElementById('aide-panneau-popover');
 
     const zoneJeu = document.getElementById('zone-jeu');
     const btnValider = document.getElementById('btn-valider');
@@ -60,98 +53,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- État courant côté vue ---
     let etat = null;                 // dernier payload chevalet reçu de Python
-    let chevaletVisible = false;
-    let chevaletTjrsRevele = false;  // vrai si ≤ 1 humain (rien à cacher)
-    let dernierIndexCourant = null;  // pour détecter un changement de tour
-    let brouillonSignature = null;   // signature des lettres pour (re)bâtir le brouillon
-    let brouillonLettres = [];       // {lettre, valeur, joker} + 2 vides (null)
-    let brouillonSelection = null;
+    let dernierMonTour = null;       // pour détecter un changement de tour (issue #100)
+    let panneauSignature = null;     // signature des lettres pour (re)bâtir le panneau
+    let panneauLettres = [];         // {lettre, valeur, joker, indexOrigine} + 2 vides (null)
+    let panneauSelection = null;     // index (dans panneauLettres) de la case sélectionnée
     let jokerModaleOuverte = false;  // évite de rouvrir la modale à chaque push
-    // Plus grande hauteur RÉELLEMENT rendue observée pour la zone interactive du
-    // tour humain (issue #95 point A), dans le moteur courant (WebKitGTK en prod).
-    // On mémorise le maximum vu (le tour humain le plus « chargé » : chevalet révélé
-    // + brouillon + actions) pour caler dessus la zone d'attente du tour IA, afin
-    // que les deux tours occupent la même empreinte verticale quel que soit le
-    // moteur — sans dépendre d'une constante de pixels mesurée à l'avance dans
-    // Chromium (qui divergeait de WebKitGTK, cf. #92/#94). `null` tant qu'aucun tour
-    // humain n'a encore été rendu (repli CSS `.zone-attente-ia { min-height }`).
-    let hauteurInteractiveMax = null;
 
     // ------------------------------------------------------------------ //
     // Rendu
     // ------------------------------------------------------------------ //
 
-    function estTourHumain() {
-        return Boolean(etat && !etat.terminee && etat.tour_humain);
-    }
-
-    /** Mémorise la hauteur réellement rendue de la zone interactive (issue #95 A).
-     *
-     * L'arithmétique (cumul du maximum, mesures nulles ignorées) est déléguée à
-     * `window.HauteurAttente` (hauteur_attente.js), pure et testée à part (issue #96).
-     */
-    function mesurerZoneInteractive() {
-        if (!zoneInteractive) {
-            return;
-        }
-        // getBoundingClientRect force un reflow synchrone : la valeur lue reflète le
-        // rendu courant (après application des états hidden par majModeTour/…).
-        const h = zoneInteractive.getBoundingClientRect().height;
-        hauteurInteractiveMax = window.HauteurAttente.cumulerHauteur(
-            hauteurInteractiveMax, h);
-        // Trace de diagnostic (issue #97 point A) : objectiver la valeur réellement
-        // mesurée au moteur courant vs le maximum cumulé, pour lever le doute sur une
-        // éventuelle mesure aberrante figée (visible dans la console WebKitGTK).
-        console.log(
-            '[chevalet] mesure zone interactive — h=' + Math.round(h)
-            + 'px, max cumulé=' + Math.round(hauteurInteractiveMax) + 'px.');
-    }
-
-    /** Hauteur réellement disponible dans le corps de la fenêtre pour la zone d'attente.
-     *
-     * La fenêtre chevalet est de taille FIXE (880×300, `resizable=False`, issue #97
-     * point B). On calcule l'espace vertical utile du corps `.chevalet-fenetre`
-     * (sa hauteur cliente, hors padding et hors pied de confidentialité, seul autre
-     * enfant présent au tour IA) pour plafonner la `min-height` appliquée à la zone
-     * d'attente : elle ne doit jamais pousser le contenu au-delà de la fenêtre fixe
-     * (débordement visuel recouvrant le plateau). Renvoie `null` si non mesurable.
-     */
-    function hauteurDisponibleAttente() {
-        if (!chevaletFenetre) {
-            return null;
-        }
-        const style = window.getComputedStyle(chevaletFenetre);
-        const padV = (parseFloat(style.paddingTop) || 0)
-            + (parseFloat(style.paddingBottom) || 0);
-        // Pied de confidentialité : présent mais masqué au tour IA (empreinte ≈ 0).
-        // On le retranche malgré tout pour rester exact si son gabarit évoluait.
-        let autres = 0;
-        if (chevaletPied) {
-            autres += chevaletPied.getBoundingClientRect().height;
-        }
-        // clientHeight = hauteur intérieure (padding inclus), fixée par la fenêtre :
-        // une barre de défilement verticale éventuelle n'en retranche pas la hauteur.
-        const dispo = chevaletFenetre.clientHeight - padV - autres;
-        return dispo > 0 ? dispo : null;
-    }
-
-    /** Cale la hauteur de la zone d'attente IA sur la zone interactive mesurée,
-     *  plafonnée à l'espace réellement disponible dans la fenêtre fixe (issue #97). */
-    function synchroniserHauteurAttente() {
-        const dispo = hauteurDisponibleAttente();
-        const minHeight = window.HauteurAttente.minHeightAttente(
-            hauteurInteractiveMax, dispo);
-        if (minHeight !== null) {
-            zoneAttenteIA.style.minHeight = minHeight;
-        }
-        // Trace de diagnostic (issue #97) : max mesuré vs plafond disponible vs valeur
-        // effectivement appliquée — pour confirmer que le plafond joue bien son rôle.
-        console.log(
-            '[chevalet] synchro hauteur attente — max mesuré='
-            + (hauteurInteractiveMax === null ? 'nul'
-                : Math.round(hauteurInteractiveMax) + 'px')
-            + ', dispo=' + (dispo === null ? 'nul' : Math.round(dispo) + 'px')
-            + ', appliqué=' + (minHeight === null ? 'repli CSS' : minHeight) + '.');
+    /** Vrai si c'est le tour du joueur de référence (seul cas où l'on peut poser). */
+    function monTour() {
+        return Boolean(etat && etat.mon_tour);
     }
 
     function afficherMessage(texte, type) {
@@ -159,190 +73,122 @@ document.addEventListener('DOMContentLoaded', async () => {
         messageCoup.className = 'message-coup' + (texte ? ' ' + (type || 'info') : '');
     }
 
-    /** Bascule interactif / attente (tour d'un ordinateur). */
-    function majModeTour() {
-        const attenteIA = Boolean(etat && !etat.terminee && !etat.tour_humain);
-        zoneAttenteIA.hidden = !attenteIA;
-        if (attenteIA) {
-            attenteMessageIA.textContent = `En attente du coup de ${etat.nom}…`;
+    /** Indicateur discret « hors tour » (issue #100) : le panneau reste manipulable,
+     *  on signale seulement que la pose est indisponible tant que ce n'est pas au
+     *  joueur de référence de jouer. */
+    function majBadgeHorsTour() {
+        if (!badgeHorsTour) {
+            return;
         }
-        if (chevaletEntete) {
-            chevaletEntete.hidden = attenteIA;
-        }
-        if (zoneReflexion) {
-            zoneReflexion.hidden = attenteIA;
-        }
-        if (chevaletAide) {
-            chevaletAide.hidden = attenteIA || chevaletTjrsRevele;
-        }
-        if (attenteIA) {
-            zoneJeu.hidden = true;
+        const horsTour = Boolean(etat) && !monTour();
+        badgeHorsTour.hidden = !horsTour;
+        if (horsTour) {
+            badgeHorsTour.textContent = (etat && etat.terminee)
+                ? '🏁 Partie terminée — vous pouvez encore réarranger vos lettres.'
+                : '⏳ Ce n\'est pas votre tour — vous pouvez réarranger vos lettres.';
         }
     }
 
-    function rendreChevaletMasque(nbLettres) {
-        chevaletEl.innerHTML = '';
-        if (!nbLettres) {
-            chevaletEl.innerHTML = '<span class="chevalet-vide">Chevalet vide.</span>';
-            return;
-        }
-        for (let i = 0; i < nbLettres; i++) {
-            const c = document.createElement('div');
-            c.className = 'chevalet-case masquee';
-            c.textContent = '?';
-            chevaletEl.appendChild(c);
-        }
+    /** Ensemble des index d'origine déjà posés en attente (cases « utilisées »). */
+    function indexUtilises() {
+        return new Set((etat && etat.en_attente ? etat.en_attente : []).map((p) => p.index));
     }
 
-    function rendreChevaletRevele(lettres) {
-        chevaletEl.innerHTML = '';
-        if (!lettres.length) {
-            chevaletEl.innerHTML = '<span class="chevalet-vide">Chevalet vide.</span>';
+    function rendrePanneau() {
+        chevaletNom.textContent = etat && etat.nom ? etat.nom : '—';
+        panneauEl.innerHTML = '';
+        if (panneauLettres.length === 0) {
+            panneauEl.innerHTML = '<span class="panneau-vide">Chevalet vide.</span>';
             return;
         }
-        const utilises = new Set((etat.en_attente || []).map((p) => p.index));
-        lettres.forEach((l, index) => {
-            const c = document.createElement('div');
-            c.className = 'chevalet-case revelee' + (l.joker ? ' joker' : '');
-            if (utilises.has(index)) {
-                c.classList.add('utilisee');
-            } else if (index === etat.selection) {
-                c.classList.add('selectionnee');
-            }
-            const lettreAffichee = l.joker ? '★' : C.escapeHtml(l.lettre);
-            c.innerHTML = `${lettreAffichee}<span class="val">${l.valeur}</span>`;
-            c.dataset.index = index;
-            chevaletEl.appendChild(c);
-        });
-    }
-
-    function rendreChevalet() {
-        const courant = etat && etat.nom ? etat.nom : '—';
-        chevaletNom.textContent = courant;
-        if (!estTourHumain()) {
-            rendreChevaletMasque(0);
-            return;
-        }
-        if (chevaletVisible) {
-            btnVisibilite.textContent = '🙈 Cacher mes lettres';
-            rendreChevaletRevele(etat.lettres || []);
-        } else {
-            btnVisibilite.textContent = '👁️ Voir mes lettres';
-            rendreChevaletMasque(etat.nb_lettres || 0);
-        }
-    }
-
-    function afficherMessageBrouillon() { /* réservé si besoin futur */ }
-
-    function rendreBrouillon() {
-        const afficher = chevaletVisible && brouillonLettres.length > 0;
-        blocBrouillon.hidden = !afficher;
-        if (!afficher) {
-            brouillonSelection = null;
-            return;
-        }
-        brouillonEl.innerHTML = '';
-        brouillonLettres.forEach((l, index) => {
+        const utilises = indexUtilises();
+        panneauLettres.forEach((l, index) => {
             if (l === null) {
                 const vide = document.createElement('div');
-                vide.className = 'brouillon-case-vide';
+                vide.className = 'panneau-case-vide';
                 vide.dataset.index = index;
-                vide.title = 'Emplacement vide : cliquez d\'abord une lettre, '
-                    + 'puis ici pour l\'y déplacer. Figure aussi une lettre déjà '
-                    + 'posée sur le plateau à intégrer à la réflexion.';
-                brouillonEl.appendChild(vide);
+                vide.title = 'Emplacement libre : cliquez d\'abord une lettre, '
+                    + 'puis ici pour l\'y déplacer (réflexion, sans effet sur la partie).';
+                panneauEl.appendChild(vide);
                 return;
             }
             const c = document.createElement('div');
-            c.className = 'brouillon-case' + (l.joker ? ' joker' : '');
-            if (index === brouillonSelection) {
+            c.className = 'panneau-case' + (l.joker ? ' joker' : '');
+            if (utilises.has(l.indexOrigine)) {
+                c.classList.add('utilisee');
+            } else if (index === panneauSelection) {
                 c.classList.add('selectionnee');
             }
             const lettreAffichee = l.joker ? '★' : C.escapeHtml(l.lettre);
             c.innerHTML = `${lettreAffichee}<span class="val">${l.valeur}</span>`;
             c.dataset.index = index;
-            brouillonEl.appendChild(c);
+            panneauEl.appendChild(c);
         });
     }
 
-    function majActionsChevalet() {
-        const actif = chevaletVisible && estTourHumain() && (etat.nb_lettres || 0) > 0;
-        btnEchangerTout.hidden = !actif;
-        btnEchangerTout.disabled = false;
-    }
-
     function majControlesJeu() {
-        const jouable = chevaletVisible && estTourHumain();
-        zoneJeu.hidden = !jouable;
-        if (!jouable) {
-            return;
-        }
-        const n = (etat.en_attente || []).length;
-        btnValider.disabled = n === 0;
-        btnVerifierCoup.disabled = n === 0;
-        btnAnnuler.disabled = n === 0;
+        const jouable = monTour();
+        const n = (etat && etat.en_attente ? etat.en_attente : []).length;
+        const nbLettres = (etat && etat.nb_lettres) || 0;
+        // On DÉSACTIVE (plutôt que masquer) les actions de tour hors tour (issue #100).
+        btnValider.disabled = !jouable || n === 0;
+        btnVerifierCoup.disabled = !jouable || n === 0;
+        btnAnnuler.disabled = !jouable || n === 0;
+        btnEchangerTout.disabled = !jouable || nbLettres === 0;
     }
 
-    /** Signature des lettres du chevalet (pour ne rebâtir le brouillon qu'utile). */
+    /** Signature des lettres du chevalet (pour ne rebâtir le panneau qu'utile). */
     function signatureLettres(lettres) {
         return (lettres || []).map((l) => (l.joker ? '*' : l.lettre) + l.valeur).join(',');
     }
 
-    function reconstruireBrouillon() {
+    /** (Re)construit le panneau à partir des lettres du chevalet. Chaque lettre
+     *  garde son ``indexOrigine`` (position dans ``etat.lettres``) pour que la
+     *  sélection Python vise la bonne lettre même après un réarrangement local
+     *  (point critique du rapport #98). Deux emplacements vides sont ajoutés pour
+     *  la réflexion. */
+    function reconstruirePanneau() {
         const lettres = etat.lettres || [];
-        brouillonLettres = lettres.map((l) => ({ ...l }));
-        if (brouillonLettres.length > 0) {
-            brouillonLettres.push(null, null);
+        panneauLettres = lettres.map((l, i) => ({ ...l, indexOrigine: i }));
+        if (panneauLettres.length > 0) {
+            panneauLettres.push(null, null);
         }
-        brouillonSelection = null;
-    }
-
-    function configurerConfidentialite() {
-        chevaletTjrsRevele = (etat.nb_humains || 0) <= 1;
-        btnVisibilite.hidden = chevaletTjrsRevele;
-        if (chevaletAide) {
-            chevaletAide.hidden = chevaletTjrsRevele;
-        }
+        panneauSelection = null;
     }
 
     // ------------------------------------------------------------------ //
-    // Application d'un état poussé par Python (issue #90)
+    // Application d'un état poussé par Python (issue #90, contrat #99/#100)
     // ------------------------------------------------------------------ //
     function appliquerEtatChevalet(payload) {
         etat = payload || {};
-        configurerConfidentialite();
 
-        // Changement de tour : on remasque (confidentialité) et on repart d'un
-        // brouillon neuf. Le brouillon n'est PAS reconstruit à chaque pose (les
-        // lettres du chevalet ne changent pas en posant), seulement au changement
-        // de tour, à un échange (lettres différentes) ou à la révélation.
-        const nouveauTour = etat.index_courant !== dernierIndexCourant;
-        dernierIndexCourant = etat.index_courant;
+        // Changement de tour (issue #100) : ``index_reference`` étant constant pour
+        // toute la partie, on détecte le changement via ``mon_tour`` (bascule). Un
+        // nouveau tour repart d'un panneau neuf (réarrangement local abandonné).
+        const nouveauTour = etat.mon_tour !== dernierMonTour;
+        dernierMonTour = etat.mon_tour;
         if (nouveauTour) {
-            chevaletVisible = chevaletTjrsRevele;
-            brouillonSignature = null;
+            panneauSignature = null;
         }
 
+        // Le panneau n'est reconstruit qu'au changement de tour ou de contenu du
+        // chevalet (échange / nouveau tirage), pas à chaque pose (les lettres ne
+        // changent pas en posant).
         const sig = signatureLettres(etat.lettres);
-        if (chevaletVisible && sig !== brouillonSignature) {
-            reconstruireBrouillon();
-            brouillonSignature = sig;
+        if (sig !== panneauSignature) {
+            reconstruirePanneau();
+            panneauSignature = sig;
         }
 
-        majModeTour();
-        rendreChevalet();
-        rendreBrouillon();
-        majActionsChevalet();
+        // Toute pose/annulation remet la sélection Python à null : on aligne la
+        // sélection visuelle locale du panneau dessus (case « utilisée » ou libérée).
+        if (etat.selection === null || etat.selection === undefined) {
+            panneauSelection = null;
+        }
+
+        majBadgeHorsTour();
+        rendrePanneau();
         majControlesJeu();
-
-        // Synchronisation de l'empreinte verticale humain/IA (issue #95 point A) :
-        // au tour humain, on (re)mesure la zone interactive réellement rendue ; au
-        // tour IA, on cale la zone d'attente sur la plus grande hauteur mesurée.
-        if (estTourHumain()) {
-            mesurerZoneInteractive();
-        } else {
-            synchroniserHauteurAttente();
-        }
 
         // Demande de choix de lettre pour un joker (déclenchée par un clic sur une
         // case de la fenêtre plateau) : on ouvre la modale ici.
@@ -371,72 +217,76 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Gestionnaires d'événements
     // ------------------------------------------------------------------ //
 
-    // Bascule voir / cacher les lettres.
-    btnVisibilite.addEventListener('click', () => {
-        chevaletVisible = !chevaletVisible;
-        if (chevaletVisible) {
-            reconstruireBrouillon();
-            brouillonSignature = signatureLettres(etat.lettres);
-        }
-        rendreChevalet();
-        rendreBrouillon();
-        majActionsChevalet();
-        majControlesJeu();
-        // Révéler/cacher change la hauteur de la zone interactive : on re-mesure
-        // pour que le tour IA cale sur le tour humain le plus haut (issue #95 A).
-        if (estTourHumain()) {
-            mesurerZoneInteractive();
-        }
-    });
-
-    // Clic sur une lettre du chevalet révélé : sélection côté Python.
-    chevaletEl.addEventListener('click', async (evt) => {
-        const caseEl = evt.target.closest('.chevalet-case.revelee');
-        if (!caseEl || caseEl.classList.contains('utilisee')) {
-            return;
-        }
-        const index = Number(caseEl.dataset.index);
-        afficherMessage('');
-        await api.selectionner_lettre(index);
-    });
-
-    // Brouillon : déplacement / échange par deux clics (réflexion locale).
-    brouillonEl.addEventListener('click', (evt) => {
-        const caseEl = evt.target.closest('.brouillon-case, .brouillon-case-vide');
+    // Clic sur une case du panneau : sémantique unifiée (issue #100).
+    //  - 1er clic sur une lettre : sélection côté Python (api.selectionner_lettre)
+    //    en visant son index d'origine (robuste au réarrangement local).
+    //  - clic suivant sur une case du PLATEAU : pose (gérée par la fenêtre plateau).
+    //  - clic suivant sur une autre case du panneau : réarrangement local (déplacement
+    //    vers un vide ou échange), et annulation de la sélection Python.
+    panneauEl.addEventListener('click', async (evt) => {
+        const caseEl = evt.target.closest('.panneau-case, .panneau-case-vide');
         if (!caseEl) {
             return;
         }
         const index = Number(caseEl.dataset.index);
-        const estVide = brouillonLettres[index] === null;
-        if (brouillonSelection === null) {
-            if (!estVide) {
-                brouillonSelection = index;
+        const lettre = panneauLettres[index];
+        const estVide = lettre === null;
+        // Une lettre déjà posée (utilisée) n'est ni sélectionnable ni cible d'échange.
+        const estUtilisee = !estVide && indexUtilises().has(lettre.indexOrigine);
+
+        if (panneauSelection === null) {
+            if (estVide || estUtilisee) {
+                return;
             }
-        } else if (brouillonSelection === index) {
-            brouillonSelection = null;
-        } else if (estVide) {
-            brouillonLettres[index] = brouillonLettres[brouillonSelection];
-            brouillonLettres[brouillonSelection] = null;
-            brouillonSelection = null;
-        } else {
-            const tmp = brouillonLettres[brouillonSelection];
-            brouillonLettres[brouillonSelection] = brouillonLettres[index];
-            brouillonLettres[index] = tmp;
-            brouillonSelection = null;
+            afficherMessage('');
+            panneauSelection = index;
+            rendrePanneau();
+            await api.selectionner_lettre(lettre.indexOrigine);
+            return;
         }
-        rendreBrouillon();
+
+        if (panneauSelection === index) {
+            // Reclic sur la même lettre : désélection (locale + Python).
+            panneauSelection = null;
+            rendrePanneau();
+            await api.selectionner_lettre(null);
+            return;
+        }
+
+        if (estUtilisee) {
+            return; // on n'échange pas avec une lettre déjà posée
+        }
+
+        // Réarrangement local (réflexion) : déplacement vers un vide ou échange.
+        if (estVide) {
+            panneauLettres[index] = panneauLettres[panneauSelection];
+            panneauLettres[panneauSelection] = null;
+        } else {
+            const tmp = panneauLettres[panneauSelection];
+            panneauLettres[panneauSelection] = panneauLettres[index];
+            panneauLettres[index] = tmp;
+        }
+        panneauSelection = null;
+        rendrePanneau();
+        // Le réarrangement local invalide la sélection Python en cours.
+        await api.selectionner_lettre(null);
     });
 
     // Clic droit : renvoie la lettre vers le vide le plus proche de la fin.
-    brouillonEl.addEventListener('contextmenu', (evt) => {
-        const caseEl = evt.target.closest('.brouillon-case');
+    panneauEl.addEventListener('contextmenu', async (evt) => {
+        const caseEl = evt.target.closest('.panneau-case');
         if (!caseEl) {
             return;
         }
         evt.preventDefault();
         const origine = Number(caseEl.dataset.index);
+        const lettre = panneauLettres[origine];
+        // On ne déplace pas une lettre déjà posée.
+        if (lettre === null || indexUtilises().has(lettre.indexOrigine)) {
+            return;
+        }
         const vides = [];
-        brouillonLettres.forEach((l, i) => {
+        panneauLettres.forEach((l, i) => {
             if (l === null) {
                 vides.push(i);
             }
@@ -445,10 +295,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         const cible = Math.max(...vides);
-        brouillonLettres[cible] = brouillonLettres[origine];
-        brouillonLettres[origine] = null;
-        brouillonSelection = null;
-        rendreBrouillon();
+        panneauLettres[cible] = panneauLettres[origine];
+        panneauLettres[origine] = null;
+        const avaitSelection = panneauSelection !== null;
+        panneauSelection = null;
+        rendrePanneau();
+        if (avaitSelection) {
+            await api.selectionner_lettre(null);
+        }
     });
 
     // ------------------------------------------------------------------ //
@@ -531,8 +385,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.addEventListener('mouseup', finDrag);
     }
 
-    // Aide du brouillon (icône « i »).
-    C.configurerPopover(btnAideBrouillon, aideBrouillonPopover);
+    // Aide du panneau (icône « i »).
+    C.configurerPopover(btnAidePanneau, aidePanneauPopover);
 
     // Annuler : abandonne toute la pose en cours (via Python).
     btnAnnuler.addEventListener('click', async () => {
@@ -596,14 +450,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             res = await api.echanger_tout();
         } catch (err) {
             afficherMessage('Erreur inattendue lors de l\'échange des lettres.', 'erreur');
-            btnEchangerTout.disabled = false;
+            majControlesJeu();
             return;
         }
         if (res && res.succes) {
             afficherMessage('Toutes vos lettres ont été remises dans le sac. Tour passé.', 'succes');
         } else {
             afficherMessage((res && res.erreur) || 'Échange impossible.', 'erreur');
-            btnEchangerTout.disabled = false;
+            majControlesJeu();
         }
     });
 

@@ -21,88 +21,60 @@
         <span class="barre-drag-poignee" aria-hidden="true">⠿ déplacer</span>
     </div>
 
+    <!-- Panneau unifié (issue #100) : une seule structure de 9 cases, toujours
+         visible et réarrangeable, y compris hors tour. Plus de boîte « attente »,
+         plus de bascule « voir/cacher » : le chevalet du joueur de référence est
+         toujours exposé (garantie de confidentialité assurée côté API, issue #99). -->
     <div class="chevalet-fenetre">
-        <!-- Mode « attente » : affiché à la place de la mécanique interactive tant
-             que ce n'est pas le tour d'un joueur humain (tour d'un ordinateur). Le
-             chevalet d'un ordinateur n'est jamais exposé (issue #35). Le bouton
-             « Faire jouer l'ordinateur » vit désormais côté fenêtre plateau
-             (issue #90) : ici, seul un message d'attente. -->
-        <div id="zone-attente-ia" class="zone-attente-ia" hidden>
-            <p id="attente-ia-message" class="attente-ia-message" role="status" aria-live="polite"></p>
-            <p class="attente-ia-note">Utilisez « ▶ Faire jouer l'ordinateur » sur la fenêtre du plateau.</p>
-        </div>
-
-        <!-- Zone interactive du tour humain (en-tête + réflexion + actions de tour),
-             regroupée dans un seul conteneur (issue #95 point A). chevalet.js mesure
-             sa hauteur RÉELLEMENT rendue par le moteur courant (WebKitGTK) et l'applique
-             à `.zone-attente-ia` : les deux tours gardent ainsi la même empreinte
-             verticale quel que soit le moteur, sans dépendre d'une constante de pixels
-             mesurée à l'avance (qui divergeait entre Chromium et WebKitGTK, #92/#94). -->
-        <div id="zone-interactive" class="zone-interactive">
         <div class="chevalet-entete">
             <div class="chevalet-titre-groupe">
                 <h2>Chevalet de <span id="chevalet-nom">—</span></h2>
                 <p class="chevalet-aide-pose">
                     Cliquez une lettre puis une case vide du plateau pour la poser.
-                    Recliquez une lettre posée pour la retirer.
+                    Recliquez une lettre posée pour la retirer. Réarrangez librement
+                    vos lettres dans le panneau ci-dessous (sans effet sur la partie).
                 </p>
             </div>
-            <div class="chevalet-actions">
-                <button id="btn-visibilite" class="btn btn-primaire">
-                    👁️ Voir mes lettres
-                </button>
-            </div>
+            <!-- Indicateur discret hors tour (issue #100) : le panneau reste
+                 manipulable, seule la pose est indisponible tant que ce n'est pas
+                 au joueur de référence de jouer. -->
+            <div id="badge-hors-tour" class="badge-hors-tour" role="status"
+                 aria-live="polite" hidden></div>
         </div>
 
-        <div class="zone-reflexion">
-            <!-- Zone « À jouer » : uniquement le chevalet. Les actions de tour
-                 (Annuler/Vérifier/Jouer + « Remettre ses lettres ») sont sorties
-                 sous la zone de réflexion (issue #92 point 4) : placées DANS ce
-                 bloc, leur largeur naturelle (~645 px) forçait « À jouer » à ~667 px
-                 et écrasait le Brouillon à droite (débordement + scroll horizontal
-                 mesurés à 880 px). En pleine largeur sous les deux blocs, elles
-                 tiennent sans comprimer le Brouillon. -->
-            <div class="bloc-chevalet">
-                <div class="bloc-titre bloc-titre-jouer">
-                    🎯 À jouer <span class="bloc-titre-note">— cliquez une lettre pour la poser</span>
-                </div>
-                <div id="chevalet" class="chevalet" aria-label="Chevalet du joueur courant"></div>
+        <div class="bloc-panneau">
+            <div class="panneau-entete">
+                <span class="panneau-titre-groupe">
+                    <span class="panneau-titre bloc-titre">
+                        🎴 Mes lettres <span class="bloc-titre-note">— cliquez une lettre pour la sélectionner, réarrangez librement</span>
+                    </span><button id="btn-aide-panneau" class="btn-aide-info"
+                            aria-haspopup="dialog" aria-expanded="false"
+                            aria-label="Aide : comment utiliser le panneau"
+                            title="Aide : comment utiliser le panneau">i</button>
+                    <div id="aide-panneau-popover" class="aide-info-popover"
+                         role="dialog" aria-label="Aide du panneau" hidden>
+                        <p>
+                            Cliquez une lettre pour la sélectionner, puis une case
+                            vide du plateau pour la poser. Pour réarranger vos
+                            lettres (réflexion, sans effet sur la partie) : cliquez
+                            une lettre puis un emplacement vide pour l'y déplacer, ou
+                            deux lettres pour les échanger. Clic droit sur une lettre :
+                            la renvoie vers le vide le plus proche de la fin. Les 2
+                            emplacements vides servent à ce réarrangement. Une lettre
+                            déjà posée sur le plateau apparaît grisée et n'est plus
+                            sélectionnable tant qu'elle n'est pas retirée.
+                        </p>
+                    </div>
+                </span>
             </div>
-
-            <!-- Zone de brouillon : réflexion libre, sans lien avec le plateau. -->
-            <div id="bloc-brouillon" class="bloc-brouillon" hidden>
-                <div class="brouillon-entete">
-                    <span class="brouillon-titre-groupe">
-                        <span class="brouillon-titre bloc-titre bloc-titre-brouillon">
-                            ✏️ Brouillon <span class="bloc-titre-note">— réflexion libre, sans effet sur la partie</span>
-                        </span><button id="btn-aide-brouillon" class="btn-aide-info"
-                                aria-haspopup="dialog" aria-expanded="false"
-                                aria-label="Aide : comment utiliser le brouillon"
-                                title="Aide : comment utiliser le brouillon">i</button>
-                        <div id="aide-brouillon-popover" class="aide-info-popover"
-                             role="dialog" aria-label="Aide du brouillon" hidden>
-                            <p>
-                                Réarrangez librement vos 7 lettres sur les 9
-                                emplacements pour trouver l'inspiration : cliquez une
-                                lettre puis un emplacement vide pour l'y déplacer, ou
-                                deux lettres pour les échanger. Clic droit sur une
-                                lettre : la renvoie vers le vide le plus proche de la
-                                fin. Les 2 emplacements vides (position libre) figurent
-                                une lettre déjà posée sur le plateau à prendre en
-                                compte ; aucune saisie possible.
-                            </p>
-                        </div>
-                    </span>
-                </div>
-                <div id="brouillon" class="brouillon" aria-label="Zone de brouillon (réflexion)"></div>
-            </div>
+            <div id="panneau" class="panneau" aria-label="Chevalet du joueur (réarrangeable)"></div>
         </div>
 
-        <!-- Actions de tour, en pleine largeur sous la zone de réflexion
-             (issue #92 point 4). -->
-        <div id="zone-jeu" class="zone-jeu" hidden>
+        <!-- Actions de tour, en pleine largeur sous le panneau. Toujours affichées :
+             hors tour, elles sont DÉSACTIVÉES plutôt que masquées (issue #100). -->
+        <div id="zone-jeu" class="zone-jeu">
             <div class="zone-jeu-controles">
-                <button id="btn-echanger-tout" class="lien-discret" hidden
+                <button id="btn-echanger-tout" class="lien-discret" disabled
                         title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
                     ♻️ Remettre toutes ses lettres et passer
                 </button>
@@ -120,14 +92,6 @@
                 </span>
             </div>
             <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
-        </div>
-        </div><!-- /#zone-interactive -->
-
-        <div class="chevalet-pied">
-            <p class="chevalet-aide" id="chevalet-aide">
-                Vos lettres restent masquées tant que vous ne cliquez pas sur
-                « Voir mes lettres ». Pensez à les cacher si un adversaire approche.
-            </p>
         </div>
     </div>
 
@@ -153,10 +117,6 @@
     </div>
 
     <script src="commun.js"></script>
-    <!-- Arithmétique pure de la synchronisation dynamique de la hauteur du tour IA
-         (issue #96, point A) : expose window.HauteurAttente, consommé par
-         chevalet.js. Chargé AVANT chevalet.js pour être disponible dès son init. -->
-    <script src="hauteur_attente.js"></script>
     <script src="chevalet.js"></script>
 </body>
 </html>

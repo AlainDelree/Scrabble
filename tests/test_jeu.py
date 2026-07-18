@@ -2340,13 +2340,12 @@ class TestDimensionsChevalet:
         assert CHEVALET_LARGEUR >= 830
 
     def test_hauteur_suffisante_pour_le_contenu(self):
-        # Garde-fou hauteur (issue #94) : le contenu le plus haut de la fenêtre
-        # (tour humain, chevalet révélé + brouillon + actions + message de statut)
-        # descend à ~280 px, mesuré dans la fenêtre à sa taille réelle (harnais
-        # build/mesure_chevalet.py). La hauteur doit rester au-dessus pour ne pas
-        # rogner le contenu ; on garde une petite marge. Empêche autant une
-        # régression qui rognerait le bas (trop bas) qu'un retour au vide de #92
-        # (trop haut, ~400 px).
+        # Garde-fou hauteur (issue #94, revu #100) : depuis la fusion en panneau
+        # unique (en-tête + panneau de 9 cases + actions de tour + message de
+        # statut), le contenu descend à ~280 px, mesuré dans la fenêtre à sa taille
+        # réelle. La hauteur doit rester au-dessus pour ne pas rogner le contenu ;
+        # on garde une petite marge. Empêche autant une régression qui rognerait le
+        # bas (trop bas) qu'un retour au vide de #92 (trop haut, ~400 px).
         assert 280 <= CHEVALET_HAUTEUR <= 340
 
 

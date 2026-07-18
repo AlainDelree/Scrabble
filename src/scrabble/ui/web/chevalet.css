@@ -1,8 +1,10 @@
-/* chevalet.css — fenêtre flottante du chevalet (issue #90).
-   Fenêtre pywebview séparée, frameless + on_top + ~880×300px (issue #94), non
-   redimensionnable. On soigne une mise en page compacte : barre de déplacement
-   en haut, puis chevalet + actions + brouillon. Les briques partagées (tuiles,
-   cases de chevalet/brouillon, boutons, modales) viennent de commun.css. */
+/* chevalet.css — fenêtre flottante du chevalet (issue #90, fusion #100).
+   Fenêtre pywebview séparée, frameless + on_top + ~880×260px, non
+   redimensionnable. Un seul panneau de 9 cases (issue #100), toujours visible et
+   réarrangeable : plus de boîte « attente », plus de bascule « voir/cacher ». On
+   soigne une mise en page compacte : barre de déplacement en haut, puis en-tête,
+   panneau, actions de tour. Les briques partagées (tuiles, boutons, modales)
+   viennent de commun.css. */
 
 html, body {
     height: 100%;
@@ -59,9 +61,6 @@ body {
 /* --------------------------------------------------------------------------- */
 .chevalet-fenetre {
     flex: 1 1 auto;
-    /* Colonne pleine hauteur : l'en-tête + la zone à deux blocs (tour humain) OU
-       le message d'attente (tour IA) occupent le même espace vertical, pour que la
-       fenêtre garde une structure stable entre les deux cas (issue #91 point 5). */
     display: flex;
     flex-direction: column;
     overflow: auto;
@@ -75,10 +74,6 @@ body {
     gap: 12px;
     margin-bottom: 6px;
     flex-wrap: wrap;
-}
-
-.chevalet-entete[hidden] {
-    display: none;
 }
 
 .chevalet-entete h2 {
@@ -97,67 +92,35 @@ body {
     line-height: 1.35;
 }
 
-.chevalet-actions {
-    display: inline-flex;
-    gap: 8px;
-    flex-wrap: wrap;
+/* Indicateur discret « hors tour » (issue #100). Remplace l'ancienne boîte
+   d'attente : le panneau reste manipulable, on signale seulement que la pose est
+   momentanément indisponible. */
+.badge-hors-tour {
+    flex: 0 0 auto;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--couleur-ordinateur, #6a1b9a);
+    background: var(--couleur-ordinateur-fond, #f3e5f5);
+    border: 1px dashed var(--couleur-ordinateur, #6a1b9a);
+    border-radius: var(--rayon-bordure);
+    padding: 4px 10px;
 }
 
-/* Deux zones côte à côte : chevalet (action) + brouillon (réflexion). La fenêtre
-   est dimensionnée (issue #91 point 4) pour que les deux blocs tiennent alignés
-   sans repli ; on force donc `nowrap` afin que le Brouillon reste TOUJOURS à côté
-   du bloc « À jouer » et jamais en dessous (ce qui imposait un défilement). */
-.zone-reflexion {
-    display: flex;
-    gap: 14px;
-    align-items: stretch;
-    flex-wrap: nowrap;
-}
-
-.zone-reflexion[hidden] {
+.badge-hors-tour[hidden] {
     display: none;
 }
 
-.bloc-chevalet {
-    /* Largeur naturelle (7 lettres + contrôles), sans rétrécir : le Brouillon
-       prend le reste de la largeur à droite. */
-    flex: 0 0 auto;
-    padding: 8px 10px 10px;
-    background: #f2f8f2;
-    border: 1px solid rgba(46, 125, 50, 0.35);
-    border-radius: 8px;
-}
-
-.chevalet {
-    display: flex;
-    gap: 7px;
-    flex-wrap: nowrap;
-    width: fit-content;
-    min-height: 48px;
-    align-items: center;
-    padding: 6px;
-    background: #8a5a3b;
-    border-radius: 6px;
-}
-
 /* --------------------------------------------------------------------------- */
-/* Brouillon                                                                    */
+/* Panneau unifié des lettres (issue #100)                                      */
 /* --------------------------------------------------------------------------- */
-.bloc-brouillon {
-    /* Occupe la largeur restante à droite du bloc « À jouer » (issue #91 point 4). */
-    flex: 1 1 auto;
-    min-width: 0;
+.bloc-panneau {
     padding: 8px 12px 10px;
     background: #f3eee4;
     border: 1px dashed #c9a961;
     border-radius: 8px;
 }
 
-.bloc-brouillon[hidden] {
-    display: none;
-}
-
-.brouillon-entete {
+.panneau-entete {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -166,17 +129,17 @@ body {
     margin-bottom: 8px;
 }
 
-.brouillon-titre {
+.panneau-titre {
     display: inline;
     margin-bottom: 0;
 }
 
-.brouillon-titre-groupe {
+.panneau-titre-groupe {
     position: relative;
     display: inline;
 }
 
-.brouillon {
+.panneau {
     display: flex;
     gap: 6px;
     /* Les 9 emplacements tiennent sur une seule ligne dans la fenêtre élargie
@@ -186,19 +149,84 @@ body {
     align-items: center;
 }
 
-/* --------------------------------------------------------------------------- */
-/* Zone interactive du tour humain (conteneur mesuré)                           */
-/* --------------------------------------------------------------------------- */
-/* Regroupe en-tête + réflexion + actions (issue #95 point A). `flow-root` établit
-   un contexte de formatage de bloc : les marges internes des enfants sont ainsi
-   CONTENUES dans la hauteur du conteneur, de sorte que sa hauteur mesurée en JS
-   (`getBoundingClientRect().height`) reflète fidèlement l'empreinte verticale
-   réellement occupée. `flex: 0 0 auto` : le conteneur prend la hauteur de son
-   contenu et laisse le reste de la fenêtre (tapis vert) apparaître dessous, comme
-   avant l'introduction du conteneur. */
-.zone-interactive {
+.panneau-case {
+    width: 40px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 1.4rem;
+    text-transform: uppercase;
+    position: relative;
+    cursor: pointer;
+    background: var(--tuile-fond);
+    border: 1px solid var(--tuile-bordure);
+    color: var(--tuile-texte);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.panneau-case:hover {
+    transform: translateY(-2px);
+}
+
+.panneau-case.joker {
+    border: 2px dashed var(--tuile-joker-bordure);
+    color: var(--tuile-joker-bordure);
+}
+
+.panneau-case.selectionnee {
+    outline: 3px solid var(--couleur-primaire);
+    outline-offset: 1px;
+    transform: translateY(-4px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Lettre déjà posée en attente sur le plateau (issue #100) : grisée, inerte. */
+.panneau-case.utilisee {
+    opacity: 0.35;
+    cursor: default;
+    filter: grayscale(0.6);
+}
+
+.panneau-case.utilisee:hover {
+    transform: none;
+}
+
+.panneau-case .val {
+    position: absolute;
+    right: 3px;
+    bottom: 1px;
+    font-size: 0.55rem;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+/* Emplacements vides : servent au réarrangement local (réflexion). Toujours 2. */
+.panneau-case-vide {
+    width: 40px;
+    height: 44px;
+    border-radius: 4px;
+    border: 2px dashed #c9a961;
+    background: rgba(201, 169, 97, 0.10);
+    opacity: 0.7;
     flex: 0 0 auto;
-    display: flow-root;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.1s, background 0.1s;
+}
+
+.panneau-case-vide:hover {
+    transform: translateY(-2px);
+    opacity: 0.95;
+    background: rgba(201, 169, 97, 0.20);
+}
+
+.panneau-vide {
+    color: #8a7a63;
+    font-style: italic;
+    font-size: 0.9rem;
 }
 
 /* --------------------------------------------------------------------------- */
@@ -222,77 +250,4 @@ body {
     margin-left: auto;
     display: inline-flex;
     gap: 10px;
-}
-
-/* --------------------------------------------------------------------------- */
-/* Pied : aide de confidentialité                                               */
-/* --------------------------------------------------------------------------- */
-.chevalet-pied {
-    margin-top: 10px;
-}
-
-.chevalet-pied:has(> [hidden]) {
-    margin-top: 0;
-}
-
-.chevalet-aide {
-    font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.8);
-    font-style: italic;
-    margin: 0;
-}
-
-/* --------------------------------------------------------------------------- */
-/* Mode « attente d'un tour d'ordinateur »                                      */
-/* --------------------------------------------------------------------------- */
-/* Message d'attente pendant le tour d'un ordinateur (issue #91 point 5, revu
-   issue #92, re-mesuré issue #94). Le corps est ancré en HAUT dans les deux cas :
-   en tour humain, le contenu (en-tête + réflexion + actions) occupe une empreinte
-   donnée puis laisse le tapis vert apparaître dessous ; on donne donc ici à la zone
-   d'attente une hauteur ÉQUIVALENTE (min-height, mesurée), plutôt que `flex: 1` qui
-   la faisait gonfler jusqu'en bas et donnait l'impression d'une fenêtre plus
-   grande/vide au tour IA. Résultat : même empreinte verticale, même silhouette
-   entre les deux tours (seul le contenu change), sans étirement disgracieux.
-
-   Hauteur (issue #95 point A) : les calibrations figées de #92 (230 px) puis #94
-   (221 px), mesurées dans Chromium (harnais `build/mesure_chevalet.py`), ne
-   correspondaient pas à ce que WebKitGTK rend réellement dans la fenêtre pywebview
-   — d'où un grand vide au-dessus du message au tour IA en conditions réelles. On
-   abandonne donc la constante mesurée à l'avance : chevalet.js mesure la hauteur
-   RÉELLEMENT rendue de `.zone-interactive` (au moteur courant, WebKitGTK) et la
-   pose ici en `min-height` inline. La valeur `221px` ci-dessous n'est plus qu'un
-   REPLI, utilisé seulement au tout premier tour IA survenant avant tout tour humain
-   (aucune mesure encore disponible) ; dès qu'un tour humain a été rendu, la valeur
-   mesurée la remplace et les deux silhouettes coïncident quel que soit le moteur. */
-.zone-attente-ia {
-    flex: 0 0 auto;
-    min-height: 221px;   /* repli seulement : surchargé par la hauteur mesurée en JS (#95) */
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 18px;
-    margin: 0;
-    background: var(--couleur-ordinateur-fond, #f3e5f5);
-    border: 1px dashed var(--couleur-ordinateur, #6a1b9a);
-    border-radius: var(--rayon-bordure);
-    text-align: center;
-}
-
-.zone-attente-ia[hidden] {
-    display: none;
-}
-
-.attente-ia-message {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--couleur-ordinateur, #6a1b9a);
-}
-
-.attente-ia-note {
-    margin: 0;
-    font-size: 0.82rem;
-    color: #555;
 }
