@@ -550,8 +550,12 @@ section h2 {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    /* Marge basse resserrée 16 -> 12 (issue #115). */
-    margin-bottom: 12px;
+    /* Marge basse resserrée 16 -> 12 (issue #115), puis 12 -> 6 (issue #117)
+       pour rapprocher la consigne du sac de la ligne « X a tiré » : l'espace
+       vide qui subsistait sous la liste était trop généreux. La marge se
+       fusionne (collapse) avec l'ex-marge haute de .tirage-sac-zone ; on garde
+       6px, assez pour une séparation visuelle nette sans les coller. */
+    margin-bottom: 6px;
 }
 
 .tirage-lettres li {
@@ -621,8 +625,11 @@ section h2 {
     gap: 10px;
     /* Consigne + aire du sac uniquement (issue #116) : le bouton « Tirer une
        lettre » a quitté cette zone scrollable pour être épinglé plus bas
-       (.tirage-sac-action). Marge basse conservée pour aérer avant le bouton. */
-    margin: 4px 0 12px;
+       (.tirage-sac-action). Marge basse conservée pour aérer avant le bouton.
+       Marge haute supprimée (4 -> 0, issue #117) : c'est désormais la seule
+       marge basse resserrée de .tirage-lettres (6px) qui règle l'écart avec la
+       ligne « X a tiré », sans double espacement. */
+    margin: 0 0 12px;
 }
 
 .tirage-sac-consigne {
