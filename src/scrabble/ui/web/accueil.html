@@ -111,10 +111,18 @@
                 </p>
                 <ul id="tirage-lettres" class="tirage-lettres"></ul>
                 <!-- Zone d'interaction « secouer puis tirer » (issue #61), remplie
-                     par le JS le temps du tour d'un joueur humain. -->
+                     par le JS le temps du tour d'un joueur humain : consigne +
+                     aire du sac à secouer. Le bouton « Tirer une lettre » n'y est
+                     PLUS (issue #116) — il est épinglé hors du corps scrollable. -->
                 <div id="tirage-sac-zone" class="tirage-sac-zone" hidden></div>
                 <p id="tirage-ordre-resultat" class="tirage-ordre-resultat"></p>
             </div>
+            <!-- Bouton « Tirer une lettre » épinglé (issue #116) : hors du corps
+                 scrollable, dans la même zone fixe que Annuler / Continuer, il
+                 reste TOUJOURS visible par construction — plus aucun calibrage de
+                 taille de fenêtre/aire pour qu'il tienne. Rempli par le JS pendant
+                 le tour d'un joueur humain, masqué le reste du temps. -->
+            <div id="tirage-sac-action" class="tirage-sac-action" hidden></div>
             <div class="modale-actions">
                 <button type="button" class="btn btn-secondaire" id="btn-annuler-tirage">
                     Annuler

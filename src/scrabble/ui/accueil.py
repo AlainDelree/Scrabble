@@ -454,6 +454,27 @@ class ApiAccueil:
         """Retourne la liste des niveaux de difficulté (labels français)."""
         return list(NIVEAUX_LABELS.keys())
 
+    def journaliser_mesure_fenetre(self, mesures: dict[str, Any]) -> dict[str, Any]:
+        """Journalise les dimensions réelles de la fenêtre de tirage (issue #116).
+
+        Après deux correctifs de taille (issues #83, #115) restés inopérants en
+        conditions réelles, on objective la géométrie effective sous WebKitGTK au
+        lieu de la déduire d'un harnais headless Chromium. Le JS mesure, à
+        l'ouverture de la modale de tirage, la hauteur/largeur réellement
+        disponibles (``innerHeight`` après soustraction du chrome/barre de titre)
+        ainsi que la taille rendue de l'aire du sac, et transmet le tout ici pour
+        trace — même discipline que celle appliquée au chevalet (issues #92-97)
+        une fois une mesure headless jugée insuffisante.
+
+        Purement informatif : n'altère aucun état, retourne toujours un succès.
+        """
+        try:
+            details = ", ".join(f"{cle}={valeur}" for cle, valeur in mesures.items())
+            journal.info(f"Accueil : géométrie réelle modale de tirage — {details}.")
+        except Exception as e:  # noqa: BLE001 - une trace ne doit jamais bloquer
+            journal.erreur("Accueil : échec de journalisation de la géométrie.", e)
+        return {"succes": True}
+
     def ouvrir_reglages(self) -> dict[str, Any]:
         """Ouvre la fenêtre de réglages à onglets (issue #111).
 

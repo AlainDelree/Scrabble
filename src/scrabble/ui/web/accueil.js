@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tirageLettres = document.getElementById('tirage-lettres');
     const tirageOrdreResultat = document.getElementById('tirage-ordre-resultat');
     const tirageSacZone = document.getElementById('tirage-sac-zone');
+    const tirageSacAction = document.getElementById('tirage-sac-action');
     const btnContinuerTirage = document.getElementById('btn-continuer-tirage');
     const btnAnnulerTirage = document.getElementById('btn-annuler-tirage');
 
@@ -335,6 +336,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // La ligne apparaît, mais la lettre reste masquée jusqu'au tirage.
             li.classList.add('visible', 'en-attente-tirage');
 
+            // Corps scrollable : consigne + aire du sac à secouer.
             tirageSacZone.hidden = false;
             tirageSacZone.innerHTML = `
                 <p class="tirage-sac-consigne">À toi, ${escapeHtml(t.nom)} ! Secoue le sac, puis tire ta lettre.</p>
@@ -348,12 +350,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </svg>
                     </div>
                 </div>
-                <button type="button" class="btn btn-primaire tirage-sac-bouton">Tirer une lettre</button>
             `;
+
+            // Zone épinglée (issue #116), hors du corps scrollable : le bouton
+            // « Tirer une lettre » reste visible par construction, comme
+            // Annuler / Continuer, quelle que soit la taille de fenêtre.
+            tirageSacAction.hidden = false;
+            tirageSacAction.innerHTML =
+                '<button type="button" class="btn btn-primaire tirage-sac-bouton">Tirer une lettre</button>';
 
             const aire = tirageSacZone.querySelector('.tirage-sac-aire');
             const sac = tirageSacZone.querySelector('.tirage-sac');
-            const bouton = tirageSacZone.querySelector('.tirage-sac-bouton');
+            const bouton = tirageSacAction.querySelector('.tirage-sac-bouton');
             const son = creerSonSac();
 
             // Le sac se déplace dans une large zone carrée en suivant le curseur
@@ -396,6 +404,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 li.classList.remove('en-attente-tirage');  // dévoile la lettre
                 tirageSacZone.hidden = true;
                 tirageSacZone.innerHTML = '';
+                tirageSacAction.hidden = true;
+                tirageSacAction.innerHTML = '';
                 resolve();
             }, { once: true });
         });
@@ -424,12 +434,41 @@ document.addEventListener('DOMContentLoaded', async () => {
      * @returns {Promise<boolean>} ``true`` si l'utilisateur valide (« Continuer »),
      *   ``false`` s'il annule (« Annuler ») — la partie créée est alors supprimée.
      */
+    /**
+     * Mesure la géométrie réelle de la modale de tirage et la transmet au
+     * journal Python (issue #116). Sert à objectiver, en conditions réelles
+     * WebKitGTK, la hauteur réellement disponible dans la fenêtre — là où les
+     * mesures headless Chromium des issues #83/#115 ont échoué deux fois.
+     * Best-effort : toute erreur (API absente en test, DOM incomplet) est
+     * silencieusement ignorée, la trace ne doit jamais gêner le tirage.
+     */
+    function journaliserGeometrieTirage() {
+        try {
+            if (!api || typeof api.journaliser_mesure_fenetre !== 'function') return;
+            const contenu = modaleTirage.querySelector('.modale-contenu');
+            const corps = modaleTirage.querySelector('.modale-corps');
+            const arrondi = (v) => Math.round(v);
+            api.journaliser_mesure_fenetre({
+                fenetre_innerHeight: window.innerHeight,
+                fenetre_innerWidth: window.innerWidth,
+                vh40_px: arrondi(window.innerHeight * 0.40),
+                contenu_hauteur: contenu ? arrondi(contenu.getBoundingClientRect().height) : null,
+                corps_client: corps ? corps.clientHeight : null,
+                corps_scroll: corps ? corps.scrollHeight : null,
+            });
+        } catch (_e) {
+            /* trace best-effort : on ignore toute erreur */
+        }
+    }
+
     async function afficherTirageOrdre(tirage) {
         tirageLettres.innerHTML = '';
         tirageOrdreResultat.textContent = '';
         tirageOrdreResultat.classList.remove('visible');
         tirageSacZone.hidden = true;
         tirageSacZone.innerHTML = '';
+        tirageSacAction.hidden = true;
+        tirageSacAction.innerHTML = '';
 
         // La modale est réutilisée d'un lancement à l'autre : on force « Continuer »
         // à l'état désactivé tant que le tirage n'est pas mené à son terme.
@@ -443,6 +482,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         afficherModale(modaleTirage);
+
+        // Diagnostic (issue #116) : après deux correctifs de taille inopérants en
+        // conditions réelles, on objective la géométrie effective sous WebKitGTK
+        // en la transmettant au journal Python — plus fiable qu'une mesure
+        // headless Chromium. Purement informatif, tolérant à l'échec.
+        journaliserGeometrieTirage();
 
         // Promesse d'annulation : « Annuler » peut résoudre à tout instant, même
         // pendant que la séquence de révélation attend un tour humain.
@@ -483,6 +528,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnAnnulerTirage.onclick = null;
         tirageSacZone.hidden = true;
         tirageSacZone.innerHTML = '';
+        tirageSacAction.hidden = true;
+        tirageSacAction.innerHTML = '';
 
         if (annule) {
             // Supprime la partie créée entre-temps de la persistance (issue #67).

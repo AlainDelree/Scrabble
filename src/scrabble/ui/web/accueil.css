@@ -519,6 +519,26 @@ section h2 {
     margin-top: 14px;
 }
 
+/* Bouton « Tirer une lettre » épinglé (issue #116).
+   Après deux tentatives de calibrage de taille (issues #83, #115) restées
+   inopérantes en conditions réelles WebKitGTK, on cesse de faire dépendre la
+   visibilité du geste essentiel d'un calcul de hauteur : comme .modale-actions,
+   cette zone est hors du corps scrollable (flex: 0 0 auto) et donc TOUJOURS
+   visible, quel que soit le nombre de joueurs ou la longueur de la consigne.
+   Placée juste au-dessus d'Annuler / Continuer et immédiatement sous l'aire du
+   sac (dernier élément du corps pendant un tour humain), elle conserve le lien
+   visuel avec le sac. */
+.tirage-sac-action {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: center;
+    margin-top: 12px;
+}
+
+.tirage-sac-action[hidden] {
+    display: none;
+}
+
 .tirage-intro {
     /* Marge basse resserrée 12 -> 10 (issue #115). */
     margin-bottom: 10px;
@@ -599,10 +619,9 @@ section h2 {
     flex-direction: column;
     align-items: center;
     gap: 10px;
-    /* Espacements resserrés (issue #83) : dans le cas courant — un seul joueur
-       humain, un seul tirage affiché — le trio consigne + sac + bouton doit
-       tenir sous la hauteur du corps sans déclencher le scroll de secours de
-       l'issue #82, qui sinon coupait le bouton « Tirer une lettre » en bas. */
+    /* Consigne + aire du sac uniquement (issue #116) : le bouton « Tirer une
+       lettre » a quitté cette zone scrollable pour être épinglé plus bas
+       (.tirage-sac-action). Marge basse conservée pour aérer avant le bouton. */
     margin: 4px 0 12px;
 }
 
@@ -617,19 +636,21 @@ section h2 {
    suivant le curseur pour une secousse nettement plus marquée. La taille est
    fixe mais bornée pour ne jamais déborder de la modale. */
 .tirage-sac-aire {
-    /* Taille resserrée à 224px (issue #115, ex-256px de l'issue #83, ex-280px
-       de l'issue #68) : toujours assez grande pour secouer franchement le sac,
-       mais l'ensemble lignes de tirage + consigne + aire + bouton rentre sans
-       scroll dans le cas courant réel (2-3 joueurs), pas seulement le cas — qui
-       n'arrive jamais — d'un unique tirage.
-       La borne « 40vh » fait rétrécir l'aire AVANT que le corps ne défile
-       lorsque la fenêtre est plus courte (filet de sécurité intermédiaire, en
-       amont du scroll de l'issue #82) : le bouton « Tirer une lettre » reste
-       ainsi visible le plus longtemps possible. */
-    width: min(224px, 40vh);
-    height: min(224px, 40vh);
-    max-width: min(224px, 70vw);
-    aspect-ratio: 1 / 1;
+    /* Taille stable de 224px (issue #115, ex-256px de l'issue #83, ex-280px de
+       l'issue #68) : assez grande pour secouer franchement le sac.
+       Issue #116 — SUPPRESSION de la borne « 40vh ». Depuis que le bouton
+       « Tirer une lettre » est épinglé hors du corps scrollable, l'aire n'a plus
+       à rétrécir pour lui laisser la place : le corps défile si besoin. Or cette
+       borne `vh` se comportait anormalement sous WebKitGTK (sac décalé en bas à
+       droite du cadre pointillé au lieu d'être centré, cf. capture de l'issue) —
+       la hauteur de fenêtre réelle après soustraction du chrome diffère de
+       l'estimation headless Chromium. On revient donc à des dimensions fixes en
+       px, stables quel que soit le moteur de rendu ; `max-width: 70vw` (unité
+       horizontale, bien plus fiable) suffit à éviter tout débordement latéral
+       sur fenêtre étroite. */
+    width: 224px;
+    height: 224px;
+    max-width: 70vw;
     display: flex;
     align-items: center;
     justify-content: center;
