@@ -46,6 +46,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sectionReprise = document.getElementById('section-reprise');
     const partiesEnCours = document.getElementById('parties-en-cours');
 
+    // Bouton réglages (issue #111)
+    const btnReglages = document.getElementById('btn-reglages');
+
     // État
     let premierHumainAjoute = false;
 
@@ -657,6 +660,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 btnReprendre.disabled = false;
                 btnReprendre.textContent = 'Reprendre';
             }
+        }
+    });
+
+    // Ouvrir la fenêtre de réglages à onglets (issue #111). Elle s'ouvre comme
+    // seconde fenêtre par-dessus l'accueil ; à sa fermeture on revient ici.
+    btnReglages.addEventListener('click', async () => {
+        btnReglages.disabled = true;
+        try {
+            const res = await api.ouvrir_reglages();
+            if (res && !res.succes) {
+                alert(res.erreur || 'Impossible d\'ouvrir les réglages.');
+            }
+        } finally {
+            btnReglages.disabled = false;
         }
     });
 

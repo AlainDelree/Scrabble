@@ -99,6 +99,20 @@ def normaliser_mot(mot: str) -> str:
     return unicodedata.normalize("NFC", mot.strip().upper())
 
 
+def desaccentuer(mot: str) -> str:
+    """Retire accents et ligatures d'un mot déjà normalisé (MAJUSCULES/NFC).
+
+    Reproduit la graphie ASCII des **clés de ``definitions.json``**, indexées
+    comme l'ODS8 : ligatures Œ→OE, Æ→AE puis chute de tous les diacritiques
+    combinants (É→E, Â→A, Ï→I, Ç→C…). Sert à retrouver la définition d'un mot
+    accentué (``ÉLÈVE`` → clé ``ELEVE``). Même logique que la fonction homonyme
+    de ``scripts/croiser_formes_lemmes.py`` ayant servi à *construire* l'index.
+    """
+    mot = mot.replace("Œ", "OE").replace("Æ", "AE")
+    decompose = unicodedata.normalize("NFD", mot)
+    return "".join(c for c in decompose if not unicodedata.combining(c))
+
+
 # --------------------------------------------------------------------------- #
 # Filtre alphabétique du dépliage Hunspell
 # --------------------------------------------------------------------------- #
@@ -201,6 +215,29 @@ def _lire_definitions(chemin: Path) -> dict[str, list[str]]:
     if not isinstance(donnees, dict):
         return {}
     return donnees
+
+
+def definition_mot(
+    mot: str, chemin: Path = CHEMIN_DEFINITIONS
+) -> list[str] | None:
+    """Retourne la liste des définitions d'un mot, ou ``None`` si indisponible.
+
+    Le mot est normalisé (:func:`normaliser_mot`) puis **désaccentué**
+    (:func:`desaccentuer`) pour retrouver la clé ASCII de ``definitions.json``
+    (indexé comme l'ODS8). Renvoie ``None`` — plutôt qu'une liste vide ou une
+    erreur — quand le mot est absent de l'index ou que le fichier de définitions
+    n'existe pas : l'onglet Dictionnaire affiche alors « définition
+    indisponible ». Rappel (issue #109) : seuls les mots de l'ODS8 ont une
+    définition ; un mot présent uniquement dans Hunspell n'en aura pas.
+    """
+    norme = normaliser_mot(mot)
+    if not norme:
+        return None
+    definitions = charger_definitions(chemin)
+    gloses = definitions.get(desaccentuer(norme))
+    if not gloses:
+        return None
+    return gloses
 
 
 def assurer_fichiers_modifs(
@@ -347,6 +384,160 @@ def chemins_modifs(source: str) -> tuple[Path, Path]:
     :func:`_sources_pertinentes` face à une configuration inattendue.
     """
     return CHEMINS_MODIFS.get(source, CHEMINS_MODIFS["ods"])
+
+
+# Sources reconnues, dans l'ordre d'affichage de l'onglet Dictionnaire.
+SOURCES: tuple[str, ...] = ("ods", "hunspell")
+
+
+# --------------------------------------------------------------------------- #
+# Statut d'un mot par source + personnalisation manuelle (onglet Dictionnaire)
+# --------------------------------------------------------------------------- #
+
+# Cache mémoire de l'ensemble **brut** de chaque source (avant ajouts/retraits).
+# Le dépliage Hunspell coûte plusieurs secondes (issue #109, vigilance 4) : on ne
+# le rejoue jamais à chaque recherche. La valeur est ``None`` quand la source est
+# indisponible (p. ex. spylls absent pour Hunspell), pour éviter de retenter en
+# boucle un chargement voué à échouer.
+_SOURCE_CACHE: dict[str, set[str] | None] = {}
+
+
+def charger_source_cache(
+    source: str,
+    chemin_ods: Path = CHEMIN_ODS,
+    base_hunspell: Path = BASE_HUNSPELL,
+) -> set[str] | None:
+    """Ensemble **brut** d'une source, mis en cache mémoire ; ``None`` si KO.
+
+    Utilisé par le statut « présent dans la source » de l'onglet Dictionnaire.
+    Contrairement à :func:`charger_source`, on **avale** l'erreur de chargement
+    (typiquement ``RuntimeError`` si ``spylls`` manque pour Hunspell) et on
+    renvoie ``None`` : l'UI signalera alors la source « indisponible » plutôt que
+    de planter. Le cache n'est renseigné que pour les chemins par défaut (les
+    seuls utilisés en production) ; un chemin explicite relit toujours (tests).
+    """
+    par_defaut = chemin_ods == CHEMIN_ODS and base_hunspell == BASE_HUNSPELL
+    if par_defaut and source in _SOURCE_CACHE:
+        return _SOURCE_CACHE[source]
+    try:
+        mots: set[str] | None = charger_source(source, chemin_ods, base_hunspell)
+    except Exception:  # noqa: BLE001 - source indisponible : on dégrade proprement
+        mots = None
+    if par_defaut:
+        _SOURCE_CACHE[source] = mots
+    return mots
+
+
+def _reecrire_liste_mots(chemin: Path, mots: set[str]) -> None:
+    """Réécrit une liste « un mot par ligne », triée et dédoublonnée."""
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    with open(chemin, "w", encoding="utf-8") as fichier:
+        for mot in sorted(mots):
+            fichier.write(mot + "\n")
+
+
+def statut_source(
+    mot_normalise: str,
+    source: str,
+    chemin_ods: Path = CHEMIN_ODS,
+    base_hunspell: Path = BASE_HUNSPELL,
+) -> dict[str, Any]:
+    """Statut d'un mot déjà normalisé dans une source donnée.
+
+    Retourne ``{"present_brut", "ajout_manuel", "retrait_manuel", "present",
+    "indisponible"}`` où :
+
+    * ``present_brut`` : le mot est dans la source d'origine (ODS8 / dépliage
+      Hunspell), avant personnalisation ;
+    * ``ajout_manuel`` / ``retrait_manuel`` : le mot figure dans
+      ``mots_ajoutes_<source>.txt`` / ``mots_retires_<source>.txt`` ;
+    * ``present`` : appartenance **effective** au dictionnaire final de la source,
+      selon la formule ``(source ∪ ajoutés) − retirés`` ;
+    * ``indisponible`` : la source n'a pas pu être chargée (``present_brut`` et
+      ``present`` sont alors indéterminés — calculés sur la seule personnalisation).
+    """
+    brut = charger_source_cache(source, chemin_ods, base_hunspell)
+    indisponible = brut is None
+    present_brut = (not indisponible) and mot_normalise in brut
+    ajoutes, retires = chemins_modifs(source)
+    ajout_manuel = mot_normalise in lire_liste_mots(ajoutes)
+    retrait_manuel = mot_normalise in lire_liste_mots(retires)
+    present = (present_brut or ajout_manuel) and not retrait_manuel
+    return {
+        "present_brut": present_brut,
+        "ajout_manuel": ajout_manuel,
+        "retrait_manuel": retrait_manuel,
+        "present": present,
+        "indisponible": indisponible,
+    }
+
+
+def rechercher_statut(
+    mot: str,
+    chemin_ods: Path = CHEMIN_ODS,
+    base_hunspell: Path = BASE_HUNSPELL,
+    chemin_definitions: Path = CHEMIN_DEFINITIONS,
+) -> dict[str, Any]:
+    """Statut complet d'un mot pour l'onglet Dictionnaire.
+
+    Assemble, pour chaque source de :data:`SOURCES`, le statut renvoyé par
+    :func:`statut_source`, plus la définition (:func:`definition_mot`, ODS8
+    uniquement). ``mot`` est le libellé normalisé (accents conservés) ; il est
+    aussi renvoyé pour que l'UI affiche la forme réellement interrogée.
+    """
+    norme = normaliser_mot(mot)
+    return {
+        "mot": norme,
+        "valide_saisie": bool(norme) and est_mot_scrabble(norme),
+        "sources": {
+            source: statut_source(norme, source, chemin_ods, base_hunspell)
+            for source in SOURCES
+        },
+        "definition": definition_mot(norme, chemin_definitions),
+    }
+
+
+def modifier_appartenance(
+    mot: str,
+    source: str,
+    present: bool,
+) -> str:
+    """Force la présence (``present=True``) ou l'absence d'un mot dans une source.
+
+    Écrit dans les fichiers de personnalisation **propres à la source**
+    (:func:`chemins_modifs`) de façon cohérente avec la formule
+    ``(source ∪ ajoutés) − retirés`` :
+
+    * **ajouter** (``present=True``) : le mot entre dans ``mots_ajoutes_<source>``
+      et sort de ``mots_retires_<source>`` (on lève un éventuel retrait
+      contradictoire) ;
+    * **retirer** (``present=False``) : le mot entre dans ``mots_retires_<source>``
+      et sort de ``mots_ajoutes_<source>``.
+
+    Les deux fichiers sont réécrits triés/dédoublonnés ; leur mtime change, ce
+    qui **périme automatiquement** le cache Trie de la source (via
+    :func:`_sources_pertinentes`), sans y toucher explicitement. Le mot est
+    normalisé au préalable ; ``ValueError`` est levée s'il n'est pas un mot
+    jouable au Scrabble (vide, chiffres, ponctuation…). Retourne le mot normalisé.
+    """
+    norme = normaliser_mot(mot)
+    if not norme or not est_mot_scrabble(norme):
+        raise ValueError(f"« {mot} » n'est pas un mot jouable au Scrabble.")
+    if source not in CHEMINS_MODIFS:
+        raise ValueError(f"Source inconnue : « {source} ».")
+    chemin_ajoutes, chemin_retires = chemins_modifs(source)
+    assurer_fichiers_modifs(chemin_ajoutes, chemin_retires)
+    ajoutes = lire_liste_mots(chemin_ajoutes)
+    retires = lire_liste_mots(chemin_retires)
+    if present:
+        ajoutes.add(norme)
+        retires.discard(norme)
+    else:
+        retires.add(norme)
+        ajoutes.discard(norme)
+    _reecrire_liste_mots(chemin_ajoutes, ajoutes)
+    _reecrire_liste_mots(chemin_retires, retires)
+    return norme
 
 
 def charger_source(

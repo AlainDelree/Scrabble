@@ -1,0 +1,340 @@
+/* Fenêtre de réglages à onglets (issue #111).
+   Reprend le tapis vert et les variables de l'écran d'accueil (accueil.css) pour
+   une cohérence visuelle entre toutes les fenêtres du jeu. */
+
+:root {
+    --couleur-fond: #f5f5f0;
+    --tapis-vert: #35654d;
+    --tapis-vert-clair: #3f7359;
+    --tapis-vert-fonce: #2a4f3c;
+    --couleur-texte: #2c2c2c;
+    --couleur-primaire: #2e7d32;
+    --couleur-primaire-hover: #1b5e20;
+    --couleur-secondaire: #5d4037;
+    --couleur-secondaire-hover: #3e2723;
+    --couleur-danger: #c62828;
+    --couleur-danger-hover: #8e1c1c;
+    --couleur-bordure: #ccc;
+    --couleur-muet: #6b6b6b;
+    --vert-fond: #e8f5e9;
+    --rouge-fond: #ffebee;
+    --rayon-bordure: 8px;
+    --ombre: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--tapis-vert);
+    background-image:
+        radial-gradient(120% 90% at 50% 30%, var(--tapis-vert-clair) 0%, var(--tapis-vert) 55%, var(--tapis-vert-fonce) 100%);
+    background-attachment: fixed;
+    color: var(--couleur-texte);
+    line-height: 1.5;
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 18px;
+}
+
+/* Blanc franc sur le tapis vert, lisible (cohérent avec accueil/jeu, issue #77). */
+header h1 {
+    font-size: 1.9rem;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* ------------------------------- Onglets ------------------------------- */
+.onglets {
+    display: flex;
+    gap: 4px;
+    margin-bottom: -1px;
+}
+
+.onglet {
+    flex: 1;
+    padding: 12px 16px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #e6efe9;
+    background: rgba(0, 0, 0, 0.18);
+    border: none;
+    border-radius: var(--rayon-bordure) var(--rayon-bordure) 0 0;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.onglet:hover {
+    background: rgba(0, 0, 0, 0.28);
+}
+
+.onglet.active {
+    color: var(--couleur-texte);
+    background: #fff;
+}
+
+/* ------------------------------- Panneaux ------------------------------ */
+main {
+    background: #fff;
+    border-radius: 0 0 var(--rayon-bordure) var(--rayon-bordure);
+    box-shadow: var(--ombre);
+    padding: 24px;
+    min-height: 320px;
+}
+
+.panneau {
+    display: none;
+}
+
+.panneau.active {
+    display: block;
+}
+
+/* -------------------------- Onglet Général ----------------------------- */
+.champ {
+    margin-bottom: 20px;
+}
+
+.champ label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.champ input[type="text"],
+.champ select {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 1rem;
+    border: 1px solid var(--couleur-bordure);
+    border-radius: var(--rayon-bordure);
+    background: #fff;
+    color: var(--couleur-texte);
+}
+
+.champ input[type="text"]:focus,
+.champ select:focus {
+    outline: 2px solid var(--couleur-primaire);
+    outline-offset: 1px;
+}
+
+.aide {
+    margin-top: 4px;
+    font-size: 0.85rem;
+    color: var(--couleur-muet);
+}
+
+.statut-enregistrement {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: var(--rayon-bordure);
+    background: var(--vert-fond);
+    color: var(--couleur-primaire-hover);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.statut-enregistrement.erreur {
+    background: var(--rouge-fond);
+    color: var(--couleur-danger-hover);
+}
+
+/* ------------------------ Onglet Dictionnaire -------------------------- */
+.recherche {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.recherche input {
+    flex: 1;
+    padding: 10px 12px;
+    font-size: 1rem;
+    border: 1px solid var(--couleur-bordure);
+    border-radius: var(--rayon-bordure);
+}
+
+.recherche input:focus {
+    outline: 2px solid var(--couleur-primaire);
+    outline-offset: 1px;
+}
+
+.chargement {
+    color: var(--couleur-muet);
+    font-style: italic;
+    margin-bottom: 12px;
+}
+
+.message {
+    padding: 10px 12px;
+    border-radius: var(--rayon-bordure);
+    background: var(--rouge-fond);
+    color: var(--couleur-danger-hover);
+    margin-bottom: 12px;
+}
+
+.resultat h2 {
+    font-size: 1.5rem;
+    margin-bottom: 14px;
+    letter-spacing: 0.04em;
+}
+
+/* Cartes de statut par source (ODS / Hunspell). */
+.sources {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 520px) {
+    .sources {
+        grid-template-columns: 1fr;
+    }
+}
+
+.source-carte {
+    border: 1px solid var(--couleur-bordure);
+    border-radius: var(--rayon-bordure);
+    padding: 14px;
+    background: #fafafa;
+}
+
+.source-titre {
+    font-weight: 700;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Pastille présent / absent. */
+.pastille {
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 999px;
+}
+
+.pastille.present {
+    background: var(--vert-fond);
+    color: var(--couleur-primaire-hover);
+}
+
+.pastille.absent {
+    background: var(--rouge-fond);
+    color: var(--couleur-danger-hover);
+}
+
+.pastille.indisponible {
+    background: #eee;
+    color: var(--couleur-muet);
+}
+
+.source-detail {
+    font-size: 0.85rem;
+    color: var(--couleur-muet);
+    margin-bottom: 12px;
+    min-height: 1.2em;
+}
+
+.source-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.definition h3 {
+    font-size: 1.1rem;
+    margin-bottom: 8px;
+    border-top: 1px solid var(--couleur-bordure);
+    padding-top: 14px;
+}
+
+.definition ol {
+    padding-left: 20px;
+}
+
+.definition li {
+    margin-bottom: 4px;
+}
+
+.definition .indisponible {
+    color: var(--couleur-muet);
+    font-style: italic;
+}
+
+/* -------------------------------- Boutons ------------------------------ */
+.btn {
+    padding: 10px 18px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border: none;
+    border-radius: var(--rayon-bordure);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.btn-primaire {
+    background: var(--couleur-primaire);
+    color: #fff;
+}
+
+.btn-primaire:hover:not(:disabled) {
+    background: var(--couleur-primaire-hover);
+}
+
+.btn-secondaire {
+    background: var(--couleur-secondaire);
+    color: #fff;
+}
+
+.btn-secondaire:hover:not(:disabled) {
+    background: var(--couleur-secondaire-hover);
+}
+
+.btn-petit {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+}
+
+.btn-ajouter {
+    background: var(--couleur-primaire);
+    color: #fff;
+}
+
+.btn-ajouter:hover:not(:disabled) {
+    background: var(--couleur-primaire-hover);
+}
+
+.btn-retirer {
+    background: var(--couleur-danger);
+    color: #fff;
+}
+
+.btn-retirer:hover:not(:disabled) {
+    background: var(--couleur-danger-hover);
+}
+
+/* -------------------------------- Pied --------------------------------- */
+footer {
+    margin-top: 18px;
+    text-align: right;
+}

@@ -13,6 +13,9 @@ import json
 import os
 import time
 
+import pytest
+
+import scrabble.dictionnaire.dictionnaire as d
 from scrabble.dictionnaire.dictionnaire import (
     CHEMINS_MODIFS,
     Dictionnaire,
@@ -23,10 +26,15 @@ from scrabble.dictionnaire.dictionnaire import (
     chemins_modifs,
     construire_ensemble_mots,
     construire_trie,
+    definition_mot,
+    desaccentuer,
     est_mot_scrabble,
     lire_liste_mots,
+    modifier_appartenance,
     normaliser_mot,
     obtenir_trie,
+    rechercher_statut,
+    statut_source,
 )
 
 
@@ -450,3 +458,155 @@ def test_cache_invalide_si_source_configuree_change(tmp_path):
     assert _cache_valide(chemin_cache, "ods", sources_ods) is True
     # Même cache, source demandée différente → invalide.
     assert _cache_valide(chemin_cache, "hunspell", sources_ods) is False
+
+
+# --------------------------------------------------------------------------- #
+# Désaccentuation + définitions (issue #111, onglet Dictionnaire)
+# --------------------------------------------------------------------------- #
+
+def test_desaccentuer_accents_et_ligatures():
+    """Reproduit la graphie ASCII des clés de definitions.json (issue #111)."""
+    assert desaccentuer("ÉLÈVE") == "ELEVE"
+    assert desaccentuer("CŒUR") == "COEUR"
+    assert desaccentuer("EX ÆQUO".replace(" ", "")) == "EXAEQUO"
+    assert desaccentuer("CHAT") == "CHAT"
+
+
+def test_definition_mot_desaccentue_la_requete(tmp_path):
+    """Un mot accentué retrouve sa définition indexée en ASCII désaccentué."""
+    fichier = tmp_path / "definitions.json"
+    fichier.write_text(
+        json.dumps({"ELEVE": ["Personne qui reçoit un enseignement."]}),
+        encoding="utf-8",
+    )
+    assert definition_mot("élève", fichier) == [
+        "Personne qui reçoit un enseignement."
+    ]
+
+
+def test_definition_mot_absent_renvoie_none(tmp_path):
+    """Un mot hors index (ou fichier absent) renvoie None, pas d'erreur."""
+    fichier = tmp_path / "definitions.json"
+    fichier.write_text(json.dumps({"CHAT": ["Félin."]}), encoding="utf-8")
+    assert definition_mot("CHIEN", fichier) is None
+    assert definition_mot("CHAT", tmp_path / "absent.json") is None
+    assert definition_mot("", fichier) is None
+
+
+# --------------------------------------------------------------------------- #
+# Statut par source + personnalisation manuelle (issue #111)
+# --------------------------------------------------------------------------- #
+
+def _preparer_source_modifs(tmp_path, monkeypatch, mots_source, ajoutes=(), retires=()):
+    """Prépare une source ODS et sa paire de fichiers de modif dans tmp_path."""
+    chemin_ods = tmp_path / "ods.txt"
+    chemin_ods.write_text("\n".join(mots_source) + "\n", encoding="utf-8")
+    ajoutes_p = tmp_path / "mots_ajoutes_ods.txt"
+    retires_p = tmp_path / "mots_retires_ods.txt"
+    ajoutes_p.write_text("\n".join(ajoutes), encoding="utf-8")
+    retires_p.write_text("\n".join(retires), encoding="utf-8")
+    monkeypatch.setitem(d.CHEMINS_MODIFS, "ods", (ajoutes_p, retires_p))
+    return chemin_ods
+
+
+def test_statut_source_present_dorigine(tmp_path, monkeypatch):
+    """Un mot brut de l'ODS est présent, sans personnalisation manuelle."""
+    chemin_ods = _preparer_source_modifs(tmp_path, monkeypatch, ["CHAT", "CHIEN"])
+    statut = statut_source("CHAT", "ods", chemin_ods=chemin_ods)
+    assert statut["present_brut"] is True
+    assert statut["present"] is True
+    assert statut["ajout_manuel"] is False
+    assert statut["retrait_manuel"] is False
+    assert statut["indisponible"] is False
+
+
+def test_statut_source_ajout_manuel(tmp_path, monkeypatch):
+    """Un mot absent de l'ODS mais ajouté manuellement devient présent."""
+    chemin_ods = _preparer_source_modifs(
+        tmp_path, monkeypatch, ["CHAT"], ajoutes=["ZORGLUB"]
+    )
+    statut = statut_source("ZORGLUB", "ods", chemin_ods=chemin_ods)
+    assert statut["present_brut"] is False
+    assert statut["ajout_manuel"] is True
+    assert statut["present"] is True
+
+
+def test_statut_source_retrait_manuel(tmp_path, monkeypatch):
+    """Un mot brut de l'ODS retiré manuellement devient absent."""
+    chemin_ods = _preparer_source_modifs(
+        tmp_path, monkeypatch, ["CHAT"], retires=["CHAT"]
+    )
+    statut = statut_source("CHAT", "ods", chemin_ods=chemin_ods)
+    assert statut["present_brut"] is True
+    assert statut["retrait_manuel"] is True
+    assert statut["present"] is False
+
+
+def test_statut_source_hunspell_indisponible(tmp_path, monkeypatch):
+    """Une source Hunspell introuvable est signalée indisponible sans planter."""
+    monkeypatch.setitem(
+        d.CHEMINS_MODIFS,
+        "hunspell",
+        (tmp_path / "aj.txt", tmp_path / "re.txt"),
+    )
+    statut = statut_source(
+        "CHAT", "hunspell", base_hunspell=tmp_path / "inexistant"
+    )
+    assert statut["indisponible"] is True
+    assert statut["present"] is False
+
+
+def test_modifier_appartenance_ajout_puis_retrait(tmp_path, monkeypatch):
+    """Ajouter écrit dans ajoutes et purge retires ; retirer fait l'inverse."""
+    ajoutes_p = tmp_path / "mots_ajoutes_ods.txt"
+    retires_p = tmp_path / "mots_retires_ods.txt"
+    monkeypatch.setitem(d.CHEMINS_MODIFS, "ods", (ajoutes_p, retires_p))
+
+    modifier_appartenance("chien", "ods", present=True)
+    assert "CHIEN" in lire_liste_mots(ajoutes_p)
+    assert "CHIEN" not in lire_liste_mots(retires_p)
+
+    # Retirer le même mot : il quitte ajoutes et entre dans retires.
+    modifier_appartenance("chien", "ods", present=False)
+    assert "CHIEN" not in lire_liste_mots(ajoutes_p)
+    assert "CHIEN" in lire_liste_mots(retires_p)
+
+
+def test_modifier_appartenance_mot_invalide(tmp_path, monkeypatch):
+    """Un mot non jouable au Scrabble est rejeté par une ValueError."""
+    monkeypatch.setitem(
+        d.CHEMINS_MODIFS, "ods", (tmp_path / "a.txt", tmp_path / "r.txt")
+    )
+    with pytest.raises(ValueError):
+        modifier_appartenance("ch1en", "ods", present=True)
+    with pytest.raises(ValueError):
+        modifier_appartenance("", "ods", present=True)
+
+
+def test_modifier_appartenance_source_inconnue():
+    """Une source inconnue est rejetée."""
+    with pytest.raises(ValueError):
+        modifier_appartenance("CHAT", "klingon", present=True)
+
+
+def test_rechercher_statut_assemble_sources_et_definition(tmp_path, monkeypatch):
+    """rechercher_statut agrège le statut des deux sources + la définition."""
+    chemin_ods = _preparer_source_modifs(tmp_path, monkeypatch, ["CHAT"])
+    monkeypatch.setitem(
+        d.CHEMINS_MODIFS, "hunspell", (tmp_path / "ha.txt", tmp_path / "hr.txt")
+    )
+    definitions = tmp_path / "definitions.json"
+    definitions.write_text(json.dumps({"CHAT": ["Félin."]}), encoding="utf-8")
+
+    resultat = rechercher_statut(
+        "chat",
+        chemin_ods=chemin_ods,
+        base_hunspell=tmp_path / "inexistant",
+        chemin_definitions=definitions,
+    )
+    assert resultat["mot"] == "CHAT"
+    assert resultat["valide_saisie"] is True
+    assert set(resultat["sources"]) == {"ods", "hunspell"}
+    assert resultat["sources"]["ods"]["present"] is True
+    assert resultat["sources"]["hunspell"]["indisponible"] is True
+    assert resultat["definition"] == ["Félin."]

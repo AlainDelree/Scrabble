@@ -453,6 +453,29 @@ class ApiAccueil:
         """Retourne la liste des niveaux de difficulté (labels français)."""
         return list(NIVEAUX_LABELS.keys())
 
+    def ouvrir_reglages(self) -> dict[str, Any]:
+        """Ouvre la fenêtre de réglages à onglets (issue #111).
+
+        La fenêtre de réglages est ouverte comme **seconde fenêtre** de la boucle
+        pywebview déjà démarrée par l'accueil (``webview.create_window`` sans
+        relancer ``webview.start()``) : point d'entrée naturel hors partie, où
+        changer la source de dictionnaire ou le thème est sans risque. À sa
+        fermeture, le contrôle revient à l'accueil, qui reste ouvert en dessous.
+
+        L'import est différé pour ne pas coupler le chargement de l'accueil à la
+        fenêtre de réglages. Retourne ``{"succes": bool, ...}`` pour que le JS
+        signale un éventuel échec plutôt que de rester silencieux.
+        """
+        try:
+            from scrabble.ui.reglages import creer_fenetre_reglages
+
+            creer_fenetre_reglages()
+            journal.info("Accueil : ouverture de la fenêtre de réglages.")
+            return {"succes": True}
+        except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
+            journal.erreur("Accueil : échec d'ouverture des réglages.", e)
+            return {"succes": False, "erreur": str(e)}
+
 
 def lancer_accueil(
     ouvrir_jeu: bool = True, reutiliser_session: bool = False

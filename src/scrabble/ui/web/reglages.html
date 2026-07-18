@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrabble - Réglages</title>
+    <link rel="stylesheet" href="reglages.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Réglages</h1>
+        </header>
+
+        <!-- Barre d'onglets (bascule pur CSS/JS, aria-selected pour l'a11y). -->
+        <div class="onglets" role="tablist">
+            <button class="onglet active" role="tab" aria-selected="true"
+                    id="onglet-general" data-panneau="panneau-general">
+                Général
+            </button>
+            <button class="onglet" role="tab" aria-selected="false"
+                    id="onglet-dictionnaire" data-panneau="panneau-dictionnaire">
+                Dictionnaire
+            </button>
+        </div>
+
+        <main>
+            <!-- ========================= Onglet Général ========================= -->
+            <section class="panneau active" id="panneau-general"
+                     role="tabpanel" aria-labelledby="onglet-general">
+                <div class="champ">
+                    <label for="input-prenom">Prénom principal</label>
+                    <input type="text" id="input-prenom" maxlength="30"
+                           autocomplete="off" placeholder="(aucun)">
+                    <p class="aide">Prénom proposé par défaut à l'accueil.</p>
+                </div>
+
+                <div class="champ">
+                    <label for="select-theme">Thème du plateau</label>
+                    <select id="select-theme"></select>
+                    <p class="aide">Habillage couleurs/étiquettes de l'écran de jeu.</p>
+                </div>
+
+                <div class="champ">
+                    <label for="select-source">Source du dictionnaire</label>
+                    <select id="select-source"></select>
+                    <p class="aide">
+                        Dictionnaire utilisé pour valider les mots. Un changement
+                        prend effet à la prochaine partie.
+                    </p>
+                </div>
+
+                <p class="statut-enregistrement" id="statut-general" hidden></p>
+            </section>
+
+            <!-- ====================== Onglet Dictionnaire ======================= -->
+            <section class="panneau" id="panneau-dictionnaire"
+                     role="tabpanel" aria-labelledby="onglet-dictionnaire">
+                <form id="form-recherche" class="recherche">
+                    <input type="text" id="input-mot" autocomplete="off"
+                           placeholder="Rechercher un mot…" maxlength="30">
+                    <button type="submit" class="btn btn-primaire" id="btn-rechercher">
+                        Rechercher
+                    </button>
+                </form>
+
+                <p class="chargement" id="chargement" hidden>
+                    Recherche en cours… (le premier accès à Hunspell peut prendre
+                    quelques secondes)
+                </p>
+                <p class="message" id="message-dico" hidden></p>
+
+                <div id="resultat" class="resultat" hidden>
+                    <h2 id="resultat-mot"></h2>
+
+                    <div class="sources" id="sources"></div>
+
+                    <div class="definition" id="definition-bloc">
+                        <h3>Définition</h3>
+                        <div id="definition-contenu"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <button class="btn btn-secondaire" id="btn-fermer">Fermer</button>
+        </footer>
+    </div>
+
+    <script src="reglages.js"></script>
+</body>
+</html>

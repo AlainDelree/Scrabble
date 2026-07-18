@@ -57,6 +57,35 @@ body {
 header {
     text-align: center;
     margin-bottom: 24px;
+    position: relative;
+}
+
+/* Bouton d'accès aux réglages (issue #111) : engrenage discret en haut à droite
+   de l'en-tête. Blanc translucide sur le tapis vert, cohérent avec les autres
+   textes de l'accueil (issue #77). */
+.btn-reglages {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 44px;
+    height: 44px;
+    font-size: 1.4rem;
+    line-height: 1;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.18);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-reglages:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.32);
+}
+
+.btn-reglages:disabled {
+    opacity: 0.55;
+    cursor: default;
 }
 
 /* Textes sur le tapis vert (issue #77, suite de #75). Le titre était en vert
