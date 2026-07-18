@@ -1,4 +1,8 @@
-/* Écran de jeu - Plateau, chevalet et pose d'un mot (clic-clic) */
+/* Écran de jeu — fenêtre PLATEAU (issue #90) : plateau 15×15, panneaux joueurs,
+   barre du sac/historique et pose « clic-clic ». Le chevalet et le brouillon
+   vivent dans leur propre fenêtre (chevalet.html / chevalet.css) ; les composants
+   partagés (tuiles, boutons, modales, cases de chevalet/brouillon…) sont définis
+   une seule fois dans commun.css, chargé avant cette feuille. */
 
 :root {
     --couleur-fond: #f5f5f0;
@@ -946,61 +950,6 @@ header {
     --label-taille: clamp(0.5rem, 1.9vw, 0.9rem);
 }
 
-/* Tuile posée sur une case */
-.tuile {
-    position: absolute;
-    inset: 1px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--tuile-fond);
-    border: 1px solid var(--tuile-bordure);
-    border-radius: 3px;
-    color: var(--tuile-texte);
-    font-size: clamp(0.55rem, 1.9vw, 0.95rem);
-    font-weight: 700;
-    text-transform: uppercase;
-    /* Ombre portée légère mais nette : renforce la séparation entre la tuile
-       (fond ivoire) et la case sous-jacente (normale ou bonus) — issue #40. */
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.32);
-}
-
-.tuile-joker {
-    border: 2px dashed var(--tuile-joker-bordure);
-    color: var(--tuile-joker-bordure);
-}
-
-/* Tuile en attente de validation (posée mais pas encore jouée).
-   Orange vif (issue #44) : le vert de l'ancienne bordure se confondait avec
-   le vert déjà omniprésent (chevalet « à jouer », joueur actif, boutons). Sur
-   un plateau chargé en fin de partie, l'orange — inutilisé ailleurs à l'écran —
-   ressort sans ambiguïté et se distingue nettement du fond ivoire des tuiles
-   déjà validées (issue #40). Rouge-orangé plus saturé que l'ambre des cases
-   bonus « mot double » du thème vert (#f0a83c), donc pas de confusion. */
-.tuile-attente {
-    background: #ffe1c2;
-    border: 2px solid #e8730c;
-    color: #a8420a;
-    box-shadow: 0 0 0 1px rgba(232, 115, 12, 0.45), 0 1px 2px rgba(0, 0, 0, 0.25);
-    cursor: pointer;
-}
-
-.tuile-attente.tuile-joker {
-    border-style: dashed;
-    border-color: var(--tuile-joker-bordure);
-    color: var(--tuile-joker-bordure);
-}
-
-/* Petite valeur en indice sur la tuile */
-.tuile-valeur {
-    position: absolute;
-    right: 1px;
-    bottom: 0;
-    font-size: 0.5em;
-    font-weight: 600;
-    opacity: 0.8;
-}
-
 /* Sac (dans la barre d'infos de l'en-tête) */
 .sac {
     display: inline-flex;
@@ -1027,7 +976,15 @@ header {
     color: #666;
 }
 
-/* Boutons */
+/* Boutons de base. CONSERVÉS ICI VOLONTAIREMENT (issue #107) bien qu'identiques à
+   commun.css : le bouton « Vérification dictionnaire » (.btn-verif-dico, défini
+   plus haut) réutilise .btn mais lui ajoute des réglages propres (pilule
+   border-radius: 999px, padding réduit) qui — dans l'ordre du cascade — sont
+   écrasés par cette base .btn placée APRÈS lui. Retirer ce bloc au profit de la
+   version de commun.css (chargée AVANT jeu.css) inverserait l'ordre et ferait
+   gagner les réglages « pilule » de .btn-verif-dico, changeant le rendu du bouton.
+   On garde donc ce doublon précis pour laisser le rendu existant strictement
+   inchangé (les autres doublons de commun.css, eux, ont bien été retirés). */
 .btn {
     padding: 10px 18px;
     font-size: 0.95rem;
@@ -1070,34 +1027,6 @@ header {
     font-size: 0.82rem;
 }
 
-/* Lien d'action discret (issue #41, points 2 et 3). Pour les actions rares ou
-   d'appoint — « Remettre toutes ses lettres et passer », « Resynchroniser » —
-   qui doivent rester trouvables sans dominer l'écran : pas de fond plein, texte
-   neutre souligné au survol, taille réduite. Reste un vrai <button> (accessible)
-   mais visuellement en retrait par rapport aux boutons pleins d'action courante. */
-.lien-discret {
-    background: none;
-    border: none;
-    padding: 2px 4px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #6a6a6a;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: color 0.15s, background 0.15s;
-}
-
-.lien-discret:hover:not(:disabled) {
-    color: var(--couleur-texte);
-    text-decoration: underline;
-    background: rgba(0, 0, 0, 0.04);
-}
-
-.lien-discret:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
 /* Boutons utilitaires de la barre globale (« ↻ Resynchroniser », « 🏠 Retour au
    menu »). Historique : d'abord liens discrets (issue #41/#74), puis passés en
    blanc pour le contraste sur le tapis vert (issue #77) ; jugés malgré tout trop
@@ -1114,448 +1043,11 @@ header {
     font-weight: 600;
 }
 
-/* Chevalet */
-.zone-chevalet {
-    margin-top: 8px;
-    /* Fond aligné sur la carte « Aucun joueur » de l'accueil (issue #86, suite
-       de #85) : cette carte, vide, s'intègre au tapis vert. On reprend donc la
-       MÊME couleur de feutre via la variable partagée --tapis-vert (identique
-       dans accueil.css et jeu.css : si le vert change un jour, les deux suivent),
-       plutôt que le jaune vif temporaire du repère #85 (désormais retiré). */
-    background: var(--tapis-vert);
-    border-radius: var(--rayon-bordure);
-    box-shadow: var(--ombre);
-    padding: 8px 14px 10px;
-}
-
-.chevalet-entete {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 6px;
-    flex-wrap: wrap;
-}
-
-/* Masquage pendant un tour d'ordinateur (issue #51, suite #49) : le
-   « display: flex » ci-dessus l'emporterait sinon sur le « display: none »
-   implicite de l'attribut [hidden] (règle auteur > feuille du navigateur à
-   spécificité égale) et le titre « Chevalet de … » + l'aide de pose
-   resteraient visibles alors que majModeTour() les masque en JS. */
-.chevalet-entete[hidden] {
-    display: none;
-}
-
-.chevalet-entete h2 {
-    font-size: 1.05rem;
-    color: var(--couleur-secondaire, #5d4037);
-}
-
-/* Titre du chevalet + instruction de pose regroupés (issue #42, point 4) :
-   l'aide clic-clic est ainsi visible juste sous « Chevalet de … », avant toute
-   interaction (elle se trouvait auparavant sous la zone de jeu). */
-.chevalet-titre-groupe {
-    min-width: 0;
-}
-
-.chevalet-aide-pose {
-    margin-top: 2px;
-    font-size: 0.8rem;
-    color: #666;
-    line-height: 1.35;
-}
-
-.chevalet-actions {
-    display: inline-flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-/* Disposition « réflexion » (issue #41, point 1) : deux cartes nettement
-   distinctes côte à côte — le chevalet (zone d'action) à gauche, le brouillon
-   (zone de réflexion) à droite. Espacement régulier et modéré. */
-.zone-reflexion {
-    display: flex;
-    gap: 14px;
-    align-items: stretch;
-    flex-wrap: wrap;
-}
-
-/* Idem (issue #51) : sans cette règle, le bloc « À jouer » (chevalet + zone de
-   jeu) resterait affiché pendant un tour d'ordinateur malgré le .hidden posé
-   par majModeTour(), car « display: flex » masque le [hidden] par défaut. */
-.zone-reflexion[hidden] {
-    display: none;
-}
-
-/* Intitulé commun aux deux zones : petite étiquette en tête de carte qui dit
-   sans ambiguïté à quoi sert la zone. La couleur d'accent distingue « jouer »
-   (vert primaire) de « réfléchir » (brun sourd du brouillon). */
-.bloc-titre {
-    display: block;
-    font-size: 0.82rem;
-    font-weight: 700;
-    margin-bottom: 8px;
-}
-
-.bloc-titre-jouer {
-    color: var(--couleur-primaire);
-}
-
-.bloc-titre-brouillon {
-    color: #8a6d3b;
-}
-
-.bloc-titre-note {
-    font-weight: 500;
-    font-size: 0.74rem;
-    color: #888;
-}
-
-/* Carte du chevalet : zone d'ACTION. Encadrée d'un liseré vert discret et d'un
-   fond très légèrement teinté pour la démarquer nettement du brouillon voisin.
-   Reste compacte : à peine plus large que les 7 lettres, sans étirement. */
-.bloc-chevalet {
-    flex: 0 1 auto;
-    max-width: 100%;
-    padding: 8px 10px 10px;
-    background: #f2f8f2;
-    border: 1px solid rgba(46, 125, 50, 0.35);
-    border-radius: 8px;
-}
-
-.chevalet {
-    display: flex;
-    gap: 7px;
-    flex-wrap: nowrap;
-    width: fit-content;
-    min-height: 48px;
-    align-items: center;
-    padding: 6px;
-    background: #8a5a3b;
-    border-radius: 6px;
-}
-
-/* Case de chevalet masquée (nombre visible, identité cachée) */
-.chevalet-case {
-    width: 40px;
-    height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-    font-weight: 700;
-    position: relative;
-}
-
-.chevalet-case.masquee {
-    background: repeating-linear-gradient(
-        45deg,
-        #b9a58f,
-        #b9a58f 6px,
-        #a8927a 6px,
-        #a8927a 12px
-    );
-    color: rgba(0, 0, 0, 0.35);
-    font-size: 1.3rem;
-    border: 1px solid #96806a;
-}
-
-.chevalet-case.revelee {
-    background: var(--tuile-fond);
-    border: 1px solid var(--tuile-bordure);
-    color: var(--tuile-texte);
-    font-size: 1.5rem;
-    text-transform: uppercase;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-.chevalet-case.revelee.joker {
-    border: 2px dashed var(--tuile-joker-bordure);
-    color: var(--tuile-joker-bordure);
-}
-
-/* Lettre révélée cliquable (mécanique clic-clic). */
-.chevalet-case.revelee {
-    cursor: pointer;
-    transition: transform 0.1s, box-shadow 0.1s;
-}
-
-.chevalet-case.revelee:hover {
-    transform: translateY(-2px);
-}
-
-/* Lettre du chevalet actuellement sélectionnée (prête à être posée). */
-.chevalet-case.selectionnee {
-    outline: 3px solid var(--couleur-primaire);
-    outline-offset: 1px;
-    transform: translateY(-4px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
-
-/* Lettre déjà posée en attente sur le plateau : grisée, non sélectionnable. */
-.chevalet-case.utilisee {
-    opacity: 0.35;
-    cursor: default;
-    filter: grayscale(0.6);
-}
-
-.chevalet-case.utilisee:hover {
-    transform: none;
-}
-
-.chevalet-case .val {
-    position: absolute;
-    right: 3px;
-    bottom: 1px;
-    font-size: 0.6rem;
-    font-weight: 600;
-    opacity: 0.8;
-}
-
-.chevalet-vide {
-    color: #f0e6d8;
-    font-style: italic;
-    font-size: 0.9rem;
-}
-
-/* Pied de la zone chevalet : ne porte plus que l'aide de confidentialité
-   (parties à deux humains ou plus). L'action rare « remettre ses lettres » a
-   rejoint la barre de contrôles de jeu (issue #42, point 6). Quand l'aide est
-   masquée (un seul humain), le pied est vide : sa marge est alors annulée pour
-   ne pas laisser d'espace mort. */
-.chevalet-pied {
-    margin-top: 10px;
-}
-
-.chevalet-pied:has(> [hidden]) {
-    margin-top: 0;
-}
-
-.chevalet-aide {
-    font-size: 0.8rem;
-    color: #777;
-    font-style: italic;
-    margin: 0;
-}
-
-/* --------------------------------------------------------------------------- */
-/* Zone de brouillon (réflexion indépendante du plateau)                       */
-/* --------------------------------------------------------------------------- */
-.bloc-brouillon {
-    flex: 1 1 300px;
-    min-width: 260px;
-    padding: 8px 12px 10px;
-    background: #f3eee4;
-    border: 1px dashed #c9a961;
-    border-radius: 8px;
-}
-
-.bloc-brouillon[hidden] {
-    display: none;
-}
-
-.brouillon-entete {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 8px;
-}
-
-/* Le titre du brouillon reprend le gabarit .bloc-titre (voir plus haut) ; on
-   n'ajoute ici que sa marge nulle (il est déjà espacé par .brouillon-entete).
-   On repasse toutefois en display: inline (le gabarit .bloc-titre est block) :
-   sinon le titre occupe toute la largeur de sa ligne et repousse l'icône « i »
-   (.btn-aide-info), pourtant inline, à la ligne du dessous. En inline, texte du
-   titre et icône s'enchaînent sur la même ligne et ne se replient qu'en cas de
-   manque réel de place (issue #88). */
-.brouillon-titre {
-    display: inline;
-    margin-bottom: 0;
-}
-
-/* Emplacements de brouillon : 9 cases (7 lettres + 2 vides) où réordonner et
-   déplacer librement ses lettres (issue #48). */
-.brouillon {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    min-height: 46px;
-    align-items: center;
-}
-
-.brouillon-case {
-    width: 40px;
-    height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-    font-weight: 700;
-    font-size: 1.4rem;
-    text-transform: uppercase;
-    position: relative;
-    cursor: pointer;
-    background: var(--tuile-fond);
-    border: 1px solid var(--tuile-bordure);
-    color: var(--tuile-texte);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-    transition: transform 0.1s, box-shadow 0.1s;
-}
-
-.brouillon-case:hover {
-    transform: translateY(-2px);
-}
-
-.brouillon-case.joker {
-    border: 2px dashed var(--tuile-joker-bordure);
-    color: var(--tuile-joker-bordure);
-}
-
-/* Emplacement sélectionné (premier clic d'un échange de deux positions). */
-.brouillon-case.selectionnee {
-    outline: 3px solid var(--couleur-primaire);
-    outline-offset: 1px;
-    transform: translateY(-4px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
-
-.brouillon-case .val {
-    position: absolute;
-    right: 3px;
-    bottom: 1px;
-    font-size: 0.55rem;
-    font-weight: 600;
-    opacity: 0.8;
-}
-
-/* Emplacements vides du brouillon (issue #48). Toujours au nombre de 2, leur
-   position est librement choisie par le joueur : ils figurent aussi « une lettre
-   déjà posée sur le plateau » à intégrer à la réflexion. Ce sont désormais des
-   CIBLES de déplacement : mêmes dimensions qu'une case, pointillées et estompées,
-   mais cliquables (curseur pointeur + léger survol) pour y déposer la lettre
-   préalablement sélectionnée. La vérification dictionnaire les ignore. */
-.brouillon-case-vide {
-    width: 40px;
-    height: 44px;
-    border-radius: 4px;
-    border: 2px dashed #c9a961;
-    background: rgba(201, 169, 97, 0.10);
-    opacity: 0.7;
-    flex: 0 0 auto;
-    cursor: pointer;
-    transition: transform 0.1s, opacity 0.1s, background 0.1s;
-}
-
-.brouillon-case-vide:hover {
-    transform: translateY(-2px);
-    opacity: 0.95;
-    background: rgba(201, 169, 97, 0.20);
-}
-
-.brouillon-vide {
-    color: #8a7a63;
-    font-style: italic;
-    font-size: 0.9rem;
-}
-
-/* Titre du brouillon + icône « i » d'aide + son popover (issue #86). Le groupe
-   est le contexte de positionnement du popover (position: relative). L'icône est
-   posée « en exposant » juste après la phrase du titre. */
-.brouillon-titre-groupe {
-    position: relative;
-    display: inline;
-}
-
-/* Icône « i » cerclée, cliquable. Cible confortable (≈ 26px + zone de clic
-   élargie via le padding négatif du survol) pour un public 80+, tout en gardant
-   l'aspect « exposant » discret grâce au décalage vertical. */
-.btn-aide-info {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    margin-left: 6px;
-    padding: 0;
-    vertical-align: super;     /* effet « exposant » juste après la phrase */
-    border: 2px solid var(--couleur-secondaire, #5d4037);
-    border-radius: 50%;
-    background: white;
-    color: var(--couleur-secondaire, #5d4037);
-    font-size: 0.85rem;
-    font-weight: 700;
-    font-style: italic;
-    font-family: Georgia, "Times New Roman", serif;
-    line-height: 1;
-    cursor: pointer;
-}
-
-.btn-aide-info:hover {
-    background: var(--couleur-secondaire, #5d4037);
-    color: white;
-}
-
-.btn-aide-info:focus-visible {
-    outline: 3px solid var(--couleur-primaire);
-    outline-offset: 2px;
-}
-
-/* Popover d'aide du brouillon : texte inchangé, désormais replié ici et ouvert
-   au clic sur l'icône « i » (attribut [hidden] retiré par le JS), fermé au clic
-   extérieur ou à la touche Échap. Ancré sous l'icône. */
-.aide-info-popover {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    z-index: 5;
-    width: min(320px, 80vw);
-    padding: 12px 14px;
-    background: white;
-    border-radius: var(--rayon-bordure);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
-    font-size: 0.85rem;
-    color: #5b4a33;
-    font-style: normal;
-}
-
-.aide-info-popover[hidden] {
-    display: none;
-}
-
-.aide-info-popover p {
-    margin: 0;
-}
-
-.message-brouillon {
-    margin-top: 8px;
-    font-size: 0.9rem;
-    min-height: 1.2em;
-    font-weight: 600;
-}
-
-.message-brouillon.valide {
-    color: var(--couleur-primaire-hover);
-}
-
-.message-brouillon.invalide {
-    color: #b71c1c;
-}
-
-.message-brouillon.info {
-    color: #555;
-    font-weight: 500;
-}
-
-/* Zone de pose d'un mot (clic-clic). Depuis l'issue #45 (point 5) elle est
-   imbriquée EN BAS de la carte « À jouer » (.bloc-chevalet), juste sous les
-   lettres du chevalet, pour combler l'espace vide plutôt que le laisser béant.
-   La barre regroupe les trois actions de tour (Remettre / Annuler / Valider) sur
-   une même ligne sous les lettres ; ``width: 100%`` la fait occuper toute la
-   largeur de la carte, qui s'étire d'autant (le brouillon, plus large lui aussi,
-   se replie alors sous la zone « À jouer » — issue #45, point 4). */
+/* Barre des actions de tour (issue #101) : rapatriée depuis la fenêtre chevalet
+   dans le pied de la fenêtre plateau, sous la zone d'attente IA. Elle regroupe
+   les actions de tour (Remettre / Annuler / Vérifier / Jouer) ; ``width: 100%``
+   lui fait occuper toute la largeur du panneau du bas. Affichée uniquement
+   pendant le tour du joueur humain (voir majActionsTour dans jeu.js). */
 .zone-jeu {
     margin-top: 8px;
     padding-top: 8px;
@@ -1587,11 +1079,6 @@ header {
     gap: 10px;
 }
 
-.btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
 /* Vérification dictionnaire par saisie libre (issue #50, déplacée issue #86) :
    champ texte + bouton, désormais hébergés dans le popover « Vérification
    dictionnaire » à gauche de l'écran (voir .verif-dico-popover). Le champ
@@ -1621,57 +1108,6 @@ header {
     outline-offset: 1px;
 }
 
-/* Message de retour (succès / erreur / info) sous les contrôles. */
-.message-coup {
-    margin-top: 6px;
-    font-size: 0.9rem;
-    min-height: 1.2em;
-}
-
-.message-coup.erreur {
-    color: #b71c1c;
-    font-weight: 600;
-}
-
-.message-coup.succes {
-    color: var(--couleur-primaire-hover);
-    font-weight: 600;
-}
-
-.message-coup.info {
-    color: #555;
-}
-
-/* Modale de choix de lettre pour un joker */
-.modale {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-}
-
-.modale[hidden] {
-    display: none;
-}
-
-.modale-contenu {
-    background: white;
-    border-radius: var(--rayon-bordure);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-    padding: 20px 24px;
-    max-width: 360px;
-    text-align: center;
-}
-
-.modale-contenu h3 {
-    font-size: 1.05rem;
-    margin-bottom: 14px;
-    color: var(--couleur-secondaire, #5d4037);
-}
-
 /* Avertissement avant un « Retour au menu » avec un coup en attente (issue #74).
    Réutilise .modale / .modale-contenu ; message explicatif + deux actions en
    ligne (rester / confirmer). */
@@ -1680,37 +1116,6 @@ header {
     line-height: 1.4;
     color: var(--couleur-texte);
     margin-bottom: 16px;
-}
-
-.modale-actions {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-
-.joker-grille {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 6px;
-    margin-bottom: 16px;
-}
-
-.joker-lettre {
-    padding: 8px 0;
-    font-size: 1rem;
-    font-weight: 700;
-    background: var(--tuile-fond);
-    border: 1px solid var(--tuile-bordure);
-    border-radius: 4px;
-    color: var(--tuile-texte);
-    cursor: pointer;
-    transition: background 0.1s, transform 0.1s;
-}
-
-.joker-lettre:hover {
-    background: #e8d09a;
-    transform: translateY(-1px);
 }
 
 /* Mode « attente d'un tour d'ordinateur » (issue #35) : remplace toute la
@@ -1737,65 +1142,6 @@ header {
     font-size: 1rem;
     font-weight: 600;
     color: var(--couleur-ordinateur, #6a1b9a);
-}
-
-/* Modale de détail du score après un coup posé (issue #35). Réutilise .modale
-   et .modale-contenu ; ces règles n'ajoutent que la mise en forme du détail. */
-.modale-score {
-    max-width: 420px;
-    text-align: left;
-}
-
-.modale-score h3 {
-    text-align: center;
-}
-
-.score-detail {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 14px;
-}
-
-.score-mot {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: baseline;
-    gap: 4px 10px;
-    padding: 6px 10px;
-    background: var(--couleur-fond, #f5f5f0);
-    border-radius: 6px;
-}
-
-.score-mot-texte {
-    font-weight: 700;
-    letter-spacing: 0.04em;
-}
-
-.score-mot-points {
-    font-variant-numeric: tabular-nums;
-    color: var(--couleur-primaire, #2e7d32);
-    font-weight: 700;
-}
-
-.score-bonus {
-    grid-column: 1 / -1;
-    font-size: 0.85rem;
-    font-style: italic;
-    color: var(--couleur-texte, #2c2c2c);
-    opacity: 0.75;
-}
-
-.score-scrabble {
-    background: var(--couleur-humain-fond, #e3f2fd);
-}
-
-.score-total {
-    text-align: center;
-    font-size: 1.1rem;
-    font-weight: 800;
-    margin-bottom: 16px;
-    color: var(--couleur-secondaire, #5d4037);
 }
 
 /* --------------------------------------------------------------------------- */
