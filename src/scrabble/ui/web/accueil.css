@@ -513,10 +513,15 @@ section h2 {
     /* Ne se comprime jamais : la barre d'actions garde sa hauteur et reste
        visible sous le corps scrollable. */
     flex: 0 0 auto;
+    /* Marge haute resserrée (issue #115) : quelques pixels regagnés pour aider
+       le cas courant (2-3 joueurs + consigne sur deux lignes) à tenir sans
+       défilement. */
+    margin-top: 14px;
 }
 
 .tirage-intro {
-    margin-bottom: 12px;
+    /* Marge basse resserrée 12 -> 10 (issue #115). */
+    margin-bottom: 10px;
     color: #555;
 }
 
@@ -525,7 +530,8 @@ section h2 {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin-bottom: 16px;
+    /* Marge basse resserrée 16 -> 12 (issue #115). */
+    margin-bottom: 12px;
 }
 
 .tirage-lettres li {
@@ -611,12 +617,18 @@ section h2 {
    suivant le curseur pour une secousse nettement plus marquée. La taille est
    fixe mais bornée pour ne jamais déborder de la modale. */
 .tirage-sac-aire {
-    /* Taille resserrée à 256px (issue #83, ex-280px de l'issue #68) : assez
-       grande pour secouer franchement le sac, mais l'ensemble consigne + aire
-       + bouton rentre désormais sans scroll dans le cas courant. */
-    width: 256px;
-    height: 256px;
-    max-width: min(256px, 70vw);
+    /* Taille resserrée à 224px (issue #115, ex-256px de l'issue #83, ex-280px
+       de l'issue #68) : toujours assez grande pour secouer franchement le sac,
+       mais l'ensemble lignes de tirage + consigne + aire + bouton rentre sans
+       scroll dans le cas courant réel (2-3 joueurs), pas seulement le cas — qui
+       n'arrive jamais — d'un unique tirage.
+       La borne « 40vh » fait rétrécir l'aire AVANT que le corps ne défile
+       lorsque la fenêtre est plus courte (filet de sécurité intermédiaire, en
+       amont du scroll de l'issue #82) : le bouton « Tirer une lettre » reste
+       ainsi visible le plus longtemps possible. */
+    width: min(224px, 40vh);
+    height: min(224px, 40vh);
+    max-width: min(224px, 70vw);
     aspect-ratio: 1 / 1;
     display: flex;
     align-items: center;

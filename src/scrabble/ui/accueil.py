@@ -537,13 +537,18 @@ def lancer_accueil(
             str(chemin_html),
             js_api=api,
             width=700,
-            # Hauteur relevée (issue #82) : la modale de tirage d'ordre affiche
-            # le sac (~280 px) plus une consigne pouvant tenir sur deux lignes ;
-            # 600 px tronquait les boutons Annuler / Continuer en bas. 720 px
-            # laisse tout le contenu visible dès l'ouverture, sans scroll. Le
-            # CSS (#modale-tirage, corps scrollable) reste le filet de sécurité
-            # pour les écrans plus courts.
-            height=720,
+            # Hauteur relevée (issues #82 puis #115) : la modale de tirage
+            # d'ordre affiche AUTANT de lignes que de joueurs (toutes présentes
+            # dès le départ, même masquées en fondu → elles occupent la place)
+            # plus le sac et une consigne pouvant tenir sur deux lignes. 720 px
+            # (issue #82) ne suffisait qu'au cas — irréaliste — d'un seul
+            # tirage : dès 2 joueurs (partie minimale), le bouton « Tirer une
+            # lettre » repassait sous le scroll de secours. 780 px laisse le cas
+            # courant (2 à 3 joueurs + consigne sur deux lignes) entièrement
+            # visible sans défilement. Le CSS (#modale-tirage à corps scrollable
+            # + aire du sac bornée en vh) reste le filet de sécurité pour les
+            # écrans plus courts et les parties à nombreux joueurs.
+            height=780,
             resizable=True,
             # Fond vert dès le mappage de la fenêtre (issue #113) : évite le
             # blanc par défaut de pywebview pendant le chargement HTML/CSS.
