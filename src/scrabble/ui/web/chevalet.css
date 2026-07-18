@@ -1,9 +1,10 @@
-/* chevalet.css — fenêtre flottante du chevalet (issue #90, fusion #100).
-   Fenêtre pywebview séparée, frameless + on_top + ~880×260px, non
-   redimensionnable. Un seul panneau de 9 cases (issue #100), toujours visible et
-   réarrangeable : plus de boîte « attente », plus de bascule « voir/cacher ». On
-   soigne une mise en page compacte : barre de déplacement en haut, puis en-tête,
-   panneau, actions de tour. Les briques partagées (tuiles, boutons, modales)
+/* chevalet.css — fenêtre flottante du chevalet (issue #90, fusion #100, épuré #102).
+   Fenêtre pywebview séparée, frameless + on_top, non redimensionnable. Un seul
+   panneau de 9 cases (issue #100), toujours visible et réarrangeable : plus de
+   boîte « attente », plus de bascule « voir/cacher ». Depuis l'issue #102 la
+   fenêtre est réduite au strict nécessaire : barre de déplacement fine en haut,
+   puis directement le panneau des lettres — l'en-tête vert (titre + aide) et
+   l'icône « i » ont été retirés. Les briques partagées (tuiles, boutons, modales)
    viennent de commun.css. */
 
 html, body {
@@ -59,37 +60,15 @@ body {
 /* --------------------------------------------------------------------------- */
 /* Corps de la fenêtre chevalet                                                 */
 /* --------------------------------------------------------------------------- */
+/* Depuis l'issue #102, la fenêtre ne contient plus que la barre de déplacement et
+   ce corps réduit au seul panneau des lettres : l'en-tête vert (titre + aide) a
+   été retiré. Le padding est resserré au plus près du panneau. */
 .chevalet-fenetre {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     overflow: auto;
     padding: 8px 14px 10px;
-}
-
-.chevalet-entete {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 6px;
-    flex-wrap: wrap;
-}
-
-.chevalet-entete h2 {
-    font-size: 1.05rem;
-    color: #fff;
-}
-
-.chevalet-titre-groupe {
-    min-width: 0;
-}
-
-.chevalet-aide-pose {
-    margin-top: 2px;
-    font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.85);
-    line-height: 1.35;
 }
 
 /* --------------------------------------------------------------------------- */

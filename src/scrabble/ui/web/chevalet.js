@@ -11,8 +11,10 @@
  *
  * Depuis l'issue #101, les actions de tour (Annuler / Vérifier et calculer /
  * Jouer / Remettre ses lettres) et le badge « hors tour » ont quitté cette
- * fenêtre pour la fenêtre plateau : le chevalet ne porte plus que l'en-tête, le
- * panneau de 9 lettres et la barre de déplacement.
+ * fenêtre pour la fenêtre plateau. Depuis l'issue #102, l'en-tête vert (titre
+ * « Chevalet de [nom] » + instructions) et l'icône d'aide « i » ont aussi été
+ * retirés : le chevalet ne porte plus que le panneau de 9 lettres (dont le titre
+ * porte l'instruction courte) et la barre de déplacement.
  *
  * Confidentialité (issues #33/#35, #99) : seules les lettres du joueur humain
  * de référence transitent jusqu'ici ; jamais le chevalet d'un ordinateur ni d'un
@@ -26,11 +28,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Éléments du DOM ---
     const barreDrag = document.getElementById('barre-drag');
-    const chevaletNom = document.getElementById('chevalet-nom');
 
     const panneauEl = document.getElementById('panneau');
-    const btnAidePanneau = document.getElementById('btn-aide-panneau');
-    const aidePanneauPopover = document.getElementById('aide-panneau-popover');
 
     // Modale de choix de lettre pour un joker (reste côté chevalet : la lettre
     // vient d'ici, issue #90/#101).
@@ -56,7 +55,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function rendrePanneau() {
-        chevaletNom.textContent = etat && etat.nom ? etat.nom : '—';
         panneauEl.innerHTML = '';
         if (panneauLettres.length === 0) {
             panneauEl.innerHTML = '<span class="panneau-vide">Chevalet vide.</span>';
@@ -331,9 +329,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.addEventListener('mousemove', bougerDrag);
         document.addEventListener('mouseup', finDrag);
     }
-
-    // Aide du panneau (icône « i »).
-    C.configurerPopover(btnAidePanneau, aidePanneauPopover);
 
     // Les actions de tour (Annuler / Vérifier et calculer / Jouer / Remettre ses
     // lettres) ont été déplacées vers la fenêtre plateau (issue #101) : leurs

@@ -2334,19 +2334,24 @@ class TestDimensionsChevalet:
         monkeypatch.setattr(mod.webview, "screens", [])
         assert mod._position_chevalet() == (100, 100)
 
-    def test_largeur_suffisante_pour_deux_blocs(self):
-        # Deux blocs côte à côte (7 + 9 cases de 40 px + marges) : garde-fou pour
-        # éviter une régression qui rétrécirait la fenêtre sous le seuil utile.
-        assert CHEVALET_LARGEUR >= 830
+    def test_largeur_suffisante_pour_le_contenu(self):
+        # Garde-fou largeur (issue #94, épuré #102) : depuis le retrait de l'en-tête
+        # vert, le contenu le plus large est le titre du panneau (~418 px) ; la
+        # rangée de 9 cases + le padding réclament ~470 px. La fenêtre est réduite à
+        # 620 px (marge pour le rendu WebKitGTK). Le garde-fou empêche autant une
+        # régression qui rognerait le contenu (trop étroit) qu'un retour à l'ancien
+        # espace vide de la mise en page à deux blocs (~880 px).
+        assert 560 <= CHEVALET_LARGEUR <= 700
 
     def test_hauteur_suffisante_pour_le_contenu(self):
-        # Garde-fou hauteur (issue #94, revu #100) : depuis la fusion en panneau
-        # unique (en-tête + panneau de 9 cases + actions de tour + message de
-        # statut), le contenu descend à ~280 px, mesuré dans la fenêtre à sa taille
-        # réelle. La hauteur doit rester au-dessus pour ne pas rogner le contenu ;
-        # on garde une petite marge. Empêche autant une régression qui rognerait le
-        # bas (trop bas) qu'un retour au vide de #92 (trop haut, ~400 px).
-        assert 280 <= CHEVALET_HAUTEUR <= 340
+        # Garde-fou hauteur (issue #94, revu #100, épuré #102) : depuis le retrait de
+        # l'en-tête vert et de l'icône d'aide (#102), la fenêtre ne contient plus que
+        # la barre de déplacement (~35 px) et le panneau de 9 cases (~98 px + padding)
+        # — le contenu descend à ~151 px, mesuré à sa taille réelle. La hauteur est
+        # réduite à 190 px (marge pour le rendu WebKitGTK). Empêche autant une
+        # régression qui rognerait le bas (trop bas) qu'un retour au vide antérieur
+        # (~300 px, en-tête retiré).
+        assert 170 <= CHEVALET_HAUTEUR <= 230
 
 
 class _FenetreShown:

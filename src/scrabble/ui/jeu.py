@@ -1803,25 +1803,31 @@ def _rouvrir_accueil(id_partie: int | None) -> None:
 
 
 # Dimensions par défaut de la fenêtre chevalet flottante (issue #90, ajustées
-# issue #91 point 4, hauteur re-mesurée issue #94). La fenêtre doit loger,
-# **côte à côte et sans défilement**, le bloc « À jouer » (chevalet 7 lettres +
-# contrôles de tour) et le bloc « Brouillon » (9 emplacements). À 40 px par case +
-# espacements + marges, les deux blocs alignés réclament ~830 px de large ; on
-# prend une marge de sécurité.
+# #91/#94, épurées #102). Depuis l'issue #102 la fenêtre ne contient plus que la
+# barre de déplacement fine et le panneau unique des lettres : l'en-tête vert
+# (titre « Chevalet de [nom] » + instructions) et l'icône d'aide « i » ont été
+# retirés. Les dimensions sont donc recalculées au plus près du contenu réel
+# restant, mesuré en headless (Chromium/Playwright, cf.
+# ``scripts/_harness_jeu/mesure_chevalet_102.mjs``), avec une marge de sécurité
+# pour l'écart de rendu Chromium ↔ WebKitGTK réel (viser large plutôt que
+# pile-poil, cf. issues #92/#94).
 #
-# Hauteur (issue #94) : la valeur de #92 (400 px) avait été fixée avant que le
-# layout du point 4 soit corrigé structurellement et n'avait jamais été vérifiée
-# dans une fenêtre correctement dimensionnée (bug Wayland #93) ; elle laissait un
-# vide important sous la barre d'actions. Rendu à sa taille réelle, le contenu le
-# plus haut descend à ~280 px (tour humain, chevalet révélé + brouillon + actions +
-# message de statut). On fixe donc 300 px : ~20 px de marge de sécurité, sans le
-# calcul pile-poil déconseillé, et une empreinte identique entre tour humain et
-# tour IA (cf. `.zone-attente-ia` de chevalet.css). Non redimensionnable : ces
-# valeurs sont la taille réelle utilisée. Un garde-fou de test (voir
-# ``test_hauteur_suffisante_pour_le_contenu``) empêche une future régression de
-# repasser sous la hauteur du contenu.
-CHEVALET_LARGEUR = 880
-CHEVALET_HAUTEUR = 300
+# Largeur : le contenu le plus large est désormais le titre du panneau
+# (« 🎴 Mes lettres — cliquez une lettre… », ~418 px en Chromium) ; la rangée de
+# 9 cases de 40 px + espacements tient dans ~410 px. Avec les paddings (fenêtre +
+# bloc, ~52 px), le contenu réclame ~470 px. On fixe 620 px : ~150 px de marge
+# pour absorber un rendu WebKitGTK plus large sans laisser d'espace vide excessif
+# à droite (contre 880 px de l'ancienne mise en page à deux blocs).
+#
+# Hauteur : le contenu (barre ~35 px + panneau ~98 px + paddings ~18 px) descend
+# à ~151 px en Chromium. On fixe 190 px : ~40 px de marge de sécurité pour un
+# rendu WebKitGTK un peu plus haut, sans le vide de l'ancienne mise en page
+# (300 px). Non redimensionnable : ces valeurs sont la taille réelle utilisée. Des
+# garde-fous de test (``test_largeur_suffisante_pour_le_contenu`` /
+# ``test_hauteur_suffisante_pour_le_contenu``) empêchent une régression de
+# repasser sous la taille du contenu.
+CHEVALET_LARGEUR = 620
+CHEVALET_HAUTEUR = 190
 # Marge basse : la fenêtre chevalet est posée près du bas de l'écran, à cette
 # distance du bord inférieur de la zone de travail.
 CHEVALET_MARGE_BAS = 40

@@ -26,40 +26,12 @@
          plus de bascule « voir/cacher » : le chevalet du joueur de référence est
          toujours exposé (garantie de confidentialité assurée côté API, issue #99). -->
     <div class="chevalet-fenetre">
-        <div class="chevalet-entete">
-            <div class="chevalet-titre-groupe">
-                <h2>Chevalet de <span id="chevalet-nom">—</span></h2>
-                <p class="chevalet-aide-pose">
-                    Cliquez une lettre puis une case vide du plateau pour la poser.
-                    Recliquez une lettre posée pour la retirer. Réarrangez librement
-                    vos lettres dans le panneau ci-dessous (sans effet sur la partie).
-                </p>
-            </div>
-        </div>
-
         <div class="bloc-panneau">
             <div class="panneau-entete">
                 <span class="panneau-titre-groupe">
                     <span class="panneau-titre bloc-titre">
                         🎴 Mes lettres <span class="bloc-titre-note">— cliquez une lettre pour la sélectionner, réarrangez librement</span>
-                    </span><button id="btn-aide-panneau" class="btn-aide-info"
-                            aria-haspopup="dialog" aria-expanded="false"
-                            aria-label="Aide : comment utiliser le panneau"
-                            title="Aide : comment utiliser le panneau">i</button>
-                    <div id="aide-panneau-popover" class="aide-info-popover"
-                         role="dialog" aria-label="Aide du panneau" hidden>
-                        <p>
-                            Cliquez une lettre pour la sélectionner, puis une case
-                            vide du plateau pour la poser. Pour réarranger vos
-                            lettres (réflexion, sans effet sur la partie) : cliquez
-                            une lettre puis un emplacement vide pour l'y déplacer, ou
-                            deux lettres pour les échanger. Clic droit sur une lettre :
-                            la renvoie vers le vide le plus proche de la fin. Les 2
-                            emplacements vides servent à ce réarrangement. Une lettre
-                            déjà posée sur le plateau apparaît grisée et n'est plus
-                            sélectionnable tant qu'elle n'est pas retirée.
-                        </p>
-                    </div>
+                    </span>
                 </span>
             </div>
             <div id="panneau" class="panneau" aria-label="Chevalet du joueur (réarrangeable)"></div>
