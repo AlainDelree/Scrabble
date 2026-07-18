@@ -17,6 +17,11 @@
  * simulées, sans dépendre d'un vrai moteur de rendu (voir
  * tests/test_hauteur_attente_chevalet.py).
  *
+ * Issue #97 (point B) : la hauteur appliquée est en outre PLAFONNÉE à la hauteur
+ * réellement disponible dans la fenêtre chevalet (taille fixe 880×300), pour que la
+ * zone d'attente ne déborde jamais du corps et ne recouvre jamais le plateau —
+ * cf. `minHeightAttente(hauteurMax, hauteurDisponible)`.
+ *
  * Chargement : script classique (pas de module ES, comme le reste du projet). En
  * navigateur (pywebview / Chromium) il s'expose sous `window.HauteurAttente` ; sous
  * Node (tests) il s'exporte via `module.exports`.
@@ -55,12 +60,29 @@
      * survenant avant tout tour humain). La hauteur est arrondie à l'entier le plus
      * proche (les sous-pixels de getBoundingClientRect n'ont pas de sens en pixels
      * CSS de mise en page).
+     *
+     * PLAFONNEMENT (issue #97, point B) : la fenêtre chevalet est de taille FIXE
+     * (880×300, `resizable=False`). La zone interactive du tour humain est mesurée à
+     * sa hauteur RÉELLE de contenu (`flex: 0 0 auto` + `flex-shrink: 0`), qui peut
+     * dépasser la hauteur visible du corps si le contenu déborde (le corps a
+     * `overflow: auto`). Appliquer cette hauteur telle quelle en `min-height` à la
+     * zone d'attente ferait déborder le contenu de la fenêtre fixe (grande boîte
+     * violette recouvrant le plateau) et créerait un vide excessif au-dessus du
+     * message (`justify-content: center`). On plafonne donc la valeur appliquée à la
+     * hauteur RÉELLEMENT disponible dans la fenêtre (`hauteurDisponible`, mesurée par
+     * l'appelant sur le corps `.chevalet-fenetre`) : la zone d'attente occupe au plus
+     * l'espace visible, jamais davantage. `hauteurDisponible` absente/nulle/négative
+     * (non mesurable) désactive simplement le plafond (rétro-compatible).
      */
-    function minHeightAttente(hauteurMax) {
+    function minHeightAttente(hauteurMax, hauteurDisponible) {
         if (hauteurMax === null || hauteurMax === undefined) {
             return null;
         }
-        return Math.round(hauteurMax) + 'px';
+        var hauteur = hauteurMax;
+        if (hauteurDisponible > 0 && hauteurDisponible < hauteur) {
+            hauteur = hauteurDisponible;
+        }
+        return Math.round(hauteur) + 'px';
     }
 
     var api = {

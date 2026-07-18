@@ -29,6 +29,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const zoneAttenteIA = document.getElementById('zone-attente-ia');
     const attenteMessageIA = document.getElementById('attente-ia-message');
     const zoneInteractive = document.getElementById('zone-interactive');
+    const chevaletFenetre = document.querySelector('.chevalet-fenetre');
+    const chevaletPied = document.querySelector('.chevalet-pied');
 
     const blocBrouillon = document.getElementById('bloc-brouillon');
     const brouillonEl = document.getElementById('brouillon');
@@ -97,14 +99,59 @@ document.addEventListener('DOMContentLoaded', async () => {
         const h = zoneInteractive.getBoundingClientRect().height;
         hauteurInteractiveMax = window.HauteurAttente.cumulerHauteur(
             hauteurInteractiveMax, h);
+        // Trace de diagnostic (issue #97 point A) : objectiver la valeur réellement
+        // mesurée au moteur courant vs le maximum cumulé, pour lever le doute sur une
+        // éventuelle mesure aberrante figée (visible dans la console WebKitGTK).
+        console.log(
+            '[chevalet] mesure zone interactive — h=' + Math.round(h)
+            + 'px, max cumulé=' + Math.round(hauteurInteractiveMax) + 'px.');
     }
 
-    /** Cale la hauteur de la zone d'attente IA sur la zone interactive mesurée. */
+    /** Hauteur réellement disponible dans le corps de la fenêtre pour la zone d'attente.
+     *
+     * La fenêtre chevalet est de taille FIXE (880×300, `resizable=False`, issue #97
+     * point B). On calcule l'espace vertical utile du corps `.chevalet-fenetre`
+     * (sa hauteur cliente, hors padding et hors pied de confidentialité, seul autre
+     * enfant présent au tour IA) pour plafonner la `min-height` appliquée à la zone
+     * d'attente : elle ne doit jamais pousser le contenu au-delà de la fenêtre fixe
+     * (débordement visuel recouvrant le plateau). Renvoie `null` si non mesurable.
+     */
+    function hauteurDisponibleAttente() {
+        if (!chevaletFenetre) {
+            return null;
+        }
+        const style = window.getComputedStyle(chevaletFenetre);
+        const padV = (parseFloat(style.paddingTop) || 0)
+            + (parseFloat(style.paddingBottom) || 0);
+        // Pied de confidentialité : présent mais masqué au tour IA (empreinte ≈ 0).
+        // On le retranche malgré tout pour rester exact si son gabarit évoluait.
+        let autres = 0;
+        if (chevaletPied) {
+            autres += chevaletPied.getBoundingClientRect().height;
+        }
+        // clientHeight = hauteur intérieure (padding inclus), fixée par la fenêtre :
+        // une barre de défilement verticale éventuelle n'en retranche pas la hauteur.
+        const dispo = chevaletFenetre.clientHeight - padV - autres;
+        return dispo > 0 ? dispo : null;
+    }
+
+    /** Cale la hauteur de la zone d'attente IA sur la zone interactive mesurée,
+     *  plafonnée à l'espace réellement disponible dans la fenêtre fixe (issue #97). */
     function synchroniserHauteurAttente() {
-        const minHeight = window.HauteurAttente.minHeightAttente(hauteurInteractiveMax);
+        const dispo = hauteurDisponibleAttente();
+        const minHeight = window.HauteurAttente.minHeightAttente(
+            hauteurInteractiveMax, dispo);
         if (minHeight !== null) {
             zoneAttenteIA.style.minHeight = minHeight;
         }
+        // Trace de diagnostic (issue #97) : max mesuré vs plafond disponible vs valeur
+        // effectivement appliquée — pour confirmer que le plafond joue bien son rôle.
+        console.log(
+            '[chevalet] synchro hauteur attente — max mesuré='
+            + (hauteurInteractiveMax === null ? 'nul'
+                : Math.round(hauteurInteractiveMax) + 'px')
+            + ', dispo=' + (dispo === null ? 'nul' : Math.round(dispo) + 'px')
+            + ', appliqué=' + (minHeight === null ? 'repli CSS' : minHeight) + '.');
     }
 
     function afficherMessage(texte, type) {

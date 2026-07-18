@@ -135,3 +135,59 @@ def test_suit_le_moteur_courant_et_non_une_constante_figee() -> None:
     # La zone d'attente adopte la hauteur réelle du rendu courant (280), pas 221.
     assert etapes[-1]["minHeight"] == "280px"
     assert etapes[-1]["max"] == 280
+
+
+def _executer_plafond(cas: dict) -> dict:
+    """Exécute ``minHeightAttente(hauteurMax, hauteurDisponible)`` sur des couples.
+
+    ``cas`` associe un nom à ``[hauteurMax, hauteurDisponible]``. Renvoie le
+    ``min-height`` (chaîne CSS ou ``null``) calculé pour chaque couple.
+    """
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover - dépend de l'environnement CI
+        pytest.skip("Node.js indisponible : logique JS de synchronisation non testée.")
+    driver = (
+        "const H = require(process.argv[1]);\n"
+        "const cas = JSON.parse(process.argv[2]);\n"
+        "const sortie = {};\n"
+        "for (const [nom, [maxH, dispo]] of Object.entries(cas)) {\n"
+        "  sortie[nom] = H.minHeightAttente(maxH, dispo);\n"
+        "}\n"
+        "process.stdout.write(JSON.stringify(sortie));\n"
+    )
+    resultat = subprocess.run(
+        [node, "-e", driver, str(MODULE_JS), json.dumps(cas)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert resultat.returncode == 0, resultat.stderr
+    return json.loads(resultat.stdout)
+
+
+def test_min_height_plafonnee_a_la_hauteur_disponible() -> None:
+    """Issue #97 point B : la hauteur mesurée qui DÉPASSE l'espace disponible dans la
+    fenêtre fixe (880×300) est plafonnée à cet espace — la zone d'attente ne déborde
+    jamais du corps et ne recouvre jamais le plateau. En deçà du plafond, ou si le
+    plafond n'est pas mesurable (rétro-compat), la hauteur mesurée passe telle quelle.
+    """
+    sortie = _executer_plafond(
+        {
+            # Mesure > disponible : on plafonne à l'espace réel de la fenêtre.
+            "deborde": [280, 251],
+            # Mesure <= disponible : rien à plafonner, la mesure passe telle quelle.
+            "tient": [230, 251],
+            "pile": [251, 251],
+            # Plafond non mesurable (null / 0 / négatif) : pas de plafond appliqué.
+            "dispo_nulle": [280, None],
+            "dispo_zero": [280, 0],
+            # Aucune mesure encore : repli CSS, quel que soit le plafond.
+            "sans_mesure": [None, 251],
+        }
+    )
+    assert sortie["deborde"] == "251px"
+    assert sortie["tient"] == "230px"
+    assert sortie["pile"] == "251px"
+    assert sortie["dispo_nulle"] == "280px"
+    assert sortie["dispo_zero"] == "280px"
+    assert sortie["sans_mesure"] is None
