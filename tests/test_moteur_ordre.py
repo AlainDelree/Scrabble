@@ -1,9 +1,10 @@
 """Tests de ``scrabble.moteur.ordre`` (détermination de l'ordre de jeu).
 
-Couvre le tirage simple sans égalité (ordre alphabétique appliqué, lettre de
-chaque joueur exposée), la résolution d'égalité par retirage des seuls joueurs
-concernés, l'exclusion structurelle des jokers du sac de détermination, la
-reproductibilité par graine, et l'épuisement du sac filtré.
+Couvre le tirage simple (ordre alphabétique appliqué, lettre de chaque joueur
+exposée), la garantie que toutes les lettres tirées sont distinctes deux à deux
+(issue #118 : plus aucune égalité possible), l'exclusion structurelle des jokers
+du sac de détermination, la reproductibilité par graine, et l'épuisement du sac
+filtré au-delà de 26 joueurs.
 """
 
 from __future__ import annotations
@@ -61,46 +62,32 @@ def test_lettre_de_chaque_joueur_exposee():
 
 
 # --------------------------------------------------------------------------- #
-# Égalités
+# Lettres distinctes — plus aucune égalité possible (issue #118)
 # --------------------------------------------------------------------------- #
 
-def test_egalite_departagee_par_retirage_sans_retirer_les_autres():
-    # Deux joueurs à égalité, un troisième distinct : on cherche un tirage où
-    # exactement deux des trois lettres coïncident.
-    def deux_ex_aequo(lettres):
-        return len(set(lettres)) == 2 and any(
-            lettres.count(l) == 2 for l in lettres
-        )
-
-    graine = _cherche_graine(3, deux_ex_aequo)
-    resultat = determiner_ordre_jeu(list(range(3)), random.Random(graine))
-
-    # Malgré l'égalité, l'ordre départage bien les trois joueurs.
-    assert sorted(resultat.ordre) == [0, 1, 2]
-    # Le joueur à lettre unique garde son rang alphabétique par rapport aux
-    # deux ex æquo (son placement ne dépend pas du retirage interne).
-    lettres = resultat.lettres
-    (lettre_unique,) = [l for l in set(lettres) if lettres.count(l) == 1]
-    idx_unique = lettres.index(lettre_unique)
-    lettre_partagee = next(l for l in lettres if lettres.count(l) == 2)
-    rang_unique = resultat.ordre.index(idx_unique)
-    rangs_partages = [
-        resultat.ordre.index(i)
-        for i, l in enumerate(lettres)
-        if l == lettre_partagee
-    ]
-    if lettre_unique < lettre_partagee:
-        assert rang_unique < min(rangs_partages)
-    else:
-        assert rang_unique > max(rangs_partages)
+def test_lettres_toujours_distinctes_sur_de_nombreuses_graines():
+    # Sur de nombreux tirages et pour des effectifs variés (jusqu'au maximum de
+    # 26 joueurs = 26 lettres distinctes), aucune lettre n'est jamais tirée deux
+    # fois au cours d'un même tirage d'ordre : l'égalité est impossible.
+    for nombre in (2, 3, 4, 8, 20, 26):
+        for graine in range(300):
+            resultat = determiner_ordre_jeu(
+                list(range(nombre)), random.Random(graine)
+            )
+            assert len(set(resultat.lettres)) == nombre, (
+                f"Lettres non distinctes pour {nombre} joueurs, "
+                f"graine {graine} : {resultat.lettres}"
+            )
 
 
-def test_egalite_persistante_finit_par_se_departager():
-    # Tous les joueurs à la même lettre au premier tour : le retirage doit
-    # néanmoins produire un ordre total (aucun doublon d'indice).
-    graine = _cherche_graine(3, lambda ls: len(set(ls)) == 1)
-    resultat = determiner_ordre_jeu(list(range(3)), random.Random(graine))
-    assert sorted(resultat.ordre) == [0, 1, 2]
+def test_ordre_est_le_tri_alphabetique_des_lettres_distinctes():
+    # Les lettres étant distinctes, l'ordre est simplement leur tri alphabétique
+    # et une permutation complète des indices, sans doublon.
+    for graine in range(50):
+        resultat = determiner_ordre_jeu(list(range(5)), random.Random(graine))
+        assert sorted(resultat.ordre) == [0, 1, 2, 3, 4]
+        lettres_dans_l_ordre = [resultat.lettres[i] for i in resultat.ordre]
+        assert lettres_dans_l_ordre == sorted(resultat.lettres)
 
 
 # --------------------------------------------------------------------------- #
@@ -147,6 +134,14 @@ def test_un_seul_joueur():
 
 
 def test_sac_epuise_leve_une_erreur_explicite():
-    # 101 « joueurs » : le sac filtré ne compte que 100 lettres.
+    # Chaque joueur exigeant une lettre distincte, il n'y a que 26 lettres
+    # disponibles : au-delà de 26 joueurs, on ne peut plus toutes les départager.
     with pytest.raises(TirageOrdreImpossible):
-        determiner_ordre_jeu(list(range(101)), random.Random(0))
+        determiner_ordre_jeu(list(range(27)), random.Random(0))
+
+
+def test_vingt_six_joueurs_epuisent_toutes_les_lettres_sans_erreur():
+    # 26 joueurs = les 26 lettres distinctes exactement : cas limite valide.
+    resultat = determiner_ordre_jeu(list(range(26)), random.Random(0))
+    assert sorted(resultat.ordre) == list(range(26))
+    assert len(set(resultat.lettres)) == 26

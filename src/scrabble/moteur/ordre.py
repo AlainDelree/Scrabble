@@ -3,9 +3,15 @@
 Rôle : implémenter la mécanique par laquelle l'ordre de jeu d'une partie est
 décidé, non pas par l'ordre de création des joueurs, mais par un **tirage d'une
 lettre par joueur**, l'ordre suivant l'ordre alphabétique des lettres tirées
-(``A`` avant ``G`` avant ``H``…). En cas d'égalité, seuls les joueurs concernés
-retirent une nouvelle lettre entre eux pour se départager, le procédé se
-répétant tant qu'une égalité subsiste.
+(``A`` avant ``G`` avant ``H``…).
+
+Lettres nécessairement distinctes
+---------------------------------
+Chaque joueur tire une lettre **différente de toutes celles déjà tirées** par
+les autres joueurs pendant ce tirage d'ordre (issue #118). L'exclusion en amont
+des lettres déjà sorties garantit par construction que deux joueurs ne peuvent
+jamais obtenir la même lettre : l'ordre alphabétique est donc toujours univoque,
+sans jamais avoir à gérer de cas d'égalité ni de nouveau tirage de départage.
 
 Périmètre volontairement restreint
 ----------------------------------
@@ -28,9 +34,11 @@ Sac de détermination
 Le tirage réutilise la répartition officielle via
 :func:`scrabble.regles.lettres.constituer_sac`, dont on **retire les 2 jokers**
 (:data:`scrabble.regles.lettres.JOKER`) : un joker ne représente aucune lettre,
-il n'a pas de rang alphabétique. Ce sac filtré est propre à la détermination
-d'ordre ; il ne consomme rien du sac réel de la partie, dont la distribution
-normale des 7 lettres de chevalet (jokers compris) a lieu ensuite.
+il n'a pas de rang alphabétique. Ce sac filtré est un **objet jetable** propre à
+la détermination d'ordre ; il ne consomme rien du sac réel de la partie, qui est
+reconstitué complet et indépendamment par :func:`scrabble.moteur.partie.creer_
+partie` — la distribution normale des 7 lettres de chevalet (jokers compris) a
+donc lieu sur un sac intact, ce tirage d'ordre n'y prélevant aucune lettre.
 """
 
 from __future__ import annotations
@@ -43,11 +51,12 @@ from scrabble.regles.lettres import JOKER, constituer_sac
 
 
 class TirageOrdreImpossible(RuntimeError):
-    """Levée si le sac filtré s'épuise avant d'avoir départagé tous les joueurs.
+    """Levée s'il est impossible de donner une lettre distincte à chaque joueur.
 
-    Cas extrême (beaucoup de joueurs et de rejouages d'égalité successifs) :
-    plutôt que de planter obscurément sur un sac vide, on signale explicitement
-    que la détermination d'ordre n'a pas pu aboutir.
+    Chaque joueur devant tirer une lettre différente des autres, il faut au moins
+    autant de lettres distinctes que de joueurs. Le sac filtré ne compte que 26
+    lettres distinctes ; au-delà, plutôt que de planter obscurément, on signale
+    explicitement que la détermination d'ordre n'a pas pu aboutir.
     """
 
 
@@ -58,10 +67,9 @@ class ResultatTirageOrdre:
     ``ordre`` est la liste des **indices** des joueurs (dans la liste passée à
     :func:`determiner_ordre_jeu`) rangés dans l'ordre de jeu déterminé.
     ``lettres`` donne, pour chaque joueur et **dans l'ordre d'origine** de la
-    liste (``lettres[i]`` correspond au joueur ``i``), la lettre qu'il a tirée
-    au premier tour de tirage — utile pour un affichage futur du type
-    « Alice a tiré B, Marc a tiré K… ». Les lettres des éventuels retirages de
-    départage restent internes et ne sont pas exposées.
+    liste (``lettres[i]`` correspond au joueur ``i``), la lettre qu'il a tirée —
+    utile pour un affichage du type « Alice a tiré B, Marc a tiré K… ». Ces
+    lettres sont toutes **distinctes** deux à deux (issue #118).
     """
 
     ordre: list[int]
@@ -76,8 +84,11 @@ def determiner_ordre_jeu(
 
     Chaque joueur tire une lettre d'un sac filtré (sac officiel **sans les 2
     jokers**, mélangé) ; l'ordre de jeu suit l'ordre alphabétique des lettres
-    tirées. Les joueurs à égalité retirent une lettre entre eux, à partir des
-    lettres restantes du **même** sac filtré, jusqu'à départage complet.
+    tirées. Chaque lettre déjà tirée est **exclue** des tirages suivants, de
+    sorte que tous les joueurs obtiennent des lettres deux à deux distinctes :
+    aucune égalité n'est alors possible et l'ordre est toujours univoque
+    (issue #118). Le sac filtré est un objet local et jetable ; le sac réel de
+    la partie n'est pas touché par ce tirage.
 
     ``joueurs`` n'est utilisé que pour son cardinal : la fonction raisonne sur
     des indices et n'inspecte pas les éléments (elle s'applique donc aussi bien
@@ -85,8 +96,8 @@ def determiner_ordre_jeu(
     test). ``alea`` (un :class:`random.Random`) rend le tirage reproductible ;
     à défaut, un générateur non graine est créé.
 
-    :raises TirageOrdreImpossible: si le sac filtré s'épuise avant d'avoir
-        départagé tous les joueurs.
+    :raises TirageOrdreImpossible: s'il n'y a pas assez de lettres distinctes
+        pour donner une lettre différente à chaque joueur (plus de 26 joueurs).
     """
     if alea is None:
         alea = random.Random()
@@ -97,49 +108,37 @@ def determiner_ordre_jeu(
     sac = [jeton for jeton in constituer_sac() if jeton != JOKER]
     alea.shuffle(sac)
 
-    # Premier tirage : une lettre par joueur, conservée pour l'exposition.
-    lettres = [_tirer_une(sac) for _ in range(nombre)]
-    lettres_du_tour = {indice: lettres[indice] for indice in range(nombre)}
-    ordre = _departager(list(range(nombre)), lettres_du_tour, sac)
+    # Une lettre par joueur, chacune distincte de celles déjà tirées : deux
+    # joueurs ne peuvent donc jamais obtenir la même lettre.
+    deja_tirees: set[str] = set()
+    lettres: list[str] = []
+    for _ in range(nombre):
+        lettre = _tirer_une_distincte(sac, deja_tirees)
+        deja_tirees.add(lettre)
+        lettres.append(lettre)
+
+    # Toutes les lettres étant distinctes, l'ordre est le simple tri
+    # alphabétique — aucun départage d'égalité n'est nécessaire.
+    ordre = sorted(range(nombre), key=lambda indice: lettres[indice])
     return ResultatTirageOrdre(ordre=ordre, lettres=lettres)
 
 
-def _departager(
-    indices: list[int],
-    lettres_du_tour: dict[int, str],
-    sac: list[str],
-) -> list[int]:
-    """Ordonne ``indices`` selon ``lettres_du_tour``, égalités résolues par retirage.
+def _tirer_une_distincte(sac: list[str], deja_tirees: set[str]) -> str:
+    """Retire et renvoie une lettre du sac absente de ``deja_tirees``.
 
-    Les indices sont groupés par lettre tirée ; les groupes sont parcourus dans
-    l'ordre alphabétique. Un groupe d'un seul joueur est placé directement ; un
-    groupe à égalité fait retirer **une nouvelle lettre à ses seuls membres**
-    (depuis ``sac``, partagé) puis est ordonné récursivement — ce qui répète le
-    départage tant qu'une égalité subsiste.
+    Les jetons dont la lettre est déjà sortie sont défaussés au passage : ils ne
+    servent plus au tirage d'ordre (le sac est jetable). On s'arrête à la
+    première lettre nouvelle.
+
+    :raises TirageOrdreImpossible: si le sac ne contient plus aucune lettre non
+        encore tirée (moins de lettres distinctes que de joueurs).
     """
-    groupes: dict[str, list[int]] = {}
-    for indice in indices:
-        groupes.setdefault(lettres_du_tour[indice], []).append(indice)
-
-    ordre: list[int] = []
-    for lettre in sorted(groupes):
-        groupe = groupes[lettre]
-        if len(groupe) == 1:
-            ordre.append(groupe[0])
-        else:
-            nouvelles = {indice: _tirer_une(sac) for indice in groupe}
-            ordre.extend(_departager(groupe, nouvelles, sac))
-    return ordre
-
-
-def _tirer_une(sac: list[str]) -> str:
-    """Retire et renvoie une lettre du sac filtré.
-
-    :raises TirageOrdreImpossible: si le sac est vide.
-    """
-    if not sac:
-        raise TirageOrdreImpossible(
-            "Le sac de détermination d'ordre (sans jokers) est épuisé : "
-            "impossible de départager tous les joueurs."
-        )
-    return sac.pop()
+    while sac:
+        lettre = sac.pop()
+        if lettre not in deja_tirees:
+            return lettre
+    raise TirageOrdreImpossible(
+        "Le sac de détermination d'ordre (sans jokers) ne contient plus de "
+        "lettre distincte : impossible de donner une lettre différente à "
+        "chaque joueur."
+    )
