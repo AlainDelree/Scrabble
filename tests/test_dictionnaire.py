@@ -14,11 +14,13 @@ import os
 import time
 
 from scrabble.dictionnaire.dictionnaire import (
+    CHEMINS_MODIFS,
     Dictionnaire,
     Trie,
     assurer_fichiers_modifs,
     charger_definitions,
     charger_ods,
+    chemins_modifs,
     construire_ensemble_mots,
     construire_trie,
     est_mot_scrabble,
@@ -121,6 +123,46 @@ def test_charger_ods_lit_un_mot_par_ligne(tmp_path):
     _ecrire_liste(fichier, ["chat", "chien", "OISEAU"])
 
     assert charger_ods(fichier) == {"CHAT", "CHIEN", "OISEAU"}
+
+
+def test_chemins_modifs_par_source(tmp_path):
+    """Chaque source a sa propre paire de fichiers d'ajouts/retraits (issue #110)."""
+    ajoutes_ods, retires_ods = chemins_modifs("ods")
+    ajoutes_hun, retires_hun = chemins_modifs("hunspell")
+
+    assert ajoutes_ods.name == "mots_ajoutes_ods.txt"
+    assert retires_ods.name == "mots_retires_ods.txt"
+    assert ajoutes_hun.name == "mots_ajoutes_hunspell.txt"
+    assert retires_hun.name == "mots_retires_hunspell.txt"
+    # Les deux sources pointent vers des fichiers distincts (pas de partage).
+    assert {ajoutes_ods, retires_ods}.isdisjoint({ajoutes_hun, retires_hun})
+
+
+def test_chemins_modifs_source_inconnue_retombe_sur_ods():
+    """Une source inattendue retombe sur la paire ODS (robustesse)."""
+    assert chemins_modifs("valeur_bidon") == CHEMINS_MODIFS["ods"]
+
+
+def test_construire_trie_utilise_les_fichiers_de_la_source(tmp_path, monkeypatch):
+    """Sans chemins explicites, ``construire_trie`` prend la paire de la source.
+
+    On détourne ``CHEMINS_MODIFS`` vers des fichiers temporaires pour vérifier
+    que l'ajout propre à ODS est bien appliqué, sans toucher aux vrais fichiers.
+    """
+    import scrabble.dictionnaire.dictionnaire as d
+
+    chemin_ods = tmp_path / "ods.txt"
+    _ecrire_liste(chemin_ods, ["chat"])
+    ajoutes_ods = tmp_path / "mots_ajoutes_ods.txt"
+    _ecrire_liste(ajoutes_ods, ["oiseau"])
+    retires_ods = tmp_path / "mots_retires_ods.txt"
+    _ecrire_liste(retires_ods, [""])
+    monkeypatch.setitem(d.CHEMINS_MODIFS, "ods", (ajoutes_ods, retires_ods))
+
+    trie = construire_trie(source="ods", chemin_ods=chemin_ods)
+
+    assert "CHAT" in trie
+    assert "OISEAU" in trie           # provient de la paire ODS résolue par défaut
 
 
 def test_assurer_fichiers_modifs_cree_les_fichiers_vides(tmp_path):

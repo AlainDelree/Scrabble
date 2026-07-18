@@ -13,6 +13,11 @@ où ``source_choisie`` dépend de ``config["source_dictionnaire"]`` :
 * ``"ods"``      → liste ODS8 (un mot par ligne) ;
 * ``"hunspell"`` → dépliage ("unmunch") du dictionnaire ``fr-toutesvariantes``.
 
+Depuis l'issue #110, les listes d'ajouts/retraits sont **propres à chaque
+source** (``mots_ajoutes_<source>.txt`` / ``mots_retires_<source>.txt``) : une
+personnalisation faite en mode ODS ne s'applique pas au mode Hunspell et
+inversement. La sélection de la paire se fait via :func:`chemins_modifs`.
+
 Normalisation systématique de chaque mot au chargement : passage en MAJUSCULES
 (les accents sont conservés — le Scrabble francophone distingue ``ELEVE`` de
 ``ÉLÈVE``) et suppression des espaces superflus.
@@ -56,8 +61,20 @@ CHEMIN_ODS = (
 BASE_HUNSPELL = (
     DOSSIER_DICO / "hunspell-french-dictionaries-v7.7" / "fr-toutesvariantes"
 )
-CHEMIN_MOTS_AJOUTES = DOSSIER_DICO / "mots_ajoutes.txt"
-CHEMIN_MOTS_RETIRES = DOSSIER_DICO / "mots_retires.txt"
+# Fichiers de personnalisation (ajouts/retraits) séparés **par source** depuis
+# l'issue #110 : les corrections faites en mode ODS ne débordent plus sur le
+# mode Hunspell et inversement. Une seule source est active à la fois (pas
+# d'agrégation) ; ``chemins_modifs`` sélectionne la paire de la source demandée.
+CHEMINS_MODIFS: dict[str, tuple[Path, Path]] = {
+    "ods": (
+        DOSSIER_DICO / "mots_ajoutes_ods.txt",
+        DOSSIER_DICO / "mots_retires_ods.txt",
+    ),
+    "hunspell": (
+        DOSSIER_DICO / "mots_ajoutes_hunspell.txt",
+        DOSSIER_DICO / "mots_retires_hunspell.txt",
+    ),
+}
 CHEMIN_CACHE = DOSSIER_DICO / "trie_cache.pkl"
 # Index mot → définition(s) restreint aux mots de l'ODS8 (issue #15). Ce fichier
 # est volumineux et gitignoré : construit hors-ligne par
@@ -187,8 +204,8 @@ def _lire_definitions(chemin: Path) -> dict[str, list[str]]:
 
 
 def assurer_fichiers_modifs(
-    chemin_ajoutes: Path = CHEMIN_MOTS_AJOUTES,
-    chemin_retires: Path = CHEMIN_MOTS_RETIRES,
+    chemin_ajoutes: Path,
+    chemin_retires: Path,
 ) -> None:
     """Crée les fichiers d'ajouts/retraits vides s'ils n'existent pas."""
     for chemin in (chemin_ajoutes, chemin_retires):
@@ -319,6 +336,18 @@ def deplier_hunspell(base: Path = BASE_HUNSPELL) -> set[str]:
 # --------------------------------------------------------------------------- #
 # Construction du dictionnaire final : (source ∪ ajouts) − retraits
 # --------------------------------------------------------------------------- #
+
+def chemins_modifs(source: str) -> tuple[Path, Path]:
+    """Retourne le couple ``(mots_ajoutes, mots_retires)`` propre à la source.
+
+    Chaque source (``"ods"`` / ``"hunspell"``) possède depuis l'issue #110 sa
+    propre paire de fichiers de personnalisation, pour que les ajouts/retraits
+    faits sous une source ne s'appliquent pas à l'autre. Toute valeur inconnue
+    retombe sur la paire ODS — même robustesse que :func:`charger_source` et
+    :func:`_sources_pertinentes` face à une configuration inattendue.
+    """
+    return CHEMINS_MODIFS.get(source, CHEMINS_MODIFS["ods"])
+
 
 def charger_source(
     source: str,
@@ -488,10 +517,20 @@ def construire_trie(
     source: str = "ods",
     chemin_ods: Path = CHEMIN_ODS,
     base_hunspell: Path = BASE_HUNSPELL,
-    chemin_ajoutes: Path = CHEMIN_MOTS_AJOUTES,
-    chemin_retires: Path = CHEMIN_MOTS_RETIRES,
+    chemin_ajoutes: Path | None = None,
+    chemin_retires: Path | None = None,
 ) -> Trie:
-    """Construit le Trie du dictionnaire final (sans passer par le cache)."""
+    """Construit le Trie du dictionnaire final (sans passer par le cache).
+
+    Les fichiers d'ajouts/retraits par défaut sont ceux **propres à la source**
+    (voir :func:`chemins_modifs`) ; ``chemin_ajoutes``/``chemin_retires``
+    explicites restent prioritaires (utile en test).
+    """
+    defaut_ajoutes, defaut_retires = chemins_modifs(source)
+    if chemin_ajoutes is None:
+        chemin_ajoutes = defaut_ajoutes
+    if chemin_retires is None:
+        chemin_retires = defaut_retires
     assurer_fichiers_modifs(chemin_ajoutes, chemin_retires)
     mots = construire_ensemble_mots(
         charger_source(source, chemin_ods, base_hunspell),
@@ -505,16 +544,23 @@ def obtenir_trie(
     source: str = "ods",
     chemin_ods: Path = CHEMIN_ODS,
     base_hunspell: Path = BASE_HUNSPELL,
-    chemin_ajoutes: Path = CHEMIN_MOTS_AJOUTES,
-    chemin_retires: Path = CHEMIN_MOTS_RETIRES,
+    chemin_ajoutes: Path | None = None,
+    chemin_retires: Path | None = None,
     chemin_cache: Path = CHEMIN_CACHE,
 ) -> Trie:
     """Retourne le Trie du dictionnaire, en s'appuyant sur le cache disque.
 
     Le cache est rechargé s'il est présent, cible la même source et est plus
     récent que tous les fichiers sources ; sinon il est reconstruit puis
-    réécrit.
+    réécrit. Les fichiers d'ajouts/retraits par défaut sont ceux **propres à la
+    source** (voir :func:`chemins_modifs`) ; des chemins explicites restent
+    prioritaires (utile en test).
     """
+    defaut_ajoutes, defaut_retires = chemins_modifs(source)
+    if chemin_ajoutes is None:
+        chemin_ajoutes = defaut_ajoutes
+    if chemin_retires is None:
+        chemin_retires = defaut_retires
     assurer_fichiers_modifs(chemin_ajoutes, chemin_retires)
     sources = _sources_pertinentes(
         source, chemin_ods, base_hunspell, chemin_ajoutes, chemin_retires
