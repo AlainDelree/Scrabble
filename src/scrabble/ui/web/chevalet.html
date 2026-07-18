@@ -35,11 +35,6 @@
                     vos lettres dans le panneau ci-dessous (sans effet sur la partie).
                 </p>
             </div>
-            <!-- Indicateur discret hors tour (issue #100) : le panneau reste
-                 manipulable, seule la pose est indisponible tant que ce n'est pas
-                 au joueur de référence de jouer. -->
-            <div id="badge-hors-tour" class="badge-hors-tour" role="status"
-                 aria-live="polite" hidden></div>
         </div>
 
         <div class="bloc-panneau">
@@ -69,30 +64,6 @@
             </div>
             <div id="panneau" class="panneau" aria-label="Chevalet du joueur (réarrangeable)"></div>
         </div>
-
-        <!-- Actions de tour, en pleine largeur sous le panneau. Toujours affichées :
-             hors tour, elles sont DÉSACTIVÉES plutôt que masquées (issue #100). -->
-        <div id="zone-jeu" class="zone-jeu">
-            <div class="zone-jeu-controles">
-                <button id="btn-echanger-tout" class="lien-discret" disabled
-                        title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
-                    ♻️ Remettre toutes ses lettres et passer
-                </button>
-                <span class="zone-jeu-actions">
-                    <button id="btn-annuler" class="btn btn-secondaire" disabled>
-                        ✗ Annuler
-                    </button>
-                    <button id="btn-verifier-coup" class="btn btn-secondaire" disabled
-                            title="Calcule les points du coup en attente sans le jouer (rien n'est perdu)">
-                        🔎 Vérifier et calculer
-                    </button>
-                    <button id="btn-valider" class="btn btn-primaire" disabled>
-                        ✓ Jouer
-                    </button>
-                </span>
-            </div>
-            <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
-        </div>
     </div>
 
     <!-- Modale de choix de la lettre représentée par un joker (issue #90 : la
@@ -105,16 +76,8 @@
         </div>
     </div>
 
-    <!-- Copie de la modale de détail du score (issue #90) : « Vérifier et
-         calculer » étant déclenché ici, son détail s'ouvre côté chevalet. -->
-    <div id="score-modale" class="modale" hidden>
-        <div class="modale-contenu modale-score">
-            <h3 id="score-titre">Détail du score</h3>
-            <div id="score-detail" class="score-detail"></div>
-            <div id="score-total" class="score-total"></div>
-            <button id="score-fermer" class="btn btn-primaire">Fermer</button>
-        </div>
-    </div>
+    <!-- La modale de détail du score (« Vérifier et calculer ») vit désormais côté
+         fenêtre plateau (issue #101 : les actions de tour y ont été déplacées). -->
 
     <script src="commun.js"></script>
     <script src="chevalet.js"></script>

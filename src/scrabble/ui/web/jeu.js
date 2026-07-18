@@ -60,6 +60,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const attenteMessageIA = document.getElementById('attente-ia-message');
     const btnJouerIA = document.getElementById('btn-jouer-ia');
 
+    // Actions de tour (issue #101) : rapatriées depuis la fenêtre chevalet. Elles
+    // ne sont visibles/actives que pendant le tour du joueur humain (voir
+    // majActionsTour). Le message de retour dédié (#message-coup) s'affiche sous
+    // les boutons, distinct du message éphémère de pose (#message-plateau).
+    const zoneJeu = document.getElementById('zone-jeu');
+    const btnValider = document.getElementById('btn-valider');
+    const btnVerifierCoup = document.getElementById('btn-verifier-coup');
+    const btnAnnuler = document.getElementById('btn-annuler');
+    const btnEchangerTout = document.getElementById('btn-echanger-tout');
+    const messageCoup = document.getElementById('message-coup');
+
     // Vérification dictionnaire par saisie libre (issue #50/#86) : champ + bouton
     // logés derrière un popover discret dans la gouttière gauche.
     const champVerif = document.getElementById('champ-verif');
@@ -301,6 +312,39 @@ document.addEventListener('DOMContentLoaded', async () => {
             attenteMessageIA.textContent = `En attente du coup de ${courant.nom}…`;
             btnJouerIA.disabled = false;
         }
+        majActionsTour();
+    }
+
+    /**
+     * Visibilité/activation des actions de tour (issue #101). Ces boutons ne sont
+     * affichés QUE pendant le tour du joueur humain de référence (``tour_humain``
+     * dans le payload public : avec un seul humain, il équivaut à « c'est au joueur
+     * de référence de jouer »). Pendant l'attente d'un tour d'ordinateur ou une
+     * fois la partie terminée, la zone est masquée. C'est une aide visuelle : la
+     * protection de fond reste le garde de tour côté API (issue #99).
+     */
+    function majActionsTour() {
+        const tourHumain = Boolean(etat && !etat.terminee && etat.tour_humain);
+        zoneJeu.hidden = !tourHumain;
+        if (!tourHumain) {
+            afficherMessageCoup('');
+            return;
+        }
+        const n = enAttente.length;
+        const courant = etat.joueurs[etat.index_courant];
+        const nbLettres = (courant && courant.nb_lettres) || 0;
+        // On DÉSACTIVE les actions selon l'état du coup en attente (rien à annuler/
+        // vérifier/jouer tant qu'aucune lettre n'est posée).
+        btnValider.disabled = n === 0;
+        btnVerifierCoup.disabled = n === 0;
+        btnAnnuler.disabled = n === 0;
+        btnEchangerTout.disabled = nbLettres === 0;
+    }
+
+    /** Message de retour des actions de tour (issue #101), sous les boutons. */
+    function afficherMessageCoup(texte, type) {
+        messageCoup.textContent = texte || '';
+        messageCoup.className = 'message-coup' + (texte ? ' ' + (type || 'info') : '');
     }
 
     /** Message éphémère de pose (issue #90), affiché en surimpression. */
@@ -510,6 +554,87 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         // Succès : le bouton reste piloté par majModeTour au prochain état poussé
         // (réactivé si le joueur suivant est encore un ordinateur).
+    });
+
+    // ------------------------------------------------------------------ //
+    // Actions de tour (issue #101, déplacées depuis la fenêtre chevalet)
+    // ------------------------------------------------------------------ //
+    // Ces boutons appellent les mêmes méthodes API qu'auparavant côté chevalet ;
+    // seule leur fenêtre d'origine change. Après chaque succès, Python rediffuse
+    // l'état aux deux fenêtres et majActionsTour réactualise l'activation.
+
+    // Annuler : abandonne toute la pose en cours (via Python).
+    btnAnnuler.addEventListener('click', async () => {
+        afficherMessageCoup('');
+        await api.annuler_pose();
+    });
+
+    // Vérifier et calculer : calcule les points sans jouer, ouvre le détail dans
+    // la modale de score de CETTE fenêtre (réutilise le contrôleur modaleScore).
+    btnVerifierCoup.addEventListener('click', async () => {
+        btnVerifierCoup.disabled = true;
+        let res;
+        try {
+            res = await api.verifier_coup();
+        } catch (err) {
+            afficherMessageCoup('Erreur inattendue lors de la vérification du coup.', 'erreur');
+            majActionsTour();
+            return;
+        }
+        if (res && res.succes) {
+            const points = res.points != null ? res.points : 0;
+            const mot = (res.detail && res.detail.mots && res.detail.mots[0])
+                ? res.detail.mots[0].texte : null;
+            afficherMessageCoup(
+                `Coup valide${mot ? ' (' + mot + ')' : ''} : +${points} point${points > 1 ? 's' : ''}. `
+                + `Cliquez « Jouer » pour le poser.`, 'succes');
+            if (res.detail) {
+                modaleScore.afficher(res.detail, `Coup en attente${mot ? ' — « ' + mot + ' »' : ''}`);
+            }
+        } else {
+            afficherMessageCoup((res && res.erreur) ? res.erreur : 'Coup invalide.', 'erreur');
+        }
+        majActionsTour();
+    });
+
+    // Jouer : pose le mot formé par les lettres en attente (lues côté Python).
+    btnValider.addEventListener('click', async () => {
+        btnValider.disabled = true;
+        let res;
+        try {
+            res = await api.poser_mot();
+        } catch (err) {
+            afficherMessageCoup('Erreur inattendue lors de la validation du coup.', 'erreur');
+            majActionsTour();
+            return;
+        }
+        if (res && res.succes) {
+            const points = res.points != null ? res.points : 0;
+            afficherMessageCoup(`Coup joué (+${points} point${points > 1 ? 's' : ''}).`, 'succes');
+            // Python rediffuse l'état (nouveau tour) : le rendu suit via le push.
+        } else {
+            afficherMessageCoup((res && res.erreur) ? res.erreur : 'Coup refusé.', 'erreur');
+            majActionsTour();
+        }
+    });
+
+    // Remettre tout le chevalet et passer (échange complet).
+    btnEchangerTout.addEventListener('click', async () => {
+        btnEchangerTout.disabled = true;
+        let res;
+        try {
+            res = await api.echanger_tout();
+        } catch (err) {
+            afficherMessageCoup('Erreur inattendue lors de l\'échange des lettres.', 'erreur');
+            majActionsTour();
+            return;
+        }
+        if (res && res.succes) {
+            afficherMessageCoup('Toutes vos lettres ont été remises dans le sac. Tour passé.', 'succes');
+        } else {
+            afficherMessageCoup((res && res.erreur) || 'Échange impossible.', 'erreur');
+            majActionsTour();
+        }
     });
 
     // ------------------------------------------------------------------ //

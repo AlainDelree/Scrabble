@@ -178,6 +178,37 @@
                     ▶ Faire jouer l'ordinateur
                 </button>
             </div>
+
+            <!-- Actions de tour (issue #101) : rapatriées ici depuis la fenêtre
+                 chevalet, aux côtés de la zone d'attente IA. Affichées UNIQUEMENT
+                 pendant le tour du joueur humain (masquées pendant l'attente d'un
+                 tour d'ordinateur et une fois la partie terminée). La sélection
+                 d'une lettre se fait toujours côté chevalet ; ces boutons pilotent
+                 le coup en attente via les mêmes méthodes API qu'avant
+                 (annuler_pose / verifier_coup / poser_mot / echanger_tout). Le
+                 garde de tour côté API (issue #99) reste la protection de fond :
+                 masquer ces boutons n'est qu'une aide visuelle. -->
+            <div id="zone-jeu" class="zone-jeu" hidden>
+                <div class="zone-jeu-controles">
+                    <button id="btn-echanger-tout" class="lien-discret" disabled
+                            title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
+                        ♻️ Remettre toutes ses lettres et passer
+                    </button>
+                    <span class="zone-jeu-actions">
+                        <button id="btn-annuler" class="btn btn-secondaire" disabled>
+                            ✗ Annuler
+                        </button>
+                        <button id="btn-verifier-coup" class="btn btn-secondaire" disabled
+                                title="Calcule les points du coup en attente sans le jouer (rien n'est perdu)">
+                            🔎 Vérifier et calculer
+                        </button>
+                        <button id="btn-valider" class="btn btn-primaire" disabled>
+                            ✓ Jouer
+                        </button>
+                    </span>
+                </div>
+                <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
+            </div>
             </footer>
         </main>
     </div>

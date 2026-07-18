@@ -3,13 +3,16 @@
  *
  * Cette fenêtre est la vue « privée » du joueur humain de référence : elle
  * affiche un panneau unique de ses lettres, toujours visible et réarrangeable
- * librement (y compris hors tour), ainsi que les contrôles de tour (Annuler /
- * Vérifier et calculer / Jouer, + « remettre ses lettres »). Le clic sur une
- * lettre la sélectionne côté Python (source de vérité) ; la pose effective se
- * fait au clic sur une case de la fenêtre PLATEAU. Un second clic sur une autre
- * case du panneau réarrange localement les lettres (réflexion), sans effet sur
- * la partie. L'état est poussé par Python via ``window.appliquerEtatChevalet``
- * après chaque mutation.
+ * librement (y compris hors tour). Le clic sur une lettre la sélectionne côté
+ * Python (source de vérité) ; la pose effective se fait au clic sur une case de
+ * la fenêtre PLATEAU. Un second clic sur une autre case du panneau réarrange
+ * localement les lettres (réflexion), sans effet sur la partie. L'état est poussé
+ * par Python via ``window.appliquerEtatChevalet`` après chaque mutation.
+ *
+ * Depuis l'issue #101, les actions de tour (Annuler / Vérifier et calculer /
+ * Jouer / Remettre ses lettres) et le badge « hors tour » ont quitté cette
+ * fenêtre pour la fenêtre plateau : le chevalet ne porte plus que l'en-tête, le
+ * panneau de 9 lettres et la barre de déplacement.
  *
  * Confidentialité (issues #33/#35, #99) : seules les lettres du joueur humain
  * de référence transitent jusqu'ici ; jamais le chevalet d'un ordinateur ni d'un
@@ -24,32 +27,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Éléments du DOM ---
     const barreDrag = document.getElementById('barre-drag');
     const chevaletNom = document.getElementById('chevalet-nom');
-    const badgeHorsTour = document.getElementById('badge-hors-tour');
 
     const panneauEl = document.getElementById('panneau');
     const btnAidePanneau = document.getElementById('btn-aide-panneau');
     const aidePanneauPopover = document.getElementById('aide-panneau-popover');
 
-    const zoneJeu = document.getElementById('zone-jeu');
-    const btnValider = document.getElementById('btn-valider');
-    const btnVerifierCoup = document.getElementById('btn-verifier-coup');
-    const btnAnnuler = document.getElementById('btn-annuler');
-    const btnEchangerTout = document.getElementById('btn-echanger-tout');
-    const messageCoup = document.getElementById('message-coup');
-
-    // Modale de choix de lettre pour un joker.
+    // Modale de choix de lettre pour un joker (reste côté chevalet : la lettre
+    // vient d'ici, issue #90/#101).
     const jokerModale = document.getElementById('joker-modale');
     const jokerGrille = document.getElementById('joker-grille');
     const jokerAnnuler = document.getElementById('joker-annuler');
-
-    // Modale de détail du score (copie côté chevalet, issue #90).
-    const modaleScore = C.creerModaleScore({
-        modale: document.getElementById('score-modale'),
-        titre: document.getElementById('score-titre'),
-        detail: document.getElementById('score-detail'),
-        total: document.getElementById('score-total'),
-        fermer: document.getElementById('score-fermer'),
-    });
 
     // --- État courant côté vue ---
     let etat = null;                 // dernier payload chevalet reçu de Python
@@ -62,32 +49,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ------------------------------------------------------------------ //
     // Rendu
     // ------------------------------------------------------------------ //
-
-    /** Vrai si c'est le tour du joueur de référence (seul cas où l'on peut poser). */
-    function monTour() {
-        return Boolean(etat && etat.mon_tour);
-    }
-
-    function afficherMessage(texte, type) {
-        messageCoup.textContent = texte || '';
-        messageCoup.className = 'message-coup' + (texte ? ' ' + (type || 'info') : '');
-    }
-
-    /** Indicateur discret « hors tour » (issue #100) : le panneau reste manipulable,
-     *  on signale seulement que la pose est indisponible tant que ce n'est pas au
-     *  joueur de référence de jouer. */
-    function majBadgeHorsTour() {
-        if (!badgeHorsTour) {
-            return;
-        }
-        const horsTour = Boolean(etat) && !monTour();
-        badgeHorsTour.hidden = !horsTour;
-        if (horsTour) {
-            badgeHorsTour.textContent = (etat && etat.terminee)
-                ? '🏁 Partie terminée — vous pouvez encore réarranger vos lettres.'
-                : '⏳ Ce n\'est pas votre tour — vous pouvez réarranger vos lettres.';
-        }
-    }
 
     /** Ensemble des index d'origine déjà posés en attente (cases « utilisées »). */
     function indexUtilises() {
@@ -124,17 +85,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             c.dataset.index = index;
             panneauEl.appendChild(c);
         });
-    }
-
-    function majControlesJeu() {
-        const jouable = monTour();
-        const n = (etat && etat.en_attente ? etat.en_attente : []).length;
-        const nbLettres = (etat && etat.nb_lettres) || 0;
-        // On DÉSACTIVE (plutôt que masquer) les actions de tour hors tour (issue #100).
-        btnValider.disabled = !jouable || n === 0;
-        btnVerifierCoup.disabled = !jouable || n === 0;
-        btnAnnuler.disabled = !jouable || n === 0;
-        btnEchangerTout.disabled = !jouable || nbLettres === 0;
     }
 
     /** Signature des lettres du chevalet (pour ne rebâtir le panneau qu'utile). */
@@ -186,9 +136,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             panneauSelection = null;
         }
 
-        majBadgeHorsTour();
         rendrePanneau();
-        majControlesJeu();
 
         // Demande de choix de lettre pour un joker (déclenchée par un clic sur une
         // case de la fenêtre plateau) : on ouvre la modale ici.
@@ -238,7 +186,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (estVide || estUtilisee) {
                 return;
             }
-            afficherMessage('');
             panneauSelection = index;
             rendrePanneau();
             await api.selectionner_lettre(lettre.indexOrigine);
@@ -388,78 +335,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Aide du panneau (icône « i »).
     C.configurerPopover(btnAidePanneau, aidePanneauPopover);
 
-    // Annuler : abandonne toute la pose en cours (via Python).
-    btnAnnuler.addEventListener('click', async () => {
-        afficherMessage('');
-        await api.annuler_pose();
-    });
-
-    // Vérifier et calculer : calcule les points sans jouer, ouvre le détail ici.
-    btnVerifierCoup.addEventListener('click', async () => {
-        btnVerifierCoup.disabled = true;
-        let res;
-        try {
-            res = await api.verifier_coup();
-        } catch (err) {
-            afficherMessage('Erreur inattendue lors de la vérification du coup.', 'erreur');
-            majControlesJeu();
-            return;
-        }
-        if (res && res.succes) {
-            const points = res.points != null ? res.points : 0;
-            const mot = (res.detail && res.detail.mots && res.detail.mots[0])
-                ? res.detail.mots[0].texte : null;
-            afficherMessage(
-                `Coup valide${mot ? ' (' + mot + ')' : ''} : +${points} point${points > 1 ? 's' : ''}. `
-                + `Cliquez « Jouer » pour le poser.`, 'succes');
-            if (res.detail) {
-                modaleScore.afficher(res.detail, `Coup en attente${mot ? ' — « ' + mot + ' »' : ''}`);
-            }
-        } else {
-            afficherMessage((res && res.erreur) ? res.erreur : 'Coup invalide.', 'erreur');
-        }
-        majControlesJeu();
-    });
-
-    // Jouer : pose le mot formé par les lettres en attente (lues côté Python).
-    btnValider.addEventListener('click', async () => {
-        btnValider.disabled = true;
-        let res;
-        try {
-            res = await api.poser_mot();
-        } catch (err) {
-            afficherMessage('Erreur inattendue lors de la validation du coup.', 'erreur');
-            majControlesJeu();
-            return;
-        }
-        if (res && res.succes) {
-            const points = res.points != null ? res.points : 0;
-            afficherMessage(`Coup joué (+${points} point${points > 1 ? 's' : ''}).`, 'succes');
-            // Python rediffuse l'état (nouveau tour) : le rendu suit via le push.
-        } else {
-            afficherMessage((res && res.erreur) ? res.erreur : 'Coup refusé.', 'erreur');
-            majControlesJeu();
-        }
-    });
-
-    // Remettre tout le chevalet et passer (échange complet).
-    btnEchangerTout.addEventListener('click', async () => {
-        btnEchangerTout.disabled = true;
-        let res;
-        try {
-            res = await api.echanger_tout();
-        } catch (err) {
-            afficherMessage('Erreur inattendue lors de l\'échange des lettres.', 'erreur');
-            majControlesJeu();
-            return;
-        }
-        if (res && res.succes) {
-            afficherMessage('Toutes vos lettres ont été remises dans le sac. Tour passé.', 'succes');
-        } else {
-            afficherMessage((res && res.erreur) || 'Échange impossible.', 'erreur');
-            majControlesJeu();
-        }
-    });
+    // Les actions de tour (Annuler / Vérifier et calculer / Jouer / Remettre ses
+    // lettres) ont été déplacées vers la fenêtre plateau (issue #101) : leurs
+    // gestionnaires vivent désormais dans jeu.js.
 
     // --- Initialisation : premier tirage de l'état privé ---
     try {

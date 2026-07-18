@@ -92,24 +92,6 @@ body {
     line-height: 1.35;
 }
 
-/* Indicateur discret « hors tour » (issue #100). Remplace l'ancienne boîte
-   d'attente : le panneau reste manipulable, on signale seulement que la pose est
-   momentanément indisponible. */
-.badge-hors-tour {
-    flex: 0 0 auto;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--couleur-ordinateur, #6a1b9a);
-    background: var(--couleur-ordinateur-fond, #f3e5f5);
-    border: 1px dashed var(--couleur-ordinateur, #6a1b9a);
-    border-radius: var(--rayon-bordure);
-    padding: 4px 10px;
-}
-
-.badge-hors-tour[hidden] {
-    display: none;
-}
-
 /* --------------------------------------------------------------------------- */
 /* Panneau unifié des lettres (issue #100)                                      */
 /* --------------------------------------------------------------------------- */
@@ -229,25 +211,5 @@ body {
     font-size: 0.9rem;
 }
 
-/* --------------------------------------------------------------------------- */
-/* Zone de pose (contrôles de tour)                                             */
-/* --------------------------------------------------------------------------- */
-.zone-jeu {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--couleur-bordure);
-    width: 100%;
-}
-
-.zone-jeu-controles {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.zone-jeu-actions {
-    margin-left: auto;
-    display: inline-flex;
-    gap: 10px;
-}
+/* Les styles des actions de tour (.zone-jeu, .message-coup…) ont migré vers
+   jeu.css avec les boutons eux-mêmes (issue #101). */

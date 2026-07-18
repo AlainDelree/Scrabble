@@ -1563,6 +1563,13 @@ header {
     width: 100%;
 }
 
+/* Masquée hors du tour humain (issue #101) : le JS bascule l'attribut `hidden`
+   via majActionsTour(). Règle explicite car un futur `display` sur .zone-jeu
+   masquerait sinon l'effet natif de [hidden]. */
+.zone-jeu[hidden] {
+    display: none;
+}
+
 /* Barre de contrôles de pose. Le lien discret « remettre ses lettres » y est
    calé à gauche (issue #42, point 6) ; le bouton de sens éventuel suit ; les
    actions Annuler/Valider sont poussées à droite. Ainsi le lien d'échange n'est
