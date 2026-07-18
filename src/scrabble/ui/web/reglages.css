@@ -139,17 +139,22 @@ main {
 
 .statut-enregistrement {
     margin-top: 8px;
-    padding: 8px 12px;
-    border-radius: var(--rayon-bordure);
-    background: var(--vert-fond);
+    padding: 6px 4px;
+    background: transparent;
     color: var(--couleur-primaire-hover);
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    font-style: italic;
     text-align: center;
+    cursor: default;
+    user-select: none;
 }
 
 .statut-enregistrement.erreur {
+    padding: 8px 12px;
+    border-radius: var(--rayon-bordure);
     background: var(--rouge-fond);
     color: var(--couleur-danger-hover);
+    font-style: normal;
 }
 
 /* ------------------------ Onglet Dictionnaire -------------------------- */

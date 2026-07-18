@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function enregistrer(cle, valeur) {
         const res = await api.enregistrer_reglage(cle, valeur);
         if (res.succes) {
-            afficherStatutGeneral('Enregistré.', false);
+            afficherStatutGeneral('Changement sauvé automatiquement', false);
             return res.valeur;
         }
         afficherStatutGeneral(res.erreur || 'Échec de l\'enregistrement.', true);
