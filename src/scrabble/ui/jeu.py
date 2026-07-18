@@ -1848,10 +1848,121 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
     # Fermeture croisée par la croix (issue #94) : fermer nativement l'une des deux
     # fenêtres détruit l'autre et quitte l'application (plus de fenêtre orpheline).
     api.installer_fermeture_croisee()
-    # Repositionnement après démarrage de la boucle (issue #91 point 1) : c'est
-    # seulement une fois ``webview.start()`` en cours que ``webview.screens`` renvoie
-    # des dimensions fiables sous WebKitGTK.
-    webview.start(_repositionner_chevalet, (window_chevalet,))
+    # Finalisation après démarrage de la boucle (issues #91 point 1 et #95) : c'est
+    # seulement une fois ``webview.start()`` en cours et les fenêtres affichées que
+    # (a) ``webview.screens`` renvoie des dimensions fiables sous WebKitGTK et que
+    # (b) une (ré)affirmation de l'état maximisé du plateau est honorée par le WM.
+    webview.start(_finaliser_fenetres, (window_plateau, window_chevalet))
+
+
+def _finaliser_fenetres(
+    window_plateau: "webview.Window", window_chevalet: "webview.Window"
+) -> None:
+    """Finalise l'état des deux fenêtres une fois la boucle GUI démarrée (issue #95).
+
+    Exécuté par ``webview.start(func, …)`` dans un fil dédié, **après** le démarrage
+    de la boucle. On y enchaîne deux corrections qui exigent toutes deux que la
+    fenêtre concernée soit déjà affichée par le backend :
+
+    1. **Maximisation du plateau** (:func:`_maximiser_plateau`) : ``maximized=True``
+       demandé à la création n'est pas honoré sous XWayland (cf. cette fonction).
+    2. **Repositionnement du chevalet** (:func:`_repositionner_chevalet`) : la
+       position bas-centre n'est calculable qu'une fois ``webview.screens`` fiable
+       (issue #91 point 1).
+    """
+    _maximiser_plateau(window_plateau)
+    _repositionner_chevalet(window_chevalet)
+
+
+def _zone_travail_ecran() -> tuple[int, int, int, int] | None:
+    """Zone de travail (x, y, largeur, hauteur) du moniteur principal — issue #95.
+
+    Surface d'écran réellement **utilisable**, panneaux et barres système EXCLUS
+    (EWMH ``_NET_WORKAREA``) : c'est la cible d'une vraie maximisation. Lue via
+    **GDK**, le même moteur que ``webview.screens`` (déjà employé pour placer le
+    chevalet, issue #91). Sur cette machine, GDK renvoie p. ex. ``(66, 32, 1294,
+    736)`` sous un écran 1360×768 avec dock latéral + barre haute.
+
+    Replis successifs si GDK est indisponible (tests, backend non-GTK) : géométrie
+    **plein écran** de ``webview.screens[0]`` (peut chevaucher un panneau, mais mieux
+    qu'une fenêtre minuscule), puis ``None`` si rien n'est interrogeable.
+    """
+    try:
+        import gi
+
+        gi.require_version("Gdk", "3.0")
+        from gi.repository import Gdk
+
+        display = Gdk.Display.get_default()
+        monitor = display.get_primary_monitor() or Gdk.Display.get_monitor(display, 0)
+        wa = monitor.get_workarea()
+        return int(wa.x), int(wa.y), int(wa.width), int(wa.height)
+    except Exception as e:  # noqa: BLE001 - GDK indisponible : on tente un repli
+        journal.info(
+            f"Jeu : zone de travail GDK indisponible ({e!r}) — repli sur "
+            "webview.screens."
+        )
+    try:
+        ecrans = webview.screens
+        ecran = ecrans[0] if ecrans else None
+        if ecran is not None:
+            return int(ecran.x), int(ecran.y), int(ecran.width), int(ecran.height)
+    except Exception as e:  # noqa: BLE001 - aucun écran interrogeable
+        journal.info(f"Jeu : webview.screens illisible pour la zone de travail ({e!r}).")
+    return None
+
+
+def _maximiser_plateau(window_plateau: "webview.Window") -> None:
+    """Déploie la fenêtre plateau en plein écran utile après démarrage (issue #95).
+
+    Cause racine (issue #95 point B) : ``maximized=True`` à la création se traduit,
+    côté backend GTK, par un ``Gtk.Window.maximize()`` émis **avant** que la fenêtre
+    soit mappée. Sous **XWayland / mutter** (backend forcé par l'issue #93), cette
+    requête est silencieusement **ignorée** — et pas seulement avant l'affichage :
+    vérifié dans cet environnement, ``Gtk.Window.maximize()`` est un **no-op** même
+    après ``shown``, y compris pour une fenêtre GTK « nue » hors pywebview
+    (``_NET_WM_STATE`` reste vide). La fenêtre s'ouvre donc à sa taille par défaut
+    (~800×600), ce qui se lit comme une fenêtre « réduite » / non déployée.
+
+    Contournement retenu, dans la lignée de l'issue #93 (``move()`` fiable une fois
+    passé sous XWayland) : une fois la boucle démarrée et la fenêtre affichée, on
+    (1) émet tout de même la demande native ``maximize()`` — honorée par les
+    gestionnaires de fenêtres coopératifs — puis (2) on **force** la fenêtre à
+    remplir la :func:`zone de travail <_zone_travail_ecran>` par un ``resize`` +
+    ``move`` explicites, honorés sous XWayland là où la maximisation ne l'est pas.
+    Résultat : plateau déployé sur tout l'espace utile, quel que soit le WM.
+
+    Robuste aux fenêtres factices des tests : ``maximize`` / ``resize`` / ``move``
+    absents sont simplement ignorés, chaque étape étant indépendante.
+    """
+    maximiser = getattr(window_plateau, "maximize", None)
+    if callable(maximiser):
+        try:
+            maximiser()
+        except Exception as e:  # noqa: BLE001 - échec sans conséquence : le resize suit
+            journal.erreur("Jeu : demande native de maximisation du plateau impossible.", e)
+
+    zone = _zone_travail_ecran()
+    if zone is None:
+        journal.info(
+            "Jeu : zone de travail inconnue — maximisation limitée à la demande "
+            "native (issue #95 point B)."
+        )
+        return
+    x, y, largeur, hauteur = zone
+    redimensionner = getattr(window_plateau, "resize", None)
+    deplacer = getattr(window_plateau, "move", None)
+    try:
+        if callable(redimensionner):
+            redimensionner(largeur, hauteur)
+        if callable(deplacer):
+            deplacer(x, y)
+        journal.info(
+            f"Jeu : plateau déployé sur la zone de travail {largeur}×{hauteur} en "
+            f"({x}, {y}) — contournement XWayland de la maximisation (issue #95 point B)."
+        )
+    except Exception as e:  # noqa: BLE001 - un déploiement raté ne bloque pas le jeu
+        journal.erreur("Jeu : déploiement plein écran du plateau impossible.", e)
 
 
 def _repositionner_chevalet(window_chevalet: "webview.Window") -> None:
