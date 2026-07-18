@@ -1803,31 +1803,37 @@ def _rouvrir_accueil(id_partie: int | None) -> None:
 
 
 # Dimensions par défaut de la fenêtre chevalet flottante (issue #90, ajustées
-# #91/#94, épurées #102). Depuis l'issue #102 la fenêtre ne contient plus que la
-# barre de déplacement fine et le panneau unique des lettres : l'en-tête vert
-# (titre « Chevalet de [nom] » + instructions) et l'icône d'aide « i » ont été
-# retirés. Les dimensions sont donc recalculées au plus près du contenu réel
-# restant, mesuré en headless (Chromium/Playwright, cf.
-# ``scripts/_harness_jeu/mesure_chevalet_102.mjs``), avec une marge de sécurité
-# pour l'écart de rendu Chromium ↔ WebKitGTK réel (viser large plutôt que
-# pile-poil, cf. issues #92/#94).
+# #91/#94, épurées #102, resserrées #104). Depuis l'issue #102 la fenêtre ne
+# contient plus que la barre de déplacement fine et le panneau unique des lettres :
+# l'en-tête vert (titre « Chevalet de [nom] » + instructions) et l'icône d'aide
+# « i » ont été retirés. Les dimensions sont recalculées au plus près du contenu
+# réel restant, mesuré en headless (Chromium/Playwright, cf.
+# ``scripts/_harness_jeu/mesure_chevalet_104.mjs``). L'issue #102 (620×190) laissait
+# encore un espace vide notable à droite et un peu d'air sous la rangée : la marge
+# de sécurité prise sur la mesure Chromium (~32 % en largeur, ~26 % en hauteur)
+# s'avérait trop généreuse. #104 la ramène à ~15-25 %, plus proche du contenu, tout
+# en gardant de quoi absorber l'écart de rendu Chromium ↔ WebKitGTK (viser un peu
+# large plutôt que pile-poil, cf. issues #92/#94).
 #
-# Largeur : le contenu le plus large est désormais le titre du panneau
-# (« 🎴 Mes lettres — cliquez une lettre… », ~418 px en Chromium) ; la rangée de
-# 9 cases de 40 px + espacements tient dans ~410 px. Avec les paddings (fenêtre +
-# bloc, ~52 px), le contenu réclame ~470 px. On fixe 620 px : ~150 px de marge
-# pour absorber un rendu WebKitGTK plus large sans laisser d'espace vide excessif
-# à droite (contre 880 px de l'ancienne mise en page à deux blocs).
+# Largeur : la rangée de 9 cases (7 lettres + 2 vides) fait 408 px (40 px/case +
+# 6 px de gap) — c'est du pixel FIXE, identique quel que soit le moteur de rendu ;
+# avec les paddings (bloc 24 px + fenêtre 28 px) elle réclame 460 px. Le titre du
+# panneau (« 🎴 Mes lettres — cliquez… ») fait ~418 px en Chromium, soit ~470 px
+# paddings compris : c'est la contrainte binding, gardée sur une seule ligne (elle
+# peut se replier sur 2 lignes sous un rendu WebKitGTK plus large sans casser la
+# mise en page — la hauteur ci-dessous le tolère). On fixe 540 px : ~15 % de marge
+# sur ~470 px (et ~17 % sur la rangée de 460 px), contre 620 px auparavant.
 #
-# Hauteur : le contenu (barre ~35 px + panneau ~98 px + paddings ~18 px) descend
-# à ~151 px en Chromium. On fixe 190 px : ~40 px de marge de sécurité pour un
-# rendu WebKitGTK un peu plus haut, sans le vide de l'ancienne mise en page
-# (300 px). Non redimensionnable : ces valeurs sont la taille réelle utilisée. Des
-# garde-fous de test (``test_largeur_suffisante_pour_le_contenu`` /
-# ``test_hauteur_suffisante_pour_le_contenu``) empêchent une régression de
-# repasser sous la taille du contenu.
-CHEVALET_LARGEUR = 620
-CHEVALET_HAUTEUR = 190
+# Hauteur : le contenu (barre ~35 px + panneau ~98 px + paddings) descend à ~141 px
+# en Chromium sur une ligne de titre, ~165 px si le titre se replie sur 2 lignes. On
+# fixe 175 px : ~24 % de marge sur les 141 px de la ligne unique, et de quoi contenir
+# les 165 px du cas replié (donc pas de coupe même si WebKitGTK replie le titre),
+# contre 190 px auparavant. Non redimensionnable : ces valeurs sont la taille réelle
+# utilisée. Des garde-fous de test (``test_largeur_suffisante_pour_le_contenu`` /
+# ``test_hauteur_suffisante_pour_le_contenu``) empêchent une régression de repasser
+# sous la taille du contenu.
+CHEVALET_LARGEUR = 540
+CHEVALET_HAUTEUR = 175
 # Marge basse : la fenêtre chevalet est posée près du bas de l'écran, à cette
 # distance du bord inférieur de la zone de travail.
 CHEVALET_MARGE_BAS = 40
@@ -1897,7 +1903,8 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
       :meth:`ApiJeu.deplacer_chevalet`) : sous WebKitGTK, ``.pywebview-drag-region``
       n'est pas géré (le backend GTK ne câble le drag d'une fenêtre ``frameless``
       que via ``easy_drag=True``, qui déplacerait la fenêtre au moindre glissé, y
-      compris pendant un clic-clic de pose — issue #91 point 2). Taille ~880×300,
+      compris pendant un clic-clic de pose — issue #91 point 2). Taille resserrée
+      au panneau (``CHEVALET_LARGEUR``×``CHEVALET_HAUTEUR``, 540×175 depuis #104),
       posée en bas-centre de l'écran.
 
     Les deux fenêtres sont créées **avant** l'unique ``webview.start()`` (exigence

@@ -2335,23 +2335,24 @@ class TestDimensionsChevalet:
         assert mod._position_chevalet() == (100, 100)
 
     def test_largeur_suffisante_pour_le_contenu(self):
-        # Garde-fou largeur (issue #94, épuré #102) : depuis le retrait de l'en-tête
-        # vert, le contenu le plus large est le titre du panneau (~418 px) ; la
-        # rangée de 9 cases + le padding réclament ~470 px. La fenêtre est réduite à
-        # 620 px (marge pour le rendu WebKitGTK). Le garde-fou empêche autant une
-        # régression qui rognerait le contenu (trop étroit) qu'un retour à l'ancien
-        # espace vide de la mise en page à deux blocs (~880 px).
-        assert 560 <= CHEVALET_LARGEUR <= 700
+        # Garde-fou largeur (issue #94, épuré #102, resserré #104) : le contenu le
+        # plus large est le titre du panneau (~418 px, ~470 px paddings compris) ; la
+        # rangée FIXE de 9 cases réclame 460 px. #104 a ramené la fenêtre de 620 à
+        # 540 px (marge ~15-25 % pour le rendu WebKitGTK, contre ~32 % avant). La
+        # borne basse (480 px) reste au-dessus du plancher où le titre se replie / la
+        # rangée se comprime ; la borne haute empêche un retour à l'espace vide
+        # notable de #102 (620 px) puis de la mise en page à deux blocs (~880 px).
+        assert 480 <= CHEVALET_LARGEUR <= 600
 
     def test_hauteur_suffisante_pour_le_contenu(self):
-        # Garde-fou hauteur (issue #94, revu #100, épuré #102) : depuis le retrait de
-        # l'en-tête vert et de l'icône d'aide (#102), la fenêtre ne contient plus que
-        # la barre de déplacement (~35 px) et le panneau de 9 cases (~98 px + padding)
-        # — le contenu descend à ~151 px, mesuré à sa taille réelle. La hauteur est
-        # réduite à 190 px (marge pour le rendu WebKitGTK). Empêche autant une
-        # régression qui rognerait le bas (trop bas) qu'un retour au vide antérieur
-        # (~300 px, en-tête retiré).
-        assert 170 <= CHEVALET_HAUTEUR <= 230
+        # Garde-fou hauteur (issue #94, revu #100, épuré #102, resserré #104) : la
+        # fenêtre ne contient que la barre de déplacement (~35 px) et le panneau de
+        # 9 cases (~98 px + padding) — le contenu descend à ~141 px sur une ligne de
+        # titre, ~165 px si le titre se replie sur 2 lignes. #104 a ramené la fenêtre
+        # de 190 à 175 px (marge ~24 % sur 141 px, et de quoi contenir le cas replié
+        # à 165 px). La borne basse (165 px) garantit l'absence de coupe même titre
+        # replié ; la borne haute empêche un retour au vide antérieur (~190/300 px).
+        assert 165 <= CHEVALET_HAUTEUR <= 220
 
 
 class _FenetreShown:
