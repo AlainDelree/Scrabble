@@ -2351,24 +2351,29 @@ class TestDimensionsChevalet:
         assert mod._position_chevalet() == (100, 100)
 
     def test_largeur_suffisante_pour_le_contenu(self):
-        # Garde-fou largeur (issue #94, épuré #102, resserré #104) : le contenu le
-        # plus large est le titre du panneau (~418 px, ~470 px paddings compris) ; la
-        # rangée FIXE de 9 cases réclame 460 px. #104 a ramené la fenêtre de 620 à
-        # 540 px (marge ~15-25 % pour le rendu WebKitGTK, contre ~32 % avant). La
-        # borne basse (480 px) reste au-dessus du plancher où le titre se replie / la
-        # rangée se comprime ; la borne haute empêche un retour à l'espace vide
-        # notable de #102 (620 px) puis de la mise en page à deux blocs (~880 px).
-        assert 480 <= CHEVALET_LARGEUR <= 600
+        # Garde-fou largeur (issue #94, épuré #102, resserré #104, #106) : le contenu
+        # le plus large est le titre du panneau (~418 px, ~470 px paddings compris) ;
+        # la rangée FIXE de 9 cases réclame 460 px — PLANCHER dur (mesuré : à 460 px la
+        # rangée se comprime déjà, retombant à 406 px). #104 avait fixé 540 px, #106 a
+        # resserré à 480 px : au-dessus de 470 px le titre reste sur une ligne, et
+        # ~20 px de marge subsistent sur le plancher de 460 px. La borne basse (460 px)
+        # interdit de compromettre la rangée ; la borne haute empêche un retour à
+        # l'espace vide notable de #102/#104 (540-620 px) puis à la mise en page à deux
+        # blocs (~880 px).
+        assert 460 <= CHEVALET_LARGEUR <= 560
 
     def test_hauteur_suffisante_pour_le_contenu(self):
-        # Garde-fou hauteur (issue #94, revu #100, épuré #102, resserré #104) : la
-        # fenêtre ne contient que la barre de déplacement (~35 px) et le panneau de
+        # Garde-fou hauteur (issue #94, revu #100, épuré #102, resserré #104, #106) :
+        # la fenêtre ne contient que la barre de déplacement (~35 px) et le panneau de
         # 9 cases (~98 px + padding) — le contenu descend à ~141 px sur une ligne de
-        # titre, ~165 px si le titre se replie sur 2 lignes. #104 a ramené la fenêtre
-        # de 190 à 175 px (marge ~24 % sur 141 px, et de quoi contenir le cas replié
-        # à 165 px). La borne basse (165 px) garantit l'absence de coupe même titre
-        # replié ; la borne haute empêche un retour au vide antérieur (~190/300 px).
-        assert 165 <= CHEVALET_HAUTEUR <= 220
+        # titre, ~166 px si le titre se replie sur 2 lignes. #106 recentre le cadre
+        # verticalement (``justify-content: center``) : avec les 16 px de padding
+        # vertical, contenir le cas replié sans défilement impose ~173 px (35 + 122 +
+        # 16). On garde 175 px (le recentrage rend le vert symétrique, il n'est plus
+        # utile de rogner la hauteur). La borne basse (172 px) garantit l'absence de
+        # coupe/défilement même titre replié ; la borne haute empêche un retour au vide
+        # antérieur (~190/300 px).
+        assert 172 <= CHEVALET_HAUTEUR <= 200
 
 
 class _FenetreShown:

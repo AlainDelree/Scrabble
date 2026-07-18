@@ -62,13 +62,22 @@ body {
 /* --------------------------------------------------------------------------- */
 /* Depuis l'issue #102, la fenêtre ne contient plus que la barre de déplacement et
    ce corps réduit au seul panneau des lettres : l'en-tête vert (titre + aide) a
-   été retiré. Le padding est resserré au plus près du panneau. */
+   été retiré. Le padding est resserré au plus près du panneau.
+   Issue #106 : l'asymétrie verticale (plus de vert sous le cadre blanc qu'au-dessus)
+   venait de ce que ce corps ``flex: 1 1 auto`` absorbe toute la hauteur résiduelle de
+   la fenêtre (175px fixes) et alignait le cadre en haut : le vide tombait donc en bas.
+   ``justify-content: center`` recentre le cadre → l'espace vert résiduel se répartit
+   à parts égales en haut et en bas, indépendamment de la hauteur exacte de la
+   fenêtre (robuste même si le titre se replie sur 2 lignes sous WebKitGTK). Le
+   padding vertical est rendu symétrique (8px/8px, plus le 10px du bas qui, ajouté à
+   la hauteur résiduelle, aggravait l'asymétrie). */
 .chevalet-fenetre {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
+    justify-content: center;
     overflow: auto;
-    padding: 8px 14px 10px;
+    padding: 8px 14px;
 }
 
 /* --------------------------------------------------------------------------- */

@@ -1771,7 +1771,8 @@ def _rouvrir_accueil(id_partie: int | None) -> None:
 # l'en-tête vert (titre « Chevalet de [nom] » + instructions) et l'icône d'aide
 # « i » ont été retirés. Les dimensions sont recalculées au plus près du contenu
 # réel restant, mesuré en headless (Chromium/Playwright, cf.
-# ``scripts/_harness_jeu/mesure_chevalet_104.mjs``). L'issue #102 (620×190) laissait
+# ``scripts/_harness_jeu/mesure_chevalet_104.mjs`` puis ``…_106.mjs`` qui mesure en
+# plus la symétrie verticale et le vide à droite). L'issue #102 (620×190) laissait
 # encore un espace vide notable à droite et un peu d'air sous la rangée : la marge
 # de sécurité prise sur la mesure Chromium (~32 % en largeur, ~26 % en hauteur)
 # s'avérait trop généreuse. #104 la ramène à ~15-25 %, plus proche du contenu, tout
@@ -1780,22 +1781,29 @@ def _rouvrir_accueil(id_partie: int | None) -> None:
 #
 # Largeur : la rangée de 9 cases (7 lettres + 2 vides) fait 408 px (40 px/case +
 # 6 px de gap) — c'est du pixel FIXE, identique quel que soit le moteur de rendu ;
-# avec les paddings (bloc 24 px + fenêtre 28 px) elle réclame 460 px. Le titre du
-# panneau (« 🎴 Mes lettres — cliquez… ») fait ~418 px en Chromium, soit ~470 px
-# paddings compris : c'est la contrainte binding, gardée sur une seule ligne (elle
-# peut se replier sur 2 lignes sous un rendu WebKitGTK plus large sans casser la
-# mise en page — la hauteur ci-dessous le tolère). On fixe 540 px : ~15 % de marge
-# sur ~470 px (et ~17 % sur la rangée de 460 px), contre 620 px auparavant.
+# avec les paddings (bloc 24 px + fenêtre 28 px) elle réclame 460 px, PLANCHER sous
+# lequel la rangée elle-même se comprimerait (mesuré : à 460 px la rangée retombe à
+# 406 px). Le titre du panneau (« 🎴 Mes lettres — cliquez… ») fait ~418 px en
+# Chromium, soit ~470 px paddings compris : gardé sur une seule ligne au-dessus de
+# 470 px, il peut se replier sur 2 lignes en dessous sans casser la mise en page (la
+# hauteur ci-dessous le tolère). #104 avait fixé 540 px (~79 px de vide à droite de
+# la dernière case) ; #106 resserre à 480 px : le vide tombe à ~19 px tout en gardant
+# le titre sur une ligne (480 > 470) et ~20 px de marge sur le plancher de 460 px.
 #
 # Hauteur : le contenu (barre ~35 px + panneau ~98 px + paddings) descend à ~141 px
-# en Chromium sur une ligne de titre, ~165 px si le titre se replie sur 2 lignes. On
-# fixe 175 px : ~24 % de marge sur les 141 px de la ligne unique, et de quoi contenir
-# les 165 px du cas replié (donc pas de coupe même si WebKitGTK replie le titre),
-# contre 190 px auparavant. Non redimensionnable : ces valeurs sont la taille réelle
+# en Chromium sur une ligne de titre, ~166 px si le titre se replie sur 2 lignes. On
+# garde 175 px : c'est le plancher qui, avec le recentrage vertical du cadre
+# (``justify-content: center`` sur ``.chevalet-fenetre``, issue #106), contient encore
+# le cas replié (166 px) sans coupe ni défilement. #106 ne réduit PAS la hauteur :
+# l'asymétrie verticale (plus de vert sous le cadre qu'au-dessus) n'était pas un
+# problème de taille mais d'alignement — le corps flex absorbait toute la hauteur
+# résiduelle en la rejetant en bas. Le recentrage répartit désormais le vert à parts
+# égales en haut et en bas (mesuré : gapHaut = gapBas = 21 px à 480×175), quelle que
+# soit la hauteur exacte. Non redimensionnable : ces valeurs sont la taille réelle
 # utilisée. Des garde-fous de test (``test_largeur_suffisante_pour_le_contenu`` /
 # ``test_hauteur_suffisante_pour_le_contenu``) empêchent une régression de repasser
 # sous la taille du contenu.
-CHEVALET_LARGEUR = 540
+CHEVALET_LARGEUR = 480
 CHEVALET_HAUTEUR = 175
 # Marge basse : la fenêtre chevalet est posée près du bas de l'écran, à cette
 # distance du bord inférieur de la zone de travail.
@@ -1869,7 +1877,7 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
       n'est pas géré (le backend GTK ne câble le drag d'une fenêtre ``frameless``
       que via ``easy_drag=True``, qui déplacerait la fenêtre au moindre glissé, y
       compris pendant un clic-clic de pose — issue #91 point 2). Taille resserrée
-      au panneau (``CHEVALET_LARGEUR``×``CHEVALET_HAUTEUR``, 540×175 depuis #104),
+      au panneau (``CHEVALET_LARGEUR``×``CHEVALET_HAUTEUR``, 480×175 depuis #106),
       posée en bas-centre de l'écran.
 
     Les deux fenêtres sont créées **avant** l'unique ``webview.start()`` (exigence
