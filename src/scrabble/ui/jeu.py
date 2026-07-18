@@ -1772,8 +1772,15 @@ def _position_chevalet(
     est donc désormais rappelée **après** le démarrage de la boucle par
     :func:`_repositionner_chevalet` pour corriger la position réelle de la fenêtre.
     """
+    nb_ecrans = 0
     try:
         ecrans = webview.screens
+        # ``webview.screens`` est un proxy paresseux (proxy_tools) : y toucher avant
+        # qu'un backend GUI (GTK/QT) soit chargé lève ``WebViewException``. On lit
+        # donc le nombre d'écrans DANS ce try (une seule fois) — l'accès dupliqué et
+        # NON gardé qui traînait dans la trace ci-dessous faisait planter le lancement
+        # (et 6 tests) dès que le backend n'était pas encore prêt (issue #96).
+        nb_ecrans = len(ecrans) if ecrans else 0
         ecran = ecrans[0] if ecrans else None
         larg_ecran = int(getattr(ecran, "width", 0) or 0)
         haut_ecran = int(getattr(ecran, "height", 0) or 0)
@@ -1785,7 +1792,7 @@ def _position_chevalet(
     # non encore interrogeable, typiquement avant le démarrage de la boucle GUI).
     journal.info(
         f"Jeu : _position_chevalet — écran mesuré {larg_ecran}×{haut_ecran}px "
-        f"(nb écrans = {len(webview.screens) if getattr(webview, 'screens', None) else 0})."
+        f"(nb écrans = {nb_ecrans})."
     )
     if larg_ecran <= 0 or haut_ecran <= 0:
         return 100, 100
@@ -1852,6 +1859,20 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
     # seulement une fois ``webview.start()`` en cours et les fenêtres affichées que
     # (a) ``webview.screens`` renvoie des dimensions fiables sous WebKitGTK et que
     # (b) une (ré)affirmation de l'état maximisé du plateau est honorée par le WM.
+    #
+    # Point B de l'issue #96 (fenêtre plateau ouverte « réduite ») — confirmation par
+    # lecture du code de pywebview installé (``platforms/gtk.py``) : à la création,
+    # ``BrowserView.__init__`` fait ``self.window.maximize()`` AVANT ``browser.show()``
+    # (la fenêtre n'est donc pas encore mappée), et pour le plateau sans ``width``/
+    # ``height`` la taille initiale non maximisée est le défaut ~800×600. Sous XWayland
+    # (backend forcé #93), cette maximisation pré-mappage est un no-op → fenêtre petite.
+    # La création du chevalet juste après (frameless + on_top + ``set_keep_above``) est
+    # INDÉPENDANTE : rien dans le backend ne lie l'état maximisé du plateau à la seconde
+    # fenêtre. Le correctif (:func:`_maximiser_plateau`) est donc appliqué ici pour les
+    # DEUX chemins de lancement — autonome (``python -m scrabble.ui.jeu``) et normal
+    # (accueil → :func:`lancer_jeu`) — puisque tous deux passent par cette fonction et
+    # basculent XWayland avant le premier ``webview.start()`` : le chemin normal est
+    # affecté à l'identique, et corrigé à l'identique.
     webview.start(_finaliser_fenetres, (window_plateau, window_chevalet))
 
 

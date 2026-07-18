@@ -153,6 +153,10 @@
     </div>
 
     <script src="commun.js"></script>
+    <!-- Arithmétique pure de la synchronisation dynamique de la hauteur du tour IA
+         (issue #96, point A) : expose window.HauteurAttente, consommé par
+         chevalet.js. Chargé AVANT chevalet.js pour être disponible dès son init. -->
+    <script src="hauteur_attente.js"></script>
     <script src="chevalet.js"></script>
 </body>
 </html>

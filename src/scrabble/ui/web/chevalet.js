@@ -83,7 +83,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         return Boolean(etat && !etat.terminee && etat.tour_humain);
     }
 
-    /** Mémorise la hauteur réellement rendue de la zone interactive (issue #95 A). */
+    /** Mémorise la hauteur réellement rendue de la zone interactive (issue #95 A).
+     *
+     * L'arithmétique (cumul du maximum, mesures nulles ignorées) est déléguée à
+     * `window.HauteurAttente` (hauteur_attente.js), pure et testée à part (issue #96).
+     */
     function mesurerZoneInteractive() {
         if (!zoneInteractive) {
             return;
@@ -91,17 +95,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         // getBoundingClientRect force un reflow synchrone : la valeur lue reflète le
         // rendu courant (après application des états hidden par majModeTour/…).
         const h = zoneInteractive.getBoundingClientRect().height;
-        if (h > 0) {
-            hauteurInteractiveMax = hauteurInteractiveMax === null
-                ? h
-                : Math.max(hauteurInteractiveMax, h);
-        }
+        hauteurInteractiveMax = window.HauteurAttente.cumulerHauteur(
+            hauteurInteractiveMax, h);
     }
 
     /** Cale la hauteur de la zone d'attente IA sur la zone interactive mesurée. */
     function synchroniserHauteurAttente() {
-        if (hauteurInteractiveMax !== null) {
-            zoneAttenteIA.style.minHeight = Math.round(hauteurInteractiveMax) + 'px';
+        const minHeight = window.HauteurAttente.minHeightAttente(hauteurInteractiveMax);
+        if (minHeight !== null) {
+            zoneAttenteIA.style.minHeight = minHeight;
         }
     }
 
