@@ -7,14 +7,19 @@ sac. Aucune pose de mot n'est encore possible ici (ce sera l'étape suivante).
 
 Confidentialité du chevalet
 ---------------------------
-Dans une partie à plusieurs joueurs humains sur le même écran, le chevalet du
-joueur courant n'est **jamais** affiché automatiquement : il reste masqué par
-défaut. Seul un clic explicite sur « voir mes lettres » le révèle, et « cacher
-mes lettres » le remasque à tout moment (pas seulement au changement de tour).
-Côté API, une seule règle structurelle garantit ce principe : :meth:`ApiJeu.
-obtenir_chevalet` n'expose **que** le chevalet du joueur dont l'index est
-demandé — il n'existe aucune méthode renvoyant tous les chevalets d'un coup, et
-:func:`etat_public` ne contient aucune identité de lettre.
+Le panneau du bas suit le **joueur humain de référence** — le premier joueur
+humain de la partie (voir :func:`index_humain_reference`). Depuis l'issue #99,
+ses lettres sont **toujours** exposées à la fenêtre chevalet (panneau toujours
+visible et réarrangeable, comme un vrai chevalet physique), y compris hors de
+son tour ; seule la pose réelle sur le plateau reste réservée à son tour (garde
+de tour côté API, voir :meth:`ApiJeu._refuser_hors_tour`). En revanche le
+chevalet n'est **jamais** exposé pour un autre joueur — ni un ordinateur, ni un
+second humain : :meth:`ApiJeu._etat_chevalet` ne sérialise que le chevalet du
+joueur de référence. Côté API, deux règles structurelles garantissent ce
+principe : :meth:`ApiJeu.obtenir_chevalet` n'expose **que** le chevalet du
+joueur dont l'index est demandé — il n'existe aucune méthode renvoyant tous les
+chevalets d'un coup — et :func:`etat_public` ne contient aucune identité de
+lettre.
 
 Lancement de l'écran pour test (mode démonstration) ::
 
@@ -113,6 +118,24 @@ def serialiser_plateau(plateau: PlateauPartie) -> list[list[dict[str, Any]]]:
 COTES_ADVERSAIRES = ("haut", "gauche", "droite")
 
 
+def index_humain_reference(joueurs: list[Joueur]) -> int:
+    """Index du **joueur humain de référence** : le premier joueur ``humain``.
+
+    Source de vérité unique du « joueur humain de référence » (issue #99) — celui
+    dont le panneau du bas (chevalet) est toujours visible et réarrangeable, y
+    compris hors de son tour, et dont on expose les lettres à la fenêtre chevalet.
+    Reprend exactement la règle déjà utilisée pour la position ``"bas"`` : le
+    premier joueur ``humain`` de la liste, ou l'index ``0`` s'il n'y a aucun
+    humain (cas théorique / test). Réutilisée par :func:`calculer_positions`
+    (placement au bas du plateau), par :meth:`ApiJeu._etat_chevalet` et par la
+    garde de tour des mutations de pose (:meth:`ApiJeu._refuser_hors_tour`) — plus
+    aucune duplication de ce ``next(...)`` ailleurs dans le module.
+    """
+    return next(
+        (index for index, joueur in enumerate(joueurs) if joueur.humain), 0
+    )
+
+
 def calculer_positions(joueurs: list[Joueur]) -> list[str]:
     """Position spatiale de chaque joueur autour du plateau (index → côté).
 
@@ -134,9 +157,7 @@ def calculer_positions(joueurs: list[Joueur]) -> list[str]:
     """
     if not joueurs:
         return []
-    reference = next(
-        (index for index, joueur in enumerate(joueurs) if joueur.humain), 0
-    )
+    reference = index_humain_reference(joueurs)
     positions = [""] * len(joueurs)
     positions[reference] = "bas"
     rang = 0
@@ -1045,24 +1066,32 @@ class ApiJeu:
     def _etat_chevalet(self) -> dict[str, Any]:
         """État **complet** (lettres privées incluses) destiné à la fenêtre chevalet.
 
-        Contient les lettres du **seul** joueur courant — et seulement s'il est
-        humain (jamais le chevalet d'un ordinateur, issue #35) — ainsi que l'état
-        de pose complet (sélection, placements avec leur ``index`` de chevalet,
-        éventuelle demande de choix de lettre pour un joker). Les quelques champs
-        publics joints (nom du joueur courant, tour humain, nombre d'humains, fin
-        de partie) évitent à la fenêtre chevalet un aller-retour supplémentaire.
+        Depuis l'issue #99, le payload porte sur le **joueur humain de référence**
+        (:func:`index_humain_reference`), et non plus sur le joueur courant : ses
+        lettres sont **toujours** sérialisées (panneau toujours visible et
+        réarrangeable), y compris hors de son tour. ``mon_tour`` dit si c'est
+        actuellement son tour — seule condition pour poser réellement (garde de
+        tour, :meth:`_refuser_hors_tour`). L'état de pose complet est joint
+        (sélection, placements avec leur ``index`` de chevalet, éventuelle demande
+        de choix de lettre pour un joker), ainsi que quelques champs publics (nom
+        du joueur de référence, fin de partie) pour éviter un aller-retour.
+
+        La garantie de confidentialité demeure : jamais le chevalet d'un
+        ordinateur ni d'un autre joueur humain que le joueur de référence.
         """
         partie = self._partie
-        courant = partie.joueur_courant()
+        index_reference = index_humain_reference(partie.joueurs)
+        reference = partie.joueurs[index_reference]
         return {
-            "index_courant": partie.index_courant,
-            "nom": courant.nom,
-            "tour_humain": courant.humain,
+            "index_reference": index_reference,
+            "nom": reference.nom,
+            "mon_tour": partie.index_courant == index_reference
+            and not partie.terminee,
             "terminee": partie.terminee,
-            "nb_humains": compter_humains(partie),
-            "nb_lettres": len(courant.chevalet),
-            # Lettres privées : uniquement pour un joueur humain courant.
-            "lettres": serialiser_chevalet(courant) if courant.humain else [],
+            "nb_lettres": len(reference.chevalet),
+            # Lettres privées : toujours celles du joueur de référence (issue #99),
+            # jamais un ordinateur ni un autre humain.
+            "lettres": serialiser_chevalet(reference),
             "selection": self._selection,
             "en_attente": [dict(p) for p in self._en_attente],
             "joker_demande": self._joker_demande,
@@ -1190,13 +1219,40 @@ class ApiJeu:
         except Exception as e:  # noqa: BLE001 - un déplacement raté ne bloque pas le jeu
             return {"succes": False, "erreur": f"Déplacement impossible : {e}"}
 
+    def _refuser_hors_tour(self) -> dict[str, Any] | None:
+        """Refus normalisé si une mutation de pose est tentée hors du tour.
+
+        Garde de tour de l'issue #99. Le panneau du joueur de référence est
+        désormais toujours visible et sélectionnable, y compris hors de son tour
+        (réflexion libre) ; mais **muter** l'état de pose (sélection, placement en
+        attente, retrait, annulation) reste réservé à son tour réel — jusqu'ici
+        c'était garanti seulement par le masquage du chevalet hors tour, ce qui
+        n'est plus le cas (signalé par le rapport #98).
+
+        Renvoie ``{"succes": False, "erreur": ...}`` si la partie est terminée ou
+        si ce n'est pas le tour du joueur humain de référence
+        (:func:`index_humain_reference`), sinon ``None`` (action autorisée).
+        """
+        partie = self._partie
+        if partie.terminee or partie.index_courant != index_humain_reference(
+            partie.joueurs
+        ):
+            return {"succes": False, "erreur": "Ce n'est pas votre tour."}
+        return None
+
     def selectionner_lettre(self, index: Any) -> dict[str, Any]:
         """Sélectionne (ou désélectionne) la lettre du chevalet d'index ``index``.
 
         Appelée par la fenêtre chevalet au clic sur une lettre. ``index`` à
         ``None`` (ou l'index déjà sélectionné) annule la sélection. Met à jour
         ``_selection`` puis diffuse l'état aux deux fenêtres.
+
+        Réservée au tour du joueur de référence (garde :meth:`_refuser_hors_tour`,
+        issue #99) : hors tour, la sélection est refusée sans toucher à l'état.
         """
+        refus = self._refuser_hors_tour()
+        if refus is not None:
+            return refus
         if index is None:
             self._selection = None
         elif not isinstance(index, int):
@@ -1239,7 +1295,13 @@ class ApiJeu:
         Renvoie ``{"succes": True}`` (ou ``joker_requis``) et diffuse le nouvel
         état ; ``{"succes": False, "erreur": ...}`` si le placement est refusé
         (aucune sélection, index invalide, case occupée…).
+
+        Réservée au tour du joueur de référence (garde :meth:`_refuser_hors_tour`,
+        issue #99) : hors tour, la pose est refusée sans toucher à l'état.
         """
+        refus = self._refuser_hors_tour()
+        if refus is not None:
+            return refus
         if not isinstance(ligne, int) or not isinstance(colonne, int):
             return {"succes": False, "erreur": "Position de pose invalide."}
         if not dans_plateau(ligne, colonne):
@@ -1317,7 +1379,13 @@ class ApiJeu:
         Appelée au clic sur une tuile en attente (retrait de la pose). La lettre
         redevient disponible au chevalet. Diffuse le nouvel état aux deux
         fenêtres. Sans effet (mais succès) si aucune lettre n'attend sur la case.
+
+        Réservée au tour du joueur de référence (garde :meth:`_refuser_hors_tour`,
+        issue #99) : hors tour, le retrait est refusé sans toucher à l'état.
         """
+        refus = self._refuser_hors_tour()
+        if refus is not None:
+            return refus
         avant = len(self._en_attente)
         self._en_attente = [
             p for p in self._en_attente
@@ -1333,7 +1401,13 @@ class ApiJeu:
 
         Vide ``_selection`` et ``_en_attente`` (aucune lettre n'est consommée : le
         moteur n'a rien joué) puis diffuse l'état remis à zéro aux deux fenêtres.
+
+        Réservée au tour du joueur de référence (garde :meth:`_refuser_hors_tour`,
+        issue #99) : hors tour, l'annulation est refusée sans toucher à l'état.
         """
+        refus = self._refuser_hors_tour()
+        if refus is not None:
+            return refus
         self._selection = None
         self._en_attente = []
         self._joker_demande = None

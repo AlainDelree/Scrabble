@@ -38,6 +38,7 @@ from scrabble.ui.jeu import (
     construire_partie_demo,
     echanger_chevalet_complet,
     etat_public,
+    index_humain_reference,
     index_panneau_interactif,
     jouer_placements,
     jouer_tours_ia_ui,
@@ -785,18 +786,48 @@ class TestCompterHumains:
         assert etat["nb_humains"] == 2
 
 
+def _joueurs_humains(*humains: bool) -> list[Joueur]:
+    """Liste de joueurs dont chaque booléen fixe le drapeau ``humain``."""
+    return [
+        Joueur(nom=f"J{i}", humain=h, niveau=None if h else Niveau.FACILE)
+        for i, h in enumerate(humains)
+    ]
+
+
+class TestIndexHumainReference:
+    """``index_humain_reference`` : premier joueur humain de la liste (issue #99)."""
+
+    def test_un_seul_humain_en_premier(self):
+        assert index_humain_reference(_joueurs_humains(True, False, False)) == 0
+
+    def test_humain_en_deuxieme_position(self):
+        # Le premier humain est en index 1 : c'est lui la référence.
+        assert index_humain_reference(_joueurs_humains(False, True, False)) == 1
+
+    def test_premier_humain_parmi_plusieurs(self):
+        # Avec plusieurs humains, seul le premier compte.
+        assert index_humain_reference(_joueurs_humains(False, True, True)) == 1
+
+    def test_aucun_humain_renvoie_zero(self):
+        # Cas théorique sans humain : l'index 0 tient le rôle de référence.
+        assert index_humain_reference(_joueurs_humains(False, False)) == 0
+
+    def test_liste_vide_renvoie_zero(self):
+        assert index_humain_reference([]) == 0
+
+    def test_coherent_avec_calculer_positions(self):
+        # Une seule source de vérité : l'index de référence est bien celui qui
+        # reçoit la position « bas » dans calculer_positions.
+        joueurs = _joueurs_humains(False, False, True, False)
+        positions = calculer_positions(joueurs)
+        assert positions[index_humain_reference(joueurs)] == "bas"
+
+
 class TestCalculerPositions:
     """Disposition spatiale des joueurs autour du plateau (issue #33)."""
 
     def _joueurs(self, *humains: bool) -> list[Joueur]:
-        return [
-            Joueur(
-                nom=f"J{i}",
-                humain=h,
-                niveau=None if h else Niveau.FACILE,
-            )
-            for i, h in enumerate(humains)
-        ]
+        return _joueurs_humains(*humains)
 
     def test_un_seul_joueur_aucune_position_laterale(self):
         # 1 seul joueur au total : uniquement le panneau du bas.
@@ -1723,6 +1754,80 @@ class TestApiJeuPoseJoker:
         assert api._joker_demande is None
 
 
+class TestApiJeuGardeDeTour:
+    """Mutations de pose refusées hors du tour du joueur de référence (issue #99).
+
+    Le chevalet est désormais toujours visible et sélectionnable, mais toute
+    mutation de l'état de pose reste réservée au tour réel : la garde
+    :meth:`ApiJeu._refuser_hors_tour` doit refuser proprement sans toucher à
+    ``_selection`` / ``_en_attente``.
+    """
+
+    def _api_hors_tour(self):
+        """API où le joueur de référence (index 0) n'est PAS courant (tour IA)."""
+        api, plateau, chevalet = _api_pose("CHATSER")
+        api._partie.index_courant = 1  # au tour de l'ordinateur
+        return api, plateau, chevalet
+
+    def test_selectionner_lettre_hors_tour_refusee(self):
+        api, plateau, chevalet = self._api_hors_tour()
+        avant_plateau = len(plateau.scripts)
+        res = api.selectionner_lettre(0)
+        assert res["succes"] is False
+        assert res["erreur"] == "Ce n'est pas votre tour."
+        assert api._selection is None  # état de pose intact
+        # Aucune diffusion : l'état n'a pas bougé.
+        assert len(plateau.scripts) == avant_plateau
+
+    def test_poser_lettre_en_attente_hors_tour_refusee(self):
+        api, _plateau, _chevalet = self._api_hors_tour()
+        res = api.poser_lettre_en_attente(7, 7)
+        assert res["succes"] is False
+        assert res["erreur"] == "Ce n'est pas votre tour."
+        assert api._en_attente == []
+
+    def test_retirer_lettre_en_attente_hors_tour_refusee(self):
+        api, _plateau, _chevalet = self._api_hors_tour()
+        # On injecte un placement pour vérifier qu'il n'est PAS retiré hors tour.
+        api._en_attente = [
+            {"ligne": 7, "colonne": 7, "lettre": "C", "joker": False,
+             "valeur": 3, "index": 0}
+        ]
+        res = api.retirer_lettre_en_attente(7, 7)
+        assert res["succes"] is False
+        assert res["erreur"] == "Ce n'est pas votre tour."
+        assert len(api._en_attente) == 1  # placement intact
+
+    def test_annuler_pose_hors_tour_refusee(self):
+        api, _plateau, _chevalet = self._api_hors_tour()
+        api._selection = 2
+        api._en_attente = [
+            {"ligne": 7, "colonne": 7, "lettre": "C", "joker": False,
+             "valeur": 3, "index": 0}
+        ]
+        res = api.annuler_pose()
+        assert res["succes"] is False
+        assert res["erreur"] == "Ce n'est pas votre tour."
+        assert api._selection == 2  # état de pose intact
+        assert len(api._en_attente) == 1
+
+    def test_mutation_refusee_partie_terminee(self):
+        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api._partie.index_courant = 0  # c'est bien le tour du joueur de référence
+        api._partie.terminee = True
+        res = api.selectionner_lettre(0)
+        assert res["succes"] is False
+        assert res["erreur"] == "Ce n'est pas votre tour."
+        assert api._selection is None
+
+    def test_mutation_autorisee_au_tour_du_joueur_reference(self):
+        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api._partie.index_courant = 0  # tour du joueur de référence
+        res = api.selectionner_lettre(0)
+        assert res["succes"] is True
+        assert api._selection == 0
+
+
 class TestApiJeuDiffusionConfidentialite:
     """``_diffuser`` : payload public au plateau, payload privé au chevalet (#90)."""
 
@@ -1744,13 +1849,42 @@ class TestApiJeuDiffusionConfidentialite:
         assert lettres == list("CHATSER")
         assert etat["selection"] is None
         assert etat["en_attente"] == []
+        # Au tour du joueur de référence : mon_tour est vrai (issue #99).
+        assert etat["mon_tour"] is True
+        assert etat["index_reference"] == 0
+        # Champs supprimés (issue #99) : plus de tour_humain ni nb_humains.
+        assert "tour_humain" not in etat
+        assert "nb_humains" not in etat
 
-    def test_chevalet_ordinateur_jamais_expose(self):
-        api, _plateau, _chevalet = _api_pose()
+    def test_chevalet_reference_toujours_expose_au_tour_ia(self):
+        """Au tour de l'IA, le chevalet du joueur de référence reste exposé.
+
+        Le panneau est toujours visible (issue #99) : ``lettres`` porte bien le
+        chevalet du joueur humain de référence (jamais celui de l'IA) et
+        ``mon_tour`` vaut ``False`` puisque ce n'est pas son tour.
+        """
+        api, _plateau, _chevalet = _api_pose("CHATSER")
         api._partie.index_courant = 1  # au tour de l'ordinateur
         etat = api._etat_chevalet()
-        assert etat["tour_humain"] is False
-        assert etat["lettres"] == []  # jamais le chevalet d'une IA (issue #35)
+        lettres = [c["lettre"] for c in etat["lettres"]]
+        assert lettres == list("CHATSER")  # chevalet du joueur de référence
+        assert etat["index_reference"] == 0  # jamais l'index de l'IA
+        assert etat["mon_tour"] is False
+
+    def test_chevalet_ordinateur_jamais_expose(self):
+        """Le chevalet d'un ordinateur n'est jamais sérialisé (issue #35/#99).
+
+        Même au tour de l'IA, ``lettres`` reste le chevalet du joueur de
+        référence (index 0), jamais celui de l'ordinateur (index 1).
+        """
+        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api._partie.joueurs[1].chevalet = list("ZZZZZZZ")  # chevalet IA distinct
+        api._partie.index_courant = 1  # au tour de l'ordinateur
+        etat = api._etat_chevalet()
+        lettres = [c["lettre"] for c in etat["lettres"]]
+        assert lettres == list("CHATSER")  # celui du joueur de référence
+        assert "Z" not in lettres  # jamais le chevalet de l'IA
+        assert etat["mon_tour"] is False
 
     def test_diffusion_route_le_bon_payload_vers_la_bonne_fenetre(self):
         api, plateau, chevalet = _api_pose("CHATSER")
