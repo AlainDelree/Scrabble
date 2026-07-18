@@ -1053,6 +1053,10 @@ header {
     padding-top: 8px;
     border-top: 1px solid var(--couleur-bordure);
     width: 100%;
+    /* Contexte de positionnement pour le message de retour (issue #108) : celui-ci
+       est sorti du flux et ancré en surimpression juste au-dessus de cette barre
+       (voir .message-coup ci-dessous). */
+    position: relative;
 }
 
 /* Masquée hors du tour humain (issue #101) : le JS bascule l'attribut `hidden`
@@ -1077,6 +1081,38 @@ header {
     margin-left: auto;
     display: inline-flex;
     gap: 10px;
+}
+
+/* Message de retour de tour en SURIMPRESSION (issue #108). Auparavant en flux
+   normal tout en bas de .zone-jeu (sous la barre de boutons), il se retrouvait
+   collé au bord bas de la fenêtre plateau maximisée : à la résolution cible du
+   portable de test (~1280×728), il débordait sous le bord visible et était
+   partiellement coupé (le pied de page + le plateau saturaient déjà la hauteur).
+   On le sort du flux et on l'ancre juste AU-DESSUS de la barre d'actions, aligné
+   à droite sur « Vérifier et calculer »/« Jouer » : il reste clairement associé
+   à ces boutons, n'allonge plus le pied de page (donc ne pousse plus rien sous le
+   bord) et reste entièrement visible sans redimensionner ni défiler. Un message
+   long grandit vers le HAUT (ancrage par le bas), à l'écart des boutons. Pastille
+   blanche à ombre légère, comme #message-plateau, pour rester lisible par-dessus
+   le tapis vert ; masquée quand vide pour ne laisser aucune pastille fantôme. */
+.message-coup {
+    position: absolute;
+    bottom: calc(100% + 2px);
+    right: 0;
+    max-width: 100%;
+    margin: 0;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.28);
+    /* Hors du flux : la réserve de hauteur (min-height) de commun.css n'a plus
+       lieu d'être et masquerait la pastille vide via un fond blanc résiduel. */
+    min-height: 0;
+    z-index: 5;
+}
+
+.message-coup:empty {
+    display: none;
 }
 
 /* Vérification dictionnaire par saisie libre (issue #50, déplacée issue #86) :
