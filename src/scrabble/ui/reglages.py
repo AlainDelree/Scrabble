@@ -45,6 +45,7 @@ from scrabble.dictionnaire.dictionnaire import (
     rechercher_statut,
 )
 from scrabble.reglages import lire_reglage, modifier_reglage
+from scrabble.ui import TAPIS_VERT
 
 DOSSIER_WEB = Path(__file__).parent / "web"
 
@@ -226,6 +227,9 @@ def creer_fenetre_reglages(api: ApiReglages | None = None) -> webview.Window:
         width=760,
         height=720,
         resizable=True,
+        # Fond vert dès le mappage de la fenêtre (issue #113) : évite le blanc
+        # par défaut de pywebview pendant le chargement HTML/CSS.
+        background_color=TAPIS_VERT,
     )
     api.set_window(window)
     return window

@@ -61,6 +61,7 @@ from scrabble.persistance.stockage import (
     supprimer_partie,
 )
 from scrabble.reglages import lire_reglage, modifier_reglage
+from scrabble.ui import TAPIS_VERT
 from scrabble.ui.noms_ordinateur import tirer_prenoms
 
 DOSSIER_WEB = Path(__file__).parent / "web"
@@ -544,6 +545,9 @@ def lancer_accueil(
             # pour les écrans plus courts.
             height=720,
             resizable=True,
+            # Fond vert dès le mappage de la fenêtre (issue #113) : évite le
+            # blanc par défaut de pywebview pendant le chargement HTML/CSS.
+            background_color=TAPIS_VERT,
         )
         api.set_window(window)
         webview.start()

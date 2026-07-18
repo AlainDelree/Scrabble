@@ -65,6 +65,7 @@ from scrabble.persistance import (
 from scrabble.moteur.validation import CoupInvalide, DictionnaireMots, valider_coup
 from scrabble.regles.lettres import JOKER, valeur_lettre
 from scrabble.regles.plateau import TAILLE, type_case
+from scrabble.ui import TAPIS_VERT
 
 DOSSIER_WEB = Path(__file__).parent / "web"
 
@@ -1896,6 +1897,9 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
         # dimensionnement contraint par vh). La fenêtre reste redimensionnable.
         maximized=True,
         resizable=True,
+        # Fond vert dès le mappage de la fenêtre (issue #113) : évite le blanc
+        # par défaut de pywebview pendant le chargement HTML/CSS.
+        background_color=TAPIS_VERT,
     )
     x_chev, y_chev = _position_chevalet()
     window_chevalet = webview.create_window(
@@ -1913,6 +1917,8 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
         # sans être forcé au-dessus de toutes les applications du système.
         resizable=False,    # non redimensionnable par erreur
         easy_drag=False,    # pas de drag « corps entier » : drag applicatif ciblé
+        # Fond vert dès le mappage de la fenêtre (issue #113), comme le plateau.
+        background_color=TAPIS_VERT,
     )
     api.set_windows(window_plateau, window_chevalet)
     # Fermeture croisée par la croix (issue #94) : fermer nativement l'une des deux
