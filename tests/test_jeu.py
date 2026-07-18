@@ -2320,3 +2320,144 @@ class TestTracesDeplacementChevalet:
         assert any("début de déplacement" in m for m in infos)
         # Une seule trace de déplacement (le premier), pas une par frame.
         assert sum("premier déplacement" in m for m in infos) == 1
+
+
+class _FenetrePlateauFactice:
+    """Fenêtre plateau factice : enregistre maximize/restore/resize/move (issue #95).
+
+    Expose ``events.shown.wait`` comme pywebview pour vérifier que
+    :func:`_maximiser_plateau` attend bien l'affichage avant d'agir, et journalise
+    l'ordre des appels dans ``self.appels`` pour contrôler le contournement XWayland
+    (dé-iconification, puis maximisation native, puis déploiement resize+move).
+    """
+
+    class _Events:
+        class _Shown:
+            def __init__(self) -> None:
+                self.attentes: list = []
+
+            def wait(self, timeout=None):
+                self.attentes.append(timeout)
+                return True
+
+        def __init__(self) -> None:
+            self.shown = _FenetrePlateauFactice._Events._Shown()
+
+    def __init__(self) -> None:
+        self.events = _FenetrePlateauFactice._Events()
+        self.appels: list = []
+
+    def restore(self) -> None:
+        self.appels.append(("restore",))
+
+    def maximize(self) -> None:
+        self.appels.append(("maximize",))
+
+    def resize(self, largeur, hauteur) -> None:
+        self.appels.append(("resize", int(largeur), int(hauteur)))
+
+    def move(self, x, y) -> None:
+        self.appels.append(("move", int(x), int(y)))
+
+
+class TestMaximiserPlateau:
+    """Déploiement plein écran du plateau après démarrage (issue #95 point B)."""
+
+    def test_deploie_sur_la_zone_de_travail(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        monkeypatch.setattr(mod, "_zone_travail_ecran", lambda: (66, 32, 1294, 736))
+        fen = _FenetrePlateauFactice()
+        mod._maximiser_plateau(fen)
+        # Ordre attendu : dé-iconification → maximisation native → resize → move.
+        assert fen.appels == [
+            ("restore",),
+            ("maximize",),
+            ("resize", 1294, 736),
+            ("move", 66, 32),
+        ]
+        # L'affichage a bien été attendu avant d'agir (fenêtre mappée).
+        assert fen.events.shown.attentes
+
+    def test_maximise_meme_sans_zone_de_travail(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        monkeypatch.setattr(mod, "_zone_travail_ecran", lambda: None)
+        fen = _FenetrePlateauFactice()
+        mod._maximiser_plateau(fen)
+        # Sans zone connue : au moins la demande native (restore + maximize), pas de
+        # resize/move « à l'aveugle ».
+        assert ("maximize",) in fen.appels
+        assert not any(a[0] in ("resize", "move") for a in fen.appels)
+
+    def test_tolere_fenetre_sans_methodes(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        monkeypatch.setattr(mod, "_zone_travail_ecran", lambda: (0, 0, 800, 600))
+
+        class _Nue:
+            pass
+
+        # Aucune méthode maximize/restore/resize/move : ne doit rien lever.
+        mod._maximiser_plateau(_Nue())
+
+
+class TestFinaliserFenetres:
+    """Enchaînement maximisation plateau + repositionnement chevalet (issue #95)."""
+
+    def test_finalise_les_deux_fenetres(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        appels: list = []
+        monkeypatch.setattr(
+            mod, "_maximiser_plateau", lambda w: appels.append(("plateau", w))
+        )
+        monkeypatch.setattr(
+            mod, "_repositionner_chevalet", lambda w: appels.append(("chevalet", w))
+        )
+        mod._finaliser_fenetres("PLAT", "CHEV")
+        assert appels == [("plateau", "PLAT"), ("chevalet", "CHEV")]
+
+
+class TestZoneTravailEcran:
+    """Repli de la zone de travail sur ``webview.screens`` si GDK indisponible (#95)."""
+
+    def test_repli_sur_webview_screens(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        # Force l'échec de l'import GDK : le repli lit webview.screens.
+        import builtins
+
+        vrai_import = builtins.__import__
+
+        def _refuse_gi(nom, *args, **kw):
+            if nom == "gi":
+                raise ImportError("gi indisponible (test)")
+            return vrai_import(nom, *args, **kw)
+
+        monkeypatch.setattr(builtins, "__import__", _refuse_gi)
+
+        class _Ecran:
+            x = 5
+            y = 7
+            width = 1000
+            height = 800
+
+        monkeypatch.setattr(mod.webview, "screens", [_Ecran()])
+        assert mod._zone_travail_ecran() == (5, 7, 1000, 800)
+
+    def test_none_si_rien_interrogeable(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        import builtins
+
+        vrai_import = builtins.__import__
+
+        def _refuse_gi(nom, *args, **kw):
+            if nom == "gi":
+                raise ImportError("gi indisponible (test)")
+            return vrai_import(nom, *args, **kw)
+
+        monkeypatch.setattr(builtins, "__import__", _refuse_gi)
+        monkeypatch.setattr(mod.webview, "screens", [])
+        assert mod._zone_travail_ecran() is None

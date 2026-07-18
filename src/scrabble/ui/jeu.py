@@ -1932,9 +1932,22 @@ def _maximiser_plateau(window_plateau: "webview.Window") -> None:
     ``move`` explicites, honorés sous XWayland là où la maximisation ne l'est pas.
     Résultat : plateau déployé sur tout l'espace utile, quel que soit le WM.
 
-    Robuste aux fenêtres factices des tests : ``maximize`` / ``resize`` / ``move``
-    absents sont simplement ignorés, chaque étape étant indépendante.
+    Robuste aux fenêtres factices des tests : ``shown`` / ``restore`` / ``maximize``
+    / ``resize`` / ``move`` absents sont simplement ignorés, chaque étape étant
+    indépendante.
     """
+    # Comme pour le chevalet (#92), n'agir qu'une fois la fenêtre réellement affichée :
+    # une requête émise avant que le backend l'ait mappée peut être ignorée.
+    _attendre_fenetre_affichee(window_plateau, "plateau")
+    # Symptôme signalé (#95 point B) : la fenêtre s'ouvre « réduite dans la barre des
+    # tâches ». Si elle est iconifiée, ni ``resize`` ni ``move`` ne la ramènent à
+    # l'écran — on la dé-iconifie d'abord (``restore`` = deiconify + present côté GTK).
+    restaurer = getattr(window_plateau, "restore", None)
+    if callable(restaurer):
+        try:
+            restaurer()
+        except Exception as e:  # noqa: BLE001 - une restauration ratée ne bloque pas le jeu
+            journal.erreur("Jeu : dé-iconification du plateau impossible.", e)
     maximiser = getattr(window_plateau, "maximize", None)
     if callable(maximiser):
         try:
@@ -2009,28 +2022,36 @@ def _repositionner_chevalet(window_chevalet: "webview.Window") -> None:
         journal.erreur("Jeu : repositionnement de la fenêtre chevalet impossible.", e)
 
 
-def _attendre_fenetre_affichee(window: "webview.Window", timeout: float = 5.0) -> None:
+def _attendre_fenetre_affichee(
+    window: "webview.Window", nom: str = "chevalet", timeout: float = 5.0
+) -> None:
     """Attend l'événement ``shown`` de ``window`` (au plus ``timeout`` s) — issue #92.
 
     ``webview.Window.events.shown`` est un événement pywebview signalé une fois la
-    fenêtre affichée par le backend. On l'attend avant tout ``move`` pour éviter un
-    repositionnement ignoré (fenêtre pas encore mappée sous WebKitGTK). Tolère
-    l'absence d'attribut ``events`` (backends/fenêtres factices des tests) : dans ce
-    cas on n'attend pas. Toute erreur est journalisée sans interrompre le jeu.
+    fenêtre affichée par le backend. On l'attend avant tout ``move``/``resize``/
+    ``maximize`` pour éviter une requête ignorée (fenêtre pas encore mappée sous
+    WebKitGTK — cf. issues #92 pour le chevalet et #95 pour la maximisation du
+    plateau). ``nom`` sert uniquement aux traces. Tolère l'absence d'attribut
+    ``events`` (backends/fenêtres factices des tests) : dans ce cas on n'attend pas.
+    Toute erreur est journalisée sans interrompre le jeu.
     """
     evenements = getattr(window, "events", None)
     shown = getattr(evenements, "shown", None)
     attendre = getattr(shown, "wait", None)
     if attendre is None:
-        journal.info("Jeu : événement 'shown' indisponible — repositionnement immédiat.")
+        journal.info(
+            f"Jeu : événement 'shown' indisponible ({nom}) — poursuite immédiate."
+        )
         return
     try:
         signale = attendre(timeout)
         journal.info(
-            f"Jeu : attente de l'affichage de la fenêtre chevalet — shown={signale!r}."
+            f"Jeu : attente de l'affichage de la fenêtre {nom} — shown={signale!r}."
         )
     except Exception as e:  # noqa: BLE001 - une attente ratée ne bloque pas le jeu
-        journal.erreur("Jeu : attente de l'affichage de la fenêtre chevalet impossible.", e)
+        journal.erreur(
+            f"Jeu : attente de l'affichage de la fenêtre {nom} impossible.", e
+        )
 
 
 def _lire_position_fenetre(window: "webview.Window") -> str:

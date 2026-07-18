@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const zoneAttenteIA = document.getElementById('zone-attente-ia');
     const attenteMessageIA = document.getElementById('attente-ia-message');
+    const zoneInteractive = document.getElementById('zone-interactive');
 
     const blocBrouillon = document.getElementById('bloc-brouillon');
     const brouillonEl = document.getElementById('brouillon');
@@ -64,6 +65,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     let brouillonLettres = [];       // {lettre, valeur, joker} + 2 vides (null)
     let brouillonSelection = null;
     let jokerModaleOuverte = false;  // évite de rouvrir la modale à chaque push
+    // Plus grande hauteur RÉELLEMENT rendue observée pour la zone interactive du
+    // tour humain (issue #95 point A), dans le moteur courant (WebKitGTK en prod).
+    // On mémorise le maximum vu (le tour humain le plus « chargé » : chevalet révélé
+    // + brouillon + actions) pour caler dessus la zone d'attente du tour IA, afin
+    // que les deux tours occupent la même empreinte verticale quel que soit le
+    // moteur — sans dépendre d'une constante de pixels mesurée à l'avance dans
+    // Chromium (qui divergeait de WebKitGTK, cf. #92/#94). `null` tant qu'aucun tour
+    // humain n'a encore été rendu (repli CSS `.zone-attente-ia { min-height }`).
+    let hauteurInteractiveMax = null;
 
     // ------------------------------------------------------------------ //
     // Rendu
@@ -71,6 +81,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function estTourHumain() {
         return Boolean(etat && !etat.terminee && etat.tour_humain);
+    }
+
+    /** Mémorise la hauteur réellement rendue de la zone interactive (issue #95 A). */
+    function mesurerZoneInteractive() {
+        if (!zoneInteractive) {
+            return;
+        }
+        // getBoundingClientRect force un reflow synchrone : la valeur lue reflète le
+        // rendu courant (après application des états hidden par majModeTour/…).
+        const h = zoneInteractive.getBoundingClientRect().height;
+        if (h > 0) {
+            hauteurInteractiveMax = hauteurInteractiveMax === null
+                ? h
+                : Math.max(hauteurInteractiveMax, h);
+        }
+    }
+
+    /** Cale la hauteur de la zone d'attente IA sur la zone interactive mesurée. */
+    function synchroniserHauteurAttente() {
+        if (hauteurInteractiveMax !== null) {
+            zoneAttenteIA.style.minHeight = Math.round(hauteurInteractiveMax) + 'px';
+        }
     }
 
     function afficherMessage(texte, type) {
@@ -254,6 +286,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         majActionsChevalet();
         majControlesJeu();
 
+        // Synchronisation de l'empreinte verticale humain/IA (issue #95 point A) :
+        // au tour humain, on (re)mesure la zone interactive réellement rendue ; au
+        // tour IA, on cale la zone d'attente sur la plus grande hauteur mesurée.
+        if (estTourHumain()) {
+            mesurerZoneInteractive();
+        } else {
+            synchroniserHauteurAttente();
+        }
+
         // Demande de choix de lettre pour un joker (déclenchée par un clic sur une
         // case de la fenêtre plateau) : on ouvre la modale ici.
         if (etat.joker_demande && !jokerModaleOuverte) {
@@ -292,6 +333,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         rendreBrouillon();
         majActionsChevalet();
         majControlesJeu();
+        // Révéler/cacher change la hauteur de la zone interactive : on re-mesure
+        // pour que le tour IA cale sur le tour humain le plus haut (issue #95 A).
+        if (estTourHumain()) {
+            mesurerZoneInteractive();
+        }
     });
 
     // Clic sur une lettre du chevalet révélé : sélection côté Python.

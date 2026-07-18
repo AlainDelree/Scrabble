@@ -187,6 +187,21 @@ body {
 }
 
 /* --------------------------------------------------------------------------- */
+/* Zone interactive du tour humain (conteneur mesuré)                           */
+/* --------------------------------------------------------------------------- */
+/* Regroupe en-tête + réflexion + actions (issue #95 point A). `flow-root` établit
+   un contexte de formatage de bloc : les marges internes des enfants sont ainsi
+   CONTENUES dans la hauteur du conteneur, de sorte que sa hauteur mesurée en JS
+   (`getBoundingClientRect().height`) reflète fidèlement l'empreinte verticale
+   réellement occupée. `flex: 0 0 auto` : le conteneur prend la hauteur de son
+   contenu et laisse le reste de la fenêtre (tapis vert) apparaître dessous, comme
+   avant l'introduction du conteneur. */
+.zone-interactive {
+    flex: 0 0 auto;
+    display: flow-root;
+}
+
+/* --------------------------------------------------------------------------- */
 /* Zone de pose (contrôles de tour)                                             */
 /* --------------------------------------------------------------------------- */
 .zone-jeu {
@@ -239,22 +254,26 @@ body {
    grande/vide au tour IA. Résultat : même empreinte verticale, même silhouette
    entre les deux tours (seul le contenu change), sans étirement disgracieux.
 
-   Valeur re-mesurée (issue #94) : la calibration de #92 (230 px) avait été faite
-   contre une fenêtre mal dimensionnée par le bug Wayland (#93) et jamais vérifiée
-   en conditions réelles. Rendu dans la fenêtre à sa taille réelle, le bas du
-   contenu tombait à 285 px au tour IA contre 276 px au tour humain (9 px d'écart
-   visible). On abaisse donc min-height à 221 px pour que le bas de la zone
-   d'attente coïncide avec celui de la zone interactive → silhouette identique. */
+   Hauteur (issue #95 point A) : les calibrations figées de #92 (230 px) puis #94
+   (221 px), mesurées dans Chromium (harnais `build/mesure_chevalet.py`), ne
+   correspondaient pas à ce que WebKitGTK rend réellement dans la fenêtre pywebview
+   — d'où un grand vide au-dessus du message au tour IA en conditions réelles. On
+   abandonne donc la constante mesurée à l'avance : chevalet.js mesure la hauteur
+   RÉELLEMENT rendue de `.zone-interactive` (au moteur courant, WebKitGTK) et la
+   pose ici en `min-height` inline. La valeur `221px` ci-dessous n'est plus qu'un
+   REPLI, utilisé seulement au tout premier tour IA survenant avant tout tour humain
+   (aucune mesure encore disponible) ; dès qu'un tour humain a été rendu, la valeur
+   mesurée la remplace et les deux silhouettes coïncident quel que soit le moteur. */
 .zone-attente-ia {
     flex: 0 0 auto;
-    min-height: 221px;   /* empreinte de la zone interactive du tour humain (mesurée #94) */
+    min-height: 221px;   /* repli seulement : surchargé par la hauteur mesurée en JS (#95) */
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 8px;
     padding: 18px;
-    margin: 6px 0;
+    margin: 0;
     background: var(--couleur-ordinateur-fond, #f3e5f5);
     border: 1px dashed var(--couleur-ordinateur, #6a1b9a);
     border-radius: var(--rayon-bordure);
