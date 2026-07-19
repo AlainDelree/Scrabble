@@ -15,7 +15,8 @@ Règles vérifiées (dans l'ordre)
 4. Premier coup de la partie : il doit couvrir la case centrale. Coups suivants :
    le mot doit être connecté à au moins une tuile déjà posée (contiguïté).
 5. Le mot principal **et** tous les mots transversaux formés existent dans le
-   dictionnaire (Trie ODS8).
+   dictionnaire (Trie ODS8). En cas d'échec, **tous** les mots invalides sont
+   listés dans le message (issue #126), pas seulement le premier rencontré.
 
 Le caractère « premier coup » est déduit de l'état du plateau
 (:meth:`PlateauPartie.est_vide`), pas d'un compteur externe.
@@ -111,12 +112,29 @@ def valider_coup(
     mots = mots_formes(travail, nouvelles, coup.direction)
     if not mots:
         raise CoupInvalide("Le coup ne forme aucun mot d'au moins deux lettres.")
+    # On collecte **tous** les mots invalides (pas seulement le premier) afin que
+    # le joueur puisse corriger son coup en une seule fois (issue #126).
+    invalides: list[str] = []
     for mot in mots:
         texte = lettres_du_mot(mot)
-        if not dictionnaire.contient(texte):
-            raise CoupInvalide(
-                f"Le mot {texte!r} n'existe pas dans le dictionnaire."
-            )
+        if not dictionnaire.contient(texte) and texte not in invalides:
+            invalides.append(texte)
+    if invalides:
+        raise CoupInvalide(_message_mots_invalides(invalides))
+
+
+def _message_mots_invalides(invalides: list[str]) -> str:
+    """Compose le message d'erreur listant les mots absents du dictionnaire.
+
+    Reprend le libellé historique au singulier pour un seul mot, et passe au
+    pluriel (« Les mots 'GE' et 'EE' n'existent pas… ») dès qu'il y en a
+    plusieurs, en énumérant tous les mots invalides dans l'ordre de rencontre.
+    """
+    if len(invalides) == 1:
+        return f"Le mot {invalides[0]!r} n'existe pas dans le dictionnaire."
+    liste = ", ".join(repr(mot) for mot in invalides[:-1])
+    liste = f"{liste} et {invalides[-1]!r}"
+    return f"Les mots {liste} n'existent pas dans le dictionnaire."
 
 
 def coup_valide(

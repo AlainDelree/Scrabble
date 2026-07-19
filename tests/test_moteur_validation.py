@@ -86,6 +86,31 @@ def test_mot_transversal_hors_dictionnaire_rejete():
         valider_coup(plateau, coup, _trie("CADRE", "OK", "OA"))
 
 
+def test_plusieurs_mots_invalides_tous_signales():
+    """Issue #126 : un coup formant plusieurs mots invalides les liste tous."""
+    plateau = _plateau_avec_cadre()
+    # OK posé en (6,4)-(6,5) : principal "OK", verticaux "OA" (valide) et
+    # "KD" (invalide). Le trie n'accepte ni "OK" ni "KD" -> deux mots invalides.
+    coup = Coup(6, 4, Direction.HORIZONTALE, tuiles_depuis_chaine("OK"))
+    with pytest.raises(CoupInvalide) as exc:
+        valider_coup(plateau, coup, _trie("CADRE", "OA"))
+    message = str(exc.value)
+    assert "n'existent pas" in message  # pluriel
+    assert "'OK'" in message
+    assert "'KD'" in message
+
+
+def test_un_seul_mot_invalide_message_singulier():
+    """Un seul mot invalide conserve le message au singulier (issue #126)."""
+    plateau = _plateau_avec_cadre()
+    coup = Coup(6, 4, Direction.HORIZONTALE, tuiles_depuis_chaine("OK"))
+    with pytest.raises(CoupInvalide) as exc:
+        # Seul "KD" reste invalide : "OK" et "OA" sont acceptés.
+        valider_coup(plateau, coup, _trie("CADRE", "OK", "OA"))
+    message = str(exc.value)
+    assert message == "Le mot 'KD' n'existe pas dans le dictionnaire."
+
+
 def test_coup_connecte_valide_accepte():
     plateau = _plateau_avec_cadre()
     # A existant en (7,4), on descend un S : mot vertical "AS".
