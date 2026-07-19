@@ -328,11 +328,12 @@ header {
    l'historique n'est plus une colonne verticale à gauche de la table (issue #45,
    point 4) mais un <details> compact dans la barre du haut. Replié, il n'occupe
    que la hauteur de son résumé ; déplié, sa liste s'ouvre en surimpression sous
-   la barre (position absolue) sans repousser la table. Le lien « Resynchroniser »
-   est poussé tout à droite de la barre. */
-#btn-rafraichir {
-    margin-left: auto;
-}
+   la barre (position absolue) sans repousser la table.
+   Réorganisation (issue #125) : « Derniers coups » est désormais le PREMIER
+   élément de la barre (à gauche) ; c'est le sac qui porte ``margin-left:auto``
+   (voir .sac) et pousse tout le groupe droit (sac, Resynchroniser, Retour au
+   menu) à droite. Le menu s'ouvrant à gauche (``left:0`` ci-dessous) dispose
+   ainsi de la gouttière libre et ne recouvre plus le plateau. */
 
 .historique-menu {
     position: relative;
@@ -398,7 +399,12 @@ header {
     top: calc(100% + 6px);
     left: 0;
     z-index: 60;
-    width: 320px;
+    /* Largeur réduite (issue #125) : 280px au lieu de 320. Le menu étant
+       désormais ancré tout à gauche de la barre, il s'ouvre dans la gouttière
+       verte à gauche du plateau centré ; à 280px il tient dans cette gouttière
+       (fenêtre maximisée) et ne mord donc plus sur le bord gauche du plateau,
+       même déployé sur 8 lignes. */
+    width: 280px;
     max-width: 80vw;
     max-height: 320px;
     overflow-y: auto;
@@ -800,6 +806,25 @@ header {
     }
 }
 
+/* Surbrillance PERSISTANTE du dernier coup joué (issue #125). À la différence de
+   l'animation de pose ci-dessus (temporaire, ~2,5 s), ces cases restent mises en
+   valeur jusqu'au coup SUIVANT : le JS (rendrePlateau) applique .derniere-pose
+   aux cases de ``historique[0].positions`` à chaque rendu, et le rebuild complet
+   du plateau retire d'office l'ancienne surbrillance quand le dernier coup change.
+   Anneau dessiné À L'EXTÉRIEUR de la case (box-shadow non-inset) : il n'empiète
+   donc jamais sur la tuile ni sur la lettre. Double liseré blanc + vert (identité
+   du jeu, --couleur-primaire) pour rester lisible sur TOUS les fonds — clairs
+   (case normale, LD) comme foncés (MT rouge, LT bleu foncé) — et distinct de
+   l'orange réservé aux tuiles en attente. z-index remonté pour que l'anneau passe
+   au-dessus des cases voisines. */
+.case.derniere-pose {
+    z-index: 3;
+    box-shadow:
+        0 0 0 2px #fff,
+        0 0 0 4px var(--couleur-primaire, #2e7d32),
+        0 0 10px 3px rgba(46, 125, 50, 0.55);
+}
+
 /* --------------------------------------------------------------------------- */
 /* Célébration d'un Scrabble : feu d'artifice (issue #64, suite de #58)         */
 /* --------------------------------------------------------------------------- */
@@ -959,6 +984,12 @@ header {
     border-radius: 999px;
     background: white;
     box-shadow: var(--ombre);
+    /* Réorganisation issue #125 : le sac ouvre le groupe droit de la barre.
+       ``margin-left:auto`` absorbe l'espace libre à sa gauche et pousse le sac
+       + les boutons « Resynchroniser » / « Retour au menu » tout à droite,
+       laissant « Derniers coups » seul à gauche (avec sa gouttière libre pour
+       ouvrir son menu déroulant sans recouvrir le plateau). */
+    margin-left: auto;
 }
 
 .sac-icone {

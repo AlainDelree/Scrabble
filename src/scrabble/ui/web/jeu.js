@@ -118,6 +118,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
+     * Ensemble des cases posées lors du DERNIER coup joué (issue #125), sous
+     * forme de clés ``"ligne,colonne"``. Réutilise ``historique[0].positions``
+     * (déjà exposé côté Python pour l'animation de pose, issue #62/#58) : aucun
+     * nouveau champ n'est ajouté à l'état public. Sert à mettre en surbrillance
+     * persistante ces cases (classe ``.derniere-pose``) jusqu'au coup suivant —
+     * contrairement à l'animation de pose, qui n'est que temporaire. Vide pour
+     * une passe/un échange (positions vides) ou en l'absence d'historique.
+     */
+    function casesDernierCoup() {
+        const historique = etat.historique;
+        const tete = Array.isArray(historique) && historique.length ? historique[0] : null;
+        const positions = tete && Array.isArray(tete.positions) ? tete.positions : [];
+        return new Set(positions.map((p) => `${p.ligne},${p.colonne}`));
+    }
+
+    /**
      * Rend le plateau à partir de l'état (grille de cases typées). Chaque case
      * porte ses coordonnées (data-ligne / data-colonne) pour la pose au clic. Les
      * lettres en attente (non validées) sont dessinées par-dessus les cases vides,
@@ -127,6 +143,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const plateau = etat.plateau;
         plateauEl.innerHTML = '';
         const fragment = document.createDocumentFragment();
+        // Cases du dernier coup à mettre en surbrillance (issue #125) : calculées
+        // une fois par rendu, réappliquées à chaque diffusion → la surbrillance
+        // suit automatiquement le dernier coup et disparaît des cases précédentes.
+        const dernierCoup = casesDernierCoup();
         plateau.forEach((ligne, l) => {
             ligne.forEach((cell, c) => {
                 const caseEl = document.createElement('div');
@@ -143,6 +163,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // Tuile déjà posée lors d'un tour précédent (immuable).
                     caseEl.appendChild(C.creerTuile(cell, false));
                     caseEl.classList.add('occupee');
+                    // Surbrillance persistante du dernier coup joué (issue #125) :
+                    // seulement sur les tuiles validées de ce coup (jamais sur une
+                    // lettre en attente, dont le style orange a un autre sens).
+                    if (dernierCoup.has(`${l},${c}`)) {
+                        caseEl.classList.add('derniere-pose');
+                    }
                 } else if (attente) {
                     // Lettre en attente de validation (retirable au clic).
                     caseEl.appendChild(C.creerTuile(attente, true));

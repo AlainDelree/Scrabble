@@ -70,18 +70,21 @@
              hauteur ; déplié, sa liste s'affiche en surimpression sous la barre
              (position absolue) sans repousser la table vers le bas. -->
         <header>
+            <!-- Disposition de la barre (issue #125) : « Derniers coups » à
+                 GAUCHE (juste après la loupe de vérification, en gouttière), et
+                 le sac REGROUPÉ à droite avec « Resynchroniser » / « Retour au
+                 menu ». Ordre visuel, de gauche à droite : loupe | Derniers
+                 coups … Sac, Resynchroniser, Retour au menu. Bénéfice : à gauche,
+                 le menu déroulant « Derniers coups » s'ouvre dans l'espace libre
+                 de la gouttière sans recouvrir le plateau (voir jeu.css, le
+                 groupe de droite est poussé par ``margin-left:auto`` sur .sac). -->
             <div class="barre-globale">
-                <div class="sac">
-                    <span class="sac-icone">🎒</span>
-                    <span class="sac-nombre" id="sac-nombre">—</span>
-                    <span class="sac-label">lettres</span>
-                </div>
-
                 <!-- Accès à l'historique glissant (issue #37) fusionné dans la
-                     barre (issue #47, point 2). <details> natif : replié par
-                     défaut (aucune hauteur), la liste s'ouvre au clic en
-                     surimpression. La plus RÉCENTE EN HAUT ; chaque ligne
-                     cliquable rouvre le détail du score de CE coup (modale). -->
+                     barre (issue #47, point 2). Déplacé À GAUCHE (issue #125).
+                     <details> natif : replié par défaut (aucune hauteur), la
+                     liste s'ouvre au clic en surimpression. La plus RÉCENTE EN
+                     HAUT ; chaque ligne cliquable rouvre le détail du score de CE
+                     coup (modale). -->
                 <details class="historique-menu" id="historique-menu">
                     <!-- Le <summary> garde son display natif (list-item) : sous
                          WebKitGTK (moteur de pywebview sous Linux), un <summary>
@@ -97,6 +100,16 @@
                     </summary>
                     <ol id="historique-liste" class="historique-liste" aria-live="polite"></ol>
                 </details>
+
+                <!-- Sac de lettres restantes (🎒 + nombre). Déplacé À DROITE
+                     (issue #125), en tête du groupe droit : ``margin-left:auto``
+                     sur .sac (voir jeu.css) le pousse, lui et les deux boutons
+                     utilitaires qui suivent, tout à droite de la barre. -->
+                <div class="sac">
+                    <span class="sac-icone">🎒</span>
+                    <span class="sac-nombre" id="sac-nombre">—</span>
+                    <span class="sac-label">lettres</span>
+                </div>
 
                 <!-- Bouton « Resynchroniser » (issue #41, point 3 ; issue #78).
                      CONSERVÉ. L'affichage se met déjà à jour tout seul après
