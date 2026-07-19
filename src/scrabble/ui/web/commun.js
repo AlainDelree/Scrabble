@@ -120,8 +120,54 @@
     }
 
     /**
+     * Mesure la boîte réellement affichée de la modale du joker (issue #140).
+     * Renvoie un objet sérialisable {viewport, documentElement, devicePixelRatio,
+     * contenu, grille, annuler} destiné à être remonté à Python pour journalisation
+     * (diagnostic du débordement réel en WebKitGTK, sur le modèle du z-order #93).
+     * Toutes les valeurs sont arrondies à l'entier pour un journal lisible.
+     */
+    function mesurerModaleJoker(refs) {
+        const boite = (el) => {
+            if (!el) {
+                return null;
+            }
+            const r = el.getBoundingClientRect();
+            return {
+                haut: Math.round(r.top),
+                bas: Math.round(r.bottom),
+                gauche: Math.round(r.left),
+                droite: Math.round(r.right),
+                largeur: Math.round(r.width),
+                hauteur: Math.round(r.height),
+            };
+        };
+        const contenu = refs.modale.querySelector('.modale-contenu');
+        return {
+            viewport: { largeur: window.innerWidth, hauteur: window.innerHeight },
+            documentElement: {
+                largeur: document.documentElement.clientWidth,
+                hauteur: document.documentElement.clientHeight,
+            },
+            devicePixelRatio: window.devicePixelRatio,
+            contenu: boite(contenu),
+            grille: refs.grille
+                ? Object.assign(boite(refs.grille), {
+                    scrollHeight: refs.grille.scrollHeight,
+                    clientHeight: refs.grille.clientHeight,
+                })
+                : null,
+            annuler: boite(refs.annuler),
+        };
+    }
+
+    /**
      * Ouvre la modale de choix de lettre d'un joker et renvoie la lettre choisie
-     * (``A``–``Z``) ou ``null`` si annulé. ``refs`` = {modale, grille, annuler}.
+     * (``A``–``Z``) ou ``null`` si annulé. ``refs`` = {modale, grille, annuler,
+     * auOuvrir?}. ``auOuvrir`` (facultatif, issue #140) est appelé une fois la
+     * modale rendue, avec les dimensions réelles mesurées (voir
+     * :func:`mesurerModaleJoker`) : le chevalet s'en sert pour remonter un
+     * diagnostic à Python. La mesure est différée de deux ``requestAnimationFrame``
+     * pour laisser le vrai moteur de rendu poser la mise en page avant lecture.
      */
     function choisirLettreJoker(refs) {
         return new Promise((resolve) => {
@@ -142,6 +188,16 @@
             }
             refs.annuler.addEventListener('click', surAnnuler);
             refs.modale.hidden = false;
+            if (typeof refs.auOuvrir === 'function') {
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    try {
+                        refs.auOuvrir(mesurerModaleJoker(refs));
+                    } catch (e) {
+                        // Diagnostic best-effort : une mesure ratée ne bloque pas
+                        // l'ouverture de la modale ni le choix de la lettre.
+                    }
+                }));
+            }
         });
     }
 

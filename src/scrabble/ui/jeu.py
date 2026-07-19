@@ -1389,6 +1389,109 @@ class ApiJeu:
             return {"succes": False, "erreur": f"Mémorisation impossible : {e}"}
         return {"succes": True, "x": x, "y": y}
 
+    def diagnostiquer_joker_modale(self, mesures: Any = None) -> dict[str, Any]:
+        """Journalise les dimensions RÉELLES à l'ouverture de la modale du joker (issue #140).
+
+        Suite de l'issue #121 : le sélecteur de lettre du joker reste tronqué en
+        conditions réelles (WebKitGTK) alors que la mesure headless de l'issue #131
+        ne trouvait aucun débordement. C'est le second écart rendu-réel /
+        rendu-mesuré sur ce composant précis ; le projet en a déjà rencontré
+        d'autres (Wayland #93, chevalet #92/#94/#96/#97). Plutôt qu'une troisième
+        mesure headless (méthode en échec deux fois ici), on trace les valeurs du
+        vrai moteur de rendu, sur le modèle du diagnostic z-order de l'issue #93 :
+        le JS mesure le DOM effectivement affiché et le remonte via cette méthode,
+        qui l'ajoute à la géométrie native de la fenêtre chevalet lue côté Python.
+
+        ``mesures`` est le dictionnaire construit côté JS (viewport, boîte du
+        contenu de ``#joker-modale``, grille scrollable, bouton Annuler). Purement
+        diagnostique : aucune mutation d'état, tout échec est absorbé sans planter
+        le jeu. Le correctif définitif sera appliqué une fois la cause confirmée
+        par le prochain journal d'Alain, selon la même philosophie « toujours
+        accessible » retenue en #121 (grille scrollable, Annuler épinglé).
+        """
+        # 1. Géométrie native de la fenêtre chevalet au moment de l'affichage
+        #    (cible théorique CHEVALET_LARGEUR×CHEVALET_HAUTEUR = 480×175, #106).
+        native = "indisponible (fenêtre absente ou backend non-GTK)"
+        if self._window_chevalet is not None:
+            try:
+                w = int(getattr(self._window_chevalet, "width", 0))
+                h = int(getattr(self._window_chevalet, "height", 0))
+                x = int(getattr(self._window_chevalet, "x", 0))
+                y = int(getattr(self._window_chevalet, "y", 0))
+                native = f"{w}×{h} px @ ({x}, {y})"
+            except Exception as e:  # noqa: BLE001 - lecture purement diagnostique
+                native = f"illisible ({e!r})"
+        journal.info(
+            f"Jeu : [diag #140] ouverture modale joker — fenêtre chevalet native = "
+            f"{native} (cible {CHEVALET_LARGEUR}×{CHEVALET_HAUTEUR})."
+        )
+
+        # 2. Mesures DOM remontées par le JS (viewport CSS, boîtes réelles).
+        if not isinstance(mesures, dict):
+            journal.info(
+                "Jeu : [diag #140] aucune mesure DOM remontée par le JS "
+                "(mesures manquantes ou invalides)."
+            )
+            return {"succes": True}
+        try:
+            vp = mesures.get("viewport") or {}
+            de = mesures.get("documentElement") or {}
+            contenu = mesures.get("contenu") or {}
+            grille = mesures.get("grille") or {}
+            annuler = mesures.get("annuler") or {}
+            vp_h = vp.get("hauteur")
+            contenu_bas = contenu.get("bas")
+            annuler_bas = annuler.get("bas")
+            # Débordement bas = combien la boîte du contenu dépasse sous le viewport
+            # (positif => tronqué malgré le max-height:100vh du correctif #121).
+            debordement = (
+                contenu_bas - vp_h
+                if isinstance(contenu_bas, (int, float))
+                and isinstance(vp_h, (int, float))
+                else None
+            )
+            annuler_visible = (
+                annuler_bas <= vp_h
+                if isinstance(annuler_bas, (int, float))
+                and isinstance(vp_h, (int, float))
+                else None
+            )
+            grille_scroll = grille.get("scrollHeight")
+            grille_client = grille.get("clientHeight")
+            grille_defilable = (
+                grille_scroll > grille_client
+                if isinstance(grille_scroll, (int, float))
+                and isinstance(grille_client, (int, float))
+                else None
+            )
+            journal.info(
+                "Jeu : [diag #140] mesures DOM réelles — "
+                f"viewport CSS {vp.get('largeur')}×{vp_h} ; "
+                f"documentElement {de.get('largeur')}×{de.get('hauteur')} ; "
+                f"devicePixelRatio {mesures.get('devicePixelRatio')} ; "
+                f"contenu boîte [haut={contenu.get('haut')}, bas={contenu_bas}, "
+                f"hauteur={contenu.get('hauteur')}] ; "
+                f"grille [scrollHeight={grille_scroll}, clientHeight={grille_client}, "
+                f"défilable={grille_defilable}] ; "
+                f"bouton Annuler [bas={annuler_bas}, visible={annuler_visible}] ; "
+                f"débordement bas sous viewport = {debordement}."
+            )
+            if debordement is not None and debordement > 0:
+                journal.info(
+                    "Jeu : [diag #140] ⚠ le contenu de la modale déborde SOUS le "
+                    f"viewport de {debordement} px — le max-height:100vh du "
+                    "correctif #121 ne borne pas le contenu dans le vrai rendu."
+                )
+            elif annuler_visible is False:
+                journal.info(
+                    "Jeu : [diag #140] ⚠ le bouton Annuler tombe sous le viewport "
+                    "alors que le contenu n'y déborde pas globalement — piste : le "
+                    "bouton n'est pas épinglé hors zone défilante dans le vrai rendu."
+                )
+        except Exception as e:  # noqa: BLE001 - un diagnostic raté ne bloque pas le jeu
+            journal.erreur("Jeu : [diag #140] mesures DOM illisibles.", e)
+        return {"succes": True}
+
     def _refuser_hors_tour(self) -> dict[str, Any] | None:
         """Refus normalisé si une mutation de pose est tentée hors du tour.
 
