@@ -1488,6 +1488,25 @@ class ApiJeu:
                 and isinstance(grille_client, (int, float))
                 else None
             )
+            # Issue #146 : on objective l'agrandissement de la zone visible de la
+            # grille. « caché » = hauteur de contenu non visible sans défiler
+            # (scrollHeight - clientHeight) ; « part visible » = fraction affichée
+            # d'emblée. Le prochain journal d'Alain doit montrer une part visible
+            # nettement plus haute qu'en #140 (grille 62 px visibles / 166 px totaux
+            # ≈ 37 %) — idéalement 100 % (aucun défilement) grâce aux 9 colonnes.
+            grille_cache = (
+                max(0, grille_scroll - grille_client)
+                if isinstance(grille_scroll, (int, float))
+                and isinstance(grille_client, (int, float))
+                else None
+            )
+            grille_part_visible = (
+                round(100 * grille_client / grille_scroll)
+                if isinstance(grille_scroll, (int, float))
+                and isinstance(grille_client, (int, float))
+                and grille_scroll > 0
+                else None
+            )
             journal.info(
                 "Jeu : [diag #140] mesures DOM réelles — "
                 f"viewport CSS {vp.get('largeur')}×{vp_h} ; "
@@ -1499,6 +1518,15 @@ class ApiJeu:
                 f"défilable={grille_defilable}] ; "
                 f"bouton Annuler [bas={annuler_bas}, visible={annuler_visible}] ; "
                 f"débordement bas sous viewport = {debordement}."
+            )
+            journal.info(
+                "Jeu : [diag #146] zone visible de la grille — "
+                f"hauteur visible (clientHeight) = {grille_client} px sur "
+                f"{grille_scroll} px de contenu total (scrollHeight), soit "
+                f"{grille_part_visible} % affichés d'emblée ; "
+                f"{grille_cache} px encore cachés derrière le défilement "
+                f"(défilable={grille_defilable}). Cible : ≥ 3-4 lignes visibles, "
+                "à comparer aux ~37 % de l'issue #140."
             )
             if debordement is not None and debordement > 0:
                 journal.info(
