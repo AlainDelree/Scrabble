@@ -553,12 +553,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         dernierCoupIndex = index;
+        // Un coup qui rapporte des points déclenche un toast « +X points » près du
+        // panneau de son auteur (issue #136), indépendant du toast Scrabble. Une
+        // passe/un échange (score_action 0, positions vide) ne déclenche rien.
+        const marquant = Number(tete.score_action) > 0;
         if (tete.positions && tete.positions.length) {
             animerPose(tete.positions).then(() => {
+                if (marquant) {
+                    afficherToastPoints(tete.index_joueur, tete.score_action);
+                }
                 if (tete.detail && tete.detail.bonus_scrabble) {
                     celebrerScrabble();
                 }
             });
+        } else if (marquant) {
+            afficherToastPoints(tete.index_joueur, tete.score_action);
         }
     }
 
@@ -1077,6 +1086,88 @@ document.addEventListener('DOMContentLoaded', async () => {
             calque.appendChild(p);
         }
         setTimeout(() => { calque.innerHTML = ''; }, 2600);
+    }
+
+    /**
+     * Toast éphémère « +X points » (issue #136) affiché ~3 s près du panneau du
+     * joueur qui vient de jouer, pour tout coup rapportant des points (humain ou
+     * ordinateur, quel que soit le nombre de mots formés : X est le score TOTAL
+     * du coup). Réutilise le calque plein écran ``#scrabble-fete`` (toujours
+     * ``pointer-events: none``) mais, contrairement au toast Scrabble centré, se
+     * positionne dynamiquement face au bon panneau selon son côté (bas/haut/
+     * gauche/droite, cf. issue #120) pour être clairement associé au bon joueur.
+     * Il est indépendant du toast Scrabble : les deux peuvent coexister sans
+     * fusion ni logique d'articulation, chacun suivant son propre cycle.
+     */
+    function afficherToastPoints(indexJoueur, score) {
+        const points = Number(score);
+        if (!(points > 0)) {
+            return;
+        }
+        // Calque dédié (distinct de #scrabble-fete) : le toast Scrabble vide le
+        // sien via innerHTML, on ne veut pas qu'il efface celui-ci au passage.
+        const calque = document.getElementById('points-toasts');
+        if (!calque) {
+            return;
+        }
+        const joueur = (etat.joueurs || []).find((j) => j.index === indexJoueur);
+        const cote = (joueur && joueur.position) || 'bas';
+        const slot = slots[cote] || slots.bas;
+        const panneau = slot ? slot.querySelector('.panneau-joueur') : null;
+        // On ancre le toast sur l'avatar/l'icône du joueur (« près de l'image de
+        // profil ») ; à défaut, sur le panneau entier.
+        const ancre = panneau
+            ? (panneau.querySelector('.panneau-avatar')
+                || panneau.querySelector('.panneau-icone')
+                || panneau)
+            : null;
+
+        // Placement (wrapper) et animation (toast interne) sont séparés : le
+        // wrapper porte la transformation de recentrage face au panneau, le toast
+        // porte le fondu d'apparition/disparition — aucune des deux ne se marche
+        // dessus.
+        const wrapper = document.createElement('div');
+        wrapper.className = `points-toast-ancre points-toast-${cote}`;
+        const toast = document.createElement('div');
+        toast.className = 'points-toast';
+        toast.textContent = `+${points} point${points > 1 ? 's' : ''}`;
+        wrapper.appendChild(toast);
+
+        const gap = 10;
+        if (ancre) {
+            const r = ancre.getBoundingClientRect();
+            const cx = r.left + r.width / 2;
+            const cy = r.top + r.height / 2;
+            // Le toast pointe vers l'intérieur du plateau selon le côté du panneau.
+            if (cote === 'haut') {
+                wrapper.style.left = `${cx}px`;
+                wrapper.style.top = `${r.bottom + gap}px`;
+                wrapper.style.transform = 'translate(-50%, 0)';
+            } else if (cote === 'gauche') {
+                wrapper.style.left = `${r.right + gap}px`;
+                wrapper.style.top = `${cy}px`;
+                wrapper.style.transform = 'translate(0, -50%)';
+            } else if (cote === 'droite') {
+                wrapper.style.left = `${r.left - gap}px`;
+                wrapper.style.top = `${cy}px`;
+                wrapper.style.transform = 'translate(-100%, -50%)';
+            } else { // 'bas' (et repli)
+                wrapper.style.left = `${cx}px`;
+                wrapper.style.top = `${r.top - gap}px`;
+                wrapper.style.transform = 'translate(-50%, -100%)';
+            }
+        } else {
+            // Aucun panneau trouvé : repli discret en bas-centre du calque.
+            const c = calque.getBoundingClientRect();
+            wrapper.style.left = `${c.left + c.width / 2}px`;
+            wrapper.style.top = `${c.top + c.height * 0.82}px`;
+            wrapper.style.transform = 'translate(-50%, -50%)';
+        }
+
+        calque.appendChild(wrapper);
+        // 3 s d'affichage puis disparition automatique (le fondu de sortie est géré
+        // par l'animation CSS, dont la durée totale vaut aussi 3 s).
+        setTimeout(() => { wrapper.remove(); }, 3000);
     }
 
     // ------------------------------------------------------------------ //

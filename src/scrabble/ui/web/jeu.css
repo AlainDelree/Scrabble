@@ -1018,6 +1018,62 @@ header {
 }
 
 /* --------------------------------------------------------------------------- */
+/* Toast « +X points » près du panneau du joueur (issue #136)                  */
+/* --------------------------------------------------------------------------- */
+/* Calque dédié, plein écran et transparent aux clics, distinct de #scrabble-fete
+   pour rester indépendant du toast Scrabble (chacun vit son propre cycle). Le JS
+   (afficherToastPoints) y injecte pour 3 s un petit toast positionné face au
+   panneau du joueur qui vient de marquer, puis le retire. */
+.points-toasts {
+    position: fixed;
+    inset: 0;
+    z-index: 50;             /* même plan que .scrabble-fete, sous les modales */
+    pointer-events: none;    /* n'intercepte jamais un clic */
+    overflow: hidden;
+}
+
+/* Ancre de placement : positionnée en coordonnées viewport par le JS (left/top +
+   transform de recentrage selon le côté du panneau). Ne porte PAS l'animation,
+   pour ne pas entrer en conflit avec sa transformation de placement. */
+.points-toasts .points-toast-ancre {
+    position: absolute;
+    will-change: transform;
+}
+
+/* Le toast lui-même : bandeau compact vert, cohérent avec le toast Scrabble
+   (mêmes couleur, ombre, rayon) mais plus petit. Il porte le fondu d'apparition/
+   disparition sur 3 s. */
+.points-toasts .points-toast {
+    padding: 0.3rem 0.75rem;
+    background: var(--couleur-primaire);
+    color: #fff;
+    font-size: clamp(0.9rem, 2.4vw, 1.3rem);
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    border-radius: var(--rayon-bordure);
+    box-shadow: var(--ombre);
+    white-space: nowrap;
+    animation: points-toast-apparition 3s ease-out both;
+}
+
+@keyframes points-toast-apparition {
+    0%   { opacity: 0; transform: translateY(-6px) scale(0.9); }
+    6%   { opacity: 1; transform: translateY(0) scale(1); }
+    88%  { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-4px) scale(0.96); }
+}
+
+/* Accessibilité : en mouvement réduit, pas de fondu ni de translation — le texte
+   reste simplement affiché en plein le temps nécessaire (le JS le retire à 3 s). */
+@media (prefers-reduced-motion: reduce) {
+    .points-toasts .points-toast {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* --------------------------------------------------------------------------- */
 /* Thèmes de plateau                                                           */
 /* --------------------------------------------------------------------------- */
 /* Chaque thème est une classe posée par le JS sur l'élément .plateau. Il ne

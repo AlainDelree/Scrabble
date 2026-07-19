@@ -280,6 +280,13 @@
          sobre « 🎉 Scrabble ! » si prefers-reduced-motion est actif. -->
     <div id="scrabble-fete" class="scrabble-fete" aria-hidden="true"></div>
 
+    <!-- Calque des toasts « +X points » (issue #136), affichés ~3 s près du
+         panneau du joueur qui vient de marquer. Distinct de #scrabble-fete pour
+         rester totalement indépendant du toast Scrabble (qui vide son propre
+         calque) : les deux peuvent coexister sans se détruire l'un l'autre. Il
+         est lui aussi plein écran et transparent aux clics. -->
+    <div id="points-toasts" class="points-toasts" aria-hidden="true"></div>
+
     <script src="commun.js"></script>
     <script src="jeu.js"></script>
 </body>
