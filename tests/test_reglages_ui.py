@@ -77,6 +77,37 @@ def test_obtenir_reglages_generaux_expose_bonus_fin_partie(monkeypatch):
     assert data["bonus_fin_partie"] is True
 
 
+def test_obtenir_reglages_generaux_expose_type_echange(monkeypatch):
+    """La structure expose type_echange + les options complet/partiel (issue #138)."""
+    monkeypatch.setattr(
+        r, "lire_reglage",
+        lambda cle: "partiel" if cle == "type_echange" else "",
+    )
+
+    data = ApiReglages().obtenir_reglages_generaux()
+
+    assert data["type_echange"] == "partiel"
+    valeurs = {o["valeur"] for o in data["types_echange"]}
+    assert valeurs == {"complet", "partiel"}
+    assert all({"valeur", "libelle"} <= set(o) for o in data["types_echange"])
+
+
+def test_enregistrer_type_echange_delegue(monkeypatch):
+    """type_echange (chaîne à choix fini) passe par modifier_reglage sans cas spécial."""
+    appels = {}
+
+    def faux_modifier(cle, valeur):
+        appels[cle] = valeur
+        return valeur
+
+    monkeypatch.setattr(r, "modifier_reglage", faux_modifier)
+
+    res = ApiReglages().enregistrer_reglage("type_echange", "partiel")
+
+    assert res == {"succes": True, "valeur": "partiel"}
+    assert appels == {"type_echange": "partiel"}
+
+
 def test_enregistrer_reglage_source_invalide_refusee(monkeypatch):
     """Une source de dictionnaire inconnue est rejetée sans écriture."""
     def interdit(*args, **kwargs):  # pragma: no cover - ne doit pas être appelé

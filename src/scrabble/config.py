@@ -46,6 +46,12 @@ CONFIG_DEFAUT: dict[str, Any] = {
     # ``{"x": int, "y": int}`` — toute autre forme (types incorrects, clés en
     # trop/manquantes) est réparée vers ``None``.
     "position_chevalet": None,
+    # Type d'échange des lettres autorisé pendant un tour (issue #138) :
+    # "complet" (défaut, comportement historique : on remet tout le chevalet et
+    # on repioche sept lettres) ou "partiel" (le joueur choisit librement une à
+    # sept lettres à échanger, les autres restent). Voir TYPES_ECHANGE ; toute
+    # valeur hors de cet ensemble est réparée vers "complet".
+    "type_echange": "complet",
 }
 
 # Clés dont la valeur est du texte libre : une chaîne vide y est légitime
@@ -64,10 +70,16 @@ CLES_POSITION: frozenset[str] = frozenset({"position_chevalet"})
 # CSS ``theme-<nom>`` de ``ui/web/jeu.css`` et les libellés de ``ui/web/jeu.js``.
 THEMES_PLATEAU: tuple[str, ...] = ("classique", "vert", "abrege")
 
+# Types d'échange de lettres reconnus (issue #138). "complet" : on remet tout
+# le chevalet ; "partiel" : on choisit librement 1 à 7 lettres. Doivent rester
+# alignés avec les libellés de ``ui/reglages.py`` et de ``ui/web/reglages.js``.
+TYPES_ECHANGE: tuple[str, ...] = ("complet", "partiel")
+
 # Clés dont la valeur est contrainte à un ensemble fini : toute valeur hors de
 # cet ensemble déclenche une réparation vers le défaut (auto-réparation).
 VALEURS_VALIDES: dict[str, frozenset[str]] = {
     "theme_plateau": frozenset(THEMES_PLATEAU),
+    "type_echange": frozenset(TYPES_ECHANGE),
 }
 
 

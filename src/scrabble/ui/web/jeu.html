@@ -206,10 +206,29 @@
                  masquer ces boutons n'est qu'une aide visuelle. -->
             <div id="zone-jeu" class="zone-jeu" hidden>
                 <div class="zone-jeu-controles">
+                    <!-- Échange COMPLET (réglage « type_echange » = complet, défaut) :
+                         un seul bouton qui remet tout le chevalet et passe. -->
                     <button id="btn-echanger-tout" class="lien-discret" disabled
                             title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
                         ♻️ Remettre toutes ses lettres et passer
                     </button>
+                    <!-- Échange PARTIEL (réglage « type_echange » = partiel, issue #138) :
+                         on entre dans un mode de sélection multiple côté chevalet, puis
+                         on valide. Ces boutons ne sont visibles qu'en mode partiel. -->
+                    <button id="btn-commencer-echange" class="lien-discret" hidden
+                            title="Choisissez librement les lettres à échanger sur votre chevalet, puis validez">
+                        ♻️ Échanger des lettres…
+                    </button>
+                    <span id="zone-echange-partiel" class="zone-echange-partiel" hidden>
+                        <button id="btn-echanger-selection" class="btn btn-primaire" disabled
+                                title="Remet les lettres marquées dans le sac, en tire autant, et passe votre tour">
+                            ♻️ Échanger la sélection et passer
+                        </button>
+                        <button id="btn-annuler-echange" class="btn btn-secondaire"
+                                title="Quitte le mode d'échange sans rien échanger">
+                            ✗ Annuler la sélection
+                        </button>
+                    </span>
                     <span class="zone-jeu-actions">
                         <button id="btn-passer" class="btn btn-secondaire"
                                 title="Passe votre tour sans poser ni échanger de lettres">

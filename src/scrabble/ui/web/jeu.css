@@ -1289,6 +1289,17 @@ header {
     gap: 10px;
 }
 
+/* Flux d'échange partiel (issue #138) : les deux boutons (valider / annuler)
+   apparaissent côte à côte à la place de l'échange complet pendant la sélection. */
+.zone-echange-partiel {
+    display: inline-flex;
+    gap: 10px;
+}
+
+.zone-echange-partiel[hidden] {
+    display: none;
+}
+
 /* Message de retour de tour en SURIMPRESSION (issue #108). Auparavant en flux
    normal tout en bas de .zone-jeu (sous la barre de boutons), il se retrouvait
    collé au bord bas de la fenêtre plateau maximisée : à la résolution cible du

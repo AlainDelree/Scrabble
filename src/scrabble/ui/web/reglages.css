@@ -158,6 +158,39 @@ main {
     outline-offset: 1px;
 }
 
+/* Champ à boutons radio (issue #138) : un titre puis les options empilées. */
+.champ-radios .champ-titre {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.champ-radios .radios {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.champ-radios .radio-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 400;
+}
+
+.champ-radios .radio-label input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    cursor: pointer;
+}
+
+.champ-radios .radio-label input[type="radio"]:focus {
+    outline: 2px solid var(--couleur-primaire);
+    outline-offset: 1px;
+}
+
 .statut-enregistrement {
     margin-top: 8px;
     padding: 6px 4px;

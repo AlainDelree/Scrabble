@@ -9,6 +9,7 @@ import pytest
 from scrabble.config import (
     CONFIG_DEFAUT,
     THEMES_PLATEAU,
+    TYPES_ECHANGE,
     charger_config,
     sauvegarder_config,
 )
@@ -99,6 +100,7 @@ def test_fichier_valide_non_reecrit(tmp_path):
         "theme_plateau": "vert",
         "bonus_fin_partie": True,
         "position_chevalet": {"x": 340, "y": 610},
+        "type_echange": "partiel",
     }
     chemin.write_text(json.dumps(valeur), encoding="utf-8")
     mtime_avant = chemin.stat().st_mtime_ns
@@ -122,6 +124,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
             "theme_plateau": "abrege",
             "bonus_fin_partie": True,
             "position_chevalet": {"x": 12, "y": 34},
+            "type_echange": "partiel",
         },
         chemin,
     )
@@ -135,6 +138,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
         "theme_plateau": "abrege",
         "bonus_fin_partie": True,
         "position_chevalet": {"x": 12, "y": 34},
+        "type_echange": "partiel",
     }
 
 
@@ -149,6 +153,7 @@ def test_prenom_principal_vide_par_defaut_non_reecrit(tmp_path):
         "theme_plateau": "classique",
         "bonus_fin_partie": False,
         "position_chevalet": None,
+        "type_echange": "complet",
     }
     chemin.write_text(json.dumps(valeur), encoding="utf-8")
     mtime_avant = chemin.stat().st_mtime_ns
@@ -241,6 +246,55 @@ def test_theme_plateau_mauvais_type_repare(tmp_path):
     config = charger_config(chemin)
 
     assert config["theme_plateau"] == "classique"
+
+
+def test_type_echange_complet_par_defaut(tmp_path):
+    """Le type d'échange par défaut est « complet » (issue #138)."""
+    chemin = tmp_path / "config.json"
+
+    config = charger_config(chemin)
+
+    assert config["type_echange"] == "complet"
+    assert CONFIG_DEFAUT["type_echange"] == "complet"
+    # Le défaut fait partie des types d'échange reconnus.
+    assert CONFIG_DEFAUT["type_echange"] in TYPES_ECHANGE
+
+
+@pytest.mark.parametrize("type_echange", TYPES_ECHANGE)
+def test_type_echange_valeurs_valides_conservees(tmp_path, type_echange):
+    """Chaque type d'échange reconnu est conservé tel quel, sans réparation."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(
+        json.dumps({"type_echange": type_echange}), encoding="utf-8"
+    )
+
+    config = charger_config(chemin)
+
+    assert config["type_echange"] == type_echange
+
+
+def test_type_echange_valeur_invalide_reparee(tmp_path):
+    """Un type d'échange inconnu retombe sur « complet » et le fichier est réparé."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(
+        json.dumps({"type_echange": "moitie-moitie"}), encoding="utf-8"
+    )
+
+    config = charger_config(chemin)
+
+    assert config["type_echange"] == "complet"
+    releu = json.loads(chemin.read_text(encoding="utf-8"))
+    assert releu["type_echange"] == "complet"
+
+
+def test_type_echange_vide_repare(tmp_path):
+    """Une chaîne vide n'est pas un type d'échange valide : réparée vers le défaut."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(json.dumps({"type_echange": ""}), encoding="utf-8")
+
+    config = charger_config(chemin)
+
+    assert config["type_echange"] == "complet"
 
 
 def test_bonus_fin_partie_desactive_par_defaut(tmp_path):
@@ -341,6 +395,7 @@ def test_position_chevalet_valide_non_reecrite(tmp_path):
         "theme_plateau": "classique",
         "bonus_fin_partie": False,
         "position_chevalet": {"x": 100, "y": 200},
+        "type_echange": "complet",
     }
     chemin.write_text(json.dumps(valeur), encoding="utf-8")
     mtime_avant = chemin.stat().st_mtime_ns

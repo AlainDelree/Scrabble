@@ -38,7 +38,7 @@ from typing import Any
 import webview
 
 from scrabble import journal
-from scrabble.config import THEMES_PLATEAU
+from scrabble.config import THEMES_PLATEAU, TYPES_ECHANGE
 from scrabble.dictionnaire.dictionnaire import (
     SOURCES,
     modifier_appartenance,
@@ -60,6 +60,10 @@ LABELS_THEMES: dict[str, str] = {
 LABELS_SOURCES: dict[str, str] = {
     "ods": "ODS 8",
     "hunspell": "Hunspell",
+}
+LABELS_TYPES_ECHANGE: dict[str, str] = {
+    "complet": "Échange complet",
+    "partiel": "Échange partiel",
 }
 
 
@@ -106,6 +110,7 @@ class ApiReglages:
             "theme_plateau": self._lire("theme_plateau"),
             "source_dictionnaire": self._lire("source_dictionnaire"),
             "bonus_fin_partie": self._lire_bool("bonus_fin_partie"),
+            "type_echange": self._lire("type_echange"),
             "themes": [
                 {"valeur": t, "libelle": LABELS_THEMES.get(t, t)}
                 for t in THEMES_PLATEAU
@@ -113,6 +118,10 @@ class ApiReglages:
             "sources": [
                 {"valeur": s, "libelle": LABELS_SOURCES.get(s, s)}
                 for s in SOURCES
+            ],
+            "types_echange": [
+                {"valeur": t, "libelle": LABELS_TYPES_ECHANGE.get(t, t)}
+                for t in TYPES_ECHANGE
             ],
         }
 

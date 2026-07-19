@@ -54,6 +54,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         return new Set((etat && etat.en_attente ? etat.en_attente : []).map((p) => p.index));
     }
 
+    /** Vrai si le mode de marquage pour l'échange partiel est actif (issue #138). */
+    function enModeEchange() {
+        return Boolean(etat && etat.mode_echange);
+    }
+
+    /** Ensemble des index d'origine marqués pour l'échange partiel (issue #138). */
+    function indexEchange() {
+        return new Set(
+            (etat && Array.isArray(etat.selection_echange)) ? etat.selection_echange : []);
+    }
+
     function rendrePanneau() {
         panneauEl.innerHTML = '';
         if (panneauLettres.length === 0) {
@@ -61,6 +72,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         const utilises = indexUtilises();
+        const echange = indexEchange();
+        const modeEchange = enModeEchange();
         panneauLettres.forEach((l, index) => {
             if (l === null) {
                 const vide = document.createElement('div');
@@ -73,7 +86,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             const c = document.createElement('div');
             c.className = 'panneau-case' + (l.joker ? ' joker' : '');
-            if (utilises.has(l.indexOrigine)) {
+            if (modeEchange) {
+                // Marquage d'échange partiel (issue #138) : surbrillance distincte
+                // de la sélection de pose ; les lettres déjà posées ne comptent pas.
+                if (!utilises.has(l.indexOrigine) && echange.has(l.indexOrigine)) {
+                    c.classList.add('a-echanger');
+                }
+            } else if (utilises.has(l.indexOrigine)) {
                 c.classList.add('utilisee');
             } else if (index === panneauSelection) {
                 c.classList.add('selectionnee');
@@ -180,6 +199,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Une lettre déjà posée (utilisée) n'est ni sélectionnable ni cible d'échange.
         const estUtilisee = !estVide && indexUtilises().has(lettre.indexOrigine);
 
+        // Mode échange partiel (issue #138) : le clic marque/démarque la lettre
+        // pour l'échange (sélection multiple), sans toucher à la pose. Aucun
+        // réarrangement local dans ce mode : l'unique action est le marquage.
+        if (enModeEchange()) {
+            if (estVide) {
+                return;
+            }
+            await api.basculer_echange(lettre.indexOrigine);
+            return;
+        }
+
         if (panneauSelection === null) {
             if (estVide || estUtilisee) {
                 return;
@@ -224,6 +254,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         evt.preventDefault();
+        // En mode échange partiel (issue #138), le panneau ne sert qu'au marquage :
+        // pas de réarrangement local par clic droit.
+        if (enModeEchange()) {
+            return;
+        }
         const origine = Number(caseEl.dataset.index);
         const lettre = panneauLettres[origine];
         // On ne déplace pas une lettre déjà posée.

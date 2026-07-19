@@ -55,6 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectTheme = document.getElementById('select-theme');
     const selectSource = document.getElementById('select-source');
     const checkBonusFin = document.getElementById('check-bonus-fin');
+    const radiosTypeEchange = document.getElementById('radios-type-echange');
     const statutGeneral = document.getElementById('statut-general');
 
     let horlogeStatut = null;
@@ -70,6 +71,44 @@ document.addEventListener('DOMContentLoaded', async () => {
         horlogeStatut = setTimeout(() => {
             statutGeneral.hidden = true;
         }, 2500);
+    }
+
+    /** Construit un groupe de boutons radio [{valeur, libelle}] + valeur active.
+     *  Chaque changement enregistre le réglage ``cle`` via l'API Python. */
+    function remplirRadios(conteneur, cle, options, valeurActive) {
+        conteneur.innerHTML = '';
+        (options || []).forEach((opt) => {
+            const label = document.createElement('label');
+            label.className = 'radio-label';
+            const input = document.createElement('input');
+            input.type = 'radio';
+            input.name = cle;
+            input.value = opt.valeur;
+            input.checked = opt.valeur === valeurActive;
+            input.addEventListener('change', async () => {
+                if (!input.checked) {
+                    return;
+                }
+                const retenue = await enregistrer(cle, input.value);
+                // La normalisation Python peut retomber sur une autre valeur : on
+                // resynchronise le groupe pour ne pas afficher un choix trompeur.
+                if (retenue && retenue !== input.value) {
+                    syncRadios(conteneur, retenue);
+                }
+            });
+            const span = document.createElement('span');
+            span.textContent = opt.libelle;
+            label.appendChild(input);
+            label.appendChild(span);
+            conteneur.appendChild(label);
+        });
+    }
+
+    /** Recoche l'option ``valeur`` d'un groupe de radios (après normalisation). */
+    function syncRadios(conteneur, valeur) {
+        conteneur.querySelectorAll('input[type="radio"]').forEach((input) => {
+            input.checked = input.value === valeur;
+        });
     }
 
     /** Remplit un <select> à partir d'options [{valeur, libelle}] + valeur active. */
@@ -92,6 +131,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         remplirSelect(selectTheme, r.themes, r.theme_plateau);
         remplirSelect(selectSource, r.sources, r.source_dictionnaire);
         checkBonusFin.checked = Boolean(r.bonus_fin_partie);
+        remplirRadios(radiosTypeEchange, 'type_echange', r.types_echange, r.type_echange);
         labelsSources = {};
         (r.sources || []).forEach((s) => { labelsSources[s.valeur] = s.libelle; });
     }

@@ -70,6 +70,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnAnnuler = document.getElementById('btn-annuler');
     const btnPasser = document.getElementById('btn-passer');
     const btnEchangerTout = document.getElementById('btn-echanger-tout');
+    // Échange partiel (issue #138) : boutons affichés uniquement en mode partiel.
+    const btnCommencerEchange = document.getElementById('btn-commencer-echange');
+    const zoneEchangePartiel = document.getElementById('zone-echange-partiel');
+    const btnEchangerSelection = document.getElementById('btn-echanger-selection');
+    const btnAnnulerEchange = document.getElementById('btn-annuler-echange');
     const messageCoup = document.getElementById('message-coup');
 
     // Vérification dictionnaire par saisie libre (issue #50/#86) : champ + bouton
@@ -519,7 +524,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         // cliquable qui échouerait systématiquement (rapport #130, issue #132),
         // on le désactive dans ce cas — « Passer son tour » prend le relais.
         const sacVide = !etat.jetons_sac;
+        // Échange partiel (issue #138) : selon le réglage « type_echange », on
+        // montre soit l'échange complet (défaut), soit le flux d'échange partiel.
+        const partiel = etat.type_echange === 'partiel';
+        const modeEchange = partiel && Boolean(etat.mode_echange);
+        const nbEchange = Array.isArray(etat.selection_echange)
+            ? etat.selection_echange.length : 0;
+        const jetonsSac = etat.jetons_sac || 0;
+        // Complet : bouton unique, masqué en mode partiel.
+        btnEchangerTout.hidden = partiel;
         btnEchangerTout.disabled = nbLettres === 0 || sacVide;
+        // Partiel, hors sélection : bouton d'entrée dans le mode.
+        btnCommencerEchange.hidden = !(partiel && !modeEchange);
+        btnCommencerEchange.disabled = nbLettres === 0 || sacVide;
+        // Partiel, en sélection : valider (assez de jetons ?) ou annuler.
+        zoneEchangePartiel.hidden = !modeEchange;
+        btnEchangerSelection.disabled = nbEchange === 0 || nbEchange > jetonsSac;
     }
 
     /** Message de retour des actions de tour (issue #101), sous les boutons. */
@@ -862,6 +882,58 @@ document.addEventListener('DOMContentLoaded', async () => {
             afficherMessageCoup((res && res.erreur) || 'Échange impossible.', 'erreur');
             majActionsTour();
         }
+    });
+
+    // Échange partiel (issue #138) : entrer dans le mode de sélection multiple.
+    // Le marquage des lettres se fait ensuite côté chevalet (api.basculer_echange).
+    btnCommencerEchange.addEventListener('click', async () => {
+        btnCommencerEchange.disabled = true;
+        let res;
+        try {
+            res = await api.commencer_echange();
+        } catch (err) {
+            afficherMessageCoup('Erreur inattendue à l\'ouverture de l\'échange.', 'erreur');
+            majActionsTour();
+            return;
+        }
+        if (res && res.succes) {
+            afficherMessageCoup(
+                'Marquez sur votre chevalet les lettres à échanger, puis validez.', 'info');
+        } else {
+            afficherMessageCoup((res && res.erreur) || 'Échange impossible.', 'erreur');
+            majActionsTour();
+        }
+    });
+
+    // Échange partiel : valider la sélection (remet les lettres marquées, repioche
+    // autant, passe le tour). Python lit la sélection courante (indices None).
+    btnEchangerSelection.addEventListener('click', async () => {
+        btnEchangerSelection.disabled = true;
+        let res;
+        try {
+            res = await api.echanger_selection();
+        } catch (err) {
+            afficherMessageCoup('Erreur inattendue lors de l\'échange des lettres.', 'erreur');
+            majActionsTour();
+            return;
+        }
+        if (res && res.succes) {
+            afficherMessageCoup('Lettres échangées. Tour passé.', 'succes');
+        } else {
+            afficherMessageCoup((res && res.erreur) || 'Échange impossible.', 'erreur');
+            majActionsTour();
+        }
+    });
+
+    // Échange partiel : annuler la sélection en cours (quitte le mode d'échange).
+    btnAnnulerEchange.addEventListener('click', async () => {
+        try {
+            await api.annuler_echange();
+        } catch (err) {
+            afficherMessageCoup('Erreur inattendue lors de l\'annulation.', 'erreur');
+            return;
+        }
+        afficherMessageCoup('Sélection d\'échange annulée.', 'info');
     });
 
     // ------------------------------------------------------------------ //

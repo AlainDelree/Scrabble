@@ -877,25 +877,39 @@ def verifier_mot_dictionnaire(
     }
 
 
-def echanger_chevalet_complet(
-    partie: Partie, id_partie: int | None
+def echanger_jetons(
+    partie: Partie, id_partie: int | None, jetons: list[str]
 ) -> dict[str, Any]:
-    """Remet **tout** le chevalet du joueur courant dans le sac et passe le tour.
+    """Échange la liste précise ``jetons`` du chevalet courant et passe le tour.
 
-    Cœur non-UI de :meth:`ApiJeu.echanger_tout`. Délègue à
-    :meth:`~scrabble.moteur.partie.Partie.echanger` avec la totalité du chevalet
-    courant : l'échange consomme déjà le tour, aucun passe séparé n'est requis.
-    Le cas « sac trop pauvre pour échanger tout le chevalet » (ou partie
-    terminée) est capturé et transformé en ``{"succes": False, "erreur": ...}``
-    sans plantage. En cas de succès, l'état public rafraîchi est joint.
+    Cœur non-UI commun à l'échange **complet** (:func:`echanger_chevalet_complet`)
+    et à l'échange **partiel** (:meth:`ApiJeu.echanger_selection`, issue #138).
+    Délègue à :meth:`~scrabble.moteur.partie.Partie.echanger`, qui suit les mêmes
+    règles quel que soit le nombre de lettres : sac suffisant, remise en jeu des
+    lettres échangées, tirage de remplacement et consommation du tour (aucun
+    passe séparé n'est requis). Tout rejet du moteur (sac trop pauvre, liste
+    vide, lettres absentes, partie terminée) est capturé et transformé en
+    ``{"succes": False, "erreur": ...}`` sans plantage. En cas de succès, l'état
+    public rafraîchi est joint.
     """
-    joueur = partie.joueur_courant()
-    jetons = list(joueur.chevalet)
     try:
         partie.echanger(jetons)
     except ActionInvalide as err:
         return {"succes": False, "erreur": str(err)}
     return {"succes": True, "etat": etat_public(partie, id_partie)}
+
+
+def echanger_chevalet_complet(
+    partie: Partie, id_partie: int | None
+) -> dict[str, Any]:
+    """Remet **tout** le chevalet du joueur courant dans le sac et passe le tour.
+
+    Cœur non-UI de :meth:`ApiJeu.echanger_tout`. Cas particulier « toutes les
+    lettres » de :func:`echanger_jetons`, auquel il délègue avec la totalité du
+    chevalet courant.
+    """
+    joueur = partie.joueur_courant()
+    return echanger_jetons(partie, id_partie, list(joueur.chevalet))
 
 
 def passer_tour(partie: Partie, id_partie: int | None) -> dict[str, Any]:
@@ -994,6 +1008,16 @@ class ApiJeu:
         # même pour un joker dont la lettre a été choisie).
         self._selection: int | None = None
         self._en_attente: list[dict[str, Any]] = []
+        # Échange partiel (issue #138). ``_type_echange`` fige, à la construction
+        # de l'API (donc au démarrage de la partie), le mode choisi dans les
+        # réglages : "complet" (bouton « Remettre toutes ses lettres ») ou
+        # "partiel" (sélection libre de 1 à 7 lettres). ``_mode_echange`` indique
+        # que le joueur est en train de marquer des lettres à échanger, et
+        # ``_selection_echange`` porte les index de chevalet ainsi marqués (une
+        # information neutre — de simples index — ne dévoilant aucune lettre).
+        self._type_echange: str = charger_config().get("type_echange", "complet")
+        self._mode_echange: bool = False
+        self._selection_echange: list[int] = []
         # Pose d'un joker en attente du choix de lettre (issue #90) : lorsqu'un
         # clic sur une case du plateau (fenêtre plateau) porte sur un joker, la
         # modale de choix s'ouvre côté chevalet. On mémorise ici la case visée en
@@ -1200,6 +1224,12 @@ class ApiJeu:
         etat = etat_public(self._partie, self._id_partie)
         etat["en_attente"] = self._placements_publics()
         etat["selection"] = self._selection
+        # Échange partiel (issue #138) : le mode réglé et l'éventuelle sélection
+        # d'échange en cours (index neutres) pilotent l'affichage des boutons de
+        # la zone de jeu (« Échanger des lettres… » / « Échanger la sélection »).
+        etat["type_echange"] = self._type_echange
+        etat["mode_echange"] = self._mode_echange
+        etat["selection_echange"] = list(self._selection_echange)
         return etat
 
     def _etat_chevalet(self) -> dict[str, Any]:
@@ -1234,6 +1264,11 @@ class ApiJeu:
             "selection": self._selection,
             "en_attente": [dict(p) for p in self._en_attente],
             "joker_demande": self._joker_demande,
+            # Échange partiel (issue #138) : le panneau marque distinctement les
+            # lettres à échanger quand ``mode_echange`` est actif.
+            "type_echange": self._type_echange,
+            "mode_echange": self._mode_echange,
+            "selection_echange": list(self._selection_echange),
         }
 
     def _diffuser(self) -> None:
@@ -1807,6 +1842,142 @@ class ApiJeu:
             self._diffuser()
         else:
             journal.info(f"Jeu : échange refusé pour {nom} — {resultat.get('erreur')}")
+        return resultat
+
+    # ---- Échange partiel (issue #138) --------------------------------- #
+
+    def commencer_echange(self) -> dict[str, Any]:
+        """Entre dans le mode de **sélection** pour l'échange partiel (issue #138).
+
+        Point d'entrée du bouton « ♻️ Échanger des lettres… », affiché à la place
+        de l'échange complet quand le réglage ``type_echange`` vaut ``"partiel"``.
+        Abandonne toute pose en cours (le joueur ne fait pas les deux à la fois),
+        vide la sélection d'échange et active :attr:`_mode_echange`, puis diffuse.
+
+        Réservé au tour du joueur de référence (garde :meth:`_refuser_hors_tour`,
+        issue #99/#130). Refusé si le réglage n'est pas ``"partiel"``.
+        """
+        refus = self._refuser_hors_tour()
+        if refus is not None:
+            return refus
+        if self._type_echange != "partiel":
+            return {
+                "succes": False,
+                "erreur": "L'échange partiel n'est pas activé dans les réglages.",
+            }
+        self._selection = None
+        self._en_attente = []
+        self._joker_demande = None
+        self._selection_echange = []
+        self._mode_echange = True
+        self._diffuser()
+        return {"succes": True}
+
+    def annuler_echange(self) -> dict[str, Any]:
+        """Quitte le mode de sélection d'échange partiel sans rien échanger.
+
+        Vide la sélection d'échange et désactive :attr:`_mode_echange`, puis
+        rediffuse. C'est le moyen clair d'annuler une sélection en cours avant de
+        la valider (issue #138). Réservé au tour du joueur de référence.
+        """
+        refus = self._refuser_hors_tour()
+        if refus is not None:
+            return refus
+        self._selection_echange = []
+        self._mode_echange = False
+        self._diffuser()
+        return {"succes": True}
+
+    def basculer_echange(self, index: Any) -> dict[str, Any]:
+        """Marque/démarque la lettre d'index ``index`` pour l'échange partiel.
+
+        Appelée par la fenêtre chevalet, en mode échange (:attr:`_mode_echange`),
+        au clic sur une lettre : un premier clic la marque, un reclic la démarque
+        (sélection multiple, distincte de la sélection simple de pose). ``index``
+        vise la position de la lettre dans le chevalet du joueur courant (qui est
+        le joueur de référence, la garde de tour l'assurant). Diffuse l'état.
+
+        Réservé au tour du joueur de référence (garde :meth:`_refuser_hors_tour`).
+        Refusé hors du mode échange ou sur un index invalide.
+        """
+        refus = self._refuser_hors_tour()
+        if refus is not None:
+            return refus
+        if not self._mode_echange:
+            return {"succes": False, "erreur": "Le mode échange n'est pas actif."}
+        if isinstance(index, bool) or not isinstance(index, int):
+            return {"succes": False, "erreur": "Index de lettre invalide."}
+        if not 0 <= index < len(self._partie.joueur_courant().chevalet):
+            return {"succes": False, "erreur": "Index de lettre hors du chevalet."}
+        if index in self._selection_echange:
+            self._selection_echange.remove(index)
+        else:
+            self._selection_echange.append(index)
+        self._diffuser()
+        return {"succes": True, "selection_echange": list(self._selection_echange)}
+
+    def echanger_selection(self, indices: Any = None) -> dict[str, Any]:
+        """Échange les lettres sélectionnées et passe le tour (issue #138).
+
+        Point d'entrée du bouton « Échanger la sélection et passer ». Les lettres
+        visées sont désignées par leurs ``indices`` dans le chevalet du joueur
+        courant ; si ``indices`` vaut ``None`` (appel depuis l'UI), on utilise la
+        sélection d'échange courante (:attr:`_selection_echange`). Convertit les
+        index en jetons puis délègue à :func:`echanger_jetons`, qui applique
+        exactement les mêmes règles que l'échange complet (sac suffisant, remise
+        en jeu, tirage de remplacement, passage du tour).
+
+        Une sélection **vide** est refusée (1 à 7 lettres, jamais 0). En cas de
+        succès : ``{"succes": True, "etat": <état public>}`` (tour suivant, état
+        de pose et sélection d'échange remis à zéro, mode échange quitté). En cas
+        d'échec (sac trop pauvre, index invalide, partie terminée, hors tour) :
+        ``{"succes": False, "erreur": <message>}`` — l'état n'est pas modifié.
+
+        Réservé au tour du joueur de référence (garde :meth:`_refuser_hors_tour`,
+        issue #99/#130) : c'est cette garde qui assure que les index visent bien
+        le chevalet du joueur de référence (alors joueur courant).
+        """
+        refus = self._refuser_hors_tour()
+        if refus is not None:
+            return refus
+        if indices is None:
+            indices = list(self._selection_echange)
+        joueur = self._partie.joueur_courant()
+        nb = len(joueur.chevalet)
+        if not isinstance(indices, list) or not indices:
+            return {"succes": False, "erreur": "Aucune lettre sélectionnée à échanger."}
+        vus: set[int] = set()
+        for i in indices:
+            if (
+                isinstance(i, bool)
+                or not isinstance(i, int)
+                or not 0 <= i < nb
+                or i in vus
+            ):
+                return {"succes": False, "erreur": "Sélection de lettres invalide."}
+            vus.add(i)
+        jetons = [joueur.chevalet[i] for i in indices]
+        nom = joueur.nom
+        nb_avant = len(self._partie.historique)
+        resultat = echanger_jetons(self._partie, self._id_partie, jetons)
+        if resultat.get("succes"):
+            journal.info(
+                f"Jeu : échange partiel de {len(jetons)} lettre(s) par {nom}."
+            )
+            self._persister_entrees(self._partie.historique[nb_avant:])
+            self._finaliser_si_terminee()
+            # Nouveau tirage + tour suivant : on repart d'un état de pose et
+            # d'échange vierge, puis on rediffuse les deux fenêtres (issue #90).
+            self._selection = None
+            self._en_attente = []
+            self._joker_demande = None
+            self._selection_echange = []
+            self._mode_echange = False
+            self._diffuser()
+        else:
+            journal.info(
+                f"Jeu : échange partiel refusé pour {nom} — {resultat.get('erreur')}"
+            )
         return resultat
 
     def passer(self) -> dict[str, Any]:
