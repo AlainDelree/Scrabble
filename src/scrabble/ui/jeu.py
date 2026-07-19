@@ -443,12 +443,11 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     score individuel de référence (voir :func:`evaluer_score_total`) ; ``None``
     tant que la partie n'est pas terminée.
 
-    ``historique`` (issue #37) est la portion récente de l'historique des
+    ``historique`` (issue #37, #144) est l'**intégralité** de l'historique des
     actions (voir :func:`serialiser_historique`) : la plus récente en premier,
-    plafonnée à ``min(nb_joueurs * 2, 8)`` lignes, chacune avec le détail du
-    score inclus pour l'ouverture au clic — l'UI alimente son encart glissant à
-    partir de ce seul champ, rafraîchi après chaque action (coup humain ou série
-    de tours IA).
+    chacune avec le détail du score inclus pour l'ouverture au clic — l'UI
+    alimente son encart glissant (scrollable) à partir de ce seul champ, rafraîchi
+    après chaque action (coup humain ou série de tours IA).
     """
     positions = calculer_positions(partie.joueurs)
     avatar_principal = charger_config().get("avatar_principal", "")
@@ -479,22 +478,6 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
         ),
         "historique": serialiser_historique(partie),
     }
-
-
-#: Plafond du nombre de lignes de l'historique glissant affichées à l'écran.
-MAX_LIGNES_HISTORIQUE = 8
-
-
-def nb_lignes_historique(partie: Partie) -> int:
-    """Nombre de lignes d'historique à afficher : ``min(nb_joueurs * 2, 8)``.
-
-    Règle de l'issue #37 : on montre au plus les ``nb_joueurs * 2`` dernières
-    actions (soit deux « tours de table »), plafonnées à
-    :data:`MAX_LIGNES_HISTORIQUE`. En tout début de partie, il peut y avoir moins
-    d'actions jouées que cette borne : :func:`serialiser_historique` n'en renvoie
-    alors que ce qui existe (voir cette fonction).
-    """
-    return min(len(partie.joueurs) * 2, MAX_LIGNES_HISTORIQUE)
 
 
 def serialiser_entree_historique(
@@ -552,25 +535,26 @@ def serialiser_entree_historique(
 
 
 def serialiser_historique(partie: Partie) -> list[dict[str, Any]]:
-    """Sérialise la portion récente de l'historique pour l'encart glissant.
+    """Sérialise l'**intégralité** de l'historique pour l'encart « Derniers coups ».
 
-    Renvoie les ``min(nb_joueurs * 2, 8)`` dernières actions de la partie (voir
-    :func:`nb_lignes_historique`), **la plus récente en premier** (ordre décroissant
-    d'ancienneté — choix documenté de l'issue #37 : le dernier coup apparaît en
-    tête de l'encart). En début de partie, moins d'actions ont été jouées que la
-    borne : on ne renvoie alors que ce qui existe (p. ex. 2 lignes seulement à
-    1 humain + 1 ordinateur après un tour chacun).
+    Renvoie **toutes** les actions de la partie (issue #144), **la plus récente
+    en premier** (ordre décroissant d'ancienneté — choix documenté de l'issue #37 :
+    le dernier coup apparaît en tête de l'encart). En début de partie, l'historique
+    ne compte que ce qui a été joué (p. ex. 2 lignes seulement à 1 humain +
+    1 ordinateur après un tour chacun).
+
+    Le fenêtrage d'affichage historique (``min(nb_joueurs * 2, 8)`` lignes, issue
+    #37) a été retiré (issue #144) : l'encart est désormais scrollable côté UI et
+    montre toute la partie, la plus récente en haut. Aucune borne n'est donc plus
+    appliquée ici.
 
     Chaque entrée est sérialisée par :func:`serialiser_entree_historique`, en
     conservant son index d'origine dans ``partie.historique`` (identifiant stable
-    du coup, indépendant du fenêtrage).
+    du coup).
     """
-    limite = nb_lignes_historique(partie)
-    recentes = partie.historique[-limite:] if limite > 0 else []
-    debut = len(partie.historique) - len(recentes)
     entrees = [
-        serialiser_entree_historique(partie, entree, debut + decalage)
-        for decalage, entree in enumerate(recentes)
+        serialiser_entree_historique(partie, entree, index)
+        for index, entree in enumerate(partie.historique)
     ]
     entrees.reverse()  # plus récent en premier
     return entrees
@@ -3047,10 +3031,10 @@ _MOTS_DEMO: tuple[str, ...] = (
 #: Gabarits d'actions de démonstration pour l'historique glissant (issue #49) :
 #: chaque tuple est ``(action, mot, score)``. Un ``mot`` non nul ⇒ un coup
 #: cliquable (on lui fabrique un :class:`~scrabble.moteur.score.DetailScore` à la
-#: volée) ; ``None`` ⇒ passe ou échange, sans détail. La liste est volontairement
-#: plus longue que le plafond d'affichage (:data:`MAX_LIGNES_HISTORIQUE`) pour
-#: aussi vérifier le compteur « (N) » et le fait que seules les plus récentes
-#: sont montrées.
+#: volée) ; ``None`` ⇒ passe ou échange, sans détail. La liste compte 12 entrées,
+#: volontairement plus de 8, pour vérifier visuellement le compteur « (N) » et le
+#: fait que l'encart montre désormais TOUT l'historique (issue #144), scrollable,
+#: la plus récente en haut.
 _HISTORIQUE_DEMO: list[tuple[str, str | None, int]] = [
     ("coup", "MAISON", 14),
     ("coup", "OPUS", 8),

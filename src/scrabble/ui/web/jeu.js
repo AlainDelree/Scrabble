@@ -1156,22 +1156,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Encart d'historique glissant : ouverture/fermeture + clic sur une ligne
     // ------------------------------------------------------------------ //
 
-    // Fermeture/ouverture fiable du menu « Derniers coups » (issues #56/#60) :
-    // on tient notre propre intention (``historiqueOuvert``) et on force ``open``
-    // dessus, une fois tout de suite et une fois en requestAnimationFrame, pour
-    // que l'éventuelle bascule native de WebKitGTK ne gagne pas la course.
-    const historiqueMenu = document.getElementById('historique-menu');
-    const historiqueResume = historiqueMenu ? historiqueMenu.querySelector('summary') : null;
-    if (historiqueMenu && historiqueResume) {
-        let historiqueOuvert = historiqueMenu.open;
-        historiqueResume.addEventListener('click', (evt) => {
-            evt.preventDefault();
-            historiqueOuvert = !historiqueOuvert;
-            const cible = historiqueOuvert;
-            historiqueMenu.open = cible;
-            requestAnimationFrame(() => { historiqueMenu.open = cible; });
-        });
-    }
+    // Ouverture/fermeture du menu « Derniers coups » (issue #144) : on réutilise
+    // le MÊME mécanisme que « Vérification dictionnaire » (C.configurerPopover) —
+    // clic sur le bouton pour basculer, fermeture au clic EXTÉRIEUR ou à la touche
+    // Échap, mise à jour d'aria-expanded. Cela remplace l'ancienne logique séparée
+    // qui devait forcer la bascule native du <details> sous WebKitGTK (issues
+    // #49/#56/#60) et ne se fermait pas à la perte de focus. La liste
+    // (``historiqueListe``, id #historique-liste) sert de popover : les clics à
+    // l'intérieur (ouverture du détail d'un coup) ne la ferment pas, configurerPopover
+    // stoppant leur propagation vers document.
+    const btnHistorique = document.getElementById('btn-historique');
+    C.configurerPopover(btnHistorique, historiqueListe);
 
     function entreeHistoriqueDe(li) {
         if (!li || !etat || !Array.isArray(etat.historique)) {

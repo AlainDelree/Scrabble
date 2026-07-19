@@ -46,7 +46,6 @@ from scrabble.ui.jeu import (
     index_panneau_interactif,
     jouer_placements,
     jouer_tours_ia_ui,
-    nb_lignes_historique,
     passer_tour,
     serialiser_case,
     serialiser_historique,
@@ -1865,22 +1864,8 @@ def _poser_chat_au_centre(partie: Partie) -> None:
     assert resultat["succes"] is True
 
 
-class TestNbLignesHistorique:
-    """Nombre de lignes d'historique à afficher : min(nb_joueurs * 2, 8)."""
-
-    def test_deux_joueurs(self):
-        assert nb_lignes_historique(_partie_simple()) == 4
-
-    def test_quatre_joueurs_plafonne_a_huit(self):
-        assert nb_lignes_historique(_partie_quatre_joueurs()) == 8
-
-    def test_un_seul_joueur(self):
-        partie = Partie([Joueur(nom="Solo", humain=True)], _DicoFactice(), graine=1)
-        assert nb_lignes_historique(partie) == 2
-
-
 class TestSerialiserHistorique:
-    """Exposition de la portion récente de l'historique (issue #37)."""
+    """Exposition de l'intégralité de l'historique (issue #37, #144)."""
 
     def test_partie_neuve_historique_vide(self):
         partie = _partie_simple()
@@ -1894,14 +1879,16 @@ class TestSerialiserHistorique:
         assert len(historique) == 1
         assert historique[0]["action"] == "echange"
 
-    def test_plafonne_a_huit_meme_a_quatre_joueurs(self):
+    def test_expose_tout_l_historique(self):
+        # Issue #144 : plus de plafond d'affichage — l'intégralité de l'historique
+        # est exposée (l'UI la rend scrollable, la plus récente en haut).
         partie = _partie_quatre_joueurs()
-        # Dix échanges (l'échange ne termine pas la partie) : historique tronqué.
+        # Dix échanges (l'échange ne termine pas la partie).
         for _ in range(10):
             _echanger_une_lettre(partie)
         assert len(partie.historique) == 10
         historique = serialiser_historique(partie)
-        assert len(historique) == 8
+        assert len(historique) == 10
 
     def test_ordre_plus_recent_en_premier(self):
         partie = _partie_quatre_joueurs()
@@ -1987,9 +1974,9 @@ class TestSerialiserHistorique:
             _echanger_une_lettre(partie)
         etat = etat_public(partie, id_partie=3)
         assert "historique" in etat
-        # Même fenêtrage et même ordre que serialiser_historique.
+        # Même contenu et même ordre que serialiser_historique (tout l'historique).
         assert etat["historique"] == serialiser_historique(partie)
-        assert len(etat["historique"]) == 8
+        assert len(etat["historique"]) == 10
 
 
 class TestApiJeuRetourMenu:

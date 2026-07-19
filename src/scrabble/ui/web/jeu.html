@@ -85,21 +85,28 @@
                      liste s'ouvre au clic en surimpression. La plus RÉCENTE EN
                      HAUT ; chaque ligne cliquable rouvre le détail du score de CE
                      coup (modale). -->
-                <details class="historique-menu" id="historique-menu">
-                    <!-- Le <summary> garde son display natif (list-item) : sous
-                         WebKitGTK (moteur de pywebview sous Linux), un <summary>
-                         dont le `display` est changé en flex/inline-flex perd le
-                         basculement natif ouvert/fermé au clic (issue #49). La
-                         mise en page en ligne (titre + compteur + chevron) est
-                         donc portée par un wrapper interne, pas par le summary. -->
-                    <summary class="historique-resume">
+                <!-- Bouton + popover (issue #144) : on abandonne le <details>
+                     natif au profit du MÊME mécanisme que « Vérification
+                     dictionnaire » (C.configurerPopover, voir commun.js) :
+                     ouverture/fermeture au clic sur le bouton, fermeture au clic
+                     EXTÉRIEUR ou à la touche Échap. Ce mécanisme unique remplace
+                     l'ancienne logique séparée qui devait ruser avec la bascule
+                     native du <details> sous WebKitGTK (issues #49/#56/#60) et ne
+                     se fermait pas à la perte de focus. La mise en page en ligne
+                     (titre + compteur + chevron) reste portée par un wrapper
+                     interne. -->
+                <div class="historique-menu" id="historique-menu">
+                    <button id="btn-historique" class="historique-resume"
+                            aria-haspopup="dialog" aria-expanded="false">
                         <span class="historique-resume-inner">
                             <span class="historique-resume-titre">🕑 Derniers coups</span>
                             <span class="historique-resume-compte" id="historique-compte"></span>
                         </span>
-                    </summary>
-                    <ol id="historique-liste" class="historique-liste" aria-live="polite"></ol>
-                </details>
+                    </button>
+                    <ol id="historique-liste" class="historique-liste" role="dialog"
+                        aria-label="Historique des coups de la partie"
+                        aria-live="polite" hidden></ol>
+                </div>
 
                 <!-- Sac de lettres restantes (🎒 + nombre). Déplacé À DROITE
                      (issue #125), en tête du groupe droit : ``margin-left:auto``
