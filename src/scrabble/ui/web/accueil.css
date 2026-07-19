@@ -471,12 +471,12 @@ section h2 {
     cursor: pointer;
 }
 
-.niveau-option label {
+.niveau-option .niveau-nom {
     cursor: pointer;
     flex: 1;
 }
 
-.niveau-option input[type="radio"]:checked + label {
+.niveau-option input[type="radio"]:checked + .niveau-nom {
     font-weight: 600;
     color: var(--couleur-ordinateur);
 }

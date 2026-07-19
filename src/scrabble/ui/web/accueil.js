@@ -143,13 +143,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const niveaux = await api.obtenir_niveaux();
         listeNiveaux.innerHTML = '';
         niveaux.forEach((niveau, index) => {
-            const div = document.createElement('div');
-            div.className = 'niveau-option';
-            div.innerHTML = `
+            // Le rectangle cliquable est le <label> lui-même (issue #119) : ainsi
+            // un clic n'importe où dans le rectangle (y compris le padding
+            // au-dessus/en dessous du texte) sélectionne bien le bouton radio.
+            const label = document.createElement('label');
+            label.className = 'niveau-option';
+            label.innerHTML = `
                 <input type="radio" name="niveau" id="niveau-${index}" value="${niveau}" ${index === 2 ? 'checked' : ''}>
-                <label for="niveau-${index}">${niveau}</label>
+                <span class="niveau-nom">${niveau}</span>
             `;
-            listeNiveaux.appendChild(div);
+            listeNiveaux.appendChild(label);
         });
     }
 
