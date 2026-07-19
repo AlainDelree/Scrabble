@@ -440,12 +440,22 @@ class ApiAccueil:
         return {"tirages": tirages, "ordre": ordre}
 
     def lister_parties_en_cours(self) -> list[dict[str, Any]]:
-        """Renvoie la seule partie en cours la plus récente (issue #54).
+        """Renvoie les parties proposées à l'accueil (issues #54, #150).
 
         ``lister_parties()`` renvoie déjà les parties triées par date de mise à
-        jour décroissante : on ne propose à la reprise que la plus récente. Le
-        retour reste une liste (0 ou 1 élément) pour ne pas casser le contrat
-        avec le JS.
+        jour décroissante. On propose au plus **deux** encarts, la plus récente
+        de chaque catégorie :
+
+        - la partie **en cours** la plus récente, à reprendre (issue #54) ;
+        - la partie **terminée** la plus récente, à consulter — son plateau
+          final et son classement (issue #150). Le filtre qui excluait
+          auparavant les parties terminées est donc levé.
+
+        Limiter à une par catégorie garde l'accueil épuré (esprit de l'issue
+        #54) tout en évitant qu'une partie qui vient de se terminer ne masque la
+        partie en cours (ou l'inverse). Les encarts sont renvoyés du plus récent
+        au plus ancien. Chaque dict porte un booléen ``terminee`` pour que le JS
+        affiche le badge « Terminée » et le libellé « Consulter ».
 
         Chaque joueur est renvoyé avec son **score courant** (issue #76) :
         ``joueurs`` est une liste de ``{"nom", "score"}``, le score étant celui
@@ -454,9 +464,15 @@ class ApiAccueil:
         """
         try:
             toutes = lister_parties()
-            en_cours = [p for p in toutes if not p.terminee]
+            # ``toutes`` est trié date décroissante : le premier de chaque
+            # catégorie est le plus récent.
+            en_cours = next((p for p in toutes if not p.terminee), None)
+            terminee = next((p for p in toutes if p.terminee), None)
+            selection = [p for p in (en_cours, terminee) if p is not None]
+            # Ordre chronologique décroissant conservé quel que soit le statut.
+            selection.sort(key=lambda p: p.date_maj, reverse=True)
             resultat = []
-            for p in en_cours[:1]:
+            for p in selection:
                 scores = p.scores_actuels or []
                 joueurs = [
                     {
@@ -471,6 +487,7 @@ class ApiAccueil:
                         "date_maj": p.date_maj,
                         "joueurs": joueurs,
                         "nb_joueurs": len(p.joueurs),
+                        "terminee": p.terminee,
                     }
                 )
             return resultat

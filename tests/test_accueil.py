@@ -681,7 +681,10 @@ class TestApiAccueilAnnulerPartie:
 
 
 class TestApiAccueilPartieUnique:
-    """Tests de lister_parties_en_cours : une seule partie proposée (issue #54)."""
+    """Tests de lister_parties_en_cours (issues #54, #150).
+
+    On propose au plus deux encarts : la partie en cours la plus récente (à
+    reprendre) et la partie terminée la plus récente (à consulter)."""
 
     def _resume(self, id_partie, statut="en_cours", joueurs=None, scores_actuels=None):
         from scrabble.persistance.stockage import ResumePartie
@@ -713,8 +716,9 @@ class TestApiAccueilPartieUnique:
         assert len(parties) == 1
         assert parties[0]["id"] == 9
 
-    def test_ignore_les_parties_terminees(self, monkeypatch):
-        """Une partie terminée n'est pas proposée, même si listée en tête."""
+    def test_inclut_partie_terminee_et_en_cours(self, monkeypatch):
+        """La partie terminée la plus récente ET la partie en cours la plus
+        récente sont proposées, du plus récent au plus ancien (issue #150)."""
         from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
@@ -729,11 +733,14 @@ class TestApiAccueilPartieUnique:
         api = ApiAccueil()
         parties = api.lister_parties_en_cours()
 
-        assert len(parties) == 1
-        assert parties[0]["id"] == 4
+        # Deux encarts : la terminée (9, la plus récente) puis l'en cours (4).
+        assert [p["id"] for p in parties] == [9, 4]
+        assert parties[0]["terminee"] is True
+        assert parties[1]["terminee"] is False
 
-    def test_aucune_partie_en_cours(self, monkeypatch):
-        """Aucune partie en cours -> liste vide."""
+    def test_une_seule_partie_terminee_est_proposee(self, monkeypatch):
+        """Sans partie en cours, la partie terminée la plus récente est
+        proposée à la consultation (issue #150)."""
         from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
@@ -742,7 +749,31 @@ class TestApiAccueilPartieUnique:
         )
 
         api = ApiAccueil()
-        assert api.lister_parties_en_cours() == []
+        parties = api.lister_parties_en_cours()
+
+        assert len(parties) == 1
+        assert parties[0]["id"] == 9
+        assert parties[0]["terminee"] is True
+
+    def test_une_seule_terminee_par_categorie(self, monkeypatch):
+        """Seule la plus récente de chaque catégorie est retenue (issues #54,
+        #150) : les parties terminées plus anciennes ne sont pas proposées."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lister_parties",
+            lambda: [
+                self._resume(9, statut="terminee"),
+                self._resume(7, statut="terminee"),
+                self._resume(4),
+                self._resume(2),
+            ],
+        )
+
+        api = ApiAccueil()
+        parties = api.lister_parties_en_cours()
+
+        assert [p["id"] for p in parties] == [9, 4]
 
     def test_expose_le_score_de_chaque_joueur(self, monkeypatch):
         """Chaque joueur est renvoyé avec son score courant (issue #76)."""

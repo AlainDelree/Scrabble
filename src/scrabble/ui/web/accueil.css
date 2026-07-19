@@ -371,6 +371,23 @@ section h2 {
     color: #666;
 }
 
+/* Badge « Terminée » (issue #150) : distingue une partie terminée, à consulter,
+   d'une partie en cours, à reprendre. Pastille brune cohérente avec le bouton
+   « Consulter » (var(--couleur-secondaire)), posée à côté des noms de joueurs. */
+.partie-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: white;
+    background: var(--couleur-secondaire);
+    border-radius: 10px;
+    vertical-align: middle;
+}
+
 .btn-reprendre {
     background: var(--couleur-secondaire);
     color: white;
