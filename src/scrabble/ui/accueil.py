@@ -207,11 +207,23 @@ class ApiAccueil:
         un joueur manuellement. Retourne ``True`` si un joueur a été ajouté.
         """
         if self.config_partie.nb_humains > 0:
+            journal.info(
+                "Accueil : seeding du joueur humain ignoré (un humain est déjà "
+                "présent dans la configuration)."
+            )
             return False
         prenom = self.obtenir_prenom_principal().strip()
         if not prenom:
+            journal.info(
+                "Accueil : seeding du joueur humain ignoré (aucun prénom "
+                "principal configuré dans les réglages)."
+            )
             return False
         if not self.config_partie.ajouter_humain(prenom):
+            journal.info(
+                "Accueil : seeding du joueur humain échoué "
+                f"(ajouter_humain a refusé « {prenom} »)."
+            )
             return False
         journal.info(
             f"Accueil : joueur humain de référence ajouté d'office ({prenom})."
@@ -594,6 +606,18 @@ def lancer_accueil(
         # ajout manuel. Fait avant ``webview.start()`` pour que le premier
         # ``obtenir_etat()`` du JS le voie déjà. Il reste retirable ensuite.
         api.initialiser_joueur_humain()
+        # Trace d'objectivation (issue #145) : on journalise l'état que le
+        # premier ``obtenir_etat()`` du JS renverra, pour lever toute ambiguïté
+        # entre « le joueur n'est pas ajouté » (bug logique) et « il est ajouté
+        # mais pas rendu » (bug d'affichage) lors d'un test en conditions
+        # réelles.
+        _etat_ouverture = api.obtenir_etat()
+        journal.info(
+            "Accueil : état exposé au premier rendu — "
+            f"{_etat_ouverture['nb_humains']} humain(s), "
+            f"{_etat_ouverture['nb_ordinateurs']} ordinateur(s) ; "
+            f"joueurs = {[j['nom'] for j in _etat_ouverture['joueurs']]}."
+        )
         chemin_html = DOSSIER_WEB / "accueil.html"
         window = webview.create_window(
             "Scrabble - Nouvelle partie",

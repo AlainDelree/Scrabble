@@ -5,12 +5,24 @@
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // Attendre que pywebview soit prêt
+    // Attendre que le pont pywebview soit VRAIMENT prêt (issue #145).
+    //
+    // pywebview pose ``window.pywebview`` (jeton/infos plateforme) AVANT de
+    // publier ``window.pywebview.api`` (les méthodes Python exposées). L'ancien
+    // test ``if (window.pywebview)`` résolvait donc la promesse trop tôt :
+    // ``api`` capturait l'objet encore dépourvu de méthodes et le premier
+    // ``await api.obtenir_etat()`` (tout en bas de l'initialisation) échouait
+    // silencieusement — l'écran restait donc vide. C'est ce qui masquait le
+    // joueur humain ajouté d'office par #141 : l'ajout côté Python avait bien
+    // lieu, mais le rendu initial ne s'exécutait jamais, donnant l'illusion que
+    // rien n'avait changé. On attend désormais ``window.pywebview.api``, comme
+    // ``commun.js`` et ``reglages.js`` (``{ once: true }`` pour ne pas laisser
+    // traîner l'écouteur).
     await new Promise(resolve => {
-        if (window.pywebview) {
+        if (window.pywebview && window.pywebview.api) {
             resolve();
         } else {
-            window.addEventListener('pywebviewready', resolve);
+            window.addEventListener('pywebviewready', resolve, { once: true });
         }
     });
 
