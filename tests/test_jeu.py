@@ -1930,6 +1930,108 @@ class TestApiJeuPoseJoker:
         assert api._joker_demande is None
 
 
+class TestApiJeuRemplacementEnAttente:
+    """Remplacement d'une lettre en attente au clic, avec sélection (issue #129).
+
+    Un clic sur une case portant une lettre en attente du tour courant passe
+    désormais par ``remplacer_ou_retirer_lettre_en_attente`` : avec une lettre
+    sélectionnée, la sélection prend la place et l'ancienne revient au chevalet ;
+    sans sélection, le comportement de retrait simple est préservé.
+    """
+
+    def test_remplacement_avec_selection(self):
+        api, plateau, chevalet = _api_pose("CHATSER")
+        # « C » (index 0) posée en 7,7.
+        api.selectionner_lettre(0)
+        api.poser_lettre_en_attente(7, 7)
+        # On sélectionne « H » (index 1) et on reclique la case : remplacement.
+        api.selectionner_lettre(1)
+        res = api.remplacer_ou_retirer_lettre_en_attente(7, 7)
+        assert res["succes"] is True
+        # Une seule lettre en attente : la nouvelle, à la même place.
+        assert len(api._en_attente) == 1
+        place = api._en_attente[0]
+        assert (place["ligne"], place["colonne"]) == (7, 7)
+        assert place["lettre"] == "H"
+        assert place["index"] == 1
+        assert place["joker"] is False
+        # L'ancienne lettre (index 0) n'est plus consommée : de nouveau disponible.
+        assert all(p["index"] != 0 for p in api._en_attente)
+        # La sélection est consommée et l'état rediffusé aux deux fenêtres.
+        assert api._selection is None
+        assert "appliquerEtatPlateau" in plateau.scripts[-1]
+        assert "appliquerEtatChevalet" in chevalet.scripts[-1]
+
+    def test_remplacement_ne_casse_pas_le_compteur(self):
+        api, _plateau, _chevalet = _api_pose("CHATSER")
+        # Deux lettres posées : « C » (0) en 7,7 et « H » (1) en 7,8.
+        api.selectionner_lettre(0)
+        api.poser_lettre_en_attente(7, 7)
+        api.selectionner_lettre(1)
+        api.poser_lettre_en_attente(7, 8)
+        # On remplace « C » par « A » (index 2) : le compteur reste à 2.
+        api.selectionner_lettre(2)
+        api.remplacer_ou_retirer_lettre_en_attente(7, 7)
+        assert len(api._en_attente) == 2
+        indices = sorted(p["index"] for p in api._en_attente)
+        assert indices == [1, 2]  # « C » (0) libérée, « A » (2) posée, « H » (1) intacte
+
+    def test_sans_selection_retrait_simple(self):
+        api, plateau, _chevalet = _api_pose("CHATSER")
+        api.selectionner_lettre(0)
+        api.poser_lettre_en_attente(7, 7)
+        # Aucune sélection active au moment du clic : retrait simple (cas limite 1).
+        assert api._selection is None
+        res = api.remplacer_ou_retirer_lettre_en_attente(7, 7)
+        assert res["succes"] is True
+        assert api._en_attente == []
+        assert res.get("joker_requis") is None
+
+    def test_remplacement_par_joker_ouvre_la_modale(self):
+        api, _plateau, chevalet = _api_pose("C" + JOKER + "ATSER")
+        # « C » (index 0) posée en 7,7, puis on sélectionne le joker (index 1).
+        api.selectionner_lettre(0)
+        api.poser_lettre_en_attente(7, 7)
+        api.selectionner_lettre(1)
+        res = api.remplacer_ou_retirer_lettre_en_attente(7, 7)
+        assert res["succes"] is True
+        assert res["joker_requis"] is True
+        # La pose du joker est différée : l'ancienne lettre reste en place tant que
+        # la modale n'est pas validée, et la case est mémorisée pour le chevalet.
+        assert api._joker_demande == {"ligne": 7, "colonne": 7, "index": 1}
+        assert len(api._en_attente) == 1
+        assert api._en_attente[0]["lettre"] == "C"
+        # Finalisation depuis le chevalet : le joker remplace l'ancienne lettre.
+        api.poser_lettre_en_attente(7, 7, lettre="E", joker=True, valeur=0, index=1)
+        assert len(api._en_attente) == 1
+        place = api._en_attente[0]
+        assert place["lettre"] == "E"
+        assert place["joker"] is True
+        assert place["index"] == 1
+        assert api._joker_demande is None
+
+    def test_case_sans_lettre_en_attente_sans_effet(self):
+        api, plateau, _chevalet = _api_pose("CHATSER")
+        api.selectionner_lettre(0)
+        avant = len(plateau.scripts)
+        res = api.remplacer_ou_retirer_lettre_en_attente(0, 0)
+        assert res["succes"] is True
+        assert api._en_attente == []
+        # Aucune mutation : la sélection reste intacte, rien n'est rediffusé.
+        assert api._selection == 0
+        assert len(plateau.scripts) == avant
+
+    def test_remplacement_hors_tour_refuse(self):
+        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api.selectionner_lettre(0)
+        api.poser_lettre_en_attente(7, 7)
+        # On passe hors tour : la mutation doit être refusée sans toucher l'état.
+        api._partie.index_courant = 1
+        res = api.remplacer_ou_retirer_lettre_en_attente(7, 7)
+        assert res["succes"] is False
+        assert len(api._en_attente) == 1
+
+
 class TestApiJeuGardeDeTour:
     """Mutations de pose refusées hors du tour du joueur de référence (issue #99).
 

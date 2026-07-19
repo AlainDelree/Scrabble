@@ -492,7 +492,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Clic sur une case du plateau :
-     *  - case portant une lettre en attente : on demande à Python de la retirer ;
+     *  - case portant une lettre en attente : Python retire cette lettre (sans
+     *    sélection) ou la remplace par la lettre sélectionnée dans le chevalet,
+     *    l'ancienne repartant au chevalet (issue #129) ;
      *  - case déjà occupée par une tuile validée : refus (message clair) ;
      *  - case vide : on demande la pose ; Python résout la lettre sélectionnée
      *    (dans la fenêtre chevalet) et, s'il s'agit d'un joker, ouvre la modale de
@@ -507,13 +509,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         const ligne = Number(caseEl.dataset.ligne);
         const colonne = Number(caseEl.dataset.colonne);
 
-        // Retrait d'une lettre en attente (recliquer sa case).
+        // Case portant une lettre en attente (recliquer sa case). Python décide :
+        //  - sans sélection dans le chevalet : retrait simple (comportement d'origine) ;
+        //  - avec une lettre sélectionnée : remplacement — l'ancienne lettre revient
+        //    au chevalet, la sélection prend sa place (issue #129). Sur un joker
+        //    sélectionné, la modale de choix s'ouvre côté chevalet (joker_requis).
         if (attenteEn(ligne, colonne)) {
             afficherMessagePlateau('');
+            let res;
             try {
-                await api.retirer_lettre_en_attente(ligne, colonne);
+                res = await api.remplacer_ou_retirer_lettre_en_attente(ligne, colonne);
             } catch (err) {
                 afficherMessagePlateau('Erreur lors du retrait de la lettre.', 'erreur');
+                return;
+            }
+            if (res && res.joker_requis) {
+                afficherMessagePlateau(
+                    'Choisissez la lettre du joker dans la fenêtre « Chevalet ».', 'info');
+            } else if (res && res.succes === false) {
+                afficherMessagePlateau(res.erreur || 'Remplacement impossible.', 'info');
             }
             return;
         }

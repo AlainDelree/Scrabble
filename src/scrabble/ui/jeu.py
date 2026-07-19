@@ -1324,16 +1324,28 @@ class ApiJeu:
                 "succes": False,
                 "erreur": "Cette case porte déjà une tuile.",
             }
-        if any(p["ligne"] == ligne and p["colonne"] == colonne for p in self._en_attente):
-            return {"succes": False, "erreur": "Une lettre est déjà posée ici."}
-
-        # Mode « finalisation » : la lettre (et son index) sont fournis.
+        # Mode « finalisation » : la lettre (et son index) sont fournis. Traité
+        # avant le garde « lettre déjà posée ici » car une finalisation peut
+        # légitimement écraser une lettre en attente (remplacement par un joker,
+        # issue #129).
         if lettre is not None and index is not None:
             self._joker_demande = None
+            # Remplacement d'une lettre en attente par un joker (issue #129) :
+            # l'ancienne lettre a été laissée en place jusqu'à la validation de la
+            # modale de choix ; on la retire ici pour que le joker prenne sa place
+            # (l'ancienne redevient disponible au chevalet). Sur une case vierge,
+            # ce filtre est sans effet.
+            self._en_attente = [
+                p for p in self._en_attente
+                if not (p["ligne"] == ligne and p["colonne"] == colonne)
+            ]
             return self._ajouter_placement(
                 ligne, colonne, str(lettre), bool(joker),
                 int(valeur) if valeur is not None else 0, int(index),
             )
+
+        if any(p["ligne"] == ligne and p["colonne"] == colonne for p in self._en_attente):
+            return {"succes": False, "erreur": "Une lettre est déjà posée ici."}
 
         # Mode « clic plateau » : on résout la lettre via la sélection courante.
         if self._selection is None:
@@ -1408,6 +1420,74 @@ class ApiJeu:
             self._selection = None
             self._diffuser()
         return {"succes": True}
+
+    def remplacer_ou_retirer_lettre_en_attente(
+        self, ligne: Any, colonne: Any
+    ) -> dict[str, Any]:
+        """Clic sur une case portant une lettre en attente du tour courant — issue #129.
+
+        Point d'entrée unique appelé par la fenêtre plateau au clic sur une case
+        qui porte déjà une lettre **en attente** (pas une tuile validée). La
+        fenêtre plateau ignore l'état de sélection du chevalet ; c'est donc ici,
+        côté Python, que se décide le comportement :
+
+        * **aucune lettre sélectionnée** (``_selection is None``) : simple retrait,
+          la lettre redevient disponible au chevalet — comportement historique
+          strictement préservé (cas limite 1) ;
+        * **une lettre sélectionnée** : la lettre sélectionnée **prend la place**
+          de la lettre en attente, laquelle **retourne** au chevalet, en un seul
+          geste. Si la lettre sélectionnée est un **joker**, on diffère la pose
+          via la modale de choix (``_joker_demande``) exactement comme sur une
+          case vide : l'ancienne lettre reste en place jusqu'à la validation du
+          choix, et la finalisation la remplacera (annuler la modale ne change
+          alors rien).
+
+        Ne concerne jamais une case sans lettre en attente ni une tuile validée
+        (le JS n'y route pas ce clic) ; renvoie ``{"succes": True}`` sans effet si
+        aucune lettre n'attend sur la case. Réservée au tour du joueur de
+        référence (garde :meth:`_refuser_hors_tour`).
+        """
+        refus = self._refuser_hors_tour()
+        if refus is not None:
+            return refus
+        placement = next(
+            (
+                p for p in self._en_attente
+                if p["ligne"] == ligne and p["colonne"] == colonne
+            ),
+            None,
+        )
+        if placement is None:
+            # Rien en attente ici : aucun effet (le JS ne devrait pas router ici).
+            return {"succes": True}
+        # Sans sélection active : on conserve le retrait simple (cas limite 1).
+        if self._selection is None:
+            return self.retirer_lettre_en_attente(ligne, colonne)
+        idx = self._selection
+        chevalet = self._partie.joueur_courant().chevalet
+        if not (0 <= idx < len(chevalet)):
+            return {"succes": False, "erreur": "Lettre sélectionnée invalide."}
+        jeton = chevalet[idx]
+        if jeton == JOKER:
+            # Le remplacement par un joker passe par la modale de choix : on ne
+            # retire pas encore l'ancienne lettre (la finalisation le fera), pour
+            # qu'un abandon de la modale laisse la case inchangée.
+            self._joker_demande = {"ligne": ligne, "colonne": colonne, "index": idx}
+            self._diffuser()
+            return {
+                "succes": True,
+                "joker_requis": True,
+                "ligne": ligne,
+                "colonne": colonne,
+                "index": idx,
+            }
+        # Remplacement direct : l'ancienne lettre retourne au chevalet, la nouvelle
+        # prend sa place sur la même case (``_ajouter_placement`` remet la sélection
+        # à None et diffuse — une seule opération perçue côté joueur).
+        self._en_attente = [p for p in self._en_attente if p is not placement]
+        return self._ajouter_placement(
+            ligne, colonne, jeton, False, valeur_lettre(jeton), idx
+        )
 
     def annuler_pose(self) -> dict[str, Any]:
         """Abandonne toute la pose en cours (sélection + placements) — issue #90.
