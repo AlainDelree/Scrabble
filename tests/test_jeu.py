@@ -2990,3 +2990,161 @@ class TestZoneTravailEcran:
         monkeypatch.setattr(builtins, "__import__", _refuse_gi)
         monkeypatch.setattr(mod.webview, "screens", [])
         assert mod._zone_travail_ecran() is None
+
+
+class TestMemoriserPositionChevalet:
+    """Mémorisation/restauration de la position de la fenêtre chevalet (issue #135)."""
+
+    def _api(self, x=200, y=500):
+        joueurs = [Joueur(nom="Alice", humain=True)]
+        api = ApiJeu(Partie(joueurs, _DicoFactice(), graine=1), None)
+        fen = _FenetreDeplacable(x=x, y=y)
+        api.set_windows(_FenetreEspionne(), fen)
+        return api, fen
+
+    def _ecran(self, monkeypatch, larg=1920, haut=1080):
+        from scrabble.ui import jeu as mod
+
+        class _Ecran:
+            width = larg
+            height = haut
+
+        monkeypatch.setattr(mod.webview, "screens", [_Ecran()])
+
+    # --- Persistance à la fin d'un déplacement -----------------------------
+
+    def test_fin_deplacement_persiste_la_position(self, tmp_path, monkeypatch):
+        """À la fin d'un drag, la position est écrite via le mécanisme de réglages."""
+        from scrabble.ui import jeu as mod
+        from scrabble.reglages import lire_reglage
+        from scrabble.reglages import modifier_reglage as vrai_modifier
+
+        chemin = tmp_path / "config.json"
+        # Redirige l'écriture du réglage vers un fichier de test (round-trip réel
+        # sur disque via scrabble.reglages/config, auto-réparation + écriture atomique).
+        monkeypatch.setattr(
+            mod,
+            "modifier_reglage",
+            lambda cle, valeur: vrai_modifier(cle, valeur, chemin),
+        )
+        api, _ = self._api(x=340, y=610)
+
+        res = api.fin_deplacement_chevalet()
+
+        assert res == {"succes": True, "x": 340, "y": 610}
+        assert lire_reglage("position_chevalet", chemin) == {"x": 340, "y": 610}
+
+    def test_fin_deplacement_journalise(self, tmp_path, monkeypatch):
+        from scrabble.ui import jeu as mod
+        from scrabble.reglages import modifier_reglage as vrai_modifier
+
+        chemin = tmp_path / "config.json"
+        monkeypatch.setattr(
+            mod,
+            "modifier_reglage",
+            lambda cle, valeur: vrai_modifier(cle, valeur, chemin),
+        )
+        infos: list = []
+        monkeypatch.setattr(
+            "scrabble.ui.jeu.journal.info", lambda message: infos.append(message)
+        )
+        api, _ = self._api(x=12, y=34)
+
+        api.fin_deplacement_chevalet()
+
+        assert any("position du chevalet mémorisée" in m for m in infos)
+
+    def test_fin_deplacement_sans_fenetre_echoue_proprement(self):
+        joueurs = [Joueur(nom="Alice", humain=True)]
+        api = ApiJeu(Partie(joueurs, _DicoFactice(), graine=1), None)
+        assert api.fin_deplacement_chevalet()["succes"] is False
+
+    def test_fin_deplacement_erreur_reglage_non_bloquante(self, monkeypatch):
+        """Un échec d'écriture du réglage est remonté sans planter le jeu."""
+        from scrabble.ui import jeu as mod
+
+        def _explose(cle, valeur):
+            raise RuntimeError("disque plein (test)")
+
+        monkeypatch.setattr(mod, "modifier_reglage", _explose)
+        monkeypatch.setattr("scrabble.ui.jeu.journal.erreur", lambda *a, **k: None)
+        api, _ = self._api()
+
+        res = api.fin_deplacement_chevalet()
+
+        assert res["succes"] is False
+
+    # --- Lecture de la position mémorisée au lancement ---------------------
+
+    def test_memorisee_valide_utilisee(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        self._ecran(monkeypatch)  # 1920×1080
+        monkeypatch.setattr(mod, "lire_reglage", lambda cle: {"x": 500, "y": 700})
+        assert mod._position_chevalet_memorisee() == (500, 700)
+
+    def test_memorisee_absente_repli_none(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        self._ecran(monkeypatch)
+        monkeypatch.setattr(mod, "lire_reglage", lambda cle: None)
+        assert mod._position_chevalet_memorisee() is None
+
+    def test_memorisee_ecran_non_mesurable_repli_none(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        # Aucun écran interrogeable (avant démarrage de la boucle GUI) : on ne
+        # peut pas vérifier les limites, on retombe sur le calcul par défaut.
+        monkeypatch.setattr(mod.webview, "screens", [])
+        reinit: list = []
+        monkeypatch.setattr(mod, "lire_reglage", lambda cle: {"x": 500, "y": 700})
+        monkeypatch.setattr(
+            mod, "modifier_reglage", lambda cle, valeur: reinit.append((cle, valeur))
+        )
+        assert mod._position_chevalet_memorisee() is None
+        # Écran non mesurable : on ne réinitialise PAS (position peut-être bonne).
+        assert reinit == []
+
+    def test_memorisee_hors_ecran_repli_et_reinitialisee(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        self._ecran(monkeypatch, larg=1280, haut=720)
+        reinit: list = []
+        monkeypatch.setattr(mod, "lire_reglage", lambda cle: {"x": 5000, "y": 5000})
+        monkeypatch.setattr(
+            mod, "modifier_reglage", lambda cle, valeur: reinit.append((cle, valeur))
+        )
+        assert mod._position_chevalet_memorisee() is None
+        # Le réglage périmé (hors écran actuel) est réinitialisé à None.
+        assert reinit == [("position_chevalet", None)]
+
+    # --- Intégration via _repositionner_chevalet ---------------------------
+
+    def test_repositionner_utilise_position_memorisee(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        self._ecran(monkeypatch)  # 1920×1080
+        monkeypatch.setattr("scrabble.ui.jeu.journal.info", lambda m: None)
+        monkeypatch.setattr(mod, "lire_reglage", lambda cle: {"x": 500, "y": 700})
+        fen = _FenetreShown(x=100, y=100)
+
+        mod._repositionner_chevalet(fen)
+
+        # La position mémorisée valide prime sur le calcul bas-centre.
+        assert fen.moves == [(500, 700)]
+
+    def test_repositionner_hors_ecran_retombe_sur_defaut(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        self._ecran(monkeypatch)  # 1920×1080
+        monkeypatch.setattr("scrabble.ui.jeu.journal.info", lambda m: None)
+        monkeypatch.setattr(mod, "lire_reglage", lambda cle: {"x": 9000, "y": 9000})
+        monkeypatch.setattr(mod, "modifier_reglage", lambda cle, valeur: None)
+        fen = _FenetreShown(x=100, y=100)
+
+        mod._repositionner_chevalet(fen)
+
+        # Position hors écran → repli sur le calcul bas-centre par défaut.
+        x_attendu = (1920 - CHEVALET_LARGEUR) // 2
+        y_attendu = 1080 - CHEVALET_HAUTEUR - mod.CHEVALET_MARGE_BAS
+        assert fen.moves == [(x_attendu, y_attendu)]

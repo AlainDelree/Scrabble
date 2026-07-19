@@ -22,6 +22,7 @@ from typing import Any
 from .config import (
     CHEMIN_CONFIG,
     CLES_BOOLEENNES,
+    CLES_POSITION,
     CONFIG_DEFAUT,
     charger_config,
     sauvegarder_config,
@@ -58,6 +59,15 @@ def modifier_reglage(
     if cle in CLES_BOOLEENNES:
         if not isinstance(valeur, bool):
             raise TypeError(f"La valeur de « {cle} » doit être un booléen.")
+    elif cle in CLES_POSITION:
+        # Position mémorisée (issue #135) : un dictionnaire {"x", "y"} ou None.
+        # Toute forme invalide est réparée vers None par la normalisation
+        # config, inutile donc de lever ici (contrairement aux autres clés).
+        if valeur is not None and not isinstance(valeur, dict):
+            raise TypeError(
+                f"La valeur de « {cle} » doit être un dictionnaire "
+                f'{{"x": int, "y": int}} ou None.'
+            )
     elif not isinstance(valeur, str):
         raise TypeError(f"La valeur de « {cle} » doit être une chaîne de caractères.")
     config = charger_config(chemin)

@@ -41,6 +41,7 @@ import webview
 
 from scrabble import journal
 from scrabble.config import THEMES_PLATEAU, charger_config
+from scrabble.reglages import lire_reglage, modifier_reglage
 from scrabble.dictionnaire.dictionnaire import (
     CHEMIN_DEFINITIONS,
     Trie,
@@ -1254,6 +1255,34 @@ class ApiJeu:
         except Exception as e:  # noqa: BLE001 - un déplacement raté ne bloque pas le jeu
             return {"succes": False, "erreur": f"Déplacement impossible : {e}"}
 
+    def fin_deplacement_chevalet(self) -> dict[str, Any]:
+        """Mémorise la position de la fenêtre chevalet à la **fin** d'un drag (issue #135).
+
+        Appelée par le JS de la barre de titre une seule fois, au relâchement du
+        clic (``mouseup``) — surtout pas à chaque mouvement, pour n'écrire sur
+        disque qu'une fois par déplacement plutôt qu'à chaque pixel parcouru. La
+        position lue (``window.x``/``.y``, fiable depuis la bascule XWayland de
+        l'issue #93) est persistée dans le réglage ``position_chevalet`` via le
+        mécanisme habituel (:mod:`scrabble.reglages`, auto-réparation + écriture
+        atomique), pour être réutilisée au prochain lancement de l'écran de jeu.
+        Tout échec est journalisé sans planter le jeu.
+        """
+        if self._window_chevalet is None:
+            return {"succes": False, "erreur": "Aucune fenêtre chevalet."}
+        try:
+            x, y = int(self._window_chevalet.x), int(self._window_chevalet.y)
+        except Exception as e:  # noqa: BLE001 - position indisponible : on n'enregistre rien
+            return {"succes": False, "erreur": f"Position indisponible : {e}"}
+        try:
+            modifier_reglage("position_chevalet", {"x": x, "y": y})
+            journal.info(f"Jeu : position du chevalet mémorisée ({x}, {y}).")
+        except Exception as e:  # noqa: BLE001 - une mémorisation ratée ne bloque pas le jeu
+            journal.erreur(
+                "Jeu : échec de la mémorisation de la position du chevalet.", e
+            )
+            return {"succes": False, "erreur": f"Mémorisation impossible : {e}"}
+        return {"succes": True, "x": x, "y": y}
+
     def _refuser_hors_tour(self) -> dict[str, Any] | None:
         """Refus normalisé si une mutation de pose est tentée hors du tour.
 
@@ -2059,6 +2088,81 @@ def _position_chevalet(
     return x, y
 
 
+def _dimensions_ecran() -> tuple[int, int]:
+    """Dimensions ``(largeur, hauteur)`` du premier écran, ou ``(0, 0)`` si illisible.
+
+    Lit ``webview.screens`` comme :func:`_position_chevalet` (même moteur, même
+    contrainte : fiable seulement une fois la boucle GUI démarrée sous WebKitGTK,
+    issue #91). Ne lève jamais : en l'absence d'écran interrogeable, retourne
+    ``(0, 0)`` — le repli est laissé à l'appelant.
+    """
+    try:
+        ecrans = webview.screens
+        ecran = ecrans[0] if ecrans else None
+        larg = int(getattr(ecran, "width", 0) or 0)
+        haut = int(getattr(ecran, "height", 0) or 0)
+    except Exception as e:  # noqa: BLE001 - pas d'écran interrogeable
+        journal.erreur("Jeu : lecture des dimensions d'écran impossible.", e)
+        return 0, 0
+    return larg, haut
+
+
+def _position_chevalet_memorisee(
+    largeur: int = CHEVALET_LARGEUR, hauteur: int = CHEVALET_HAUTEUR
+) -> tuple[int, int] | None:
+    """Position mémorisée du chevalet si elle tient dans l'écran actuel (issue #135).
+
+    Lit le réglage ``position_chevalet`` (via :mod:`scrabble.reglages`). Retourne
+    ``(x, y)`` uniquement si une position est enregistrée **et** que la fenêtre
+    (``largeur``×``hauteur`` posée en ``(x, y)``) tient entièrement dans le premier
+    écran mesuré via ``webview.screens`` — le même contrôle de limites que celui
+    servant au calcul bas-centre par défaut. Sinon retourne ``None`` (l'appelant
+    retombe alors sur :func:`_position_chevalet`) :
+
+    * réglage absent (``None``) ou illisible ;
+    * écran non mesurable (dimensions ``0`` — typiquement avant le démarrage de la
+      boucle GUI) : on ne peut pas garantir la validité, on préfère le calcul par
+      défaut sans toucher au réglage (il peut rester bon) ;
+    * position hors des limites de l'écran actuel (résolution/moniteur différent
+      entre deux sessions) : le réglage périmé est alors **réinitialisé** à
+      ``None`` plutôt que laissé invalide indéfiniment.
+    """
+    try:
+        pos = lire_reglage("position_chevalet")
+    except Exception as e:  # noqa: BLE001 - réglage illisible : repli par défaut
+        journal.erreur("Jeu : lecture du réglage position_chevalet impossible.", e)
+        return None
+    if not isinstance(pos, dict):
+        return None  # aucune position mémorisée (défaut None)
+    x, y = pos.get("x"), pos.get("y")
+    if not isinstance(x, int) or not isinstance(y, int):
+        return None
+    larg_ecran, haut_ecran = _dimensions_ecran()
+    if larg_ecran <= 0 or haut_ecran <= 0:
+        # Écran non mesurable : on ne réinitialise pas (position peut-être encore
+        # valide), mais on laisse le calcul par défaut décider pour cet appel.
+        journal.info(
+            "Jeu : position chevalet mémorisée non vérifiable (écran non mesuré) "
+            "— repli sur le calcul par défaut."
+        )
+        return None
+    dans_ecran = (0 <= x <= larg_ecran - largeur) and (0 <= y <= haut_ecran - hauteur)
+    if not dans_ecran:
+        journal.info(
+            f"Jeu : position chevalet mémorisée ({x}, {y}) hors de l'écran actuel "
+            f"{larg_ecran}×{haut_ecran}px — réinitialisation et repli bas-centre."
+        )
+        try:
+            modifier_reglage("position_chevalet", None)
+        except Exception as e:  # noqa: BLE001 - réinitialisation ratée : sans gravité
+            journal.erreur(
+                "Jeu : réinitialisation de position_chevalet impossible.", e
+            )
+        return None
+    journal.info(f"Jeu : position chevalet mémorisée réutilisée ({x}, {y}).")
+    return x, y
+
+
 def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
     """Crée les **deux** fenêtres de jeu (plateau + chevalet) et démarre la boucle.
 
@@ -2372,8 +2476,19 @@ def _repositionner_chevalet(window_chevalet: "webview.Window") -> None:
         # configurer_backend_graphique`, appelée au lancement) ; l'attente de
         # ``shown`` reste une précaution utile sous X11.
         _attendre_fenetre_affichee(window_chevalet)
-        x, y = _position_chevalet()
-        journal.info(f"Jeu : repositionnement chevalet — cible calculée ({x}, {y}).")
+        # Priorité à la dernière position mémorisée si elle tient dans l'écran
+        # actuel (issue #135) ; sinon, calcul bas-centre par défaut (issue #90).
+        memorisee = _position_chevalet_memorisee()
+        if memorisee is not None:
+            x, y = memorisee
+            journal.info(
+                f"Jeu : repositionnement chevalet — position mémorisée ({x}, {y})."
+            )
+        else:
+            x, y = _position_chevalet()
+            journal.info(
+                f"Jeu : repositionnement chevalet — cible calculée ({x}, {y})."
+            )
         window_chevalet.move(x, y)
         # Relire la position réellement prise par la fenêtre après le move : c'est
         # la preuve, dans le log, que le déplacement a bien été honoré par le WM

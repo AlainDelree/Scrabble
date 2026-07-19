@@ -320,7 +320,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
             dragActif = false;
+            // Vide un déplacement encore en attente (throttle rAF) afin que la
+            // fenêtre soit bien à sa position finale avant de la mémoriser.
+            if (dragCible) {
+                envoyerDeplacement();
+            }
             console.log('[chevalet] fin de drag (mouseup).');
+            // Mémorise la position finale (issue #135) : une seule écriture disque,
+            // au relâchement du clic, et non à chaque frame du glissé.
+            try {
+                api.fin_deplacement_chevalet();
+            } catch (err) {
+                console.log('[chevalet] fin_deplacement_chevalet a échoué :', err);
+            }
         }
 
         // Démarrage confiné à la barre ; suivi/fin sur le document entier pour ne
