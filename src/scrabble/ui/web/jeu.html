@@ -216,8 +216,12 @@
                     </button>
                     <!-- Échange PARTIEL (réglage « type_echange » = partiel, issue #138) :
                          on entre dans un mode de sélection multiple côté chevalet, puis
-                         on valide. Ces boutons ne sont visibles qu'en mode partiel. -->
-                    <button id="btn-commencer-echange" class="lien-discret" hidden
+                         on valide. Ces boutons ne sont visibles qu'en mode partiel.
+                         Bouton à part entière (issue #147) — même famille visuelle que
+                         « Remettre toutes ses lettres et passer » du mode complet
+                         (« btn btn-secondaire »), pour une apparence de bouton cohérente
+                         dès l'état initial, avant même d'engager la sélection. -->
+                    <button id="btn-commencer-echange" class="btn btn-secondaire" hidden
                             title="Choisissez librement les lettres à échanger sur votre chevalet, puis validez">
                         ♻️ Échanger des lettres…
                     </button>

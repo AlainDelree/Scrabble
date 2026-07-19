@@ -1529,6 +1529,60 @@ class TestEchangerSelection:
         assert partie.index_courant == 1
 
 
+class TestApparenceBoutonsEchange:
+    """Cohérence visuelle des boutons d'échange dans le markup (issue #147).
+
+    Vérification headless : « Échanger des lettres… » (mode partiel) doit avoir
+    l'apparence d'un vrai bouton **dès son état initial**, avant tout clic — la
+    même famille visuelle (« btn btn-secondaire ») que « Remettre toutes ses
+    lettres et passer » (mode complet, issue #139). Une fois le mode de sélection
+    engagé (« après clic »), les boutons révélés (« Échanger la sélection… » /
+    « Annuler la sélection ») doivent eux aussi porter le style « btn ».
+    """
+
+    @staticmethod
+    def _classes(html: str, id_bouton: str) -> list[str]:
+        """Renvoie la liste des classes CSS du ``<button id=...>`` demandé."""
+        import re
+
+        motif = re.compile(
+            r'<button\b[^>]*\bid="' + re.escape(id_bouton) + r'"[^>]*>',
+            re.DOTALL,
+        )
+        balise = motif.search(html)
+        assert balise is not None, f"bouton #{id_bouton} introuvable dans jeu.html"
+        classe = re.search(r'\bclass="([^"]*)"', balise.group(0))
+        assert classe is not None, f"bouton #{id_bouton} sans attribut class"
+        return classe.group(1).split()
+
+    def _html(self) -> str:
+        from scrabble.ui.jeu import DOSSIER_WEB
+
+        return (DOSSIER_WEB / "jeu.html").read_text(encoding="utf-8")
+
+    def test_bouton_commencer_echange_a_apparence_de_bouton(self):
+        """État initial (avant clic) : « Échanger des lettres… » est un vrai bouton."""
+        classes = self._classes(self._html(), "btn-commencer-echange")
+        assert "btn" in classes
+        assert "btn-secondaire" in classes
+        # Plus de style « lien discret » : plus de changement d'apparence au clic.
+        assert "lien-discret" not in classes
+
+    def test_coherence_entre_modes_complet_et_partiel(self):
+        """Les deux déclencheurs d'échange partagent la même famille visuelle."""
+        html = self._html()
+        complet = self._classes(html, "btn-echanger-tout")
+        partiel = self._classes(html, "btn-commencer-echange")
+        assert "btn" in complet and "btn-secondaire" in complet
+        assert set(complet) == set(partiel)
+
+    def test_boutons_selection_restent_des_boutons(self):
+        """Après clic : les boutons de sélection révélés gardent le style « btn »."""
+        html = self._html()
+        assert "btn" in self._classes(html, "btn-echanger-selection")
+        assert "btn" in self._classes(html, "btn-annuler-echange")
+
+
 class TestPasserTour:
     """Passage « sec » du tour (sans échange) — débloque un humain sac vide (#132)."""
 
