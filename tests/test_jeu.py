@@ -1583,6 +1583,69 @@ class TestApparenceBoutonsEchange:
         assert "btn" in self._classes(html, "btn-annuler-echange")
 
 
+class TestBoutonJouerDansFicheJoueur:
+    """Bouton « ▶ Jouer » dans la fiche d'un ordinateur courant (issue #149).
+
+    Vérification headless du markup : pendant le tour d'un ordinateur, sa fiche
+    joueur expose un bouton « ▶ Jouer » (classe ``panneau-btn-jouer``) à la place
+    de l'ancien label « ● son tour », qui déclenche ``api.faire_jouer_ia`` ; l'humain
+    courant garde sa pastille « ● à vous ». L'ancien bouton séparé de la zone
+    d'attente IA (``#btn-jouer-ia``, « Faire jouer l'ordinateur ») est retiré ;
+    seul le message d'attente subsiste dans cette zone.
+    """
+
+    def _lire(self, nom: str) -> str:
+        from scrabble.ui.jeu import DOSSIER_WEB
+
+        return (DOSSIER_WEB / nom).read_text(encoding="utf-8")
+
+    def test_fiche_ordinateur_courant_a_un_bouton_jouer(self):
+        """La branche « ordinateur courant » produit un bouton « Jouer »."""
+        js = self._lire("jeu.js")
+        # Le bouton porte la classe dédiée, le style primaire et le texte « Jouer ».
+        assert "panneau-btn-jouer" in js
+        assert "▶ Jouer" in js
+        assert "btn btn-primaire panneau-btn-jouer" in js
+
+    def test_humain_courant_garde_la_pastille_a_vous(self):
+        """L'humain courant conserve « ● à vous » (pas de bouton Jouer)."""
+        js = self._lire("jeu.js")
+        assert "● à vous" in js
+
+    def test_ancien_label_son_tour_retire(self):
+        """Le label « son tour » a disparu (remplacé par le bouton Jouer).
+
+        On cible la chaîne LITTÉRALE ``'son tour'`` de l'ancien ternaire de badge ;
+        « Passer son tour » (autre fonctionnalité) reste évidemment présent ailleurs.
+        """
+        js = self._lire("jeu.js")
+        assert "'son tour'" not in js
+
+    def test_bouton_declenche_faire_jouer_ia(self):
+        """Le bouton de la fiche est câblé au flux api.faire_jouer_ia."""
+        js = self._lire("jeu.js")
+        # Le bouton du panneau est relié à lancerTourIA, qui appelle l'API.
+        assert "querySelector('.panneau-btn-jouer')" in js
+        assert "lancerTourIA" in js
+        assert "api.faire_jouer_ia()" in js
+
+    def test_ancien_bouton_separe_retire(self):
+        """Plus de bouton « Faire jouer l'ordinateur » dans la zone d'attente."""
+        html = self._lire("jeu.html")
+        js = self._lire("jeu.js")
+        assert 'id="btn-jouer-ia"' not in html
+        assert "btn-jouer-ia" not in js
+        assert "btnJouerIA" not in js
+
+    def test_zone_attente_conserve_son_message(self):
+        """La zone d'attente IA garde son message « En attente du coup de… »."""
+        html = self._lire("jeu.html")
+        js = self._lire("jeu.js")
+        assert 'id="zone-attente-ia"' in html
+        assert 'id="attente-ia-message"' in html
+        assert "En attente du coup de" in js
+
+
 class TestPasserTour:
     """Passage « sec » du tour (sans échange) — débloque un humain sac vide (#132)."""
 

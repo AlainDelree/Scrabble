@@ -825,6 +825,19 @@ header {
     font-weight: 700;
 }
 
+/* Bouton « ▶ Jouer » d'un ordinateur courant (issue #149) : remplace la pastille
+   « son tour » et déclenche le coup (api.faire_jouer_ia). Compact pour tenir sur
+   la ligne unique du panneau, style primaire vert cohérent avec l'ancien bouton
+   « Faire jouer l'ordinateur ». */
+.panneau-btn-jouer {
+    flex-shrink: 0;
+    padding: 4px 12px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
 /* Panneau du bas (joueur humain de référence) : MÊME ligne compacte que les
    trois autres côtés (issue #47, point 1). Centré juste au-dessus du chevalet,
    qu'il continue de précéder (sa fonction est préservée). */

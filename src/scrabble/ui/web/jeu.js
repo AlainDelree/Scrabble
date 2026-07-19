@@ -4,7 +4,8 @@
  * Depuis la séparation en deux fenêtres pywebview (issue #90), cette vue ne porte
  * plus QUE la partie « publique » de l'écran de jeu : le plateau 15×15, les
  * panneaux d'information des joueurs, la barre du sac/historique, le bouton
- * « Faire jouer l'ordinateur » (déplacé ici, car un tour IA relève du plateau),
+ * « ▶ Jouer » de la fiche d'un ordinateur courant (issue #149, ex-« Faire jouer
+ * l'ordinateur » ; un tour IA relève du plateau, l'humain n'a rien à jouer),
  * la vérification dictionnaire (saisie libre, sans lien avec le chevalet), le
  * « Retour au menu » et une copie de la modale de détail du score (ouverte depuis
  * l'historique). Le chevalet, le brouillon, la mécanique de pose (sélection +
@@ -72,10 +73,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const confirmationConfirmer = document.getElementById('confirmation-confirmer');
 
     // Mode « attente d'un tour d'ordinateur » (issue #35) déplacé côté plateau
-    // (issue #90) : bloc + bouton « Faire jouer l'ordinateur ».
+    // (issue #90) : bloc + message « En attente du coup de… ». Le déclenchement du
+    // coup se fait désormais via le bouton « ▶ Jouer » de la fiche du joueur
+    // ordinateur courant (issue #149), plus par un bouton séparé.
     const zoneAttenteIA = document.getElementById('zone-attente-ia');
     const attenteMessageIA = document.getElementById('attente-ia-message');
-    const btnJouerIA = document.getElementById('btn-jouer-ia');
 
     // Actions de tour (issue #101) : rapatriées depuis la fenêtre chevalet. Elles
     // ne sont visibles/actives que pendant le tour du joueur humain (voir
@@ -226,9 +228,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         item.className = `panneau-joueur ${nature}${joueur.courant ? ' courant' : ''}`;
         item.dataset.cote = joueur.position || '';
 
-        const badgeTour = joueur.courant
-            ? `<span class="panneau-tour">● ${joueur.humain ? 'à vous' : 'son tour'}</span>`
-            : '';
+        // Joueur courant : l'humain voit une pastille « à vous » ; un ordinateur
+        // expose directement un bouton « ▶ Jouer » (issue #149) qui déclenche son
+        // coup (api.faire_jouer_ia), à la place de l'ancien label « son tour » et
+        // du bouton séparé de la zone d'attente IA (retiré).
+        let badgeTour = '';
+        if (joueur.courant) {
+            badgeTour = joueur.humain
+                ? '<span class="panneau-tour">● à vous</span>'
+                : '<button type="button" class="btn btn-primaire panneau-btn-jouer">▶ Jouer</button>';
+        }
         const avatarHtml = joueur.avatar
             ? `<img class="panneau-avatar" src="avatars/${encodeURIComponent(joueur.avatar)}.svg"
                     alt="" width="26" height="26">`
@@ -258,6 +267,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             ${badgeOrdinateur}
             ${badgeTour}
         `;
+        // Le bouton « ▶ Jouer » d'un ordinateur courant (issue #149) déclenche le
+        // même flux que l'ancien bouton de la zone d'attente IA. Le panneau est
+        // reconstruit à chaque diffusion, donc l'écouteur est (ré)attaché ici.
+        const boutonJouer = item.querySelector('.panneau-btn-jouer');
+        if (boutonJouer) {
+            boutonJouer.addEventListener('click', () => lancerTourIA(boutonJouer));
+        }
         return item;
     }
 
@@ -523,7 +539,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         zoneAttenteIA.hidden = !attenteIA;
         if (attenteIA && courant) {
             attenteMessageIA.textContent = `En attente du coup de ${courant.nom}…`;
-            btnJouerIA.disabled = false;
         }
         majActionsTour();
     }
@@ -882,24 +897,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Tour d'un ordinateur (issue #35/#55) — bouton côté plateau (issue #90)
     // ------------------------------------------------------------------ //
 
-    // « ▶ Faire jouer l'ordinateur » : joue UN SEUL tour d'ordinateur. Python
-    // rediffuse ensuite l'état aux deux fenêtres ; l'animation de la pose est
-    // déclenchée par ``appliquerEtatPlateau`` (nouveau coup en tête d'historique).
-    btnJouerIA.addEventListener('click', async () => {
-        btnJouerIA.disabled = true;
+    // Bouton « ▶ Jouer » de la fiche d'un ordinateur courant (issue #149,
+    // ex-« Faire jouer l'ordinateur » de la zone d'attente, issue #35/#90) : joue
+    // UN SEUL tour d'ordinateur. Python rediffuse ensuite l'état aux deux fenêtres ;
+    // l'animation de la pose est déclenchée par ``appliquerEtatPlateau`` (nouveau
+    // coup en tête d'historique). Le panneau est reconstruit à chaque diffusion :
+    // un bouton neuf réapparaît si le joueur suivant est encore un ordinateur.
+    async function lancerTourIA(bouton) {
+        if (bouton) bouton.disabled = true;
         let res;
         try {
             res = await api.faire_jouer_ia();
         } catch (err) {
-            btnJouerIA.disabled = false;
+            if (bouton) bouton.disabled = false;
             return;
         }
-        if (!(res && res.succes)) {
-            btnJouerIA.disabled = false;
+        if (!(res && res.succes) && bouton) {
+            bouton.disabled = false;
         }
-        // Succès : le bouton reste piloté par majModeTour au prochain état poussé
-        // (réactivé si le joueur suivant est encore un ordinateur).
-    });
+    }
 
     // ------------------------------------------------------------------ //
     // Actions de tour (issue #101, déplacées depuis la fenêtre chevalet)

@@ -413,7 +413,8 @@ def index_panneau_interactif(partie: Partie) -> int | None:
       renvoie son index : le panneau est interactif pour cet humain.
     * Si le joueur courant est un **ordinateur**, la fonction renvoie ``None`` :
       aucun chevalet n'est alors exposé ni manipulable ; l'UI passe en mode
-      « attente » (message + bouton « Faire jouer l'ordinateur »).
+      « attente » (message d'attente + bouton « ▶ Jouer » dans la fiche de
+      l'ordinateur courant, issue #149).
 
     Garantie structurelle : la valeur renvoyée ne désigne **jamais** un
     ordinateur. C'est la seule source de vérité (côté Python) du choix « panneau
@@ -2172,15 +2173,17 @@ class ApiJeu:
     def faire_jouer_ia(self) -> dict[str, Any]:
         """Fait jouer **un seul** tour d'ordinateur (celui du joueur courant).
 
-        Point d'entrée du bouton « ▶ Faire jouer l'ordinateur » (issue #35,
-        revu issue #55 : un clic = un seul ordinateur). S'appuie sur
+        Point d'entrée du bouton « ▶ Jouer » de la fiche du joueur ordinateur
+        courant (issue #149, ex-« ▶ Faire jouer l'ordinateur » de la zone
+        d'attente ; issue #35, revu issue #55 : un clic = un seul ordinateur).
+        S'appuie sur
         :meth:`~scrabble.moteur.partie.Partie.jouer_tour_ia` : joue exactement le
         tour de l'ordinateur courant, puis renvoie
         ``{"succes": True, "nb_tours": ..., "etat": <état public rafraîchi>}``
         (``nb_tours`` = 1 si un tour a été joué). Sans effet si le joueur courant
         est déjà humain (``nb_tours`` = 0). Si l'ordinateur suivant est encore un
-        ordinateur, le bouton reste disponible : l'humain reclique pour le faire
-        jouer à son tour.
+        ordinateur, un bouton « ▶ Jouer » réapparaît dans sa fiche : l'humain
+        reclique pour le faire jouer à son tour.
 
         C'est la seule façon prévue de faire avancer le jeu pendant un tour IA :
         l'humain n'a jamais à manipuler le chevalet d'un ordinateur à sa place.
