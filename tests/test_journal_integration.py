@@ -522,6 +522,8 @@ class TestCycleSession:
         assert len(etats_vus) == 1
         etat = etats_vus[0]
         assert etat["nb_humains"] == 1
-        assert etat["joueurs"] == [{"nom": "Alain", "humain": True, "niveau": None}]
+        assert etat["joueurs"] == [
+            {"nom": "Alain", "humain": True, "niveau": None, "avatar": None}
+        ]
         # Présent d'office => la partie est immédiatement lançable.
         assert etat["peut_lancer"] is True

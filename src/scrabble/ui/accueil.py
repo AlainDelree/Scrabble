@@ -47,7 +47,7 @@ from typing import Any
 import webview
 
 from scrabble import journal
-from scrabble.config import charger_config
+from scrabble.config import AVATARS_DISPONIBLES, charger_config
 from scrabble.dictionnaire.dictionnaire import charger_dictionnaire, obtenir_trie
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.ordre import determiner_ordre_jeu
@@ -186,6 +186,24 @@ class ApiAccueil:
         except (KeyError, Exception):
             return ""
 
+    def obtenir_avatar_principal(self) -> str:
+        """Retourne l'avatar principal choisi dans les réglages (issue #148).
+
+        Renvoie l'identifiant d'avatar (voir :data:`AVATARS_DISPONIBLES`) tel que
+        configuré dans les réglages (``avatar_principal``, issue #139), ou chaîne
+        vide si aucun avatar n'est choisi. On revalide contre
+        :data:`AVATARS_DISPONIBLES` par prudence : ``lire_reglage`` normalise déjà
+        la valeur, mais une valeur inattendue (config manipulée à la main) ne doit
+        pas produire un chemin d'image invalide côté accueil. Toute erreur de
+        lecture est absorbée (chaîne vide) : l'accueil retombe alors sur l'icône
+        générique, jamais sur une exception.
+        """
+        try:
+            valeur = lire_reglage("avatar_principal") or ""
+        except (KeyError, Exception):
+            return ""
+        return valeur if valeur in AVATARS_DISPONIBLES else ""
+
     def initialiser_joueur_humain(self) -> bool:
         """Ajoute d'office le joueur humain de référence (issue #141).
 
@@ -239,15 +257,34 @@ class ApiAccueil:
             return False
 
     def obtenir_etat(self) -> dict[str, Any]:
-        """Retourne l'état actuel de la configuration."""
+        """Retourne l'état actuel de la configuration.
+
+        Le joueur humain de référence (le premier humain de la liste) porte
+        l'avatar choisi dans les réglages (``avatar_principal``, issue #148) dans
+        le champ ``avatar`` : l'accueil affiche ainsi le même portrait que celui
+        utilisé tout au long de la partie (:func:`~scrabble.ui.jeu.calculer_avatars`
+        réserve déjà ``avatar_principal`` à ce joueur). Les autres joueurs — et le
+        joueur humain quand aucun avatar n'est configuré — ont ``avatar`` à
+        ``None`` : l'accueil retombe alors sur l'icône générique.
+        """
+        avatar_principal = self.obtenir_avatar_principal()
+        reference = next(
+            (i for i, j in enumerate(self.config_partie.joueurs) if j.humain),
+            None,
+        )
         return {
             "joueurs": [
                 {
                     "nom": j.nom,
                     "humain": j.humain,
                     "niveau": j.niveau.name if j.niveau else None,
+                    "avatar": (
+                        avatar_principal
+                        if (i == reference and avatar_principal)
+                        else None
+                    ),
                 }
-                for j in self.config_partie.joueurs
+                for i, j in enumerate(self.config_partie.joueurs)
             ],
             "peut_ajouter_humain": self.config_partie.peut_ajouter_humain(),
             "peut_ajouter_ordinateur": self.config_partie.peut_ajouter_ordinateur(),

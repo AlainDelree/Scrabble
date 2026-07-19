@@ -79,7 +79,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const item = document.createElement('div');
                 item.className = `joueur-item ${joueur.humain ? 'humain' : 'ordinateur'}`;
 
-                const icone = joueur.humain ? '👤' : '🖥️';
+                // Avatar configuré du joueur humain de référence (issue #148) :
+                // s'il est fourni par Python, on affiche le portrait SVG choisi
+                // dans les réglages (le même que celui utilisé pendant la partie),
+                // sinon on retombe sur l'icône générique 👤 / 🖥️.
+                const icone = joueur.avatar
+                    ? `<img class="joueur-avatar" src="avatars/${encodeURIComponent(joueur.avatar)}.svg" alt="" width="28" height="28">`
+                    : `<span class="joueur-icone">${joueur.humain ? '👤' : '🖥️'}</span>`;
                 let typeLabel = joueur.humain ? 'Joueur' : 'Ordinateur';
                 if (!joueur.humain && joueur.niveau) {
                     const niveauLabel = {
@@ -92,7 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 item.innerHTML = `
-                    <span class="joueur-icone">${icone}</span>
+                    ${icone}
                     <div class="joueur-info">
                         <div class="joueur-nom">${escapeHtml(joueur.nom)}</div>
                         <div class="joueur-type">${typeLabel}</div>

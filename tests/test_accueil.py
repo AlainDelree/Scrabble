@@ -373,7 +373,7 @@ class TestApiAccueilJoueurHumainParDefaut:
         etat = api.obtenir_etat()
         assert etat["nb_humains"] == 1
         assert etat["joueurs"] == [
-            {"nom": "Alain", "humain": True, "niveau": None}
+            {"nom": "Alain", "humain": True, "niveau": None, "avatar": None}
         ]
         # La configuration est directement lançable, sans action manuelle.
         assert etat["peut_lancer"] is True
@@ -448,6 +448,85 @@ class TestApiAccueilJoueurHumainParDefaut:
         # obtenir_prenom_principal absorbe l'erreur -> aucun joueur, pas d'exception.
         assert api.initialiser_joueur_humain() is False
         assert api.obtenir_etat()["nb_humains"] == 0
+
+
+class TestApiAccueilAvatarPrincipal:
+    """L'avatar du joueur humain à l'accueil reflète les réglages (issue #148).
+
+    Le joueur humain de référence ajouté d'office doit porter l'avatar choisi
+    dans les réglages (``avatar_principal``, issue #139) — le même que celui
+    utilisé tout au long de la partie (:func:`~scrabble.ui.jeu.calculer_avatars`)
+    — au lieu de l'icône générique codée en dur.
+    """
+
+    @staticmethod
+    def _patch_reglages(monkeypatch, prenom, avatar):
+        """Monkeypatch ``lire_reglage`` avec un prénom et un avatar donnés."""
+        reglages = {"prenom_principal": prenom, "avatar_principal": avatar}
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lire_reglage",
+            lambda cle: reglages.get(cle, ""),
+        )
+
+    def test_avatar_configure_expose_pour_l_humain(self, monkeypatch):
+        """L'avatar valide des réglages est renvoyé dans l'état du joueur humain."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        self._patch_reglages(monkeypatch, "Alain", "avatar-07")
+        api = ApiAccueil()
+        api.initialiser_joueur_humain()
+
+        assert api.obtenir_etat()["joueurs"] == [
+            {"nom": "Alain", "humain": True, "niveau": None, "avatar": "avatar-07"}
+        ]
+
+    def test_sans_avatar_configure_aucun_avatar(self, monkeypatch):
+        """Sans avatar choisi, ``avatar`` reste None (icône générique côté JS)."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        self._patch_reglages(monkeypatch, "Alain", "")
+        api = ApiAccueil()
+        api.initialiser_joueur_humain()
+
+        assert api.obtenir_etat()["joueurs"][0]["avatar"] is None
+
+    def test_avatar_inconnu_ignore(self, monkeypatch):
+        """Un avatar inconnu (config trafiquée) est ignoré plutôt qu'exposé."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        self._patch_reglages(monkeypatch, "Alain", "avatar-999")
+        api = ApiAccueil()
+        api.initialiser_joueur_humain()
+
+        assert api.obtenir_etat()["joueurs"][0]["avatar"] is None
+
+    def test_ordinateur_n_herite_pas_de_l_avatar(self, monkeypatch):
+        """Seul le joueur humain de référence porte l'avatar configuré."""
+        from scrabble.moteur.ia import Niveau
+        from scrabble.ui.accueil import ApiAccueil
+
+        self._patch_reglages(monkeypatch, "Alain", "avatar-07")
+        api = ApiAccueil()
+        api.initialiser_joueur_humain()
+        api.config_partie.ajouter_ordinateur("Robot", Niveau.FACILE)
+
+        joueurs = api.obtenir_etat()["joueurs"]
+        assert joueurs[0]["avatar"] == "avatar-07"
+        assert joueurs[1]["avatar"] is None
+
+    def test_coherent_avec_calculer_avatars(self, monkeypatch):
+        """L'avatar exposé à l'accueil est celui attribué à l'humain en partie."""
+        from scrabble.moteur.partie import Joueur
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.ui.jeu import calculer_avatars
+
+        self._patch_reglages(monkeypatch, "Alain", "avatar-07")
+        api = ApiAccueil()
+        api.initialiser_joueur_humain()
+        avatar_accueil = api.obtenir_etat()["joueurs"][0]["avatar"]
+
+        joueurs = [Joueur(nom="Alain", humain=True)]
+        assert avatar_accueil == calculer_avatars(joueurs, "avatar-07")[0]
 
 
 class TestApiAccueilTirageOrdre:
