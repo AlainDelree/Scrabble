@@ -496,3 +496,32 @@ class TestCycleSession:
         assert esp.demarrages == 1
         assert esp.clotures == 1
         assert esp.session_courante() is None
+
+    def test_ouverture_accueil_place_le_joueur_humain_par_defaut(self, monkeypatch):
+        """Vérification headless (issue #141) : à l'ouverture de l'accueil, le
+
+        joueur humain de référence est déjà présent dans la configuration, sans
+        ajout manuel. On neutralise pywebview et on inspecte, pendant la boucle
+        simulée, l'état exposé par l'API au JS (``obtenir_etat``).
+        """
+        esp = _EspionJournal(session_existante=None)
+        monkeypatch.setattr(mod_accueil, "journal", esp)
+        # Prénom principal de référence, indépendamment du config.json réel.
+        monkeypatch.setattr(mod_accueil, "lire_reglage", lambda cle: "Alain")
+
+        etats_vus: list = []
+
+        def on_start(api):
+            if isinstance(api, ApiAccueil):
+                etats_vus.append(api.obtenir_etat())
+
+        self._neutraliser_webview(monkeypatch, on_start=on_start)
+
+        mod_accueil.lancer_accueil(ouvrir_jeu=False)
+
+        assert len(etats_vus) == 1
+        etat = etats_vus[0]
+        assert etat["nb_humains"] == 1
+        assert etat["joueurs"] == [{"nom": "Alain", "humain": True, "niveau": None}]
+        # Présent d'office => la partie est immédiatement lançable.
+        assert etat["peut_lancer"] is True

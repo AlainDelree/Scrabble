@@ -186,6 +186,38 @@ class ApiAccueil:
         except (KeyError, Exception):
             return ""
 
+    def initialiser_joueur_humain(self) -> bool:
+        """Ajoute d'office le joueur humain de référence (issue #141).
+
+        Le support multi-humains ayant été abandonné, il n'y a plus de raison
+        de demander à l'utilisateur d'ajouter manuellement son joueur humain à
+        chaque création de partie : il doit figurer d'office dans « Joueurs
+        autour de la table » dès l'ouverture de l'accueil. On reprend le prénom
+        déjà configuré dans les réglages (``prenom_principal``).
+
+        Appelée par :func:`lancer_accueil` juste avant l'ouverture de la
+        fenêtre, de sorte que le premier ``obtenir_etat()`` du JS voie déjà le
+        joueur. Le joueur reste **retirable** ensuite (aucune présence forcée
+        irréversible) : la méthode est idempotente et ne réajoute rien si un
+        humain est déjà présent (elle ne s'oppose donc pas à un retrait
+        volontaire déjà effectué dans la même configuration).
+
+        Sans prénom principal configuré (champ vide), aucun joueur n'est ajouté
+        et l'écran s'ouvre comme avant — à charge pour l'utilisateur d'ajouter
+        un joueur manuellement. Retourne ``True`` si un joueur a été ajouté.
+        """
+        if self.config_partie.nb_humains > 0:
+            return False
+        prenom = self.obtenir_prenom_principal().strip()
+        if not prenom:
+            return False
+        if not self.config_partie.ajouter_humain(prenom):
+            return False
+        journal.info(
+            f"Accueil : joueur humain de référence ajouté d'office ({prenom})."
+        )
+        return True
+
     def sauvegarder_prenom_principal(self, prenom: str) -> bool:
         """Sauvegarde le prénom comme prénom principal."""
         try:
@@ -556,6 +588,12 @@ def lancer_accueil(
         journal.demarrer_session()
     try:
         api = ApiAccueil()
+        # Joueur humain présent d'office (issue #141) : le support multi-humains
+        # étant abandonné, le joueur de référence figure dès l'ouverture dans
+        # « Joueurs autour de la table » (repris de ``prenom_principal``), sans
+        # ajout manuel. Fait avant ``webview.start()`` pour que le premier
+        # ``obtenir_etat()`` du JS le voie déjà. Il reste retirable ensuite.
+        api.initialiser_joueur_humain()
         chemin_html = DOSSIER_WEB / "accueil.html"
         window = webview.create_window(
             "Scrabble - Nouvelle partie",

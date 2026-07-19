@@ -351,6 +351,105 @@ class TestApiAccueilLancement:
         assert "erreur" in result
 
 
+class TestApiAccueilJoueurHumainParDefaut:
+    """Tests de la présence d'office du joueur humain de référence (issue #141).
+
+    Le support multi-humains étant abandonné, le joueur humain de référence
+    (prénom ``prenom_principal``) doit figurer d'office dès l'ouverture de
+    l'accueil, sans ajout manuel, tout en restant retirable.
+    """
+
+    def test_ajoute_le_prenom_principal(self, monkeypatch):
+        """initialiser_joueur_humain() ajoute le joueur repris des réglages."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lire_reglage", lambda cle: "Alain"
+        )
+        api = ApiAccueil()
+        ajoute = api.initialiser_joueur_humain()
+
+        assert ajoute is True
+        etat = api.obtenir_etat()
+        assert etat["nb_humains"] == 1
+        assert etat["joueurs"] == [
+            {"nom": "Alain", "humain": True, "niveau": None}
+        ]
+        # La configuration est directement lançable, sans action manuelle.
+        assert etat["peut_lancer"] is True
+
+    def test_sans_prenom_principal_aucun_joueur(self, monkeypatch):
+        """Sans prénom principal configuré, aucun joueur n'est ajouté."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr("scrabble.ui.accueil.lire_reglage", lambda cle: "")
+        api = ApiAccueil()
+        ajoute = api.initialiser_joueur_humain()
+
+        assert ajoute is False
+        assert api.obtenir_etat()["nb_humains"] == 0
+
+    def test_prenom_principal_espaces_ignore(self, monkeypatch):
+        """Un prénom principal fait uniquement d'espaces n'ajoute personne."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lire_reglage", lambda cle: "   "
+        )
+        api = ApiAccueil()
+
+        assert api.initialiser_joueur_humain() is False
+        assert api.obtenir_etat()["nb_humains"] == 0
+
+    def test_idempotent_si_humain_deja_present(self, monkeypatch):
+        """La méthode ne double pas le joueur déjà présent."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lire_reglage", lambda cle: "Alain"
+        )
+        api = ApiAccueil()
+        api.config_partie.ajouter_humain("Marie")
+
+        assert api.initialiser_joueur_humain() is False
+        assert api.obtenir_etat()["nb_humains"] == 1
+        assert api.config_partie.joueurs[0].nom == "Marie"
+
+    def test_joueur_par_defaut_reste_retirable(self, monkeypatch):
+        """Le joueur ajouté d'office peut être retiré (pas de présence forcée)."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lire_reglage", lambda cle: "Alain"
+        )
+        api = ApiAccueil()
+        api.initialiser_joueur_humain()
+
+        result = api.retirer_joueur(0)
+
+        assert result["succes"] is True
+        assert result["etat"]["nb_humains"] == 0
+        # Le retrait n'est pas re-annulé : ``initialiser_joueur_humain`` n'est
+        # appelée qu'une fois, à l'ouverture (jamais après un retrait), donc le
+        # joueur reste bien parti pour cette configuration.
+
+    def test_lecture_reglage_defaillante_nignore_pas_l_ouverture(
+        self, monkeypatch
+    ):
+        """Une erreur de lecture des réglages n'empêche pas l'ouverture."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        def _boum(cle):
+            raise RuntimeError("config illisible")
+
+        monkeypatch.setattr("scrabble.ui.accueil.lire_reglage", _boum)
+        api = ApiAccueil()
+
+        # obtenir_prenom_principal absorbe l'erreur -> aucun joueur, pas d'exception.
+        assert api.initialiser_joueur_humain() is False
+        assert api.obtenir_etat()["nb_humains"] == 0
+
+
 class TestApiAccueilTirageOrdre:
     """Tests du tirage d'ordre exposé par lancer_partie (issue #54).
 
