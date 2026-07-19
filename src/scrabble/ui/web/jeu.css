@@ -673,15 +673,34 @@ header {
        désormais MAXIMISÉE à une résolution logique plus modeste (cible ~1280×760
        utilisables, cf. le portable de test), une taille purement en ``vw`` +
        plafond fixe débordait en hauteur et forçait un défilement vertical.
-       On ajoute donc un terme en ``vh`` : le plateau (carré, ``aspect-ratio:
-       1 / 1``) ne dépasse jamais ~68 % de la hauteur du viewport, ce qui laisse
-       la place à la barre du sac/historique (haut), aux panneaux joueurs
-       haut/bas et à la zone d'attente IA sans scroll. Le plafond de 560px borne
-       la taille sur les grands écrans (lisibilité déjà généreuse, issue #55) ;
-       le terme en ``vw`` protège les fenêtres étroites. La plus petite des trois
-       bornes l'emporte, donc plateau + panneaux restent visibles d'un coup
-       d'œil quelle que soit la résolution logique. */
-    width: min(64vw, 68vh, 560px);
+       On ajoute donc un terme en HAUTEUR pour que le plateau (carré,
+       ``aspect-ratio: 1 / 1``) ne consomme jamais toute la hauteur du viewport,
+       ce qui laisse la place à la barre du sac/historique (haut), aux panneaux
+       joueurs haut/bas et à la zone d'attente IA sans scroll. Le plafond de 560px
+       borne la taille sur les grands écrans (lisibilité déjà généreuse, issue
+       #55) ; le terme en ``vw`` protège les fenêtres étroites. La plus petite des
+       trois bornes l'emporte, donc plateau + panneaux restent visibles d'un coup
+       d'œil quelle que soit la résolution logique.
+
+       Réserve d'espace SOUS le plateau (issue #152). Le terme de hauteur était un
+       simple ``68vh`` : borné au viewport, il ne tenait aucun compte du chrome
+       accumulé AU-DESSUS du plateau (barre du haut réorganisée #125, panneau du
+       joueur du haut avec le bouton « ▶ Jouer » #149, badges/toasts…) ni de la
+       place à réserver EN DESSOUS pour poser la fenêtre chevalet (175 px de haut
+       minimum, cf. #140/#141). À force d'ajouts, le bas du plateau descendait trop
+       bas et le chevalet, une fois posé en bas de l'écran, empiétait dessus —
+       c'est la régression #152. On remplace donc ``68vh`` par
+       ``calc(100vh - 290px)`` : la réserve fixe (~115 px de chrome au-dessus du
+       plateau + 175 px pour le chevalet) garantit, indépendamment de la hauteur de
+       la fenêtre, qu'il reste au moins la hauteur d'un chevalet sous le plateau.
+       À l'inverse d'une fraction ``vh``, cette réserve reste CONSTANTE en pixels :
+       l'espace sous le plateau ne se réduit plus quand des éléments fixes
+       s'ajoutent. Sur les grandes fenêtres, le plafond 560px / le terme ``vw``
+       l'emportent (aucun rétrécissement) ; la réserve ne mord la taille que sur
+       les fenêtres courtes, là précisément où l'empiètement se produisait. La
+       trace ``journaliser_mesure_fenetre`` (issue #152, jeu.js) mesure l'espace
+       réel restant pour ajuster ces 290 px si besoin. */
+    width: min(64vw, calc(100vh - 290px), 560px);
     aspect-ratio: 1 / 1;
 }
 

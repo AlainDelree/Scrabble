@@ -1193,6 +1193,27 @@ class ApiJeu:
         theme = charger_config().get("theme_plateau", "classique")
         return theme if theme in THEMES_PLATEAU else "classique"
 
+    def journaliser_mesure_fenetre(self, mesures: dict[str, Any]) -> dict[str, Any]:
+        """Journalise la géométrie verticale réelle de l'écran de jeu (issue #152).
+
+        Sur le modèle de la trace de tirage (issue #116) et de la modale du joker
+        (issue #140), le JS mesure — au chargement de la fenêtre plateau, sous le
+        vrai moteur WebKitGTK — la hauteur totale de la fenêtre, le bas réel du
+        plateau et l'espace restant en dessous. Objectif : objectiver la
+        régression de l'issue #152 (moins d'espace sous le plateau qu'avant, la
+        fenêtre chevalet — 175 px de haut minimum, cf. #140/#141 — empiétant sur
+        le plateau) et vérifier, après correctif, que l'espace disponible est bien
+        redevenu suffisant (``espace_sous_plateau`` >= ``chevalet_min``).
+
+        Purement informatif : n'altère aucun état, retourne toujours un succès.
+        """
+        try:
+            details = ", ".join(f"{cle}={valeur}" for cle, valeur in mesures.items())
+            journal.info(f"Jeu : géométrie réelle écran de jeu — {details}.")
+        except Exception as e:  # noqa: BLE001 - une trace ne doit jamais bloquer
+            journal.erreur("Jeu : échec de journalisation de la géométrie.", e)
+        return {"succes": True}
+
     def obtenir_chevalet(self, index_joueur: int) -> dict[str, Any]:
         """Retourne le chevalet du **seul** joueur d'index ``index_joueur``.
 

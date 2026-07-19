@@ -1453,6 +1453,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ------------------------------------------------------------------ //
+    // Diagnostic : espace vertical réel sous le plateau (issue #152)
+    // ------------------------------------------------------------------ //
+
+    // Hauteur minimale de la fenêtre chevalet (issue #140/#141) : c'est la place
+    // qu'il faut pouvoir loger sous le plateau, sans qu'elle empiète, une fois le
+    // chevalet posé en bas de l'écran.
+    const CHEVALET_MIN_PX = 175;
+
+    /**
+     * Mesure et journalise la géométrie verticale réelle de l'écran de jeu
+     * (issue #152), sur le modèle de la trace de tirage (#116) et de la modale du
+     * joker (#140). Objective la régression « moins d'espace sous le plateau » :
+     * hauteur totale de la fenêtre, bas réel du plateau, et espace restant en
+     * dessous — pour vérifier qu'il reste au moins la hauteur d'un chevalet
+     * (CHEVALET_MIN_PX). La mesure est différée de deux requestAnimationFrame pour
+     * laisser WebKitGTK poser la mise en page avant lecture. Best-effort : toute
+     * erreur (API absente en test, DOM incomplet) est silencieusement ignorée, la
+     * trace ne doit jamais gêner le jeu.
+     */
+    function journaliserGeometriePlateau() {
+        try {
+            if (!api || typeof api.journaliser_mesure_fenetre !== 'function') return;
+            const rect = plateauEl.getBoundingClientRect();
+            const hauteurFenetre = window.innerHeight;
+            const arrondi = (v) => Math.round(v);
+            const espaceSous = arrondi(hauteurFenetre - rect.bottom);
+            api.journaliser_mesure_fenetre({
+                fenetre_hauteur: hauteurFenetre,
+                fenetre_largeur: window.innerWidth,
+                plateau_haut: arrondi(rect.top),
+                plateau_bas: arrondi(rect.bottom),
+                plateau_hauteur: arrondi(rect.height),
+                espace_sous_plateau: espaceSous,
+                chevalet_min: CHEVALET_MIN_PX,
+                espace_suffisant: espaceSous >= CHEVALET_MIN_PX,
+            });
+        } catch (_e) {
+            /* trace best-effort : on ignore toute erreur */
+        }
+    }
+
+    // ------------------------------------------------------------------ //
     // Initialisation : thème puis premier état public
     // ------------------------------------------------------------------ //
     await appliquerTheme();
@@ -1462,4 +1504,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
         // Le premier push de Python prendra le relais si l'appel initial échoue.
     }
+
+    // Diagnostic géométrie (issue #152) : deux rAF pour lire la mise en page réelle
+    // une fois le plateau rendu et posé par WebKitGTK.
+    requestAnimationFrame(() => {
+        requestAnimationFrame(journaliserGeometriePlateau);
+    });
 });
