@@ -207,8 +207,10 @@
             <div id="zone-jeu" class="zone-jeu" hidden>
                 <div class="zone-jeu-controles">
                     <!-- Échange COMPLET (réglage « type_echange » = complet, défaut) :
-                         un seul bouton qui remet tout le chevalet et passe. -->
-                    <button id="btn-echanger-tout" class="lien-discret" disabled
+                         un seul bouton qui remet tout le chevalet et passe. Bouton
+                         à part entière (issue #139) — même style que les autres
+                         actions de tour (secondaire), moins proéminent que « Jouer ». -->
+                    <button id="btn-echanger-tout" class="btn btn-secondaire" disabled
                             title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
                         ♻️ Remettre toutes ses lettres et passer
                     </button>
@@ -283,6 +285,29 @@
                 </button>
                 <button id="retour-confirmer" class="btn btn-primaire">
                     🏠 Revenir au menu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale générique de confirmation avant une action de tour irréversible
+         (issue #139) : « Passer son tour » et « Remettre toutes ses lettres et
+         passer » ne déclenchent leur appel API qu'après confirmation, pour éviter
+         un clic accidentel qui ferait perdre le tour sans recours. Le titre et le
+         libellé du bouton de confirmation sont renseignés par le JS selon l'action.
+         Réutilise .modale / .modale-contenu / .modale-actions ; fermeture par
+         « Annuler » ou clic dehors (= annulation, aucun appel API). -->
+    <div id="confirmation-modale" class="modale" hidden>
+        <div class="modale-contenu" role="alertdialog" aria-modal="true"
+             aria-labelledby="confirmation-titre">
+            <h3 id="confirmation-titre">Confirmer l'action</h3>
+            <p id="confirmation-message" class="retour-message"></p>
+            <div class="modale-actions">
+                <button id="confirmation-annuler" class="btn btn-secondaire">
+                    ✗ Annuler
+                </button>
+                <button id="confirmation-confirmer" class="btn btn-primaire">
+                    ✓ Confirmer
                 </button>
             </div>
         </div>

@@ -53,6 +53,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const retourModale = document.getElementById('retour-modale');
     const retourAnnuler = document.getElementById('retour-annuler');
     const retourConfirmer = document.getElementById('retour-confirmer');
+    // Modale générique de confirmation d'une action de tour irréversible
+    // (issue #139) : « Passer son tour » et « Remettre toutes ses lettres et
+    // passer ». Pilotée via demanderConfirmation() qui renvoie une Promise<bool>.
+    const confirmationModale = document.getElementById('confirmation-modale');
+    const confirmationTitre = document.getElementById('confirmation-titre');
+    const confirmationMessage = document.getElementById('confirmation-message');
+    const confirmationAnnuler = document.getElementById('confirmation-annuler');
+    const confirmationConfirmer = document.getElementById('confirmation-confirmer');
 
     // Mode « attente d'un tour d'ordinateur » (issue #35) déplacé côté plateau
     // (issue #90) : bloc + bouton « Faire jouer l'ordinateur ».
@@ -758,6 +766,44 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ------------------------------------------------------------------ //
+    // Confirmation générique d'une action de tour irréversible (issue #139)
+    // ------------------------------------------------------------------ //
+    // demanderConfirmation ouvre #confirmation-modale avec le titre/message et le
+    // libellé de bouton fournis, puis renvoie une Promise résolue à ``true`` si le
+    // joueur confirme, ``false`` s'il annule (bouton Annuler, clic dehors ou Échap).
+    // Tant qu'aucune confirmation n'a lieu, AUCUN appel API n'est déclenché.
+    let resoudreConfirmation = null;
+
+    function fermerConfirmation(reponse) {
+        if (!resoudreConfirmation) return;
+        const resoudre = resoudreConfirmation;
+        resoudreConfirmation = null;
+        confirmationModale.hidden = true;
+        resoudre(reponse);
+    }
+
+    function demanderConfirmation(titre, message, texteConfirmer) {
+        // Une éventuelle demande précédente encore ouverte est traitée comme annulée.
+        fermerConfirmation(false);
+        confirmationTitre.textContent = titre;
+        confirmationMessage.textContent = message;
+        confirmationConfirmer.textContent = texteConfirmer || '✓ Confirmer';
+        confirmationModale.hidden = false;
+        // Le focus part sur « Annuler » : l'action la moins risquée par défaut.
+        confirmationAnnuler.focus();
+        return new Promise((resoudre) => { resoudreConfirmation = resoudre; });
+    }
+
+    confirmationAnnuler.addEventListener('click', () => fermerConfirmation(false));
+    confirmationConfirmer.addEventListener('click', () => fermerConfirmation(true));
+    confirmationModale.addEventListener('click', (evt) => {
+        if (evt.target === confirmationModale) fermerConfirmation(false);
+    });
+    document.addEventListener('keydown', (evt) => {
+        if (evt.key === 'Escape' && !confirmationModale.hidden) fermerConfirmation(false);
+    });
+
+    // ------------------------------------------------------------------ //
     // Tour d'un ordinateur (issue #35/#55) — bouton côté plateau (issue #90)
     // ------------------------------------------------------------------ //
 
@@ -846,6 +892,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // normal du jeu, utilisable à tout moment du tour — et seul recours d'un
     // joueur humain sac vide qui ne peut ni poser ni échanger (rapport #130).
     btnPasser.addEventListener('click', async () => {
+        // Confirmation obligatoire (issue #139) : un clic accidentel ne doit pas
+        // faire perdre le tour. Seule la confirmation déclenche l'appel API.
+        const confirme = await demanderConfirmation(
+            'Passer votre tour ?',
+            'Voulez-vous vraiment passer votre tour sans jouer ?',
+            '⏭ Passer mon tour');
+        if (!confirme) return;
         btnPasser.disabled = true;
         let res;
         try {
@@ -867,6 +920,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Remettre tout le chevalet et passer (échange complet).
     btnEchangerTout.addEventListener('click', async () => {
+        // Confirmation obligatoire (issue #139) avant d'échanger tout le chevalet
+        // et de passer : action rare et irréversible pour le tour en cours.
+        const confirme = await demanderConfirmation(
+            'Remettre toutes vos lettres ?',
+            'Voulez-vous vraiment échanger toutes vos lettres et passer votre tour ?',
+            '♻️ Échanger et passer');
+        if (!confirme) return;
         btnEchangerTout.disabled = true;
         let res;
         try {

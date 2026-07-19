@@ -81,6 +81,7 @@
       obtenir_chevalet: async () => ({ succes: true, lettres: chevalet }),
       verifier_mot: async () => ({ succes: true, valide: true, mot: 'TEST', definition: ['Définition de démonstration.'] }),
       echanger_tout: async () => ({ succes: true }),
+      passer: async () => ({ succes: true }),
       faire_jouer_ia: async () => ({ succes: true }),
       poser_mot: async () => ({ succes: true, points: 0 }),
     },
