@@ -36,6 +36,37 @@ def test_obtenir_reglages_generaux_structure():
     assert valeurs_sources == {"ods", "hunspell"}
 
 
+def test_obtenir_reglages_generaux_expose_avatars():
+    """La grille d'avatars (issue #143) est livrée avec l'avatar courant."""
+    from scrabble.config import AVATARS_DISPONIBLES
+
+    data = ApiReglages().obtenir_reglages_generaux()
+
+    assert "avatar_principal" in data
+    # Chaque vignette est un couple {valeur, image} exploitable tel quel par le JS.
+    assert all({"valeur", "image"} <= set(a) for a in data["avatars"])
+    valeurs = [a["valeur"] for a in data["avatars"]]
+    assert valeurs == list(AVATARS_DISPONIBLES)
+    # Le chemin d'image pointe vers le SVG servi par la page web.
+    assert data["avatars"][0]["image"] == f"avatars/{AVATARS_DISPONIBLES[0]}.svg"
+
+
+def test_enregistrer_avatar_principal_delegue(monkeypatch):
+    """Choisir un avatar passe par ``modifier_reglage`` (clé avatar_principal)."""
+    appels = {}
+
+    def faux_modifier(cle, valeur):
+        appels[cle] = valeur
+        return valeur
+
+    monkeypatch.setattr(r, "modifier_reglage", faux_modifier)
+
+    res = ApiReglages().enregistrer_reglage("avatar_principal", "avatar-07")
+
+    assert res == {"succes": True, "valeur": "avatar-07"}
+    assert appels == {"avatar_principal": "avatar-07"}
+
+
 def test_enregistrer_reglage_delegue_a_modifier_reglage(monkeypatch):
     """Un réglage valide passe par ``modifier_reglage`` et renvoie la valeur retenue."""
     appels = {}

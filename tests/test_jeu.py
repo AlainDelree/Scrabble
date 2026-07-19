@@ -1039,8 +1039,77 @@ class TestCalculerAvatars:
         avatars = [j["avatar"] for j in etat["joueurs"]]
         assert all(a in AVATARS for a in avatars)
         assert len(set(avatars)) == 2
-        # Cohérent avec le calcul direct.
+        # Cohérent avec le calcul direct (avatar_principal absent = "").
         assert avatars == calculer_avatars(joueurs)
+
+    # ---- Choix d'avatar du joueur humain (issue #143) ----
+
+    def _mixte(self, *specs: tuple[str, bool]) -> list[Joueur]:
+        """Construit des joueurs (nom, humain) — humain=True/False."""
+        return [
+            Joueur(
+                nom=nom,
+                humain=humain,
+                niveau=None if humain else Niveau.FACILE,
+            )
+            for nom, humain in specs
+        ]
+
+    def test_avatar_principal_attribue_a_l_humain(self):
+        # L'avatar choisi va au joueur humain de référence (le premier humain).
+        joueurs = self._mixte(
+            ("Robot1", False), ("Alice", True), ("Robot2", False)
+        )
+        avatars = calculer_avatars(joueurs, "avatar-07")
+        assert avatars[1] == "avatar-07"  # Alice, l'humaine de référence
+
+    def test_avatar_principal_exclu_des_ordinateurs(self):
+        # Aucun ordinateur ne peut recevoir l'avatar choisi par l'humaine, quel
+        # que soit l'avatar imposé (on les essaie tous).
+        for avatar in AVATARS:
+            joueurs = self._mixte(
+                ("Alice", True),
+                ("Robot1", False),
+                ("Robot2", False),
+                ("Robot3", False),
+            )
+            avatars = calculer_avatars(joueurs, avatar)
+            assert avatars[0] == avatar
+            # Les ordinateurs (index 1..3) n'ont jamais l'avatar réservé.
+            assert avatar not in avatars[1:]
+            assert len(set(avatars)) == len(avatars)  # toujours sans doublon
+
+    def test_avatar_principal_inconnu_ignore(self):
+        # Une valeur inconnue laisse l'attribution historique inchangée.
+        joueurs = self._mixte(("Alice", True), ("Robot", False))
+        assert calculer_avatars(joueurs, "avatar-999") == calculer_avatars(joueurs)
+        assert calculer_avatars(joueurs, "") == calculer_avatars(joueurs)
+
+    def test_avatar_principal_sans_humain_ignore(self):
+        # Partie sans humain (cas théorique) : l'avatar n'est réservé à personne.
+        joueurs = self._mixte(("Robot1", False), ("Robot2", False))
+        avatars = calculer_avatars(joueurs, "avatar-03")
+        assert avatars == calculer_avatars(joueurs)
+
+    def test_avatar_principal_deterministe(self):
+        joueurs = self._mixte(("Alice", True), ("Robot", False))
+        premier = calculer_avatars(joueurs, "avatar-05")
+        for _ in range(5):
+            assert calculer_avatars(joueurs, "avatar-05") == premier
+
+    def test_avatar_principal_applique_dans_etat_public(self, monkeypatch):
+        # etat_public lit avatar_principal de la config et le passe au calcul.
+        import scrabble.ui.jeu as jeu
+
+        monkeypatch.setattr(
+            jeu, "charger_config", lambda: {"avatar_principal": "avatar-09"}
+        )
+        joueurs = self._mixte(("Alice", True), ("Robot", False))
+        partie = Partie(joueurs, _DicoFactice(), graine=5)
+        etat = etat_public(partie, None)
+        avatars = [j["avatar"] for j in etat["joueurs"]]
+        assert avatars[0] == "avatar-09"  # Alice
+        assert "avatar-09" not in avatars[1:]  # pas l'ordinateur
 
 
 class TestVerifierMotDictionnaire:

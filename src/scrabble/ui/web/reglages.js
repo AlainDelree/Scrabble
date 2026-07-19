@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ========================= Onglet Général =========================
     const inputPrenom = document.getElementById('input-prenom');
+    const grilleAvatars = document.getElementById('grille-avatars');
     const selectTheme = document.getElementById('select-theme');
     const selectSource = document.getElementById('select-source');
     const checkBonusFin = document.getElementById('check-bonus-fin');
@@ -111,6 +112,51 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    /** Avatar actuellement choisi (identifiant, ou '' pour « aucun choix »). */
+    let avatarChoisi = '';
+
+    /** Met en évidence la vignette sélectionnée dans la grille d'avatars. */
+    function syncGrilleAvatars() {
+        grilleAvatars.querySelectorAll('.avatar-vignette').forEach((btn) => {
+            const actif = btn.dataset.valeur === avatarChoisi;
+            btn.classList.toggle('actif', actif);
+            btn.setAttribute('aria-checked', actif ? 'true' : 'false');
+        });
+    }
+
+    /** Construit la grille de vignettes d'avatars [{valeur, image}] + choix actif.
+     *  Un clic sélectionne l'avatar ; re-cliquer celui déjà choisi le désélectionne
+     *  (retour à « aucun choix »), enregistré via l'API Python. */
+    function remplirGrilleAvatars(avatars, valeurActive) {
+        avatarChoisi = valeurActive || '';
+        grilleAvatars.innerHTML = '';
+        (avatars || []).forEach((av) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'avatar-vignette';
+            btn.dataset.valeur = av.valeur;
+            btn.setAttribute('role', 'radio');
+            btn.setAttribute('aria-checked', 'false');
+            btn.setAttribute('aria-label', av.valeur);
+            btn.title = av.valeur;
+            const img = document.createElement('img');
+            img.src = av.image;
+            img.alt = '';
+            btn.appendChild(img);
+            btn.addEventListener('click', async () => {
+                // Toggle : re-cliquer l'avatar courant revient à « aucun choix ».
+                const cible = av.valeur === avatarChoisi ? '' : av.valeur;
+                const retenue = await enregistrer('avatar_principal', cible);
+                if (retenue !== null) {
+                    avatarChoisi = retenue;
+                    syncGrilleAvatars();
+                }
+            });
+            grilleAvatars.appendChild(btn);
+        });
+        syncGrilleAvatars();
+    }
+
     /** Remplit un <select> à partir d'options [{valeur, libelle}] + valeur active. */
     function remplirSelect(select, options, valeurActive) {
         select.innerHTML = '';
@@ -128,6 +174,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function chargerGeneral() {
         const r = await api.obtenir_reglages_generaux();
         inputPrenom.value = r.prenom_principal || '';
+        remplirGrilleAvatars(r.avatars, r.avatar_principal);
         remplirSelect(selectTheme, r.themes, r.theme_plateau);
         remplirSelect(selectSource, r.sources, r.source_dictionnaire);
         checkBonusFin.checked = Boolean(r.bonus_fin_partie);

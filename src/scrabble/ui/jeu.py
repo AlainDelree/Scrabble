@@ -41,7 +41,7 @@ from typing import Any
 import webview
 
 from scrabble import journal
-from scrabble.config import THEMES_PLATEAU, charger_config
+from scrabble.config import AVATARS_DISPONIBLES, THEMES_PLATEAU, charger_config
 from scrabble.reglages import lire_reglage, modifier_reglage
 from scrabble.dictionnaire.dictionnaire import (
     CHEMIN_DEFINITIONS,
@@ -198,8 +198,11 @@ def calculer_positions(joueurs: list[Joueur]) -> list[str]:
 # fichier ``web/avatars/<id>.svg`` (portraits stylisés originaux, un jeu de
 # traits distinctifs par avatar). Une quinzaine suffit largement à garantir
 # l'absence de doublon avec au plus 4 joueurs par partie. L'ordre de cette liste
-# fait partie du contrat déterministe : ne pas la réordonner sans raison.
-AVATARS: tuple[str, ...] = tuple(f"avatar-{n:02d}" for n in range(1, 16))
+# fait partie du contrat déterministe : ne pas la réordonner sans raison. La
+# définition (source de vérité unique) vit désormais dans ``scrabble.config``
+# (issue #143), partagée avec les réglages ; on la ré-exporte ici sous son nom
+# historique ``AVATARS`` pour ne pas casser les usages existants.
+AVATARS: tuple[str, ...] = AVATARS_DISPONIBLES
 
 
 def _graine_avatar(joueur: Joueur, index: int) -> int:
@@ -215,7 +218,9 @@ def _graine_avatar(joueur: Joueur, index: int) -> int:
     return int.from_bytes(hashlib.md5(cle).digest()[:8], "big")
 
 
-def calculer_avatars(joueurs: list[Joueur]) -> list[str]:
+def calculer_avatars(
+    joueurs: list[Joueur], avatar_principal: str = ""
+) -> list[str]:
     """Avatar attribué à chaque joueur autour du plateau (index → identifiant).
 
     Renvoie une liste parallèle à ``joueurs`` où l'élément ``i`` est l'identifiant
@@ -225,8 +230,9 @@ def calculer_avatars(joueurs: list[Joueur]) -> list[str]:
     JS). Propriétés garanties (issue #34) :
 
     * **Déterminisme** : l'attribution ne dépend que de la liste ``joueurs`` (nom
-      + rang), donc un même appel sur une même partie rend toujours le même
-      résultat — pas de ré-tirage à chaque rafraîchissement d'écran.
+      + rang) et de ``avatar_principal``, donc un même appel sur une même partie
+      rend toujours le même résultat — pas de ré-tirage à chaque rafraîchissement
+      d'écran.
     * **Absence de doublon** tant qu'il reste des avatars libres : chaque joueur
       vise l'avatar de sa graine puis, s'il est déjà pris, un sondage linéaire
       lui trouve le prochain avatar libre. Avec ≤ 4 joueurs et 15 avatars, aucun
@@ -235,11 +241,33 @@ def calculer_avatars(joueurs: list[Joueur]) -> list[str]:
       (cas théorique, impossible avec ``MAX_JOUEURS`` = 4) : le sondage échoue,
       on retombe sur l'avatar préféré et un doublon est toléré plutôt que de
       planter.
+
+    Choix d'avatar du joueur humain (issue #143) : si ``avatar_principal`` est un
+    identifiant connu **et** que la partie compte au moins un joueur humain, cet
+    avatar est attribué d'office au **joueur humain de référence** (voir
+    :func:`index_humain_reference`) et retiré du pool avant le tirage des autres
+    joueurs. Aucun ordinateur ne peut donc recevoir l'avatar choisi par
+    l'humaine. Un ``avatar_principal`` vide ou inconnu (ou une partie sans humain)
+    laisse l'attribution historique inchangée.
     """
     nb = len(AVATARS)
-    assignes: list[str] = []
+    assignes: list[str] = [""] * len(joueurs)
     pris: set[int] = set()
+
+    # Réservation éventuelle de l'avatar choisi au joueur humain de référence.
+    reference = index_humain_reference(joueurs) if joueurs else -1
+    reserver = (
+        avatar_principal in AVATARS
+        and any(joueur.humain for joueur in joueurs)
+    )
+    if reserver:
+        indice_reserve = AVATARS.index(avatar_principal)
+        pris.add(indice_reserve)
+        assignes[reference] = AVATARS[indice_reserve]
+
     for index, joueur in enumerate(joueurs):
+        if reserver and index == reference:
+            continue  # avatar déjà attribué d'office à l'humain de référence
         prefere = _graine_avatar(joueur, index) % nb
         choix = prefere
         for pas in range(nb):
@@ -248,7 +276,7 @@ def calculer_avatars(joueurs: list[Joueur]) -> list[str]:
                 choix = candidat
                 break
         pris.add(choix)
-        assignes.append(AVATARS[choix])
+        assignes[index] = AVATARS[choix]
     return assignes
 
 
@@ -423,7 +451,8 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     de tours IA).
     """
     positions = calculer_positions(partie.joueurs)
-    avatars = calculer_avatars(partie.joueurs)
+    avatar_principal = charger_config().get("avatar_principal", "")
+    avatars = calculer_avatars(partie.joueurs, avatar_principal)
     return {
         "id_partie": id_partie,
         "taille": TAILLE,

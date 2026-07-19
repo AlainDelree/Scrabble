@@ -9,9 +9,10 @@ Deux onglets (bascule pur CSS/JS, cohérente avec le reste du projet — pas de
 framework) :
 
 * **Général** — s'appuie sur le socle existant (``config.py`` / ``reglages.py``,
-  aucun nouveau système de persistance) : prénom principal, thème du plateau,
-  source de dictionnaire active. ``mode_saisie`` / ``niveau_ia`` restent des
-  clés dormantes (issue #109) et ne sont volontairement **pas** exposées.
+  aucun nouveau système de persistance) : prénom principal, avatar du joueur
+  (issue #143, sélecteur visuel), thème du plateau, source de dictionnaire
+  active. ``mode_saisie`` / ``niveau_ia`` restent des clés dormantes (issue #109)
+  et ne sont volontairement **pas** exposées.
 
 * **Dictionnaire** — recherche d'un mot et statut **par source** (ODS / Hunspell)
   via :func:`~scrabble.dictionnaire.dictionnaire.rechercher_statut` : présent /
@@ -38,7 +39,7 @@ from typing import Any
 import webview
 
 from scrabble import journal
-from scrabble.config import THEMES_PLATEAU, TYPES_ECHANGE
+from scrabble.config import AVATARS_DISPONIBLES, THEMES_PLATEAU, TYPES_ECHANGE
 from scrabble.dictionnaire.dictionnaire import (
     SOURCES,
     modifier_appartenance,
@@ -111,6 +112,14 @@ class ApiReglages:
             "source_dictionnaire": self._lire("source_dictionnaire"),
             "bonus_fin_partie": self._lire_bool("bonus_fin_partie"),
             "type_echange": self._lire("type_echange"),
+            "avatar_principal": self._lire("avatar_principal"),
+            # Grille d'avatars disponibles pour le sélecteur visuel (issue #143) :
+            # on livre l'identifiant et le chemin du SVG (relatif à la page web)
+            # pour que le JS construise les vignettes sans dupliquer la liste.
+            "avatars": [
+                {"valeur": a, "image": f"avatars/{a}.svg"}
+                for a in AVATARS_DISPONIBLES
+            ],
             "themes": [
                 {"valeur": t, "libelle": LABELS_THEMES.get(t, t)}
                 for t in THEMES_PLATEAU

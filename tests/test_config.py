@@ -101,6 +101,7 @@ def test_fichier_valide_non_reecrit(tmp_path):
         "bonus_fin_partie": True,
         "position_chevalet": {"x": 340, "y": 610},
         "type_echange": "partiel",
+        "avatar_principal": "avatar-04",
     }
     chemin.write_text(json.dumps(valeur), encoding="utf-8")
     mtime_avant = chemin.stat().st_mtime_ns
@@ -125,6 +126,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
             "bonus_fin_partie": True,
             "position_chevalet": {"x": 12, "y": 34},
             "type_echange": "partiel",
+            "avatar_principal": "avatar-11",
         },
         chemin,
     )
@@ -139,6 +141,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
         "bonus_fin_partie": True,
         "position_chevalet": {"x": 12, "y": 34},
         "type_echange": "partiel",
+        "avatar_principal": "avatar-11",
     }
 
 
@@ -154,6 +157,7 @@ def test_prenom_principal_vide_par_defaut_non_reecrit(tmp_path):
         "bonus_fin_partie": False,
         "position_chevalet": None,
         "type_echange": "complet",
+        "avatar_principal": "",
     }
     chemin.write_text(json.dumps(valeur), encoding="utf-8")
     mtime_avant = chemin.stat().st_mtime_ns
@@ -396,6 +400,7 @@ def test_position_chevalet_valide_non_reecrite(tmp_path):
         "bonus_fin_partie": False,
         "position_chevalet": {"x": 100, "y": 200},
         "type_echange": "complet",
+        "avatar_principal": "",
     }
     chemin.write_text(json.dumps(valeur), encoding="utf-8")
     mtime_avant = chemin.stat().st_mtime_ns
@@ -404,3 +409,71 @@ def test_position_chevalet_valide_non_reecrite(tmp_path):
 
     assert config["position_chevalet"] == {"x": 100, "y": 200}
     assert chemin.stat().st_mtime_ns == mtime_avant
+
+
+# --------------------------------------------------------------------------- #
+# Avatar principal (issue #143)
+# --------------------------------------------------------------------------- #
+
+def test_avatar_principal_vide_par_defaut(tmp_path):
+    """Aucun avatar choisi par défaut (chaîne vide)."""
+    chemin = tmp_path / "config.json"
+
+    config = charger_config(chemin)
+
+    assert config["avatar_principal"] == ""
+    assert CONFIG_DEFAUT["avatar_principal"] == ""
+
+
+def test_avatar_principal_vide_non_reecrit(tmp_path):
+    """Une valeur vide est légitime (« aucun choix ») : aucune réparation."""
+    from scrabble.config import AVATARS_DISPONIBLES  # noqa: F401 (garde d'import)
+
+    chemin = tmp_path / "config.json"
+    charger_config(chemin)  # crée un fichier propre (avatar_principal == "")
+    mtime_avant = chemin.stat().st_mtime_ns
+
+    config = charger_config(chemin)
+
+    assert config["avatar_principal"] == ""
+    # Le vide ne déclenche pas de réécriture (contrairement à une valeur invalide).
+    assert chemin.stat().st_mtime_ns == mtime_avant
+
+
+def test_avatar_principal_valeur_valide_conservee(tmp_path):
+    """Un identifiant d'avatar connu est conservé tel quel."""
+    from scrabble.config import AVATARS_DISPONIBLES
+
+    chemin = tmp_path / "config.json"
+    avatar = AVATARS_DISPONIBLES[6]
+    chemin.write_text(
+        json.dumps({"avatar_principal": avatar}), encoding="utf-8"
+    )
+
+    config = charger_config(chemin)
+
+    assert config["avatar_principal"] == avatar
+
+
+def test_avatar_principal_valeur_inconnue_reparee(tmp_path):
+    """Un avatar inconnu retombe sur la chaîne vide et le fichier est réparé."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(
+        json.dumps({"avatar_principal": "avatar-999"}), encoding="utf-8"
+    )
+
+    config = charger_config(chemin)
+
+    assert config["avatar_principal"] == ""
+    releu = json.loads(chemin.read_text(encoding="utf-8"))
+    assert releu["avatar_principal"] == ""
+
+
+def test_avatar_principal_mauvais_type_repare(tmp_path):
+    """Un avatar du mauvais type retombe sur la chaîne vide."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(json.dumps({"avatar_principal": 7}), encoding="utf-8")
+
+    config = charger_config(chemin)
+
+    assert config["avatar_principal"] == ""

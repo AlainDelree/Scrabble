@@ -137,6 +137,51 @@ main {
     color: var(--couleur-muet);
 }
 
+/* Sélecteur visuel d'avatar (issue #143) : un titre puis une grille de vignettes.
+   La vignette choisie est mise en évidence (anneau + fond vert clair). */
+.champ-avatar .champ-titre {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.grille-avatars {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+    gap: 8px;
+}
+
+.avatar-vignette {
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    line-height: 0;
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.avatar-vignette img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 50%;
+}
+
+.avatar-vignette:hover {
+    border-color: var(--couleur-primaire);
+}
+
+.avatar-vignette:focus-visible {
+    outline: 2px solid var(--couleur-primaire);
+    outline-offset: 2px;
+}
+
+.avatar-vignette.actif {
+    border-color: var(--couleur-primaire);
+    box-shadow: 0 0 0 2px var(--vert-fond), 0 0 0 4px var(--couleur-primaire);
+}
+
 /* Champ à case à cocher : le libellé aligne la case et le texte sur une ligne. */
 .champ-case .case-label {
     display: flex;
