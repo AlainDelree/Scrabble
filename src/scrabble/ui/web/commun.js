@@ -82,10 +82,43 @@
     // Thèmes reconnus (alignés avec scrabble.config.THEMES_PLATEAU et le CSS).
     const THEMES = ['classique', 'vert', 'abrege'];
 
+    // Registre des popovers câblés dans CETTE fenêtre (issue #151). Chaque
+    // ``configurerPopover`` y enregistre sa fonction ``fermer`` afin qu'ouvrir un
+    // popover puisse refermer tous les autres déjà ouverts (« Derniers coups » vs
+    // « Vérification dictionnaire »). Le registre est local à la fenêtre : plateau
+    // et chevalet sont deux documents web indépendants avec chacun leur copie de
+    // ``commun.js``, donc leurs registres ne se voient pas (cf. limite cross-fenêtre
+    // documentée dans l'issue).
+    const popoversCables = [];
+
+    /** Ferme tous les popovers câblés de la fenêtre, sauf celui exclu (issue #151). */
+    function fermerAutresPopovers(exclu) {
+        popoversCables.forEach((p) => {
+            if (p.fermer !== exclu) {
+                p.fermer();
+            }
+        });
+    }
+
+    /**
+     * Ferme TOUS les popovers câblés de la fenêtre (issue #151). Sert au plateau
+     * pour refermer « Derniers coups »/« Vérification dictionnaire » restés ouverts
+     * quand une action de tour survient — y compris une action déclenchée depuis la
+     * fenêtre chevalet, dont l'effet arrive au plateau via la diffusion d'état. Les
+     * deux fenêtres étant des documents web indépendants, un clic dans le chevalet
+     * ne produit aucun événement dans le plateau : c'est ce signal applicatif qui
+     * pallie l'absence de ``blur``/clic extérieur cross-fenêtre.
+     */
+    function fermerTousPopovers() {
+        popoversCables.forEach((p) => p.fermer());
+    }
+
     /**
      * Câble un bouton déclencheur + son popover : ouverture/fermeture au clic sur
      * le bouton, fermeture au clic hors du popover ou à la touche Échap. Met à
      * jour aria-expanded. ``onOuvrir`` (optionnel) est appelé à chaque ouverture.
+     * Ouvrir un popover ferme automatiquement tout autre popover câblé encore
+     * ouvert dans la même fenêtre (issue #151).
      */
     function configurerPopover(bouton, popover, onOuvrir) {
         if (!bouton || !popover) {
@@ -99,7 +132,9 @@
             popover.hidden = true;
             bouton.setAttribute('aria-expanded', 'false');
         };
+        popoversCables.push({ fermer });
         const ouvrir = () => {
+            fermerAutresPopovers(fermer);
             popover.hidden = false;
             bouton.setAttribute('aria-expanded', 'true');
             if (typeof onOuvrir === 'function') {
@@ -288,6 +323,7 @@
         LABEL_BONUS,
         THEMES,
         configurerPopover,
+        fermerTousPopovers,
         choisirLettreJoker,
         creerModaleScore,
     };

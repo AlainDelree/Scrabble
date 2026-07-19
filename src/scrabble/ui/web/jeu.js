@@ -661,6 +661,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         dernierCoupIndex = index;
+        // Un nouveau coup en tête d'historique = une action de tour vient d'être
+        // appliquée (pose, échange ou passage), y compris déclenchée depuis la
+        // fenêtre chevalet. On referme alors les popovers du plateau restés ouverts
+        // (« Derniers coups », « Vérification dictionnaire ») : c'est ce signal
+        // applicatif qui pallie l'absence de clic extérieur cross-fenêtre (issue #151).
+        C.fermerTousPopovers();
         // Un coup qui rapporte des points déclenche un toast « +X points » près du
         // panneau de son auteur (issue #136), indépendant du toast Scrabble. Une
         // passe/un échange (score_action 0, positions vide) ne déclenche rien.

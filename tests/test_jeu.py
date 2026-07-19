@@ -1646,6 +1646,42 @@ class TestBoutonJouerDansFicheJoueur:
         assert "En attente du coup de" in js
 
 
+class TestFermetureMutuellePopovers:
+    """Fermeture mutuelle des popovers dans la fenêtre plateau (issue #151).
+
+    Ouvrir un popover (« Derniers coups », « Vérification dictionnaire ») doit
+    refermer tout autre popover déjà ouvert dans la même fenêtre. Le mécanisme
+    commun (``configurerPopover`` dans ``commun.js``) tient un registre des
+    popovers câblés et ferme les autres avant d'afficher le nouveau. Un signal
+    ``fermerTousPopovers`` permet en outre de refermer les popovers du plateau
+    quand une action de tour survient (y compris déclenchée depuis le chevalet),
+    détectée à l'apparition d'un nouveau coup en tête d'historique.
+    """
+
+    def _lire(self, nom: str) -> str:
+        from scrabble.ui.jeu import DOSSIER_WEB
+
+        return (DOSSIER_WEB / nom).read_text(encoding="utf-8")
+
+    def test_configurer_popover_ferme_les_autres_avant_ouverture(self):
+        """L'ouverture d'un popover ferme les autres popovers câblés."""
+        js = self._lire("commun.js")
+        # Registre des popovers de la fenêtre + fermeture des autres à l'ouverture.
+        assert "popoversCables" in js
+        assert "fermerAutresPopovers(fermer)" in js
+
+    def test_commun_expose_fermer_tous_popovers(self):
+        """``fermerTousPopovers`` est exposé sur le namespace Commun."""
+        js = self._lire("commun.js")
+        assert "function fermerTousPopovers" in js
+        assert "fermerTousPopovers," in js  # présent dans l'export window.Commun
+
+    def test_plateau_ferme_les_popovers_a_un_nouveau_coup(self):
+        """Le plateau referme ses popovers quand un nouveau coup apparaît."""
+        js = self._lire("jeu.js")
+        assert "C.fermerTousPopovers()" in js
+
+
 class TestPasserTour:
     """Passage « sec » du tour (sans échange) — débloque un humain sac vide (#132)."""
 
