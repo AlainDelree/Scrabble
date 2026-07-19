@@ -253,9 +253,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * Rend le bandeau de fin de partie (issue #45), étendu d'un tableau de
      * classement final (issue #133) listant TOUS les joueurs triés par score
-     * décroissant avec leur rang, et non plus seulement le(s) gagnant(s).
+     * décroissant avec leur rang, et non plus seulement le(s) gagnant(s), puis
+     * de l'évaluation officielle du score total combiné (issue #137).
      */
-    function rendreFinPartie(terminee, gagnants, joueurs) {
+    function rendreFinPartie(terminee, gagnants, joueurs, evaluation) {
         if (!terminee) {
             bandeauFin.hidden = true;
             bandeauFin.textContent = '';
@@ -273,6 +274,43 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const classement = construireClassement(joueurs);
         if (classement) bandeauFin.appendChild(classement);
+
+        const eval_ = construireEvaluationScore(evaluation);
+        if (eval_) bandeauFin.appendChild(eval_);
+    }
+
+    /**
+     * Construit le bloc compact d'évaluation officielle du score total combiné
+     * (issue #137, livret Jeux Spear p.10) : total combiné, qualificatif
+     * officiel (« Bon/Très bon/Excellent score ») s'il y a lieu, et score
+     * individuel de référence (moyenne par joueur, à titre indicatif). La
+     * classification est calculée côté Python (une seule source de vérité) et
+     * transmise via ``etat.evaluation_score`` ; ici on ne fait qu'afficher.
+     * Renvoie null en l'absence d'évaluation exploitable.
+     */
+    function construireEvaluationScore(evaluation) {
+        if (!evaluation || typeof evaluation.total !== 'number') return null;
+
+        const bloc = document.createElement('div');
+        bloc.className = 'evaluation-score';
+
+        const ligneTotal = document.createElement('div');
+        ligneTotal.className = 'evaluation-score-total';
+        let texteTotal = `Total combiné : ${evaluation.total} points`;
+        if (evaluation.qualificatif) {
+            texteTotal += ` — ${evaluation.qualificatif}`;
+        }
+        ligneTotal.textContent = texteTotal;
+        bloc.appendChild(ligneTotal);
+
+        if (Number(evaluation.nb_joueurs) > 0 && evaluation.moyenne != null) {
+            const ligneMoyenne = document.createElement('div');
+            ligneMoyenne.className = 'evaluation-score-moyenne';
+            ligneMoyenne.textContent =
+                `soit environ ${evaluation.moyenne} points par joueur`;
+            bloc.appendChild(ligneMoyenne);
+        }
+        return bloc;
     }
 
     /** Ordinal français court : 1 → « 1er », n → « ne » (2e, 3e…). */
@@ -525,7 +563,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         enAttente = Array.isArray(etat.en_attente) ? etat.en_attente : [];
         rendrePlateau();
         rendrePanneaux(etat.joueurs || []);
-        rendreFinPartie(etat.terminee, etat.gagnants, etat.joueurs);
+        rendreFinPartie(etat.terminee, etat.gagnants, etat.joueurs, etat.evaluation_score);
         rendreHistorique(etat.historique);
         sacNombre.textContent = etat.jetons_sac != null ? etat.jetons_sac : '—';
         majModeTour();

@@ -34,11 +34,13 @@ from scrabble.ui.jeu import (
     ApiJeu,
     calculer_avatars,
     calculer_positions,
+    classer_score_total,
     compter_humains,
     construire_coup,
     construire_partie_demo,
     echanger_chevalet_complet,
     etat_public,
+    evaluer_score_total,
     index_humain_reference,
     index_panneau_interactif,
     jouer_placements,
@@ -200,6 +202,22 @@ class TestEtatPublic:
         assert etat["index_courant"] == 0
         assert etat["terminee"] is False
         assert etat["gagnants"] == []
+        # L'évaluation du score n'existe qu'en fin de partie (issue #137).
+        assert etat["evaluation_score"] is None
+
+    def test_evaluation_score_en_fin_de_partie(self):
+        """En fin de partie, ``etat_public`` porte l'évaluation du total (issue #137)."""
+        partie = _partie_simple()
+        partie.joueurs[0].score = 320
+        partie.joueurs[1].score = 300
+        partie.terminee = True
+        etat = etat_public(partie, id_partie=1)
+        assert etat["evaluation_score"] == {
+            "total": 620,
+            "nb_joueurs": 2,
+            "moyenne": 310,
+            "qualificatif": "Très bon score",
+        }
 
     def test_jetons_sac_coherent(self):
         """Le sac reflète les 102 jetons moins ceux distribués (7 par joueur)."""
@@ -3148,3 +3166,102 @@ class TestMemoriserPositionChevalet:
         x_attendu = (1920 - CHEVALET_LARGEUR) // 2
         y_attendu = 1080 - CHEVALET_HAUTEUR - mod.CHEVALET_MARGE_BAS
         assert fen.moves == [(x_attendu, y_attendu)]
+
+
+class TestClasserScoreTotal:
+    """Classification officielle du total combiné (issue #137, Jeux Spear p.10).
+
+    Seuils : < 500 → aucun qualificatif ; 500-599 → « Bon score » ;
+    600-699 → « Très bon score » ; >= 700 → « Excellent score ».
+    """
+
+    def test_en_dessous_de_500_aucun_qualificatif(self):
+        assert classer_score_total(0) is None
+        assert classer_score_total(300) is None
+        assert classer_score_total(499) is None
+
+    def test_bon_score(self):
+        assert classer_score_total(500) == "Bon score"
+        assert classer_score_total(550) == "Bon score"
+        assert classer_score_total(599) == "Bon score"
+
+    def test_tres_bon_score(self):
+        assert classer_score_total(600) == "Très bon score"
+        assert classer_score_total(650) == "Très bon score"
+        assert classer_score_total(699) == "Très bon score"
+
+    def test_excellent_score(self):
+        assert classer_score_total(700) == "Excellent score"
+        assert classer_score_total(900) == "Excellent score"
+
+    def test_bornes_exactes(self):
+        # Les frontières appartiennent à la catégorie supérieure.
+        assert classer_score_total(499) is None
+        assert classer_score_total(500) == "Bon score"
+        assert classer_score_total(599) == "Bon score"
+        assert classer_score_total(600) == "Très bon score"
+        assert classer_score_total(699) == "Très bon score"
+        assert classer_score_total(700) == "Excellent score"
+
+
+class TestEvaluerScoreTotal:
+    """Évaluation complète du total combiné (issue #137)."""
+
+    @staticmethod
+    def _joueurs(scores):
+        return [Joueur(nom=f"J{i}", score=s) for i, s in enumerate(scores)]
+
+    def test_total_et_moyenne(self):
+        ev = evaluer_score_total(self._joueurs([260, 240]))
+        assert ev["total"] == 500
+        assert ev["nb_joueurs"] == 2
+        assert ev["moyenne"] == 250
+        assert ev["qualificatif"] == "Bon score"
+
+    def test_moyenne_arrondie(self):
+        # 550 / 3 = 183.33… → arrondi à 183.
+        ev = evaluer_score_total(self._joueurs([200, 200, 150]))
+        assert ev["total"] == 550
+        assert ev["moyenne"] == 183
+
+    def test_sans_qualificatif_sous_500(self):
+        ev = evaluer_score_total(self._joueurs([200, 150]))
+        assert ev["total"] == 350
+        assert ev["qualificatif"] is None
+
+    def test_aucun_joueur_moyenne_zero_sans_division(self):
+        ev = evaluer_score_total([])
+        assert ev == {
+            "total": 0,
+            "nb_joueurs": 0,
+            "moyenne": 0,
+            "qualificatif": None,
+        }
+
+    @pytest.mark.parametrize(
+        "total, qualificatif",
+        [
+            (450, None),
+            (500, "Bon score"),
+            (599, "Bon score"),
+            (600, "Très bon score"),
+            (699, "Très bon score"),
+            (700, "Excellent score"),
+            (820, "Excellent score"),
+        ],
+    )
+    @pytest.mark.parametrize("nb_joueurs", [2, 3, 4])
+    def test_classification_independante_du_nombre_de_joueurs(
+        self, total, qualificatif, nb_joueurs
+    ):
+        # À total combiné égal, la classification ne doit PAS dépendre du
+        # nombre de joueurs : on répartit le total en `nb_joueurs` parts.
+        base, reste = divmod(total, nb_joueurs)
+        scores = [base] * nb_joueurs
+        for k in range(reste):
+            scores[k] += 1
+        assert sum(scores) == total  # garde-fou de répartition
+        ev = evaluer_score_total(self._joueurs(scores))
+        assert ev["total"] == total
+        assert ev["nb_joueurs"] == nb_joueurs
+        assert ev["qualificatif"] == qualificatif

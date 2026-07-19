@@ -350,6 +350,32 @@ header {
     color: #b8860b;
 }
 
+/* Évaluation officielle du score total combiné (issue #137, livret Jeux Spear
+   p.10) : total combiné, qualificatif éventuel (Bon/Très bon/Excellent score)
+   et score individuel de référence. Bloc compact, cohérent avec le classement
+   ci-dessus (mêmes couleurs, même discrétion). */
+.evaluation-score {
+    max-width: 320px;
+    padding: 6px 14px;
+    margin: 0 auto;
+    background: var(--couleur-fond, #f5f5f0);
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+    text-align: center;
+    line-height: 1.35;
+}
+
+.evaluation-score-total {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--couleur-primaire, #2e7d32);
+}
+
+.evaluation-score-moyenne {
+    font-size: 0.78rem;
+    color: var(--couleur-secondaire, #5d4037);
+}
+
 /* Message éphémère de pose (issue #90) : court retour affiché en surimpression
    au clic sur une case du plateau (« sélectionnez d'abord une lettre », « case
    occupée », choix de joker à faire côté chevalet…). En ``position: fixed`` en

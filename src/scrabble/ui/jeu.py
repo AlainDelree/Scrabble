@@ -307,6 +307,69 @@ def compter_humains(partie: Partie) -> int:
     return sum(1 for joueur in partie.joueurs if joueur.humain)
 
 
+# Seuils officiels d'évaluation du score total combiné en fin de partie
+# (livret de règles Jeux Spear, page 10, issue #137). Un total combiné
+# (somme des scores finaux de tous les joueurs) est jugé :
+#   >= 700         → « Excellent score »
+#   600 .. 699     → « Très bon score »
+#   500 .. 599     → « Bon score »
+#   < 500          → aucun qualificatif (la règle n'en définit pas)
+# Les seuils portent sur le total combiné : ils sont volontairement
+# indépendants du nombre de joueurs. La règle cite des seuils individuels
+# (125-150 à 4 joueurs, 250-300 à 2 joueurs) qui sont exactement 500-600
+# divisés par le nombre de joueurs ; comparer le total combiné aux seuils
+# fixes est donc strictement équivalent à comparer la moyenne individuelle
+# aux mêmes seuils divisés par le nombre de joueurs — d'où une seule
+# classification, présentée à titre indicatif aussi en moyenne par joueur.
+SEUIL_BON_SCORE = 500
+SEUIL_TRES_BON_SCORE = 600
+SEUIL_EXCELLENT_SCORE = 700
+
+
+def classer_score_total(total_combine: int) -> str | None:
+    """Qualificatif officiel du total combiné, ou ``None`` en dessous de 500.
+
+    Applique les seuils :data:`SEUIL_BON_SCORE` / :data:`SEUIL_TRES_BON_SCORE`
+    / :data:`SEUIL_EXCELLENT_SCORE` (issue #137). Ne dépend **que** du total
+    combiné, jamais du nombre de joueurs (voir la note sur les seuils).
+    """
+    if total_combine >= SEUIL_EXCELLENT_SCORE:
+        return "Excellent score"
+    if total_combine >= SEUIL_TRES_BON_SCORE:
+        return "Très bon score"
+    if total_combine >= SEUIL_BON_SCORE:
+        return "Bon score"
+    return None
+
+
+def evaluer_score_total(joueurs: "list[Joueur]") -> dict[str, Any]:
+    """Évalue le total combiné des scores finaux de tous les joueurs (issue #137).
+
+    Renvoie un dictionnaire sérialisable pour l'UI :
+
+    * ``total`` : somme des scores finaux (déductions/bonus de fin de partie
+      déjà appliqués, issue #130) ;
+    * ``nb_joueurs`` : nombre de joueurs pris en compte ;
+    * ``moyenne`` : score individuel de référence (``total / nb_joueurs``),
+      arrondi à l'entier le plus proche, à afficher à titre indicatif ;
+    * ``qualificatif`` : « Bon score » / « Très bon score » / « Excellent
+      score » selon les seuils officiels, ou ``None`` en dessous de 500.
+
+    La moyenne ne donne **pas** lieu à une classification distincte : elle est
+    mathématiquement équivalente au total combiné rapporté au même nombre de
+    joueurs (voir la note sur les seuils).
+    """
+    total = sum(joueur.score for joueur in joueurs)
+    nb_joueurs = len(joueurs)
+    moyenne = round(total / nb_joueurs) if nb_joueurs else 0
+    return {
+        "total": total,
+        "nb_joueurs": nb_joueurs,
+        "moyenne": moyenne,
+        "qualificatif": classer_score_total(total),
+    }
+
+
 def index_panneau_interactif(partie: Partie) -> int | None:
     """Index du joueur dont le panneau du bas expose le chevalet **interactif**.
 
@@ -344,6 +407,11 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     dont le chevalet est exposé, ou ``None`` pendant un tour d'ordinateur (voir
     :func:`index_panneau_interactif`, issue #35).
 
+    ``evaluation_score`` (issue #137) n'est renseigné qu'en fin de partie : il
+    porte le total combiné des scores, son qualificatif officiel éventuel et le
+    score individuel de référence (voir :func:`evaluer_score_total`) ; ``None``
+    tant que la partie n'est pas terminée.
+
     ``historique`` (issue #37) est la portion récente de l'historique des
     actions (voir :func:`serialiser_historique`) : la plus récente en premier,
     plafonnée à ``min(nb_joueurs * 2, 8)`` lignes, chacune avec le détail du
@@ -374,6 +442,9 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
         "index_panneau": index_panneau_interactif(partie),
         "terminee": partie.terminee,
         "gagnants": [j.nom for j in partie.gagnants] if partie.terminee else [],
+        "evaluation_score": (
+            evaluer_score_total(partie.joueurs) if partie.terminee else None
+        ),
         "historique": serialiser_historique(partie),
     }
 
