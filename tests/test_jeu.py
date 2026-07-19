@@ -839,25 +839,30 @@ class TestCalculerPositions:
         positions = calculer_positions(self._joueurs(True, False))
         assert positions == ["bas", "haut"]
 
-    def test_deux_adversaires_haut_puis_gauche(self):
+    def test_deux_adversaires_sens_horaire_gauche_puis_haut(self):
+        # Sens horaire (issue #122) à partir du bas : le 1er adversaire va à
+        # gauche, le 2e en haut.
         positions = calculer_positions(self._joueurs(True, False, False))
-        assert positions == ["bas", "haut", "gauche"]
+        assert positions == ["bas", "gauche", "haut"]
 
-    def test_trois_adversaires_haut_gauche_droite(self):
+    def test_trois_adversaires_gauche_haut_droite(self):
+        # Sens horaire complet à 4 joueurs : bas → gauche → haut → droite.
         positions = calculer_positions(self._joueurs(True, False, False, False))
-        assert positions == ["bas", "haut", "gauche", "droite"]
+        assert positions == ["bas", "gauche", "haut", "droite"]
 
     def test_humain_reference_toujours_en_bas(self):
         # Le joueur humain de référence est le premier humain de la liste : il
-        # est en bas quel que soit l'ordre des joueurs dans la partie.
+        # est en bas quel que soit l'ordre des joueurs dans la partie, et les
+        # autres tournent dans le sens horaire à partir de son rang réel.
         positions = calculer_positions(self._joueurs(False, False, True, False))
-        assert positions == ["haut", "gauche", "bas", "droite"]
+        assert positions == ["haut", "droite", "bas", "gauche"]
 
-    def test_plusieurs_humains_autres_repartis_dans_l_ordre(self):
+    def test_plusieurs_humains_autres_repartis_sens_horaire(self):
         # Avec plusieurs humains, seul le premier va en bas ; les autres joueurs
-        # (humains et ordinateurs) se répartissent dans l'ordre de la liste.
+        # (humains et ordinateurs) se répartissent dans le sens horaire selon
+        # l'ordre de jeu.
         positions = calculer_positions(self._joueurs(True, True, False))
-        assert positions == ["bas", "haut", "gauche"]
+        assert positions == ["bas", "gauche", "haut"]
 
     def test_aucun_humain_premier_joueur_en_bas(self):
         # Cas théorique sans humain : le premier joueur tient le rôle de référence.
@@ -867,10 +872,84 @@ class TestCalculerPositions:
     def test_liste_vide(self):
         assert calculer_positions([]) == []
 
+    def test_humain_non_premier_a_jouer_ordre_horaire(self):
+        # Le tirage d'ordre a désigné un ordinateur en premier : l'humain de
+        # référence (index 1) reste en bas, et les autres tournent dans le sens
+        # horaire à partir de son rang réel — pas de l'index 0.
+        # Ordre de jeu : [ordi, HUMAIN, ordi]. Réf. en bas ; le joueur suivant
+        # dans l'ordre (index 2) va à gauche, le suivant (index 0) en haut.
+        positions = calculer_positions(self._joueurs(False, True, False))
+        assert positions == ["haut", "bas", "gauche"]
+
+    def test_humain_troisieme_a_jouer_quatre_joueurs(self):
+        # 4 joueurs, l'humain de référence ne joue qu'en 3e position (index 2) :
+        # bas en index 2, puis sens horaire gauche/haut/droite pour les joueurs
+        # d'index 3, 0 et 1 dans l'ordre de jeu.
+        positions = calculer_positions(self._joueurs(False, False, True, False))
+        assert positions == ["haut", "droite", "bas", "gauche"]
+        # Cohérence : la référence est bien en bas quel que soit son rang.
+        assert positions[index_humain_reference(self._joueurs(False, False, True, False))] == "bas"
+
+    def test_humain_dernier_a_jouer_deux_joueurs(self):
+        # Exception 2 joueurs conservée : face-à-face bas/haut même quand
+        # l'humain joue en second.
+        positions = calculer_positions(self._joueurs(False, True))
+        assert positions == ["haut", "bas"]
+
+    def test_ensembles_de_cotes_par_effectif_preserves(self):
+        # Les *ensembles* de côtés utilisés par effectif sont inchangés par la
+        # refonte #122 (seul l'ordre d'attribution change) : 1→bas, 2→bas/haut,
+        # 3→bas/gauche/haut, 4→les quatre côtés.
+        assert set(calculer_positions(self._joueurs(True))) == {"bas"}
+        assert set(calculer_positions(self._joueurs(True, False))) == {"bas", "haut"}
+        assert set(calculer_positions(self._joueurs(True, False, False))) == {
+            "bas",
+            "gauche",
+            "haut",
+        }
+        assert set(calculer_positions(self._joueurs(True, False, False, False))) == {
+            "bas",
+            "gauche",
+            "haut",
+            "droite",
+        }
+
+    def test_reprise_partie_persistee_positions_horaires(self, tmp_path):
+        # Une partie persistée fige l'ordre de jeu (établi par le tirage) dans
+        # l'ordre de sa liste de joueurs. La reprendre recalcule des positions
+        # conformes à la nouvelle règle horaire, sans toucher à l'ordre de jeu,
+        # aux scores ni au plateau.
+        trie = Trie.depuis_iterable(["AS"])
+        # Ordre de jeu figé : un ordinateur joue en premier, l'humain de
+        # référence n'est que deuxième (cas typique d'un tirage d'ordre).
+        joueurs = [
+            Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Bob", humain=True),
+        ]
+        partie = Partie(joueurs, trie, graine=7)
+        chemin = tmp_path / "parties.db"
+        id_partie = demarrer_suivi(partie, chemin)
+
+        reprise = reprendre_partie(id_partie, trie, chemin)
+
+        # L'ordre de jeu (donc la liste des joueurs) est intact.
+        assert [j.nom for j in reprise.joueurs] == ["Robot", "Alice", "Bob"]
+        # Scores et plateau intacts (aucune action rejouée).
+        assert [j.score for j in reprise.joueurs] == [0, 0, 0]
+        assert reprise.plateau.est_vide()
+        # Positions recalculées selon la règle horaire à partir du rang réel de
+        # l'humain de référence (Alice, index 1) : bas en index 1, puis le
+        # joueur suivant dans l'ordre (Bob, index 2) à gauche, puis Robot
+        # (index 0) en haut.
+        positions = calculer_positions(reprise.joueurs)
+        assert positions == ["haut", "bas", "gauche"]
+        assert positions[index_humain_reference(reprise.joueurs)] == "bas"
+
     def test_position_exposee_dans_etat_public(self):
         partie = Partie(self._joueurs(True, False, False), _DicoFactice(), graine=3)
         etat = etat_public(partie, None)
-        assert [j["position"] for j in etat["joueurs"]] == ["bas", "haut", "gauche"]
+        assert [j["position"] for j in etat["joueurs"]] == ["bas", "gauche", "haut"]
 
 
 class TestCalculerAvatars:

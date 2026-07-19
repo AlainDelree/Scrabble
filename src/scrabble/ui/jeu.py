@@ -113,10 +113,19 @@ def serialiser_plateau(plateau: PlateauPartie) -> list[list[dict[str, Any]]]:
     ]
 
 
-# Côtés du plateau occupés par les adversaires du joueur humain de référence,
-# dans l'ordre de rotation imposé par l'issue #33 : le premier autre joueur va
-# en haut (face à face avec le joueur du bas), puis à gauche, puis à droite.
-COTES_ADVERSAIRES = ("haut", "gauche", "droite")
+# Côtés attribués aux autres joueurs, indexés par leur rang *relatif* au joueur
+# humain de référence dans l'ordre de jeu (issue #122). La clé est l'effectif
+# total ; la valeur donne, pour le 1er, 2e, 3e joueur *après* la référence dans
+# l'ordre de jeu, le côté du plateau à occuper, en tournant dans le sens horaire
+# à partir du bas : bas → gauche → haut → droite.
+#
+# Exception documentée à 2 joueurs : face-à-face bas/haut, il n'y a pas de strict
+# sens horaire dans ce cas précis (l'unique adversaire est placé en face).
+SEQUENCES_POSITIONS = {
+    2: ("haut",),
+    3: ("gauche", "haut"),
+    4: ("gauche", "haut", "droite"),
+}
 
 
 def index_humain_reference(joueurs: list[Joueur]) -> int:
@@ -142,31 +151,37 @@ def calculer_positions(joueurs: list[Joueur]) -> list[str]:
 
     Renvoie une liste parallèle à ``joueurs`` où l'élément ``i`` est le côté
     (``"bas"``, ``"haut"``, ``"gauche"`` ou ``"droite"``) assigné au joueur
-    d'index ``i``. Règle (issue #33), avec une seule source de vérité côté
-    Python :
+    d'index ``i``. Règle (issues #33 puis #122), avec une seule source de vérité
+    côté Python :
 
     * Le **joueur humain de référence** — le premier joueur ``humain`` de la
       liste ``joueurs`` — est toujours en ``"bas"`` (position naturelle face à
       l'écran). S'il n'y a aucun humain (cas théorique / test), le premier
       joueur tient ce rôle.
     * Tous les autres joueurs (humains et ordinateurs confondus) se répartissent
-      sur les côtés restants dans l'ordre de la liste, en tournant :
-      ``haut``, puis ``gauche``, puis ``droite``.
+      sur les côtés restants **dans le sens horaire** (bas → gauche → haut →
+      droite), selon leur rang *relatif* à la référence dans l'ordre de jeu :
+      le joueur qui joue juste après la référence occupe le côté suivant dans le
+      sens horaire, et ainsi de suite. L'ordre de jeu étant déjà encodé dans
+      l'ordre de la liste ``joueurs`` (le tirage d'ordre l'a réordonnée), les
+      positions suivent l'ordre de jeu réel — y compris quand l'humain n'est pas
+      le premier à jouer.
+
+    Exception documentée à 2 joueurs : face-à-face bas/haut (voir
+    :data:`SEQUENCES_POSITIONS`), sans strict sens horaire dans ce cas précis.
 
     Cas particuliers : liste vide → ``[]`` ; un seul joueur → ``["bas"]`` (aucune
     position latérale).
     """
     if not joueurs:
         return []
+    n = len(joueurs)
+    positions = [""] * n
     reference = index_humain_reference(joueurs)
-    positions = [""] * len(joueurs)
     positions[reference] = "bas"
-    rang = 0
-    for index in range(len(joueurs)):
-        if index == reference:
-            continue
-        positions[index] = COTES_ADVERSAIRES[rang % len(COTES_ADVERSAIRES)]
-        rang += 1
+    sequence = SEQUENCES_POSITIONS.get(n, ())
+    for k in range(1, n):
+        positions[(reference + k) % n] = sequence[k - 1]
     return positions
 
 
