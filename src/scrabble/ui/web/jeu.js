@@ -250,17 +250,84 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    /** Rend le bandeau de fin de partie (issue #45). */
-    function rendreFinPartie(terminee, gagnants) {
+    /**
+     * Rend le bandeau de fin de partie (issue #45), étendu d'un tableau de
+     * classement final (issue #133) listant TOUS les joueurs triés par score
+     * décroissant avec leur rang, et non plus seulement le(s) gagnant(s).
+     */
+    function rendreFinPartie(terminee, gagnants, joueurs) {
         if (!terminee) {
             bandeauFin.hidden = true;
             bandeauFin.textContent = '';
             return;
         }
         bandeauFin.hidden = false;
-        bandeauFin.textContent = gagnants && gagnants.length
+        bandeauFin.textContent = '';
+
+        const message = document.createElement('div');
+        message.className = 'bandeau-fin-message';
+        message.textContent = gagnants && gagnants.length
             ? `🏁 Partie terminée — ${gagnants.join(', ')}`
             : '🏁 Partie terminée';
+        bandeauFin.appendChild(message);
+
+        const classement = construireClassement(joueurs);
+        if (classement) bandeauFin.appendChild(classement);
+    }
+
+    /** Ordinal français court : 1 → « 1er », n → « ne » (2e, 3e…). */
+    function ordinalFr(n) {
+        return n === 1 ? '1er' : `${n}e`;
+    }
+
+    /**
+     * Construit le petit tableau de classement final (issue #133) : tous les
+     * joueurs triés par score décroissant avec leur rang. Les ex-æquo partagent
+     * le même rang (classement « sportif » : 1, 2, 2, 4) et sont annotés
+     * « ex æquo ». Renvoie null en l'absence de joueurs.
+     */
+    function construireClassement(joueurs) {
+        if (!Array.isArray(joueurs) || joueurs.length === 0) return null;
+        const tries = joueurs
+            .map((j) => ({ nom: j.nom, score: Number(j.score) || 0 }))
+            .sort((a, b) => b.score - a.score);
+        // Rang « sportif » : à score égal, même rang ; le rang suivant tient
+        // compte du nombre d'ex-æquo déjà classés (l'index dans la liste triée).
+        let rangPrec = 0;
+        let scorePrec = null;
+        const lignes = tries.map((j, i) => {
+            const rang = (scorePrec !== null && j.score === scorePrec) ? rangPrec : i + 1;
+            rangPrec = rang;
+            scorePrec = j.score;
+            return { nom: j.nom, score: j.score, rang };
+        });
+        // Nombre de joueurs partageant chaque rang → marquer les ex-æquo.
+        const compteRang = {};
+        lignes.forEach((l) => { compteRang[l.rang] = (compteRang[l.rang] || 0) + 1; });
+
+        const table = document.createElement('table');
+        table.className = 'classement-final';
+        const caption = document.createElement('caption');
+        caption.textContent = 'Classement final';
+        table.appendChild(caption);
+        const tbody = document.createElement('tbody');
+        lignes.forEach((l) => {
+            const tr = document.createElement('tr');
+            if (l.rang === 1) tr.classList.add('classement-premier');
+            const tdRang = document.createElement('td');
+            tdRang.className = 'classement-rang';
+            tdRang.textContent = ordinalFr(l.rang) + (compteRang[l.rang] > 1 ? ' ex æquo' : '');
+            const tdNom = document.createElement('td');
+            tdNom.className = 'classement-nom';
+            tdNom.textContent = l.nom;
+            const tdScore = document.createElement('td');
+            tdScore.className = 'classement-score';
+            tdScore.textContent = l.score;
+            tr.append(tdRang, tdNom, tdScore);
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        return table;
     }
 
     // ------------------------------------------------------------------ //
@@ -458,7 +525,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         enAttente = Array.isArray(etat.en_attente) ? etat.en_attente : [];
         rendrePlateau();
         rendrePanneaux(etat.joueurs || []);
-        rendreFinPartie(etat.terminee, etat.gagnants);
+        rendreFinPartie(etat.terminee, etat.gagnants, etat.joueurs);
         rendreHistorique(etat.historique);
         sacNombre.textContent = etat.jetons_sac != null ? etat.jetons_sac : '—';
         majModeTour();

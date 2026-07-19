@@ -101,9 +101,18 @@ const listeCases = (sel) =>
       coup_consulte: cc,
       coup_consulte_exact: JSON.stringify(cc) === JSON.stringify(c0.map(([l, c]) => `${l},${c}`).sort()),
       modale_ouverte: !document.getElementById('score-modale').hidden,
+      // Issue #133 : le coup consulté est désormais un FOND ORANGE PLEIN #ff8f00
+      // (case + tuile) et non plus un liseré bleu. On vérifie les deux fonds.
       style: (() => {
         const el = document.querySelector('.case.coup-consulte');
-        return el ? getComputedStyle(el).boxShadow.slice(0, 40) : null;
+        if (!el) return null;
+        const tuile = el.querySelector('.tuile');
+        const caseBg = getComputedStyle(el).backgroundColor;
+        const tuileBg = tuile ? getComputedStyle(tuile).backgroundColor : null;
+        return {
+          caseBg, tuileBg,
+          orange_plein: caseBg === 'rgb(255, 143, 0)' && tuileBg === 'rgb(255, 143, 0)',
+        };
       })(),
     };
   }, coup0);
