@@ -90,6 +90,25 @@ def test_modifier_theme_plateau_invalide_retombe_sur_defaut(tmp_path):
     assert lire_reglage("theme_plateau", chemin) == "classique"
 
 
+@pytest.mark.parametrize("valeur", [True, False])
+def test_modifier_bonus_fin_partie_booleen(tmp_path, valeur):
+    """Le réglage booléen bonus_fin_partie accepte et conserve un vrai booléen."""
+    chemin = tmp_path / "config.json"
+
+    retenue = modifier_reglage("bonus_fin_partie", valeur, chemin)
+
+    assert retenue is valeur
+    assert lire_reglage("bonus_fin_partie", chemin) is valeur
+    assert json.loads(chemin.read_text(encoding="utf-8"))["bonus_fin_partie"] is valeur
+
+
+def test_modifier_bonus_fin_partie_non_booleen_rejete(tmp_path):
+    """Une valeur non booléenne pour un réglage booléen lève TypeError."""
+    chemin = tmp_path / "config.json"
+    with pytest.raises(TypeError):
+        modifier_reglage("bonus_fin_partie", "true", chemin)
+
+
 def test_modifier_reglage_inconnu(tmp_path):
     chemin = tmp_path / "config.json"
     with pytest.raises(KeyError):

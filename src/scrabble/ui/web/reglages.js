@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const inputPrenom = document.getElementById('input-prenom');
     const selectTheme = document.getElementById('select-theme');
     const selectSource = document.getElementById('select-source');
+    const checkBonusFin = document.getElementById('check-bonus-fin');
     const statutGeneral = document.getElementById('statut-general');
 
     let horlogeStatut = null;
@@ -90,6 +91,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         inputPrenom.value = r.prenom_principal || '';
         remplirSelect(selectTheme, r.themes, r.theme_plateau);
         remplirSelect(selectSource, r.sources, r.source_dictionnaire);
+        checkBonusFin.checked = Boolean(r.bonus_fin_partie);
         labelsSources = {};
         (r.sources || []).forEach((s) => { labelsSources[s.valeur] = s.libelle; });
     }
@@ -118,6 +120,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // resynchronise le menu pour ne pas laisser un choix trompeur affiché.
         if (retenue && retenue !== selectSource.value) {
             selectSource.value = retenue;
+        }
+    });
+    // Case booléenne : on transmet un vrai booléen (accepté par modifier_reglage
+    // pour les clés booléennes) et on resynchronise sur la valeur retenue.
+    checkBonusFin.addEventListener('change', async () => {
+        const retenue = await enregistrer('bonus_fin_partie', checkBonusFin.checked);
+        if (retenue !== null) {
+            checkBonusFin.checked = Boolean(retenue);
         }
     });
 

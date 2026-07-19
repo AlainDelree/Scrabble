@@ -52,6 +52,31 @@ def test_enregistrer_reglage_delegue_a_modifier_reglage(monkeypatch):
     assert appels == {"theme_plateau": "vert"}
 
 
+def test_enregistrer_reglage_booleen_transmis_tel_quel(monkeypatch):
+    """Un réglage booléen (bonus_fin_partie) est transmis comme vrai booléen."""
+    appels = {}
+
+    def faux_modifier(cle, valeur):
+        appels[cle] = valeur
+        return valeur
+
+    monkeypatch.setattr(r, "modifier_reglage", faux_modifier)
+
+    res = ApiReglages().enregistrer_reglage("bonus_fin_partie", True)
+
+    assert res == {"succes": True, "valeur": True}
+    assert appels == {"bonus_fin_partie": True}
+
+
+def test_obtenir_reglages_generaux_expose_bonus_fin_partie(monkeypatch):
+    """La structure renvoyée expose bonus_fin_partie sous forme de booléen."""
+    monkeypatch.setattr(r, "lire_reglage", lambda cle: True if cle == "bonus_fin_partie" else "")
+
+    data = ApiReglages().obtenir_reglages_generaux()
+
+    assert data["bonus_fin_partie"] is True
+
+
 def test_enregistrer_reglage_source_invalide_refusee(monkeypatch):
     """Une source de dictionnaire inconnue est rejetée sans écriture."""
     def interdit(*args, **kwargs):  # pragma: no cover - ne doit pas être appelé

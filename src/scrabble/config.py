@@ -34,11 +34,21 @@ CONFIG_DEFAUT: dict[str, Any] = {
     # Thème visuel (habillage couleurs/étiquettes) du plateau de l'écran de jeu.
     # Voir THEMES_PLATEAU pour les valeurs acceptées ; défaut = "classique".
     "theme_plateau": "classique",
+    # Bonus officiel au finisseur (issue #134) : quand activé, le joueur qui
+    # écoule toutes ses lettres en premier reçoit la somme des lettres restant
+    # chez les autres joueurs, en plus de la pénalité qui leur est déjà
+    # appliquée. Désactivé par défaut : le comportement historique (pénalité
+    # seule, issue #22) reste inchangé pour qui ne touche pas à ce réglage.
+    "bonus_fin_partie": False,
 }
 
 # Clés dont la valeur est du texte libre : une chaîne vide y est légitime
 # (contrairement aux autres champs où le vide déclenche une réparation).
 CLES_TEXTE_LIBRE: frozenset[str] = frozenset({"prenom_principal"})
+
+# Clés dont la valeur est un booléen (et non une chaîne) : validées à part,
+# toute valeur non booléenne déclenchant une réparation vers le défaut.
+CLES_BOOLEENNES: frozenset[str] = frozenset({"bonus_fin_partie"})
 
 # Thèmes visuels de plateau reconnus. Doivent rester alignés avec les classes
 # CSS ``theme-<nom>`` de ``ui/web/jeu.css`` et les libellés de ``ui/web/jeu.js``.
@@ -102,6 +112,14 @@ def _fusionner_defauts(brut: Any) -> tuple[dict[str, Any], bool]:
             config[cle] = defaut
             continue
         valeur = brut[cle]
+        if cle in CLES_BOOLEENNES:
+            # Champ booléen : seul un vrai booléen est accepté (``isinstance``
+            # exclut donc 0/1, "true"… qui déclenchent une réparation).
+            if not isinstance(valeur, bool):
+                doit_reparer = True
+                valeur = defaut
+            config[cle] = valeur
+            continue
         if not isinstance(valeur, str):
             # Type incorrect : on retombe toujours sur le défaut.
             doit_reparer = True

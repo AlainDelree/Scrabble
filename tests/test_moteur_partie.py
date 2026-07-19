@@ -30,6 +30,7 @@ from scrabble.moteur.partie import (
     TAILLE_CHEVALET,
     creer_partie,
 )
+from scrabble.regles.lettres import JOKER
 
 
 def _trie(*mots: str) -> Trie:
@@ -252,6 +253,88 @@ def test_score_final_penalise_les_lettres_restantes():
     partie.passer()  # un seul joueur : une passe suffit à terminer
     assert partie.terminee
     assert partie.joueurs[0].score == 30 - 20
+
+
+def test_bonus_desactive_par_defaut_ne_change_rien():
+    # Non-régression stricte : réglage désactivé (défaut) => pénalité seule,
+    # aucun bonus au finisseur, exactement comme avant l'issue #134.
+    partie = Partie(
+        [Joueur("Alice"), Joueur("Bob")], _trie("CADRE"), graine=1
+    )
+    partie.joueurs[0].chevalet[:] = list("CADRE")
+    partie.joueurs[1].chevalet[:] = ["K", "Z"]  # 20 points de reste
+    partie.joueurs[0].score = 0
+    partie.joueurs[1].score = 100
+    _vider_sac(partie)
+    entree = partie.jouer_coup(_coup_cadre_au_centre())
+    assert partie.terminee
+    # Alice : score du coup, aucun bonus (chevalet vidé => pas de pénalité).
+    assert partie.joueurs[0].score == entree.detail.total
+    # Bob : pénalisé de ses 20 points restants, rien de plus.
+    assert partie.joueurs[1].score == 100 - 20
+
+
+def test_bonus_active_credite_le_finisseur():
+    # Réglage activé + fin par chevalet vidé => le finisseur reçoit la somme des
+    # lettres restant chez les autres, en plus de la pénalité de ceux-ci.
+    partie = Partie(
+        [Joueur("Alice"), Joueur("Bob")],
+        _trie("CADRE"),
+        graine=1,
+        bonus_fin_partie=True,
+    )
+    partie.joueurs[0].chevalet[:] = list("CADRE")
+    partie.joueurs[1].chevalet[:] = ["K", "Z"]  # 20 points de reste
+    partie.joueurs[0].score = 0
+    partie.joueurs[1].score = 100
+    _vider_sac(partie)
+    entree = partie.jouer_coup(_coup_cadre_au_centre())
+    assert partie.terminee
+    # Alice : score du coup + bonus de 20 (le reste de Bob).
+    assert partie.joueurs[0].score == entree.detail.total + 20
+    # Bob : toujours pénalisé de ses 20 points (la déduction reste appliquée).
+    assert partie.joueurs[1].score == 100 - 20
+
+
+def test_bonus_active_joker_adverse_contribue_zero():
+    # Un joker restant chez un adversaire vaut 0 : il ne gonfle pas le bonus.
+    partie = Partie(
+        [Joueur("Alice"), Joueur("Bob")],
+        _trie("CADRE"),
+        graine=1,
+        bonus_fin_partie=True,
+    )
+    partie.joueurs[0].chevalet[:] = list("CADRE")
+    partie.joueurs[1].chevalet[:] = [JOKER, "K"]  # joker=0, K=10 => 10 points
+    partie.joueurs[0].score = 0
+    partie.joueurs[1].score = 0
+    _vider_sac(partie)
+    entree = partie.jouer_coup(_coup_cadre_au_centre())
+    assert partie.terminee
+    # Bonus = 10 (le joker ne compte pas), et non 10 + quelque chose.
+    assert partie.joueurs[0].score == entree.detail.total + 10
+    assert partie.joueurs[1].score == 0 - 10
+
+
+def test_bonus_active_mais_fin_par_blocage_sans_bonus():
+    # Le bonus ne concerne que la fin par chevalet vidé : une fin par blocage
+    # (passes consécutives) n'attribue jamais de bonus, même réglage activé.
+    partie = Partie(
+        [Joueur("Alice"), Joueur("Bob")],
+        _trie(),
+        graine=1,
+        bonus_fin_partie=True,
+    )
+    partie.joueurs[0].chevalet[:] = ["A"]   # 1 point de reste
+    partie.joueurs[1].chevalet[:] = ["K", "Z"]  # 20 points de reste
+    partie.joueurs[0].score = 50
+    partie.joueurs[1].score = 50
+    partie.passer()  # Alice passe (compteur 1)
+    partie.passer()  # Bob passe (compteur 2 == nb joueurs) -> fin par blocage
+    assert partie.terminee
+    # Chacun est seulement pénalisé de son reste, aucun bonus croisé.
+    assert partie.joueurs[0].score == 50 - 1
+    assert partie.joueurs[1].score == 50 - 20
 
 
 def test_gagnants_gere_les_egalites():

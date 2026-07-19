@@ -97,6 +97,7 @@ def test_fichier_valide_non_reecrit(tmp_path):
         "source_dictionnaire": "hunspell",
         "prenom_principal": "Marie",
         "theme_plateau": "vert",
+        "bonus_fin_partie": True,
     }
     chemin.write_text(json.dumps(valeur), encoding="utf-8")
     mtime_avant = chemin.stat().st_mtime_ns
@@ -118,6 +119,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
             "source_dictionnaire": "hunspell",
             "prenom_principal": "Alice",
             "theme_plateau": "abrege",
+            "bonus_fin_partie": True,
         },
         chemin,
     )
@@ -129,6 +131,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
         "source_dictionnaire": "hunspell",
         "prenom_principal": "Alice",
         "theme_plateau": "abrege",
+        "bonus_fin_partie": True,
     }
 
 
@@ -141,6 +144,7 @@ def test_prenom_principal_vide_par_defaut_non_reecrit(tmp_path):
         "source_dictionnaire": "ods",
         "prenom_principal": "",
         "theme_plateau": "classique",
+        "bonus_fin_partie": False,
     }
     chemin.write_text(json.dumps(valeur), encoding="utf-8")
     mtime_avant = chemin.stat().st_mtime_ns
@@ -233,3 +237,41 @@ def test_theme_plateau_mauvais_type_repare(tmp_path):
     config = charger_config(chemin)
 
     assert config["theme_plateau"] == "classique"
+
+
+def test_bonus_fin_partie_desactive_par_defaut(tmp_path):
+    """Le bonus au finisseur (issue #134) est désactivé par défaut."""
+    chemin = tmp_path / "config.json"
+
+    config = charger_config(chemin)
+
+    assert config["bonus_fin_partie"] is False
+    assert CONFIG_DEFAUT["bonus_fin_partie"] is False
+
+
+@pytest.mark.parametrize("valeur", [True, False])
+def test_bonus_fin_partie_booleen_conserve(tmp_path, valeur):
+    """Un vrai booléen est conservé tel quel, sans réparation."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(
+        json.dumps({"bonus_fin_partie": valeur}), encoding="utf-8"
+    )
+
+    config = charger_config(chemin)
+
+    assert config["bonus_fin_partie"] is valeur
+
+
+@pytest.mark.parametrize("invalide", ["true", 1, 0, None, "oui"])
+def test_bonus_fin_partie_valeur_non_booleenne_reparee(tmp_path, invalide):
+    """Toute valeur non booléenne (str, entier, None) retombe sur le défaut."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(
+        json.dumps({"bonus_fin_partie": invalide}), encoding="utf-8"
+    )
+
+    config = charger_config(chemin)
+
+    assert config["bonus_fin_partie"] is False
+    releu = json.loads(chemin.read_text(encoding="utf-8"))
+    assert releu["bonus_fin_partie"] is False

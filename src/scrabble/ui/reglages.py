@@ -105,6 +105,7 @@ class ApiReglages:
             "prenom_principal": self._lire("prenom_principal"),
             "theme_plateau": self._lire("theme_plateau"),
             "source_dictionnaire": self._lire("source_dictionnaire"),
+            "bonus_fin_partie": self._lire_bool("bonus_fin_partie"),
             "themes": [
                 {"valeur": t, "libelle": LABELS_THEMES.get(t, t)}
                 for t in THEMES_PLATEAU
@@ -115,16 +116,17 @@ class ApiReglages:
             ],
         }
 
-    def enregistrer_reglage(self, cle: str, valeur: str) -> dict[str, Any]:
+    def enregistrer_reglage(self, cle: str, valeur: Any) -> dict[str, Any]:
         """Enregistre un réglage de l'onglet Général et renvoie la valeur retenue.
 
         Passe par ``reglages.modifier_reglage`` (normalisation + écriture atomique
         de ``config.py``). Pour ``source_dictionnaire``, non contraint par
         ``config.py`` mais qui ne connaît que :data:`SOURCES`, on rejette en amont
         toute valeur inconnue (une source invalide dégraderait silencieusement la
-        validation en repartant sur l'ODS). ``valeur`` peut être vide pour le
-        prénom principal (champ en texte libre). Retourne ``{"succes", "valeur"}``
-        ou ``{"succes": False, "erreur"}``.
+        validation en repartant sur l'ODS). ``valeur`` est une chaîne pour la
+        plupart des clés (vide autorisée pour le prénom principal, en texte
+        libre) et un booléen pour les clés booléennes (ex. ``bonus_fin_partie``).
+        Retourne ``{"succes", "valeur"}`` ou ``{"succes": False, "erreur"}``.
         """
         try:
             if cle == "source_dictionnaire" and valeur not in SOURCES:
@@ -150,6 +152,14 @@ class ApiReglages:
             return lire_reglage(cle) or ""
         except Exception:  # noqa: BLE001 - config illisible : on dégrade en vide
             return ""
+
+    @staticmethod
+    def _lire_bool(cle: str) -> bool:
+        """Lit un réglage booléen en tolérant l'absence (renvoie ``False``)."""
+        try:
+            return bool(lire_reglage(cle))
+        except Exception:  # noqa: BLE001 - config illisible : on dégrade en False
+            return False
 
     # ------------------------------------------------------------------ #
     # Onglet Dictionnaire

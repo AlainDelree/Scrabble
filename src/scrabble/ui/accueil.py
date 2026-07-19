@@ -285,6 +285,9 @@ class ApiAccueil:
             ]
             graine = random.randint(0, 2**31 - 1)
             trie = obtenir_trie()
+            # Réglage du bonus officiel au finisseur (issue #134), lu depuis la
+            # config auto-réparante et câblé dans le moteur via creer_partie.
+            bonus_fin_partie = bool(charger_config().get("bonus_fin_partie", False))
             self._partie = creer_partie(
                 noms_humains=noms_humains,
                 dictionnaire=trie,
@@ -293,6 +296,7 @@ class ApiAccueil:
                 niveaux_ia=niveaux_ia,
                 graine=graine,
                 tirage_ordre=True,
+                bonus_fin_partie=bonus_fin_partie,
             )
             self._id_partie = demarrer_suivi(self._partie)
             journal.info(

@@ -34,10 +34,15 @@ Score final — choix documenté
 À la fin, on **retranche à chaque joueur la valeur des lettres restantes sur
 son chevalet** (règle standard). La règle officielle ajoute en plus, au joueur
 qui a vidé son chevalet, le total des lettres restantes chez les adversaires ;
-l'issue #22 demande explicitement de **ne pas** appliquer ce bonus à ce stade
-(« pas de bonus supplémentaire »). On se limite donc à la pénalité soustractive,
-qui suffit à départager et reste cohérente quel que soit le mode de fin (sac
-vide ou passes consécutives).
+l'issue #22 avait choisi de **ne pas** appliquer ce bonus par défaut. Ce bonus
+est désormais **configurable** (issue #134) via le paramètre ``bonus_fin_partie``
+de la partie (câblé depuis ``config.py`` par l'appelant UI, sans dépendance du
+moteur à la config) : désactivé par défaut, il préserve le comportement
+historique. Quand il est activé **et** que la partie se termine parce qu'un
+joueur a vidé son chevalet (motif :data:`MOTIF_CHEVALET_VIDE`), le finisseur
+reçoit la somme des ``valeur_chevalet()`` des autres joueurs avant l'application
+des pénalités. Une fin par blocage (:data:`MOTIF_BLOCAGE`, toutes les passes
+consécutives) n'attribue jamais ce bonus, même réglage activé.
 """
 
 from __future__ import annotations
@@ -66,6 +71,12 @@ MAX_JOUEURS = 4
 ACTION_COUP = "coup"
 ACTION_PASSE = "passe"
 ACTION_ECHANGE = "echange"
+
+# Motifs de fin de partie transmis à :meth:`Partie._terminer` par l'appelant :
+# chevalet du joueur courant vidé (sac vide) vs blocage (passes consécutives).
+# Seul le premier motif ouvre droit au bonus officiel du finisseur (issue #134).
+MOTIF_CHEVALET_VIDE = "chevalet_vide"
+MOTIF_BLOCAGE = "blocage"
 
 
 class ActionInvalide(ValueError):
@@ -144,6 +155,7 @@ def creer_partie(
     niveaux_ia: list[Niveau] | None = None,
     graine: int | None = None,
     tirage_ordre: bool = False,
+    bonus_fin_partie: bool = False,
 ) -> "Partie":
     """Construit une partie à partir d'une configuration humains/IA.
 
@@ -167,6 +179,9 @@ def creer_partie(
     ``graine``, si fournie, sert **et** au tirage d'ordre **et** au sac de la
     partie (deux tirages indépendants mais tous deux reproductibles), gardant le
     déroulement complet déterministe.
+
+    ``bonus_fin_partie`` (défaut ``False``) active le bonus officiel au finisseur
+    (issue #134) ; l'appelant UI le renseigne depuis ``config.py``.
 
     :raises ValueError: si aucun humain, si ``nb_ia`` est négatif, ou si le
         total de joueurs sort de l'intervalle 1..:data:`MAX_JOUEURS`.
@@ -194,7 +209,9 @@ def creer_partie(
     if tirage_ordre:
         resultat = determiner_ordre_jeu(joueurs, random.Random(graine))
         joueurs = [joueurs[indice] for indice in resultat.ordre]
-    return Partie(joueurs, dictionnaire, graine=graine)
+    return Partie(
+        joueurs, dictionnaire, graine=graine, bonus_fin_partie=bonus_fin_partie
+    )
 
 
 class Partie:
@@ -203,8 +220,9 @@ class Partie:
     Attributs publics : ``joueurs`` (1 à 4), ``plateau`` (:class:`PlateauPartie`),
     ``sac`` (:class:`Sac`), ``graine`` (la graine du sac, ``None`` si aléatoire),
     ``index_courant``, ``historique`` (liste d':class:`EntreeHistorique`),
-    ``passes_consecutives``, ``terminee`` et, une fois la partie finie,
-    ``gagnants`` (liste — gère les égalités).
+    ``passes_consecutives``, ``terminee``, ``bonus_fin_partie`` (réglage du bonus
+    officiel au finisseur, issue #134) et, une fois la partie finie, ``gagnants``
+    (liste — gère les égalités).
 
     ``graine`` est conservée telle quelle : c'est elle, avec la suite ordonnée
     des actions, qui rend le déroulement d'une partie entièrement reproductible
@@ -218,6 +236,7 @@ class Partie:
         *,
         graine: int | None = None,
         sac: Sac | None = None,
+        bonus_fin_partie: bool = False,
     ) -> None:
         if not 1 <= len(joueurs) <= MAX_JOUEURS:
             raise ValueError(
@@ -227,6 +246,9 @@ class Partie:
         self.joueurs = joueurs
         self.dictionnaire = dictionnaire
         self.graine = graine
+        # Réglage câblé par l'appelant (issue #134) : bonus officiel au finisseur
+        # sur fin par chevalet vidé. Le moteur n'importe pas ``config.py``.
+        self.bonus_fin_partie = bonus_fin_partie
         self.plateau = PlateauPartie()
         self.sac = sac if sac is not None else Sac(graine)
         self.index_courant = 0
@@ -286,7 +308,7 @@ class Partie:
             positions_posees=nouvelles,
         )
         if self.sac.est_vide() and not joueur.chevalet:
-            self._terminer()
+            self._terminer(MOTIF_CHEVALET_VIDE)
         else:
             self._avancer()
         return entree
@@ -298,7 +320,7 @@ class Partie:
         self.passes_consecutives += 1
         entree = self._enregistrer(joueur, ACTION_PASSE)
         if self.passes_consecutives >= len(self.joueurs):
-            self._terminer()
+            self._terminer(MOTIF_BLOCAGE)
         else:
             self._avancer()
         return entree
@@ -435,9 +457,27 @@ class Partie:
         """Passe la main au joueur suivant (ordre circulaire)."""
         self.index_courant = (self.index_courant + 1) % len(self.joueurs)
 
-    def _terminer(self) -> None:
-        """Clôt la partie : pénalité des lettres restantes puis gagnant(s)."""
+    def _terminer(self, motif: str) -> None:
+        """Clôt la partie : bonus éventuel, pénalité des restes puis gagnant(s).
+
+        ``motif`` distingue la fin par chevalet vidé (:data:`MOTIF_CHEVALET_VIDE`)
+        de la fin par blocage (:data:`MOTIF_BLOCAGE`). Si le réglage
+        ``bonus_fin_partie`` est activé **et** que la fin est due à un chevalet
+        vidé, le finisseur (le joueur courant, qui vient de poser son dernier
+        jeton — l'index n'a pas encore avancé) reçoit la somme des lettres
+        restant chez les autres joueurs, en plus de la pénalité qui leur est
+        appliquée juste après. Sinon (blocage, ou réglage désactivé), seule la
+        pénalité soustractive historique s'applique.
+        """
         self.terminee = True
+        if motif == MOTIF_CHEVALET_VIDE and self.bonus_fin_partie:
+            finisseur = self.joueur_courant()
+            bonus = sum(
+                joueur.valeur_chevalet()
+                for joueur in self.joueurs
+                if joueur is not finisseur
+            )
+            finisseur.score += bonus
         for joueur in self.joueurs:
             joueur.score -= joueur.valeur_chevalet()
         meilleur = max(joueur.score for joueur in self.joueurs)

@@ -21,6 +21,7 @@ from typing import Any
 
 from .config import (
     CHEMIN_CONFIG,
+    CLES_BOOLEENNES,
     CONFIG_DEFAUT,
     charger_config,
     sauvegarder_config,
@@ -42,7 +43,7 @@ def lire_reglage(cle: str, chemin: os.PathLike[str] | str = CHEMIN_CONFIG) -> An
 
 
 def modifier_reglage(
-    cle: str, valeur: str, chemin: os.PathLike[str] | str = CHEMIN_CONFIG
+    cle: str, valeur: Any, chemin: os.PathLike[str] | str = CHEMIN_CONFIG
 ) -> Any:
     """Écrit ``valeur`` pour le réglage ``cle`` et renvoie la valeur retenue.
 
@@ -50,10 +51,14 @@ def modifier_reglage(
     contraint recevant une valeur invalide retombe sur son défaut, tandis
     qu'un champ en texte libre (ex. ``prenom_principal``) accepte le vide.
     Lève ``KeyError`` si la clé est inconnue et ``TypeError`` si la valeur
-    n'est pas une chaîne.
+    n'a pas le type attendu (chaîne pour la plupart des clés, booléen pour
+    les clés booléennes comme ``bonus_fin_partie``).
     """
     _verifier_cle(cle)
-    if not isinstance(valeur, str):
+    if cle in CLES_BOOLEENNES:
+        if not isinstance(valeur, bool):
+            raise TypeError(f"La valeur de « {cle} » doit être un booléen.")
+    elif not isinstance(valeur, str):
         raise TypeError(f"La valeur de « {cle} » doit être une chaîne de caractères.")
     config = charger_config(chemin)
     config[cle] = valeur
