@@ -88,6 +88,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         detail: document.getElementById('score-detail'),
         total: document.getElementById('score-total'),
         fermer: document.getElementById('score-fermer'),
+        // À la fermeture (bouton ou clic dehors), on retire la surbrillance du
+        // coup consulté : le plateau revient alors au dernier coup réel (dont la
+        // surbrillance .derniere-pose n'a jamais été touchée), issue #128.
+        auFermer: () => retirerSurbrillanceCoupConsulte(),
     });
 
     // Thèmes reconnus (alignés avec scrabble.config.THEMES_PLATEAU et le CSS).
@@ -312,11 +316,47 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    /**
+     * Surbrillance TEMPORAIRE du coup CONSULTÉ dans l'historique (issue #128).
+     * Applique la classe ``.coup-consulte`` (visuellement distincte du liseré vert
+     * ``.derniere-pose`` du dernier coup réel — voir jeu.css) aux cases des
+     * ``positions`` du coup cliqué. Réutilise le même repérage que ``animerPose``.
+     * Un appel remplace toujours la surbrillance précédente : cliquer un autre coup
+     * déplace le liseré, et une passe/un échange (``positions`` vide) ne surligne
+     * rien de nouveau tout en effaçant l'éventuel coup consulté précédent.
+     */
+    function surbrillerCoupConsulte(positions) {
+        retirerSurbrillanceCoupConsulte();
+        const cases = Array.isArray(positions) ? positions : [];
+        cases.forEach(({ ligne, colonne }) => {
+            const caseEl = plateauEl.querySelector(
+                `.case[data-ligne="${ligne}"][data-colonne="${colonne}"]`);
+            if (caseEl) {
+                caseEl.classList.add('coup-consulte');
+            }
+        });
+    }
+
+    /**
+     * Retire la surbrillance du coup consulté (issue #128). Appelée à la fermeture
+     * de la modale de détail : le plateau retrouve la seule surbrillance du dernier
+     * coup réel (``.derniere-pose``, jamais modifiée ici), évitant de laisser un
+     * repère trompeur une fois la consultation terminée.
+     */
+    function retirerSurbrillanceCoupConsulte() {
+        plateauEl.querySelectorAll('.case.coup-consulte')
+            .forEach((el) => el.classList.remove('coup-consulte'));
+    }
+
     /** Ouvre le détail d'une action de l'historique au clic (issue #37). */
     function ouvrirDetailHistorique(entree) {
         if (!entree) {
             return;
         }
+        // Met en surbrillance les cases de CE coup (issue #128), y compris quand
+        // c'est déjà le dernier coup (le liseré bleu prime alors le vert). Une
+        // passe/un échange (positions vide) n'ajoute aucune surbrillance.
+        surbrillerCoupConsulte(entree.positions);
         if (entree.detail) {
             const titre = `Détail du coup de ${entree.nom_joueur}`
                 + (entree.mot ? ` — « ${entree.mot} »` : '');

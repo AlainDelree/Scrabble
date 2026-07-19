@@ -148,12 +148,18 @@
     /**
      * Construit un contrôleur de la modale de détail du score (issue #35), commun
      * aux deux fenêtres (chacune héberge sa propre copie de ``#score-modale``,
-     * issue #90). ``refs`` = {modale, titre, detail, total, fermer}. Renvoie un
-     * objet {afficher, afficherSansDetail, fermer}.
+     * issue #90). ``refs`` = {modale, titre, detail, total, fermer, auFermer?}.
+     * ``auFermer`` (facultatif, issue #128) est appelé à chaque fermeture, quelle
+     * qu'en soit l'origine (bouton, clic sur le fond) : l'écran de jeu s'en sert
+     * pour retirer la surbrillance du coup consulté et rendre la main au dernier
+     * coup réel. Renvoie un objet {afficher, afficherSansDetail, fermer}.
      */
     function creerModaleScore(refs) {
         function fermer() {
             refs.modale.hidden = true;
+            if (typeof refs.auFermer === 'function') {
+                refs.auFermer();
+            }
         }
         function afficher(detail, titre) {
             if (!detail || !Array.isArray(detail.mots)) {

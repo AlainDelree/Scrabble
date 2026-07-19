@@ -825,6 +825,22 @@ header {
         0 0 10px 3px rgba(46, 125, 50, 0.55);
 }
 
+/* Surbrillance du coup CONSULTÉ depuis l'historique (issue #128). Temporaire :
+   posée au clic sur une ligne « Derniers coups », retirée à la fermeture de la
+   modale de détail. Liseré BLEU (double liseré blanc + bleu) délibérément
+   DISTINCT du vert de .derniere-pose, pour différencier « coup en cours de
+   consultation » du « dernier coup réellement joué ». Placée APRÈS .derniere-pose
+   et avec un z-index supérieur : quand le coup consulté est aussi le dernier coup,
+   le bleu prime le vert. Même géométrie d'anneau externe que .derniere-pose
+   (box-shadow non-inset) : n'empiète ni sur la tuile ni sur la lettre. */
+.case.coup-consulte {
+    z-index: 4;
+    box-shadow:
+        0 0 0 2px #fff,
+        0 0 0 4px #1565c0,
+        0 0 10px 3px rgba(21, 101, 192, 0.6);
+}
+
 /* --------------------------------------------------------------------------- */
 /* Célébration d'un Scrabble : feu d'artifice (issue #64, suite de #58)         */
 /* --------------------------------------------------------------------------- */
@@ -1198,6 +1214,34 @@ header {
     margin: 0;
     color: #555;
     font-style: italic;
+}
+
+/* Modale de détail du score « moins intrusive » (issue #128). Ouverte depuis
+   « Derniers coups », elle recouvrait auparavant une grande partie du plateau
+   (fond plein écran assombri + panneau large centré), masquant précisément la
+   surbrillance du coup consulté. On scope ici l'override au seul #score-modale
+   (les autres .modale — retour au menu, joker… — gardent leur fond assombri
+   centré) :
+     - fond RENDU TRANSPARENT : le plateau et la surbrillance .coup-consulte
+       restent visibles pendant la consultation ;
+     - panneau REPOSITIONNÉ sur le bord droit et RESSERRÉ (largeur réduite,
+       défilement interne si besoin), pour ne plus chevaucher le plateau centré.
+   La couche plein écran reste cliquable : un clic hors du panneau ferme toujours
+   la modale (et restaure la surbrillance du dernier coup réel, via auFermer). */
+#score-modale {
+    background: transparent;      /* plateau + surbrillance visibles */
+    align-items: center;
+    justify-content: flex-end;    /* panneau collé au bord droit, pas centré */
+    padding: 12px;
+}
+
+#score-modale .modale-score {
+    max-width: 300px;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    /* Ombre portée renforcée : détache nettement le panneau du plateau resté
+       visible derrière lui (plus de fond assombri pour l'en séparer). */
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 /* Avertissement avant un « Retour au menu » avec un coup en attente (issue #74).
