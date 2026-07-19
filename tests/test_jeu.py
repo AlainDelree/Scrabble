@@ -46,7 +46,6 @@ from scrabble.ui.jeu import (
     index_panneau_interactif,
     jouer_placements,
     jouer_tours_ia_ui,
-    nb_lignes_historique,
     passer_tour,
     serialiser_case,
     serialiser_historique,
@@ -1039,8 +1038,77 @@ class TestCalculerAvatars:
         avatars = [j["avatar"] for j in etat["joueurs"]]
         assert all(a in AVATARS for a in avatars)
         assert len(set(avatars)) == 2
-        # Cohérent avec le calcul direct.
+        # Cohérent avec le calcul direct (avatar_principal absent = "").
         assert avatars == calculer_avatars(joueurs)
+
+    # ---- Choix d'avatar du joueur humain (issue #143) ----
+
+    def _mixte(self, *specs: tuple[str, bool]) -> list[Joueur]:
+        """Construit des joueurs (nom, humain) — humain=True/False."""
+        return [
+            Joueur(
+                nom=nom,
+                humain=humain,
+                niveau=None if humain else Niveau.FACILE,
+            )
+            for nom, humain in specs
+        ]
+
+    def test_avatar_principal_attribue_a_l_humain(self):
+        # L'avatar choisi va au joueur humain de référence (le premier humain).
+        joueurs = self._mixte(
+            ("Robot1", False), ("Alice", True), ("Robot2", False)
+        )
+        avatars = calculer_avatars(joueurs, "avatar-07")
+        assert avatars[1] == "avatar-07"  # Alice, l'humaine de référence
+
+    def test_avatar_principal_exclu_des_ordinateurs(self):
+        # Aucun ordinateur ne peut recevoir l'avatar choisi par l'humaine, quel
+        # que soit l'avatar imposé (on les essaie tous).
+        for avatar in AVATARS:
+            joueurs = self._mixte(
+                ("Alice", True),
+                ("Robot1", False),
+                ("Robot2", False),
+                ("Robot3", False),
+            )
+            avatars = calculer_avatars(joueurs, avatar)
+            assert avatars[0] == avatar
+            # Les ordinateurs (index 1..3) n'ont jamais l'avatar réservé.
+            assert avatar not in avatars[1:]
+            assert len(set(avatars)) == len(avatars)  # toujours sans doublon
+
+    def test_avatar_principal_inconnu_ignore(self):
+        # Une valeur inconnue laisse l'attribution historique inchangée.
+        joueurs = self._mixte(("Alice", True), ("Robot", False))
+        assert calculer_avatars(joueurs, "avatar-999") == calculer_avatars(joueurs)
+        assert calculer_avatars(joueurs, "") == calculer_avatars(joueurs)
+
+    def test_avatar_principal_sans_humain_ignore(self):
+        # Partie sans humain (cas théorique) : l'avatar n'est réservé à personne.
+        joueurs = self._mixte(("Robot1", False), ("Robot2", False))
+        avatars = calculer_avatars(joueurs, "avatar-03")
+        assert avatars == calculer_avatars(joueurs)
+
+    def test_avatar_principal_deterministe(self):
+        joueurs = self._mixte(("Alice", True), ("Robot", False))
+        premier = calculer_avatars(joueurs, "avatar-05")
+        for _ in range(5):
+            assert calculer_avatars(joueurs, "avatar-05") == premier
+
+    def test_avatar_principal_applique_dans_etat_public(self, monkeypatch):
+        # etat_public lit avatar_principal de la config et le passe au calcul.
+        import scrabble.ui.jeu as jeu
+
+        monkeypatch.setattr(
+            jeu, "charger_config", lambda: {"avatar_principal": "avatar-09"}
+        )
+        joueurs = self._mixte(("Alice", True), ("Robot", False))
+        partie = Partie(joueurs, _DicoFactice(), graine=5)
+        etat = etat_public(partie, None)
+        avatars = [j["avatar"] for j in etat["joueurs"]]
+        assert avatars[0] == "avatar-09"  # Alice
+        assert "avatar-09" not in avatars[1:]  # pas l'ordinateur
 
 
 class TestVerifierMotDictionnaire:
@@ -1461,6 +1529,159 @@ class TestEchangerSelection:
         assert partie.index_courant == 1
 
 
+class TestApparenceBoutonsEchange:
+    """Cohérence visuelle des boutons d'échange dans le markup (issue #147).
+
+    Vérification headless : « Échanger des lettres… » (mode partiel) doit avoir
+    l'apparence d'un vrai bouton **dès son état initial**, avant tout clic — la
+    même famille visuelle (« btn btn-secondaire ») que « Remettre toutes ses
+    lettres et passer » (mode complet, issue #139). Une fois le mode de sélection
+    engagé (« après clic »), les boutons révélés (« Échanger la sélection… » /
+    « Annuler la sélection ») doivent eux aussi porter le style « btn ».
+    """
+
+    @staticmethod
+    def _classes(html: str, id_bouton: str) -> list[str]:
+        """Renvoie la liste des classes CSS du ``<button id=...>`` demandé."""
+        import re
+
+        motif = re.compile(
+            r'<button\b[^>]*\bid="' + re.escape(id_bouton) + r'"[^>]*>',
+            re.DOTALL,
+        )
+        balise = motif.search(html)
+        assert balise is not None, f"bouton #{id_bouton} introuvable dans jeu.html"
+        classe = re.search(r'\bclass="([^"]*)"', balise.group(0))
+        assert classe is not None, f"bouton #{id_bouton} sans attribut class"
+        return classe.group(1).split()
+
+    def _html(self) -> str:
+        from scrabble.ui.jeu import DOSSIER_WEB
+
+        return (DOSSIER_WEB / "jeu.html").read_text(encoding="utf-8")
+
+    def test_bouton_commencer_echange_a_apparence_de_bouton(self):
+        """État initial (avant clic) : « Échanger des lettres… » est un vrai bouton."""
+        classes = self._classes(self._html(), "btn-commencer-echange")
+        assert "btn" in classes
+        assert "btn-secondaire" in classes
+        # Plus de style « lien discret » : plus de changement d'apparence au clic.
+        assert "lien-discret" not in classes
+
+    def test_coherence_entre_modes_complet_et_partiel(self):
+        """Les deux déclencheurs d'échange partagent la même famille visuelle."""
+        html = self._html()
+        complet = self._classes(html, "btn-echanger-tout")
+        partiel = self._classes(html, "btn-commencer-echange")
+        assert "btn" in complet and "btn-secondaire" in complet
+        assert set(complet) == set(partiel)
+
+    def test_boutons_selection_restent_des_boutons(self):
+        """Après clic : les boutons de sélection révélés gardent le style « btn »."""
+        html = self._html()
+        assert "btn" in self._classes(html, "btn-echanger-selection")
+        assert "btn" in self._classes(html, "btn-annuler-echange")
+
+
+class TestBoutonJouerDansFicheJoueur:
+    """Bouton « ▶ Jouer » dans la fiche d'un ordinateur courant (issue #149).
+
+    Vérification headless du markup : pendant le tour d'un ordinateur, sa fiche
+    joueur expose un bouton « ▶ Jouer » (classe ``panneau-btn-jouer``) à la place
+    de l'ancien label « ● son tour », qui déclenche ``api.faire_jouer_ia`` ; l'humain
+    courant garde sa pastille « ● à vous ». L'ancien bouton séparé de la zone
+    d'attente IA (``#btn-jouer-ia``, « Faire jouer l'ordinateur ») est retiré ;
+    seul le message d'attente subsiste dans cette zone.
+    """
+
+    def _lire(self, nom: str) -> str:
+        from scrabble.ui.jeu import DOSSIER_WEB
+
+        return (DOSSIER_WEB / nom).read_text(encoding="utf-8")
+
+    def test_fiche_ordinateur_courant_a_un_bouton_jouer(self):
+        """La branche « ordinateur courant » produit un bouton « Jouer »."""
+        js = self._lire("jeu.js")
+        # Le bouton porte la classe dédiée, le style primaire et le texte « Jouer ».
+        assert "panneau-btn-jouer" in js
+        assert "▶ Jouer" in js
+        assert "btn btn-primaire panneau-btn-jouer" in js
+
+    def test_humain_courant_garde_la_pastille_a_vous(self):
+        """L'humain courant conserve « ● à vous » (pas de bouton Jouer)."""
+        js = self._lire("jeu.js")
+        assert "● à vous" in js
+
+    def test_ancien_label_son_tour_retire(self):
+        """Le label « son tour » a disparu (remplacé par le bouton Jouer).
+
+        On cible la chaîne LITTÉRALE ``'son tour'`` de l'ancien ternaire de badge ;
+        « Passer son tour » (autre fonctionnalité) reste évidemment présent ailleurs.
+        """
+        js = self._lire("jeu.js")
+        assert "'son tour'" not in js
+
+    def test_bouton_declenche_faire_jouer_ia(self):
+        """Le bouton de la fiche est câblé au flux api.faire_jouer_ia."""
+        js = self._lire("jeu.js")
+        # Le bouton du panneau est relié à lancerTourIA, qui appelle l'API.
+        assert "querySelector('.panneau-btn-jouer')" in js
+        assert "lancerTourIA" in js
+        assert "api.faire_jouer_ia()" in js
+
+    def test_ancien_bouton_separe_retire(self):
+        """Plus de bouton « Faire jouer l'ordinateur » dans la zone d'attente."""
+        html = self._lire("jeu.html")
+        js = self._lire("jeu.js")
+        assert 'id="btn-jouer-ia"' not in html
+        assert "btn-jouer-ia" not in js
+        assert "btnJouerIA" not in js
+
+    def test_zone_attente_conserve_son_message(self):
+        """La zone d'attente IA garde son message « En attente du coup de… »."""
+        html = self._lire("jeu.html")
+        js = self._lire("jeu.js")
+        assert 'id="zone-attente-ia"' in html
+        assert 'id="attente-ia-message"' in html
+        assert "En attente du coup de" in js
+
+
+class TestFermetureMutuellePopovers:
+    """Fermeture mutuelle des popovers dans la fenêtre plateau (issue #151).
+
+    Ouvrir un popover (« Derniers coups », « Vérification dictionnaire ») doit
+    refermer tout autre popover déjà ouvert dans la même fenêtre. Le mécanisme
+    commun (``configurerPopover`` dans ``commun.js``) tient un registre des
+    popovers câblés et ferme les autres avant d'afficher le nouveau. Un signal
+    ``fermerTousPopovers`` permet en outre de refermer les popovers du plateau
+    quand une action de tour survient (y compris déclenchée depuis le chevalet),
+    détectée à l'apparition d'un nouveau coup en tête d'historique.
+    """
+
+    def _lire(self, nom: str) -> str:
+        from scrabble.ui.jeu import DOSSIER_WEB
+
+        return (DOSSIER_WEB / nom).read_text(encoding="utf-8")
+
+    def test_configurer_popover_ferme_les_autres_avant_ouverture(self):
+        """L'ouverture d'un popover ferme les autres popovers câblés."""
+        js = self._lire("commun.js")
+        # Registre des popovers de la fenêtre + fermeture des autres à l'ouverture.
+        assert "popoversCables" in js
+        assert "fermerAutresPopovers(fermer)" in js
+
+    def test_commun_expose_fermer_tous_popovers(self):
+        """``fermerTousPopovers`` est exposé sur le namespace Commun."""
+        js = self._lire("commun.js")
+        assert "function fermerTousPopovers" in js
+        assert "fermerTousPopovers," in js  # présent dans l'export window.Commun
+
+    def test_plateau_ferme_les_popovers_a_un_nouveau_coup(self):
+        """Le plateau referme ses popovers quand un nouveau coup apparaît."""
+        js = self._lire("jeu.js")
+        assert "C.fermerTousPopovers()" in js
+
+
 class TestPasserTour:
     """Passage « sec » du tour (sans échange) — débloque un humain sac vide (#132)."""
 
@@ -1796,22 +2017,8 @@ def _poser_chat_au_centre(partie: Partie) -> None:
     assert resultat["succes"] is True
 
 
-class TestNbLignesHistorique:
-    """Nombre de lignes d'historique à afficher : min(nb_joueurs * 2, 8)."""
-
-    def test_deux_joueurs(self):
-        assert nb_lignes_historique(_partie_simple()) == 4
-
-    def test_quatre_joueurs_plafonne_a_huit(self):
-        assert nb_lignes_historique(_partie_quatre_joueurs()) == 8
-
-    def test_un_seul_joueur(self):
-        partie = Partie([Joueur(nom="Solo", humain=True)], _DicoFactice(), graine=1)
-        assert nb_lignes_historique(partie) == 2
-
-
 class TestSerialiserHistorique:
-    """Exposition de la portion récente de l'historique (issue #37)."""
+    """Exposition de l'intégralité de l'historique (issue #37, #144)."""
 
     def test_partie_neuve_historique_vide(self):
         partie = _partie_simple()
@@ -1825,14 +2032,16 @@ class TestSerialiserHistorique:
         assert len(historique) == 1
         assert historique[0]["action"] == "echange"
 
-    def test_plafonne_a_huit_meme_a_quatre_joueurs(self):
+    def test_expose_tout_l_historique(self):
+        # Issue #144 : plus de plafond d'affichage — l'intégralité de l'historique
+        # est exposée (l'UI la rend scrollable, la plus récente en haut).
         partie = _partie_quatre_joueurs()
-        # Dix échanges (l'échange ne termine pas la partie) : historique tronqué.
+        # Dix échanges (l'échange ne termine pas la partie).
         for _ in range(10):
             _echanger_une_lettre(partie)
         assert len(partie.historique) == 10
         historique = serialiser_historique(partie)
-        assert len(historique) == 8
+        assert len(historique) == 10
 
     def test_ordre_plus_recent_en_premier(self):
         partie = _partie_quatre_joueurs()
@@ -1918,9 +2127,9 @@ class TestSerialiserHistorique:
             _echanger_une_lettre(partie)
         etat = etat_public(partie, id_partie=3)
         assert "historique" in etat
-        # Même fenêtrage et même ordre que serialiser_historique.
+        # Même contenu et même ordre que serialiser_historique (tout l'historique).
         assert etat["historique"] == serialiser_historique(partie)
-        assert len(etat["historique"]) == 8
+        assert len(etat["historique"]) == 10
 
 
 class TestApiJeuRetourMenu:
@@ -1973,6 +2182,106 @@ class TestApiJeuRetourMenu:
         assert "backend HS" in resultat["erreur"]
         # La fermeture a échoué : on ne rouvrira PAS l'accueil.
         assert api._retour_menu is False
+
+
+class TestApiJeuRecommencer:
+    """Tests de ``ApiJeu.recommencer`` / ``creer_partie_recommencee`` (issue #142).
+
+    Vérifie que « Recommencer » fabrique une nouvelle partie avec les mêmes
+    joueurs (nom, humain/IA, niveau), qu'elle est suivie en base sans supprimer
+    l'ancienne partie, et que les deux fenêtres sont fermées (drapeau
+    ``_recommencer``). Testé sans vraie fenêtre grâce à un objet factice.
+    """
+
+    class _FakeWindow:
+        def __init__(self):
+            self.detruite = False
+
+        def destroy(self):
+            self.detruite = True
+
+    def _partie_mixte(self, graine: int = 3) -> Partie:
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Bob", humain=True),
+            Joueur(nom="Ordi", humain=False, niveau=Niveau.EXPERT),
+        ]
+        return Partie(joueurs, _DicoFactice(), graine=graine)
+
+    def test_creer_partie_recommencee_memes_joueurs(self):
+        origine = self._partie_mixte()
+        api = ApiJeu(origine, id_partie=None)
+
+        nouvelle = api.creer_partie_recommencee()
+
+        assert nouvelle is not origine
+        cle = lambda p: {(j.nom, j.humain, j.niveau) for j in p.joueurs}
+        assert cle(nouvelle) == cle(origine)
+        # Partie neuve : graine explicite (pour le suivi), historique vierge.
+        assert nouvelle.graine is not None
+        assert nouvelle.historique == []
+        assert not nouvelle.terminee
+
+    def test_recommencer_persiste_la_nouvelle_sans_supprimer_l_ancienne(self, tmp_path):
+        chemin = tmp_path / "parties.db"
+        origine = self._partie_mixte()
+        id_origine = demarrer_suivi(origine, chemin)
+
+        api = ApiJeu(origine, id_partie=id_origine, chemin_persistance=chemin)
+        fake = self._FakeWindow()
+        api.set_window(fake)
+
+        resultat = api.recommencer()
+
+        assert resultat["succes"] is True
+        assert fake.detruite is True
+        assert api._recommencer is True
+        assert api._nouvelle_partie is not None
+        # Un nouvel identifiant, distinct de l'ancien, a été attribué.
+        assert api._nouvel_id_partie is not None
+        assert api._nouvel_id_partie != id_origine
+        # L'ancienne partie n'a PAS été supprimée : les deux coexistent en base.
+        ids = {p.id for p in lister_parties(chemin)}
+        assert ids == {id_origine, api._nouvel_id_partie}
+
+    def test_recommencer_mode_demo_ne_persiste_pas(self):
+        # id_partie None (démonstration) : la nouvelle partie n'est pas suivie,
+        # mais la mécanique de fermeture/relance fonctionne quand même.
+        api = ApiJeu(self._partie_mixte(), id_partie=None)
+        fake = self._FakeWindow()
+        api.set_window(fake)
+
+        resultat = api.recommencer()
+
+        assert resultat["succes"] is True
+        assert api._recommencer is True
+        assert api._nouvelle_partie is not None
+        assert api._nouvel_id_partie is None
+
+    def test_recommencer_sans_fenetre(self):
+        api = ApiJeu(self._partie_mixte(), id_partie=None)
+        resultat = api.recommencer()
+
+        assert resultat["succes"] is False
+        assert "erreur" in resultat
+        assert api._recommencer is False
+        assert api._nouvelle_partie is None
+
+    def test_recommencer_exception_destroy_naboutit_pas(self):
+        class FakeWindowKO:
+            def destroy(self):
+                raise RuntimeError("backend HS")
+
+        api = ApiJeu(self._partie_mixte(), id_partie=None)
+        api.set_window(FakeWindowKO())
+
+        resultat = api.recommencer()
+
+        assert resultat["succes"] is False
+        assert "backend HS" in resultat["erreur"]
+        # Échec de fermeture : on n'enchaîne PAS de nouvelle partie.
+        assert api._recommencer is False
+        assert api._nouvelle_partie is None
 
 
 class _FenetreFermable:

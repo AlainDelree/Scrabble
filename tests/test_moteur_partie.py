@@ -20,6 +20,7 @@ from scrabble.moteur.plateau_partie import (
     PlateauPartie,
     tuiles_depuis_chaine,
 )
+from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import (
     ACTION_COUP,
     ACTION_ECHANGE,
@@ -29,6 +30,7 @@ from scrabble.moteur.partie import (
     Partie,
     TAILLE_CHEVALET,
     creer_partie,
+    recreer_partie_meme_joueurs,
 )
 from scrabble.regles.lettres import JOKER
 
@@ -127,6 +129,81 @@ def test_creer_partie_tirage_ordre_change_effectivement_l_ordre():
         if [j.nom for j in partie.joueurs] != noms:
             return
     raise AssertionError("tirage_ordre n'a jamais modifié l'ordre de création.")
+
+
+# --------------------------------------------------------------------------- #
+# Recommencer : nouvelle partie avec les mêmes joueurs (issue #142)
+# --------------------------------------------------------------------------- #
+
+def _cle_joueurs(partie: Partie) -> set[tuple[str, bool, object]]:
+    """Ensemble (nom, humain, niveau) des joueurs, indépendant de l'ordre."""
+    return {(j.nom, j.humain, j.niveau) for j in partie.joueurs}
+
+
+def test_recreer_partie_conserve_les_memes_joueurs():
+    # Partie d'origine mixte humains/IA avec des niveaux distincts.
+    origine = creer_partie(
+        ["Alice", "Bob"],
+        _trie("CADRE"),
+        nb_ia=2,
+        noms_ia=["Ordi Nord", "Ordi Sud"],
+        niveaux_ia=[Niveau.EXPERT, Niveau.FACILE],
+        graine=1,
+    )
+    nouvelle = recreer_partie_meme_joueurs(origine, _trie("CADRE"), graine=2)
+
+    # Mêmes joueurs (noms, nature humain/IA, niveaux) — à l'ordre près, car le
+    # tirage d'ordre peut réordonner.
+    assert _cle_joueurs(nouvelle) == _cle_joueurs(origine)
+    assert {j.nom for j in nouvelle.joueurs} == {"Alice", "Bob", "Ordi Nord", "Ordi Sud"}
+    # Chaque IA garde bien son niveau, chaque humain reste sans niveau.
+    for joueur in nouvelle.joueurs:
+        if joueur.humain:
+            assert joueur.niveau is None
+    niveaux = {j.nom: j.niveau for j in nouvelle.joueurs if not j.humain}
+    assert niveaux == {"Ordi Nord": Niveau.EXPERT, "Ordi Sud": Niveau.FACILE}
+
+
+def test_recreer_partie_est_une_partie_neuve():
+    origine = creer_partie(["Alice"], _trie("CADRE"), nb_ia=1, graine=1)
+    # On fait avancer l'origine (score, historique) pour prouver qu'elle n'est
+    # PAS copiée dans la nouvelle partie.
+    origine.joueurs[0].chevalet[:] = list("CADRE")
+    origine.jouer_coup(_coup_cadre_au_centre())
+    assert origine.historique  # l'origine a bien un historique
+
+    nouvelle = recreer_partie_meme_joueurs(origine, _trie("CADRE"), graine=2)
+    assert nouvelle is not origine
+    assert nouvelle.historique == []
+    assert not nouvelle.terminee
+    assert all(j.score == 0 for j in nouvelle.joueurs)
+    # Plateau vierge : aucune tuile posée, sac complet moins les chevalets.
+    assert nouvelle.sac.jetons_restants() == 102 - len(nouvelle.joueurs) * TAILLE_CHEVALET
+    # L'origine n'a pas été modifiée par la re-création.
+    assert origine.historique
+
+
+def test_recreer_partie_herite_du_bonus_fin_partie():
+    origine = creer_partie(["Alice"], _trie(), nb_ia=1, graine=1, bonus_fin_partie=True)
+    nouvelle = recreer_partie_meme_joueurs(origine, _trie(), graine=2)
+    assert nouvelle.bonus_fin_partie is True
+
+
+def test_recreer_partie_nouveau_tirage_change_ordre_ou_lettres():
+    # Avec une graine différente, on obtient un déroulement différent : au moins
+    # l'ordre des joueurs OU la distribution des chevalets diffère de l'origine.
+    origine = creer_partie(
+        ["Alice", "Bob", "Carol", "Dan"], _trie(), graine=7, tirage_ordre=True
+    )
+    ordre_origine = [j.nom for j in origine.joueurs]
+    chevalets_origine = [tuple(j.chevalet) for j in origine.joueurs]
+    for graine in range(50):
+        nouvelle = recreer_partie_meme_joueurs(origine, _trie(), graine=graine)
+        ordre_nouveau = [j.nom for j in nouvelle.joueurs]
+        chevalets_nouveau = [tuple(j.chevalet) for j in nouvelle.joueurs]
+        if ordre_nouveau != ordre_origine or chevalets_nouveau != chevalets_origine:
+            return
+    raise AssertionError("Aucun nouveau tirage n'a produit de déroulement différent.")
 
 
 # --------------------------------------------------------------------------- #

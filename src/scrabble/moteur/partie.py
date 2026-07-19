@@ -214,6 +214,49 @@ def creer_partie(
     )
 
 
+def recreer_partie_meme_joueurs(
+    partie: "Partie",
+    dictionnaire: DictionnaireMots,
+    *,
+    graine: int | None = None,
+    tirage_ordre: bool = True,
+) -> "Partie":
+    """Crée une **nouvelle** partie avec les mêmes joueurs qu'une partie donnée.
+
+    Reprend la liste des joueurs de ``partie`` — leurs **noms**, leur nature
+    (**humain/ordinateur**) et, pour les IA, leur **niveau** de difficulté — et
+    reconstruit une partie neuve via :func:`creer_partie`, sans rejouer l'écran
+    de configuration. Le réglage ``bonus_fin_partie`` de la partie d'origine est
+    conservé.
+
+    C'est le pivot de l'action « Recommencer » de la modale de fin de partie
+    (issue #142) : la partie terminée n'est pas modifiée (elle reste dans
+    l'historique) ; on en repart avec un **nouveau tirage**. Comme aucun état de
+    plateau, de sac, de score ni d'historique n'est copié, tout est neuf :
+
+    * ``graine`` (défaut ``None`` → graine aléatoire du sac) rend le tirage des
+      lettres et l'ordre différents à chaque appel ;
+    * ``tirage_ordre`` (défaut ``True``) rejoue le tirage d'ordre : l'ordre de
+      jeu peut donc différer de celui de la partie d'origine.
+
+    Les joueurs sont regroupés humains puis IA (contrat de :func:`creer_partie`)
+    avant l'éventuel tirage d'ordre, qui les réordonne ensuite.
+    """
+    noms_humains = [j.nom for j in partie.joueurs if j.humain]
+    noms_ia = [j.nom for j in partie.joueurs if not j.humain]
+    niveaux_ia = [j.niveau for j in partie.joueurs if not j.humain]
+    return creer_partie(
+        noms_humains=noms_humains,
+        dictionnaire=dictionnaire,
+        nb_ia=len(noms_ia),
+        noms_ia=noms_ia,
+        niveaux_ia=niveaux_ia,
+        graine=graine,
+        tirage_ordre=tirage_ordre,
+        bonus_fin_partie=partie.bonus_fin_partie,
+    )
+
+
 class Partie:
     """État complet et déroulement d'une partie de Scrabble.
 

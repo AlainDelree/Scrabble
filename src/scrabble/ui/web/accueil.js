@@ -5,12 +5,24 @@
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // Attendre que pywebview soit prêt
+    // Attendre que le pont pywebview soit VRAIMENT prêt (issue #145).
+    //
+    // pywebview pose ``window.pywebview`` (jeton/infos plateforme) AVANT de
+    // publier ``window.pywebview.api`` (les méthodes Python exposées). L'ancien
+    // test ``if (window.pywebview)`` résolvait donc la promesse trop tôt :
+    // ``api`` capturait l'objet encore dépourvu de méthodes et le premier
+    // ``await api.obtenir_etat()`` (tout en bas de l'initialisation) échouait
+    // silencieusement — l'écran restait donc vide. C'est ce qui masquait le
+    // joueur humain ajouté d'office par #141 : l'ajout côté Python avait bien
+    // lieu, mais le rendu initial ne s'exécutait jamais, donnant l'illusion que
+    // rien n'avait changé. On attend désormais ``window.pywebview.api``, comme
+    // ``commun.js`` et ``reglages.js`` (``{ once: true }`` pour ne pas laisser
+    // traîner l'écouteur).
     await new Promise(resolve => {
-        if (window.pywebview) {
+        if (window.pywebview && window.pywebview.api) {
             resolve();
         } else {
-            window.addEventListener('pywebviewready', resolve);
+            window.addEventListener('pywebviewready', resolve, { once: true });
         }
     });
 
@@ -67,7 +79,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const item = document.createElement('div');
                 item.className = `joueur-item ${joueur.humain ? 'humain' : 'ordinateur'}`;
 
-                const icone = joueur.humain ? '👤' : '🖥️';
+                // Avatar configuré du joueur humain de référence (issue #148) :
+                // s'il est fourni par Python, on affiche le portrait SVG choisi
+                // dans les réglages (le même que celui utilisé pendant la partie),
+                // sinon on retombe sur l'icône générique 👤 / 🖥️.
+                const icone = joueur.avatar
+                    ? `<img class="joueur-avatar" src="avatars/${encodeURIComponent(joueur.avatar)}.svg" alt="" width="28" height="28">`
+                    : `<span class="joueur-icone">${joueur.humain ? '👤' : '🖥️'}</span>`;
                 let typeLabel = joueur.humain ? 'Joueur' : 'Ordinateur';
                 if (!joueur.humain && joueur.niveau) {
                     const niveauLabel = {
@@ -80,7 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 item.innerHTML = `
-                    <span class="joueur-icone">${icone}</span>
+                    ${icone}
                     <div class="joueur-info">
                         <div class="joueur-nom">${escapeHtml(joueur.nom)}</div>
                         <div class="joueur-type">${typeLabel}</div>
@@ -157,18 +175,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Charge et affiche la partie en cours proposée à la reprise.
+     * Charge et affiche les parties proposées à l'accueil.
      *
-     * Depuis l'issue #54, `api.lister_parties_en_cours()` ne renvoie que la
-     * partie la plus récente (liste de 0 ou 1 élément) : on n'affiche donc
-     * qu'un seul encart de reprise.
+     * Depuis les issues #54 et #150, `api.lister_parties_en_cours()` renvoie au
+     * plus deux encarts (0 à 2 éléments) : la partie en cours la plus récente à
+     * reprendre, et la partie terminée la plus récente à consulter. Une partie
+     * terminée (`partie.terminee`) porte un badge « Terminée » et son bouton
+     * s'intitule « Consulter » (il ouvre l'écran de jeu sur le plateau final,
+     * modale de fin de partie #138 affichée) plutôt que « Reprendre ».
      */
     async function chargerPartiesEnCours() {
         const parties = await api.lister_parties_en_cours();
         partiesEnCours.innerHTML = '';
 
         if (parties.length === 0) {
-            partiesEnCours.innerHTML = '<p class="vide">Aucune partie en cours.</p>';
+            partiesEnCours.innerHTML = '<p class="vide">Aucune partie enregistrée.</p>';
             return;
         }
 
@@ -190,12 +211,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 .map(j => `${escapeHtml(j.nom)} (${j.score} pts)`)
                 .join(', ');
 
+            // Partie terminée (issue #150) : badge « Terminée » + bouton
+            // « Consulter » ; libellé de date adapté.
+            const terminee = Boolean(partie.terminee);
+            const badge = terminee
+                ? '<span class="partie-badge">Terminée</span>'
+                : '';
+            const libelleBouton = terminee ? 'Consulter' : 'Reprendre';
+            const libelleDate = terminee ? 'Terminée le' : 'Dernière activité';
+
             item.innerHTML = `
                 <div class="partie-info">
-                    <div class="partie-joueurs">${joueursStr}</div>
-                    <div class="partie-date">Dernière activité : ${dateStr}</div>
+                    <div class="partie-joueurs">${joueursStr}${badge}</div>
+                    <div class="partie-date">${libelleDate} : ${dateStr}</div>
                 </div>
-                <button class="btn btn-reprendre" data-id="${partie.id}">Reprendre</button>
+                <button class="btn btn-reprendre" data-id="${partie.id}">${libelleBouton}</button>
             `;
             partiesEnCours.appendChild(item);
         });
@@ -691,10 +721,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     partiesEnCours.addEventListener('click', async (e) => {
         if (e.target.classList.contains('btn-reprendre')) {
             const id = parseInt(e.target.dataset.id, 10);
-            e.target.disabled = true;
-            e.target.textContent = 'Chargement...';
-
             const btnReprendre = e.target;
+            // Libellé d'origine (« Reprendre » ou « Consulter » pour une partie
+            // terminée, issue #150) à restaurer en cas d'échec.
+            const libelleInitial = btnReprendre.textContent;
+            btnReprendre.disabled = true;
+            btnReprendre.textContent = 'Chargement...';
+
             const result = await api.reprendre(id);
             if (result.succes && result.pret) {
                 // Fermer la fenêtre d'accueil depuis Python — l'écran de jeu
@@ -703,12 +736,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await fermerFenetre((msg) => {
                     alert(msg);
                     btnReprendre.disabled = false;
-                    btnReprendre.textContent = 'Reprendre';
+                    btnReprendre.textContent = libelleInitial;
                 });
             } else if (!result.succes) {
                 alert(result.erreur);
                 btnReprendre.disabled = false;
-                btnReprendre.textContent = 'Reprendre';
+                btnReprendre.textContent = libelleInitial;
             }
         }
     });

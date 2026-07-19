@@ -85,21 +85,28 @@
                      liste s'ouvre au clic en surimpression. La plus RÉCENTE EN
                      HAUT ; chaque ligne cliquable rouvre le détail du score de CE
                      coup (modale). -->
-                <details class="historique-menu" id="historique-menu">
-                    <!-- Le <summary> garde son display natif (list-item) : sous
-                         WebKitGTK (moteur de pywebview sous Linux), un <summary>
-                         dont le `display` est changé en flex/inline-flex perd le
-                         basculement natif ouvert/fermé au clic (issue #49). La
-                         mise en page en ligne (titre + compteur + chevron) est
-                         donc portée par un wrapper interne, pas par le summary. -->
-                    <summary class="historique-resume">
+                <!-- Bouton + popover (issue #144) : on abandonne le <details>
+                     natif au profit du MÊME mécanisme que « Vérification
+                     dictionnaire » (C.configurerPopover, voir commun.js) :
+                     ouverture/fermeture au clic sur le bouton, fermeture au clic
+                     EXTÉRIEUR ou à la touche Échap. Ce mécanisme unique remplace
+                     l'ancienne logique séparée qui devait ruser avec la bascule
+                     native du <details> sous WebKitGTK (issues #49/#56/#60) et ne
+                     se fermait pas à la perte de focus. La mise en page en ligne
+                     (titre + compteur + chevron) reste portée par un wrapper
+                     interne. -->
+                <div class="historique-menu" id="historique-menu">
+                    <button id="btn-historique" class="historique-resume"
+                            aria-haspopup="dialog" aria-expanded="false">
                         <span class="historique-resume-inner">
                             <span class="historique-resume-titre">🕑 Derniers coups</span>
                             <span class="historique-resume-compte" id="historique-compte"></span>
                         </span>
-                    </summary>
-                    <ol id="historique-liste" class="historique-liste" aria-live="polite"></ol>
-                </details>
+                    </button>
+                    <ol id="historique-liste" class="historique-liste" role="dialog"
+                        aria-label="Historique des coups de la partie"
+                        aria-live="polite" hidden></ol>
+                </div>
 
                 <!-- Sac de lettres restantes (🎒 + nombre). Déplacé À DROITE
                      (issue #125), en tête du groupe droit : ``margin-left:auto``
@@ -141,13 +148,6 @@
             </div>
         </header>
 
-        <!-- Bandeau de fin de partie (issue #45, point 2) : l'ancien indicateur
-             de tour a disparu, mais l'annonce de fin de partie et des gagnants
-             reste une information à part entière. Masqué pendant toute la partie
-             (ne prend donc aucune place) ; il n'apparaît qu'une fois la partie
-             terminée, hors de l'en-tête resté minimal. -->
-        <div id="bandeau-fin" class="bandeau-fin" role="status" aria-live="polite" hidden></div>
-
         <!-- Message éphémère de pose (issue #90) : la pose clic-clic se pilote
              depuis la fenêtre chevalet (sélection) + la fenêtre plateau (case
              cliquée). Comme la zone de message de tour vit désormais côté
@@ -187,12 +187,12 @@
                  jamais exposé, et faire avancer un tour IA relève du plateau
                  (l'humain n'a rien à jouer). Le chevalet, le brouillon et les
                  contrôles de pose vivent désormais dans la fenêtre chevalet
-                 flottante (chevalet.html) — voir issue #90. -->
+                 flottante (chevalet.html) — voir issue #90. Depuis l'issue #149,
+                 le déclenchement du coup passe par le bouton « ▶ Jouer » de la
+                 fiche du joueur ordinateur courant : cette zone ne garde que le
+                 message d'attente (plus de bouton séparé). -->
             <div id="zone-attente-ia" class="zone-attente-ia" hidden>
                 <p id="attente-ia-message" class="attente-ia-message" role="status" aria-live="polite"></p>
-                <button id="btn-jouer-ia" class="btn btn-primaire">
-                    ▶ Faire jouer l'ordinateur
-                </button>
             </div>
 
             <!-- Actions de tour (issue #101) : rapatriées ici depuis la fenêtre
@@ -216,8 +216,12 @@
                     </button>
                     <!-- Échange PARTIEL (réglage « type_echange » = partiel, issue #138) :
                          on entre dans un mode de sélection multiple côté chevalet, puis
-                         on valide. Ces boutons ne sont visibles qu'en mode partiel. -->
-                    <button id="btn-commencer-echange" class="lien-discret" hidden
+                         on valide. Ces boutons ne sont visibles qu'en mode partiel.
+                         Bouton à part entière (issue #147) — même famille visuelle que
+                         « Remettre toutes ses lettres et passer » du mode complet
+                         (« btn btn-secondaire »), pour une apparence de bouton cohérente
+                         dès l'état initial, avant même d'engager la sélection. -->
+                    <button id="btn-commencer-echange" class="btn btn-secondaire" hidden
                             title="Choisissez librement les lettres à échanger sur votre chevalet, puis validez">
                         ♻️ Échanger des lettres…
                     </button>
@@ -308,6 +312,35 @@
                 </button>
                 <button id="confirmation-confirmer" class="btn btn-primaire">
                     ✓ Confirmer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale de fin de partie (issue #142) : remplace l'ancien bandeau de fin
+         (issues #45/#133/#137). Une fois la partie terminée, elle s'ouvre par-dessus
+         le plateau (resté visible en arrière-plan) avec le message de victoire, le
+         tableau de classement final, l'évaluation du score combiné, et TROIS actions :
+         « Retour au menu » (ferme le jeu, rouvre l'accueil), « Rester sur la partie »
+         (ferme juste la modale pour consulter librement le plateau final) et
+         « Recommencer » (nouvelle partie, mêmes joueurs, nouveau tirage). Réutilise
+         .modale / .modale-contenu / .modale-actions. Le contenu (message, classement,
+         évaluation) est injecté par le JS depuis l'état public poussé par Python. -->
+    <div id="modale-fin" class="modale" hidden>
+        <div class="modale-contenu modale-fin-contenu" role="dialog" aria-modal="true"
+             aria-labelledby="modale-fin-message">
+            <div id="modale-fin-message" class="bandeau-fin-message"></div>
+            <div id="modale-fin-classement"></div>
+            <div id="modale-fin-evaluation"></div>
+            <div class="modale-actions modale-fin-actions">
+                <button id="fin-retour-menu" class="btn btn-secondaire">
+                    🏠 Retour au menu
+                </button>
+                <button id="fin-rester" class="btn btn-secondaire">
+                    Rester sur la partie
+                </button>
+                <button id="fin-recommencer" class="btn btn-primaire">
+                    🔄 Recommencer
                 </button>
             </div>
         </div>

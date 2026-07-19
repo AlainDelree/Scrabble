@@ -479,13 +479,17 @@
 
 .joker-grille {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 6px;
+    /* 9 colonnes (issue #146) : 26 lettres tiennent alors sur 3 lignes (9+9+8) au
+       lieu de 4 sur 7 colonnes — une ligne de moins à faire défiler dans la fenêtre
+       chevalet très basse (175 px). La fenêtre fait 480 px de large : 9 colonnes y
+       restent largement lisibles. */
+    grid-template-columns: repeat(9, 1fr);
+    gap: 5px;
     margin-bottom: 16px;
 }
 
 .joker-lettre {
-    padding: 8px 0;
+    padding: 6px 0;
     font-size: 1rem;
     font-weight: 700;
     background: var(--tuile-fond);
@@ -513,26 +517,54 @@
     display: flex;
     flex-direction: column;
     max-height: calc(100vh - 8px);
-    /* Paddings/marges verticaux resserrés (la fenêtre chevalet n'offre que ~175 px) :
-       chaque pixel récupéré est une ligne de lettres de plus visible sans scroll. */
-    padding: 12px 24px;
+    /* Issue #146 : on élargit la modale pour occuper presque toute la largeur de la
+       fenêtre chevalet (480 px) au lieu des 360 px hérités de .modale-contenu. Une
+       grille plus large tient sur 9 colonnes / 3 lignes, donc plus de lettres
+       visibles d'un coup. Paddings/marges verticaux resserrés au strict nécessaire
+       (la fenêtre n'offre que ~175 px) : chaque pixel récupéré est une ligne de
+       lettres de plus visible sans défilement. */
+    max-width: calc(100vw - 12px);
+    padding: 8px 16px;
 }
 
-/* Titre et bouton gardent leur taille : seule la grille absorbe le manque de place. */
+/* Titre et bouton gardent leur rôle d'ancrage (jamais défilés), mais leur taille est
+   réduite au minimum pour rendre l'espace vertical à la grille (issue #146). */
 #joker-modale .modale-contenu h3,
 #joker-modale #joker-annuler {
     flex: 0 0 auto;
 }
 
 #joker-modale .modale-contenu h3 {
-    margin-bottom: 8px;
+    font-size: 0.95rem;
+    margin-bottom: 6px;
 }
 
+#joker-modale #joker-annuler {
+    padding: 6px 16px;
+}
+
+/* La grille absorbe le manque de place : elle défile si besoin, min-height:0 est
+   indispensable pour qu'un flex-item puisse défiler. Un indice de défilement (ombres
+   haut/bas, technique Lea Verou en dégradés local/scroll) apparaît automatiquement
+   quand du contenu dépasse et disparaît aux extrémités — sous WebKitGTK la barre de
+   défilement est invisible, cet indice signale donc qu'il reste des lettres à voir
+   (issue #146). */
 #joker-modale .joker-grille {
     flex: 1 1 auto;
-    min-height: 0;      /* indispensable : sans lui, un flex-item ne peut pas défiler */
+    min-height: 0;
     overflow-y: auto;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
+    background:
+        /* voiles blancs (local) : masquent l'ombre à l'extrémité où l'on est posé */
+        linear-gradient(white 30%, rgba(255, 255, 255, 0)) top / 100% 24px,
+        linear-gradient(rgba(255, 255, 255, 0), white 70%) bottom / 100% 24px,
+        /* ombres (scroll) : révélées dès qu'il reste du contenu au-dessus/dessous */
+        radial-gradient(farthest-side at 50% 0,
+            rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0)) top / 100% 12px,
+        radial-gradient(farthest-side at 50% 100%,
+            rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0)) bottom / 100% 12px;
+    background-repeat: no-repeat;
+    background-attachment: local, local, scroll, scroll;
 }
 
 /* Modale de détail du score (issue #35), dupliquée dans les deux fenêtres. */

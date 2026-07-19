@@ -47,7 +47,7 @@ from typing import Any
 import webview
 
 from scrabble import journal
-from scrabble.config import charger_config
+from scrabble.config import AVATARS_DISPONIBLES, charger_config
 from scrabble.dictionnaire.dictionnaire import charger_dictionnaire, obtenir_trie
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.ordre import determiner_ordre_jeu
@@ -186,6 +186,68 @@ class ApiAccueil:
         except (KeyError, Exception):
             return ""
 
+    def obtenir_avatar_principal(self) -> str:
+        """Retourne l'avatar principal choisi dans les réglages (issue #148).
+
+        Renvoie l'identifiant d'avatar (voir :data:`AVATARS_DISPONIBLES`) tel que
+        configuré dans les réglages (``avatar_principal``, issue #139), ou chaîne
+        vide si aucun avatar n'est choisi. On revalide contre
+        :data:`AVATARS_DISPONIBLES` par prudence : ``lire_reglage`` normalise déjà
+        la valeur, mais une valeur inattendue (config manipulée à la main) ne doit
+        pas produire un chemin d'image invalide côté accueil. Toute erreur de
+        lecture est absorbée (chaîne vide) : l'accueil retombe alors sur l'icône
+        générique, jamais sur une exception.
+        """
+        try:
+            valeur = lire_reglage("avatar_principal") or ""
+        except (KeyError, Exception):
+            return ""
+        return valeur if valeur in AVATARS_DISPONIBLES else ""
+
+    def initialiser_joueur_humain(self) -> bool:
+        """Ajoute d'office le joueur humain de référence (issue #141).
+
+        Le support multi-humains ayant été abandonné, il n'y a plus de raison
+        de demander à l'utilisateur d'ajouter manuellement son joueur humain à
+        chaque création de partie : il doit figurer d'office dans « Joueurs
+        autour de la table » dès l'ouverture de l'accueil. On reprend le prénom
+        déjà configuré dans les réglages (``prenom_principal``).
+
+        Appelée par :func:`lancer_accueil` juste avant l'ouverture de la
+        fenêtre, de sorte que le premier ``obtenir_etat()`` du JS voie déjà le
+        joueur. Le joueur reste **retirable** ensuite (aucune présence forcée
+        irréversible) : la méthode est idempotente et ne réajoute rien si un
+        humain est déjà présent (elle ne s'oppose donc pas à un retrait
+        volontaire déjà effectué dans la même configuration).
+
+        Sans prénom principal configuré (champ vide), aucun joueur n'est ajouté
+        et l'écran s'ouvre comme avant — à charge pour l'utilisateur d'ajouter
+        un joueur manuellement. Retourne ``True`` si un joueur a été ajouté.
+        """
+        if self.config_partie.nb_humains > 0:
+            journal.info(
+                "Accueil : seeding du joueur humain ignoré (un humain est déjà "
+                "présent dans la configuration)."
+            )
+            return False
+        prenom = self.obtenir_prenom_principal().strip()
+        if not prenom:
+            journal.info(
+                "Accueil : seeding du joueur humain ignoré (aucun prénom "
+                "principal configuré dans les réglages)."
+            )
+            return False
+        if not self.config_partie.ajouter_humain(prenom):
+            journal.info(
+                "Accueil : seeding du joueur humain échoué "
+                f"(ajouter_humain a refusé « {prenom} »)."
+            )
+            return False
+        journal.info(
+            f"Accueil : joueur humain de référence ajouté d'office ({prenom})."
+        )
+        return True
+
     def sauvegarder_prenom_principal(self, prenom: str) -> bool:
         """Sauvegarde le prénom comme prénom principal."""
         try:
@@ -195,15 +257,34 @@ class ApiAccueil:
             return False
 
     def obtenir_etat(self) -> dict[str, Any]:
-        """Retourne l'état actuel de la configuration."""
+        """Retourne l'état actuel de la configuration.
+
+        Le joueur humain de référence (le premier humain de la liste) porte
+        l'avatar choisi dans les réglages (``avatar_principal``, issue #148) dans
+        le champ ``avatar`` : l'accueil affiche ainsi le même portrait que celui
+        utilisé tout au long de la partie (:func:`~scrabble.ui.jeu.calculer_avatars`
+        réserve déjà ``avatar_principal`` à ce joueur). Les autres joueurs — et le
+        joueur humain quand aucun avatar n'est configuré — ont ``avatar`` à
+        ``None`` : l'accueil retombe alors sur l'icône générique.
+        """
+        avatar_principal = self.obtenir_avatar_principal()
+        reference = next(
+            (i for i, j in enumerate(self.config_partie.joueurs) if j.humain),
+            None,
+        )
         return {
             "joueurs": [
                 {
                     "nom": j.nom,
                     "humain": j.humain,
                     "niveau": j.niveau.name if j.niveau else None,
+                    "avatar": (
+                        avatar_principal
+                        if (i == reference and avatar_principal)
+                        else None
+                    ),
                 }
-                for j in self.config_partie.joueurs
+                for i, j in enumerate(self.config_partie.joueurs)
             ],
             "peut_ajouter_humain": self.config_partie.peut_ajouter_humain(),
             "peut_ajouter_ordinateur": self.config_partie.peut_ajouter_ordinateur(),
@@ -359,12 +440,22 @@ class ApiAccueil:
         return {"tirages": tirages, "ordre": ordre}
 
     def lister_parties_en_cours(self) -> list[dict[str, Any]]:
-        """Renvoie la seule partie en cours la plus récente (issue #54).
+        """Renvoie les parties proposées à l'accueil (issues #54, #150).
 
         ``lister_parties()`` renvoie déjà les parties triées par date de mise à
-        jour décroissante : on ne propose à la reprise que la plus récente. Le
-        retour reste une liste (0 ou 1 élément) pour ne pas casser le contrat
-        avec le JS.
+        jour décroissante. On propose au plus **deux** encarts, la plus récente
+        de chaque catégorie :
+
+        - la partie **en cours** la plus récente, à reprendre (issue #54) ;
+        - la partie **terminée** la plus récente, à consulter — son plateau
+          final et son classement (issue #150). Le filtre qui excluait
+          auparavant les parties terminées est donc levé.
+
+        Limiter à une par catégorie garde l'accueil épuré (esprit de l'issue
+        #54) tout en évitant qu'une partie qui vient de se terminer ne masque la
+        partie en cours (ou l'inverse). Les encarts sont renvoyés du plus récent
+        au plus ancien. Chaque dict porte un booléen ``terminee`` pour que le JS
+        affiche le badge « Terminée » et le libellé « Consulter ».
 
         Chaque joueur est renvoyé avec son **score courant** (issue #76) :
         ``joueurs`` est une liste de ``{"nom", "score"}``, le score étant celui
@@ -373,9 +464,15 @@ class ApiAccueil:
         """
         try:
             toutes = lister_parties()
-            en_cours = [p for p in toutes if not p.terminee]
+            # ``toutes`` est trié date décroissante : le premier de chaque
+            # catégorie est le plus récent.
+            en_cours = next((p for p in toutes if not p.terminee), None)
+            terminee = next((p for p in toutes if p.terminee), None)
+            selection = [p for p in (en_cours, terminee) if p is not None]
+            # Ordre chronologique décroissant conservé quel que soit le statut.
+            selection.sort(key=lambda p: p.date_maj, reverse=True)
             resultat = []
-            for p in en_cours[:1]:
+            for p in selection:
                 scores = p.scores_actuels or []
                 joueurs = [
                     {
@@ -390,6 +487,7 @@ class ApiAccueil:
                         "date_maj": p.date_maj,
                         "joueurs": joueurs,
                         "nb_joueurs": len(p.joueurs),
+                        "terminee": p.terminee,
                     }
                 )
             return resultat
@@ -556,6 +654,24 @@ def lancer_accueil(
         journal.demarrer_session()
     try:
         api = ApiAccueil()
+        # Joueur humain présent d'office (issue #141) : le support multi-humains
+        # étant abandonné, le joueur de référence figure dès l'ouverture dans
+        # « Joueurs autour de la table » (repris de ``prenom_principal``), sans
+        # ajout manuel. Fait avant ``webview.start()`` pour que le premier
+        # ``obtenir_etat()`` du JS le voie déjà. Il reste retirable ensuite.
+        api.initialiser_joueur_humain()
+        # Trace d'objectivation (issue #145) : on journalise l'état que le
+        # premier ``obtenir_etat()`` du JS renverra, pour lever toute ambiguïté
+        # entre « le joueur n'est pas ajouté » (bug logique) et « il est ajouté
+        # mais pas rendu » (bug d'affichage) lors d'un test en conditions
+        # réelles.
+        _etat_ouverture = api.obtenir_etat()
+        journal.info(
+            "Accueil : état exposé au premier rendu — "
+            f"{_etat_ouverture['nb_humains']} humain(s), "
+            f"{_etat_ouverture['nb_ordinateurs']} ordinateur(s) ; "
+            f"joueurs = {[j['nom'] for j in _etat_ouverture['joueurs']]}."
+        )
         chemin_html = DOSSIER_WEB / "accueil.html"
         window = webview.create_window(
             "Scrabble - Nouvelle partie",

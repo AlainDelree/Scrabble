@@ -351,6 +351,184 @@ class TestApiAccueilLancement:
         assert "erreur" in result
 
 
+class TestApiAccueilJoueurHumainParDefaut:
+    """Tests de la présence d'office du joueur humain de référence (issue #141).
+
+    Le support multi-humains étant abandonné, le joueur humain de référence
+    (prénom ``prenom_principal``) doit figurer d'office dès l'ouverture de
+    l'accueil, sans ajout manuel, tout en restant retirable.
+    """
+
+    def test_ajoute_le_prenom_principal(self, monkeypatch):
+        """initialiser_joueur_humain() ajoute le joueur repris des réglages."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lire_reglage", lambda cle: "Alain"
+        )
+        api = ApiAccueil()
+        ajoute = api.initialiser_joueur_humain()
+
+        assert ajoute is True
+        etat = api.obtenir_etat()
+        assert etat["nb_humains"] == 1
+        assert etat["joueurs"] == [
+            {"nom": "Alain", "humain": True, "niveau": None, "avatar": None}
+        ]
+        # La configuration est directement lançable, sans action manuelle.
+        assert etat["peut_lancer"] is True
+
+    def test_sans_prenom_principal_aucun_joueur(self, monkeypatch):
+        """Sans prénom principal configuré, aucun joueur n'est ajouté."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr("scrabble.ui.accueil.lire_reglage", lambda cle: "")
+        api = ApiAccueil()
+        ajoute = api.initialiser_joueur_humain()
+
+        assert ajoute is False
+        assert api.obtenir_etat()["nb_humains"] == 0
+
+    def test_prenom_principal_espaces_ignore(self, monkeypatch):
+        """Un prénom principal fait uniquement d'espaces n'ajoute personne."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lire_reglage", lambda cle: "   "
+        )
+        api = ApiAccueil()
+
+        assert api.initialiser_joueur_humain() is False
+        assert api.obtenir_etat()["nb_humains"] == 0
+
+    def test_idempotent_si_humain_deja_present(self, monkeypatch):
+        """La méthode ne double pas le joueur déjà présent."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lire_reglage", lambda cle: "Alain"
+        )
+        api = ApiAccueil()
+        api.config_partie.ajouter_humain("Marie")
+
+        assert api.initialiser_joueur_humain() is False
+        assert api.obtenir_etat()["nb_humains"] == 1
+        assert api.config_partie.joueurs[0].nom == "Marie"
+
+    def test_joueur_par_defaut_reste_retirable(self, monkeypatch):
+        """Le joueur ajouté d'office peut être retiré (pas de présence forcée)."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lire_reglage", lambda cle: "Alain"
+        )
+        api = ApiAccueil()
+        api.initialiser_joueur_humain()
+
+        result = api.retirer_joueur(0)
+
+        assert result["succes"] is True
+        assert result["etat"]["nb_humains"] == 0
+        # Le retrait n'est pas re-annulé : ``initialiser_joueur_humain`` n'est
+        # appelée qu'une fois, à l'ouverture (jamais après un retrait), donc le
+        # joueur reste bien parti pour cette configuration.
+
+    def test_lecture_reglage_defaillante_nignore_pas_l_ouverture(
+        self, monkeypatch
+    ):
+        """Une erreur de lecture des réglages n'empêche pas l'ouverture."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        def _boum(cle):
+            raise RuntimeError("config illisible")
+
+        monkeypatch.setattr("scrabble.ui.accueil.lire_reglage", _boum)
+        api = ApiAccueil()
+
+        # obtenir_prenom_principal absorbe l'erreur -> aucun joueur, pas d'exception.
+        assert api.initialiser_joueur_humain() is False
+        assert api.obtenir_etat()["nb_humains"] == 0
+
+
+class TestApiAccueilAvatarPrincipal:
+    """L'avatar du joueur humain à l'accueil reflète les réglages (issue #148).
+
+    Le joueur humain de référence ajouté d'office doit porter l'avatar choisi
+    dans les réglages (``avatar_principal``, issue #139) — le même que celui
+    utilisé tout au long de la partie (:func:`~scrabble.ui.jeu.calculer_avatars`)
+    — au lieu de l'icône générique codée en dur.
+    """
+
+    @staticmethod
+    def _patch_reglages(monkeypatch, prenom, avatar):
+        """Monkeypatch ``lire_reglage`` avec un prénom et un avatar donnés."""
+        reglages = {"prenom_principal": prenom, "avatar_principal": avatar}
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lire_reglage",
+            lambda cle: reglages.get(cle, ""),
+        )
+
+    def test_avatar_configure_expose_pour_l_humain(self, monkeypatch):
+        """L'avatar valide des réglages est renvoyé dans l'état du joueur humain."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        self._patch_reglages(monkeypatch, "Alain", "avatar-07")
+        api = ApiAccueil()
+        api.initialiser_joueur_humain()
+
+        assert api.obtenir_etat()["joueurs"] == [
+            {"nom": "Alain", "humain": True, "niveau": None, "avatar": "avatar-07"}
+        ]
+
+    def test_sans_avatar_configure_aucun_avatar(self, monkeypatch):
+        """Sans avatar choisi, ``avatar`` reste None (icône générique côté JS)."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        self._patch_reglages(monkeypatch, "Alain", "")
+        api = ApiAccueil()
+        api.initialiser_joueur_humain()
+
+        assert api.obtenir_etat()["joueurs"][0]["avatar"] is None
+
+    def test_avatar_inconnu_ignore(self, monkeypatch):
+        """Un avatar inconnu (config trafiquée) est ignoré plutôt qu'exposé."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        self._patch_reglages(monkeypatch, "Alain", "avatar-999")
+        api = ApiAccueil()
+        api.initialiser_joueur_humain()
+
+        assert api.obtenir_etat()["joueurs"][0]["avatar"] is None
+
+    def test_ordinateur_n_herite_pas_de_l_avatar(self, monkeypatch):
+        """Seul le joueur humain de référence porte l'avatar configuré."""
+        from scrabble.moteur.ia import Niveau
+        from scrabble.ui.accueil import ApiAccueil
+
+        self._patch_reglages(monkeypatch, "Alain", "avatar-07")
+        api = ApiAccueil()
+        api.initialiser_joueur_humain()
+        api.config_partie.ajouter_ordinateur("Robot", Niveau.FACILE)
+
+        joueurs = api.obtenir_etat()["joueurs"]
+        assert joueurs[0]["avatar"] == "avatar-07"
+        assert joueurs[1]["avatar"] is None
+
+    def test_coherent_avec_calculer_avatars(self, monkeypatch):
+        """L'avatar exposé à l'accueil est celui attribué à l'humain en partie."""
+        from scrabble.moteur.partie import Joueur
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.ui.jeu import calculer_avatars
+
+        self._patch_reglages(monkeypatch, "Alain", "avatar-07")
+        api = ApiAccueil()
+        api.initialiser_joueur_humain()
+        avatar_accueil = api.obtenir_etat()["joueurs"][0]["avatar"]
+
+        joueurs = [Joueur(nom="Alain", humain=True)]
+        assert avatar_accueil == calculer_avatars(joueurs, "avatar-07")[0]
+
+
 class TestApiAccueilTirageOrdre:
     """Tests du tirage d'ordre exposé par lancer_partie (issue #54).
 
@@ -503,7 +681,10 @@ class TestApiAccueilAnnulerPartie:
 
 
 class TestApiAccueilPartieUnique:
-    """Tests de lister_parties_en_cours : une seule partie proposée (issue #54)."""
+    """Tests de lister_parties_en_cours (issues #54, #150).
+
+    On propose au plus deux encarts : la partie en cours la plus récente (à
+    reprendre) et la partie terminée la plus récente (à consulter)."""
 
     def _resume(self, id_partie, statut="en_cours", joueurs=None, scores_actuels=None):
         from scrabble.persistance.stockage import ResumePartie
@@ -535,8 +716,9 @@ class TestApiAccueilPartieUnique:
         assert len(parties) == 1
         assert parties[0]["id"] == 9
 
-    def test_ignore_les_parties_terminees(self, monkeypatch):
-        """Une partie terminée n'est pas proposée, même si listée en tête."""
+    def test_inclut_partie_terminee_et_en_cours(self, monkeypatch):
+        """La partie terminée la plus récente ET la partie en cours la plus
+        récente sont proposées, du plus récent au plus ancien (issue #150)."""
         from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
@@ -551,11 +733,14 @@ class TestApiAccueilPartieUnique:
         api = ApiAccueil()
         parties = api.lister_parties_en_cours()
 
-        assert len(parties) == 1
-        assert parties[0]["id"] == 4
+        # Deux encarts : la terminée (9, la plus récente) puis l'en cours (4).
+        assert [p["id"] for p in parties] == [9, 4]
+        assert parties[0]["terminee"] is True
+        assert parties[1]["terminee"] is False
 
-    def test_aucune_partie_en_cours(self, monkeypatch):
-        """Aucune partie en cours -> liste vide."""
+    def test_une_seule_partie_terminee_est_proposee(self, monkeypatch):
+        """Sans partie en cours, la partie terminée la plus récente est
+        proposée à la consultation (issue #150)."""
         from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
@@ -564,7 +749,31 @@ class TestApiAccueilPartieUnique:
         )
 
         api = ApiAccueil()
-        assert api.lister_parties_en_cours() == []
+        parties = api.lister_parties_en_cours()
+
+        assert len(parties) == 1
+        assert parties[0]["id"] == 9
+        assert parties[0]["terminee"] is True
+
+    def test_une_seule_terminee_par_categorie(self, monkeypatch):
+        """Seule la plus récente de chaque catégorie est retenue (issues #54,
+        #150) : les parties terminées plus anciennes ne sont pas proposées."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.lister_parties",
+            lambda: [
+                self._resume(9, statut="terminee"),
+                self._resume(7, statut="terminee"),
+                self._resume(4),
+                self._resume(2),
+            ],
+        )
+
+        api = ApiAccueil()
+        parties = api.lister_parties_en_cours()
+
+        assert [p["id"] for p in parties] == [9, 4]
 
     def test_expose_le_score_de_chaque_joueur(self, monkeypatch):
         """Chaque joueur est renvoyé avec son score courant (issue #76)."""

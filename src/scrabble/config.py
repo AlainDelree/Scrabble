@@ -40,6 +40,13 @@ CONFIG_DEFAUT: dict[str, Any] = {
     # Prénom de l'utilisatrice principale, retenu d'une partie à l'autre pour
     # éviter de le redemander. Vide par défaut (aucun prénom mémorisé).
     "prenom_principal": "",
+    # Avatar choisi par le joueur humain (issue #143) : identifiant d'un portrait
+    # de AVATARS_DISPONIBLES, ou chaîne vide (défaut) pour « aucun choix » (on
+    # retombe alors sur l'attribution déterministe historique). Quand il est
+    # renseigné, cet avatar est réservé au joueur humain de référence et exclu du
+    # pool tiré au sort pour les ordinateurs. Toute valeur non vide inconnue est
+    # réparée vers la chaîne vide.
+    "avatar_principal": "",
     # Thème visuel (habillage couleurs/étiquettes) du plateau de l'écran de jeu.
     # Voir THEMES_PLATEAU pour les valeurs acceptées ; défaut = "classique".
     "theme_plateau": "classique",
@@ -63,9 +70,18 @@ CONFIG_DEFAUT: dict[str, Any] = {
     "type_echange": "complet",
 }
 
+# Bibliothèque d'avatars disponibles (issues #34 et #143). Chaque identifiant
+# correspond au fichier ``ui/web/avatars/<id>.svg``. Source de vérité unique,
+# ré-exportée par ``ui/jeu.py`` (constante ``AVATARS``) et exposée dans les
+# réglages pour le choix d'avatar. L'ORDRE fait partie du contrat déterministe
+# de ``calculer_avatars`` : ne pas le réordonner sans raison.
+AVATARS_DISPONIBLES: tuple[str, ...] = tuple(f"avatar-{n:02d}" for n in range(1, 16))
+
 # Clés dont la valeur est du texte libre : une chaîne vide y est légitime
 # (contrairement aux autres champs où le vide déclenche une réparation).
-CLES_TEXTE_LIBRE: frozenset[str] = frozenset({"prenom_principal"})
+# ``avatar_principal`` en fait partie car le vide = « aucun avatar choisi » ;
+# sa valeur non vide est en plus contrainte à AVATARS_DISPONIBLES (VALEURS_VALIDES).
+CLES_TEXTE_LIBRE: frozenset[str] = frozenset({"prenom_principal", "avatar_principal"})
 
 # Clés dont la valeur est un booléen (et non une chaîne) : validées à part,
 # toute valeur non booléenne déclenchant une réparation vers le défaut.
@@ -89,6 +105,11 @@ TYPES_ECHANGE: tuple[str, ...] = ("complet", "partiel")
 VALEURS_VALIDES: dict[str, frozenset[str]] = {
     "theme_plateau": frozenset(THEMES_PLATEAU),
     "type_echange": frozenset(TYPES_ECHANGE),
+    # Avatar principal (issue #143) : un identifiant connu ou la chaîne vide
+    # (« aucun choix »). Le vide est admis ici ET dans CLES_TEXTE_LIBRE, si bien
+    # qu'une valeur vide ne déclenche aucune réparation ; toute autre valeur
+    # inconnue retombe sur la chaîne vide.
+    "avatar_principal": frozenset(AVATARS_DISPONIBLES) | {""},
 }
 
 

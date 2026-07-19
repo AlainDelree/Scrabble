@@ -4,7 +4,8 @@
  * Depuis la séparation en deux fenêtres pywebview (issue #90), cette vue ne porte
  * plus QUE la partie « publique » de l'écran de jeu : le plateau 15×15, les
  * panneaux d'information des joueurs, la barre du sac/historique, le bouton
- * « Faire jouer l'ordinateur » (déplacé ici, car un tour IA relève du plateau),
+ * « ▶ Jouer » de la fiche d'un ordinateur courant (issue #149, ex-« Faire jouer
+ * l'ordinateur » ; un tour IA relève du plateau, l'humain n'a rien à jouer),
  * la vérification dictionnaire (saisie libre, sans lien avec le chevalet), le
  * « Retour au menu » et une copie de la modale de détail du score (ouverte depuis
  * l'historique). Le chevalet, le brouillon, la mécanique de pose (sélection +
@@ -42,7 +43,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         bas: document.getElementById('slot-bas'),
     };
     const sacNombre = document.getElementById('sac-nombre');
-    const bandeauFin = document.getElementById('bandeau-fin');
+    // Modale de fin de partie (issue #142) : remplace l'ancien bandeau de fin.
+    // Contient le message de victoire, le classement final, l'évaluation du
+    // score, et trois boutons (retour menu / rester / recommencer).
+    const modaleFin = document.getElementById('modale-fin');
+    const modaleFinMessage = document.getElementById('modale-fin-message');
+    const modaleFinClassement = document.getElementById('modale-fin-classement');
+    const modaleFinEvaluation = document.getElementById('modale-fin-evaluation');
+    const btnFinRetourMenu = document.getElementById('fin-retour-menu');
+    const btnFinRester = document.getElementById('fin-rester');
+    const btnFinRecommencer = document.getElementById('fin-recommencer');
     const messagePlateau = document.getElementById('message-plateau');
     const historiqueListe = document.getElementById('historique-liste');
     const historiqueCompte = document.getElementById('historique-compte');
@@ -63,10 +73,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const confirmationConfirmer = document.getElementById('confirmation-confirmer');
 
     // Mode « attente d'un tour d'ordinateur » (issue #35) déplacé côté plateau
-    // (issue #90) : bloc + bouton « Faire jouer l'ordinateur ».
+    // (issue #90) : bloc + message « En attente du coup de… ». Le déclenchement du
+    // coup se fait désormais via le bouton « ▶ Jouer » de la fiche du joueur
+    // ordinateur courant (issue #149), plus par un bouton séparé.
     const zoneAttenteIA = document.getElementById('zone-attente-ia');
     const attenteMessageIA = document.getElementById('attente-ia-message');
-    const btnJouerIA = document.getElementById('btn-jouer-ia');
 
     // Actions de tour (issue #101) : rapatriées depuis la fenêtre chevalet. Elles
     // ne sont visibles/actives que pendant le tour du joueur humain (voir
@@ -217,9 +228,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         item.className = `panneau-joueur ${nature}${joueur.courant ? ' courant' : ''}`;
         item.dataset.cote = joueur.position || '';
 
-        const badgeTour = joueur.courant
-            ? `<span class="panneau-tour">● ${joueur.humain ? 'à vous' : 'son tour'}</span>`
-            : '';
+        // Joueur courant : l'humain voit une pastille « à vous » ; un ordinateur
+        // expose directement un bouton « ▶ Jouer » (issue #149) qui déclenche son
+        // coup (api.faire_jouer_ia), à la place de l'ancien label « son tour » et
+        // du bouton séparé de la zone d'attente IA (retiré).
+        let badgeTour = '';
+        if (joueur.courant) {
+            badgeTour = joueur.humain
+                ? '<span class="panneau-tour">● à vous</span>'
+                : '<button type="button" class="btn btn-primaire panneau-btn-jouer">▶ Jouer</button>';
+        }
         const avatarHtml = joueur.avatar
             ? `<img class="panneau-avatar" src="avatars/${encodeURIComponent(joueur.avatar)}.svg"
                     alt="" width="26" height="26">`
@@ -249,6 +267,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             ${badgeOrdinateur}
             ${badgeTour}
         `;
+        // Le bouton « ▶ Jouer » d'un ordinateur courant (issue #149) déclenche le
+        // même flux que l'ancien bouton de la zone d'attente IA. Le panneau est
+        // reconstruit à chaque diffusion, donc l'écouteur est (ré)attaché ici.
+        const boutonJouer = item.querySelector('.panneau-btn-jouer');
+        if (boutonJouer) {
+            boutonJouer.addEventListener('click', () => lancerTourIA(boutonJouer));
+        }
         return item;
     }
 
@@ -263,33 +288,51 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // Vrai une fois la modale de fin ouverte pour la partie courante (issue #142) :
+    // évite de la rouvrir à chaque état repoussé (resynchronisation, etc.) alors
+    // que l'utilisateur a choisi « Rester sur la partie ». Remis à faux dès qu'un
+    // état de partie NON terminée arrive (nouvelle partie ou reprise en cours).
+    let finModaleAffichee = false;
+
     /**
-     * Rend le bandeau de fin de partie (issue #45), étendu d'un tableau de
-     * classement final (issue #133) listant TOUS les joueurs triés par score
-     * décroissant avec leur rang, et non plus seulement le(s) gagnant(s), puis
-     * de l'évaluation officielle du score total combiné (issue #137).
+     * Pilote la modale de fin de partie (issue #142, ex-bandeau des issues
+     * #45/#133/#137). Une fois la partie terminée, elle s'ouvre par-dessus le
+     * plateau avec le message de victoire, le tableau de classement final listant
+     * TOUS les joueurs triés par score décroissant avec leur rang, et l'évaluation
+     * officielle du score total combiné (issue #137). Elle ne s'ouvre qu'une fois
+     * par partie : si l'utilisateur la ferme (« Rester sur la partie »), un état
+     * repoussé plus tard ne la rouvre pas.
      */
     function rendreFinPartie(terminee, gagnants, joueurs, evaluation) {
         if (!terminee) {
-            bandeauFin.hidden = true;
-            bandeauFin.textContent = '';
+            finModaleAffichee = false;
+            modaleFin.hidden = true;
             return;
         }
-        bandeauFin.hidden = false;
-        bandeauFin.textContent = '';
 
-        const message = document.createElement('div');
-        message.className = 'bandeau-fin-message';
-        message.textContent = gagnants && gagnants.length
+        // (Re)construit le contenu à chaque diffusion : le classement reflète
+        // toujours l'état public reçu, même si la modale est déjà (ou pas encore)
+        // ouverte.
+        modaleFinMessage.textContent = gagnants && gagnants.length
             ? `🏁 Partie terminée — ${gagnants.join(', ')}`
             : '🏁 Partie terminée';
-        bandeauFin.appendChild(message);
 
+        modaleFinClassement.textContent = '';
         const classement = construireClassement(joueurs);
-        if (classement) bandeauFin.appendChild(classement);
+        if (classement) modaleFinClassement.appendChild(classement);
 
+        modaleFinEvaluation.textContent = '';
         const eval_ = construireEvaluationScore(evaluation);
-        if (eval_) bandeauFin.appendChild(eval_);
+        if (eval_) modaleFinEvaluation.appendChild(eval_);
+
+        // Ouverture unique : à la transition vers « terminée ». Fermée à la main,
+        // la modale ne se rouvre pas tant que la partie reste terminée.
+        if (!finModaleAffichee) {
+            finModaleAffichee = true;
+            modaleFin.hidden = false;
+            // Le focus part sur « Rester » : l'action neutre par défaut.
+            btnFinRester.focus();
+        }
     }
 
     /**
@@ -496,7 +539,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         zoneAttenteIA.hidden = !attenteIA;
         if (attenteIA && courant) {
             attenteMessageIA.textContent = `En attente du coup de ${courant.nom}…`;
-            btnJouerIA.disabled = false;
         }
         majActionsTour();
     }
@@ -619,6 +661,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         dernierCoupIndex = index;
+        // Un nouveau coup en tête d'historique = une action de tour vient d'être
+        // appliquée (pose, échange ou passage), y compris déclenchée depuis la
+        // fenêtre chevalet. On referme alors les popovers du plateau restés ouverts
+        // (« Derniers coups », « Vérification dictionnaire ») : c'est ce signal
+        // applicatif qui pallie l'absence de clic extérieur cross-fenêtre (issue #151).
+        C.fermerTousPopovers();
         // Un coup qui rapporte des points déclenche un toast « +X points » près du
         // panneau de son auteur (issue #136), indépendant du toast Scrabble. Une
         // passe/un échange (score_action 0, positions vide) ne déclenche rien.
@@ -766,6 +814,54 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ------------------------------------------------------------------ //
+    // Modale de fin de partie — trois actions (issue #142)
+    // ------------------------------------------------------------------ //
+
+    // « Rester sur la partie » : ferme simplement la modale et laisse le plateau
+    // final affiché pour consultation libre. finModaleAffichee reste vrai : la
+    // modale ne se rouvrira pas tant que la partie reste terminée.
+    function resterSurLaPartie() {
+        modaleFin.hidden = true;
+    }
+    btnFinRester.addEventListener('click', resterSurLaPartie);
+    // Clic dehors et Échap = « Rester » (fermeture non destructrice).
+    modaleFin.addEventListener('click', (evt) => {
+        if (evt.target === modaleFin) resterSurLaPartie();
+    });
+    document.addEventListener('keydown', (evt) => {
+        if (evt.key === 'Escape' && !modaleFin.hidden) resterSurLaPartie();
+    });
+
+    // « Retour au menu » : même comportement que le bouton utilitaire du haut.
+    // En fin de partie il n'y a jamais de coup en attente : appel direct, sans
+    // la modale d'avertissement.
+    btnFinRetourMenu.addEventListener('click', () => {
+        retournerAuMenu();
+    });
+
+    // « Recommencer » : demande à Python une nouvelle partie avec les mêmes
+    // joueurs (nouveau tirage). En cas de succès, les deux fenêtres se ferment et
+    // l'écran de jeu se rouvre sur la nouvelle partie (piloté par Python) ; en cas
+    // d'échec, on réactive le bouton et on signale l'erreur.
+    btnFinRecommencer.addEventListener('click', async () => {
+        btnFinRecommencer.disabled = true;
+        let res;
+        try {
+            res = await api.recommencer();
+        } catch (err) {
+            btnFinRecommencer.disabled = false;
+            afficherMessagePlateau('Recommencer impossible : ' + err, 'erreur');
+            return;
+        }
+        if (res && res.succes === false) {
+            btnFinRecommencer.disabled = false;
+            afficherMessagePlateau(
+                'Recommencer impossible : ' + (res.erreur || 'erreur inconnue'), 'erreur');
+        }
+        // Succès : les DEUX fenêtres se ferment, une nouvelle partie s'ouvre (Python).
+    });
+
+    // ------------------------------------------------------------------ //
     // Confirmation générique d'une action de tour irréversible (issue #139)
     // ------------------------------------------------------------------ //
     // demanderConfirmation ouvre #confirmation-modale avec le titre/message et le
@@ -807,24 +903,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Tour d'un ordinateur (issue #35/#55) — bouton côté plateau (issue #90)
     // ------------------------------------------------------------------ //
 
-    // « ▶ Faire jouer l'ordinateur » : joue UN SEUL tour d'ordinateur. Python
-    // rediffuse ensuite l'état aux deux fenêtres ; l'animation de la pose est
-    // déclenchée par ``appliquerEtatPlateau`` (nouveau coup en tête d'historique).
-    btnJouerIA.addEventListener('click', async () => {
-        btnJouerIA.disabled = true;
+    // Bouton « ▶ Jouer » de la fiche d'un ordinateur courant (issue #149,
+    // ex-« Faire jouer l'ordinateur » de la zone d'attente, issue #35/#90) : joue
+    // UN SEUL tour d'ordinateur. Python rediffuse ensuite l'état aux deux fenêtres ;
+    // l'animation de la pose est déclenchée par ``appliquerEtatPlateau`` (nouveau
+    // coup en tête d'historique). Le panneau est reconstruit à chaque diffusion :
+    // un bouton neuf réapparaît si le joueur suivant est encore un ordinateur.
+    async function lancerTourIA(bouton) {
+        if (bouton) bouton.disabled = true;
         let res;
         try {
             res = await api.faire_jouer_ia();
         } catch (err) {
-            btnJouerIA.disabled = false;
+            if (bouton) bouton.disabled = false;
             return;
         }
-        if (!(res && res.succes)) {
-            btnJouerIA.disabled = false;
+        if (!(res && res.succes) && bouton) {
+            bouton.disabled = false;
         }
-        // Succès : le bouton reste piloté par majModeTour au prochain état poussé
-        // (réactivé si le joueur suivant est encore un ordinateur).
-    });
+    }
 
     // ------------------------------------------------------------------ //
     // Actions de tour (issue #101, déplacées depuis la fenêtre chevalet)
@@ -1081,22 +1178,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Encart d'historique glissant : ouverture/fermeture + clic sur une ligne
     // ------------------------------------------------------------------ //
 
-    // Fermeture/ouverture fiable du menu « Derniers coups » (issues #56/#60) :
-    // on tient notre propre intention (``historiqueOuvert``) et on force ``open``
-    // dessus, une fois tout de suite et une fois en requestAnimationFrame, pour
-    // que l'éventuelle bascule native de WebKitGTK ne gagne pas la course.
-    const historiqueMenu = document.getElementById('historique-menu');
-    const historiqueResume = historiqueMenu ? historiqueMenu.querySelector('summary') : null;
-    if (historiqueMenu && historiqueResume) {
-        let historiqueOuvert = historiqueMenu.open;
-        historiqueResume.addEventListener('click', (evt) => {
-            evt.preventDefault();
-            historiqueOuvert = !historiqueOuvert;
-            const cible = historiqueOuvert;
-            historiqueMenu.open = cible;
-            requestAnimationFrame(() => { historiqueMenu.open = cible; });
-        });
-    }
+    // Ouverture/fermeture du menu « Derniers coups » (issue #144) : on réutilise
+    // le MÊME mécanisme que « Vérification dictionnaire » (C.configurerPopover) —
+    // clic sur le bouton pour basculer, fermeture au clic EXTÉRIEUR ou à la touche
+    // Échap, mise à jour d'aria-expanded. Cela remplace l'ancienne logique séparée
+    // qui devait forcer la bascule native du <details> sous WebKitGTK (issues
+    // #49/#56/#60) et ne se fermait pas à la perte de focus. La liste
+    // (``historiqueListe``, id #historique-liste) sert de popover : les clics à
+    // l'intérieur (ouverture du détail d'un coup) ne la ferment pas, configurerPopover
+    // stoppant leur propagation vers document.
+    const btnHistorique = document.getElementById('btn-historique');
+    C.configurerPopover(btnHistorique, historiqueListe);
 
     function entreeHistoriqueDe(li) {
         if (!li || !etat || !Array.isArray(etat.historique)) {
@@ -1361,6 +1453,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ------------------------------------------------------------------ //
+    // Diagnostic : espace vertical réel sous le plateau (issue #152)
+    // ------------------------------------------------------------------ //
+
+    // Hauteur minimale de la fenêtre chevalet (issue #140/#141) : c'est la place
+    // qu'il faut pouvoir loger sous le plateau, sans qu'elle empiète, une fois le
+    // chevalet posé en bas de l'écran.
+    const CHEVALET_MIN_PX = 175;
+
+    /**
+     * Mesure et journalise la géométrie verticale réelle de l'écran de jeu
+     * (issue #152), sur le modèle de la trace de tirage (#116) et de la modale du
+     * joker (#140). Objective la régression « moins d'espace sous le plateau » :
+     * hauteur totale de la fenêtre, bas réel du plateau, et espace restant en
+     * dessous — pour vérifier qu'il reste au moins la hauteur d'un chevalet
+     * (CHEVALET_MIN_PX). La mesure est différée de deux requestAnimationFrame pour
+     * laisser WebKitGTK poser la mise en page avant lecture. Best-effort : toute
+     * erreur (API absente en test, DOM incomplet) est silencieusement ignorée, la
+     * trace ne doit jamais gêner le jeu.
+     */
+    function journaliserGeometriePlateau() {
+        try {
+            if (!api || typeof api.journaliser_mesure_fenetre !== 'function') return;
+            const rect = plateauEl.getBoundingClientRect();
+            const hauteurFenetre = window.innerHeight;
+            const arrondi = (v) => Math.round(v);
+            const espaceSous = arrondi(hauteurFenetre - rect.bottom);
+            api.journaliser_mesure_fenetre({
+                fenetre_hauteur: hauteurFenetre,
+                fenetre_largeur: window.innerWidth,
+                plateau_haut: arrondi(rect.top),
+                plateau_bas: arrondi(rect.bottom),
+                plateau_hauteur: arrondi(rect.height),
+                espace_sous_plateau: espaceSous,
+                chevalet_min: CHEVALET_MIN_PX,
+                espace_suffisant: espaceSous >= CHEVALET_MIN_PX,
+            });
+        } catch (_e) {
+            /* trace best-effort : on ignore toute erreur */
+        }
+    }
+
+    // ------------------------------------------------------------------ //
     // Initialisation : thème puis premier état public
     // ------------------------------------------------------------------ //
     await appliquerTheme();
@@ -1370,4 +1504,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
         // Le premier push de Python prendra le relais si l'appel initial échoue.
     }
+
+    // Diagnostic géométrie (issue #152) : deux rAF pour lire la mise en page réelle
+    // une fois le plateau rendu et posé par WebKitGTK.
+    requestAnimationFrame(() => {
+        requestAnimationFrame(journaliserGeometriePlateau);
+    });
 });

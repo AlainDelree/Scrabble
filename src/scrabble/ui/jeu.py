@@ -34,13 +34,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 from pathlib import Path
 from typing import Any
 
 import webview
 
 from scrabble import journal
-from scrabble.config import THEMES_PLATEAU, charger_config
+from scrabble.config import AVATARS_DISPONIBLES, THEMES_PLATEAU, charger_config
 from scrabble.reglages import lire_reglage, modifier_reglage
 from scrabble.dictionnaire.dictionnaire import (
     CHEMIN_DEFINITIONS,
@@ -54,6 +55,7 @@ from scrabble.moteur.partie import (
     EntreeHistorique,
     Joueur,
     Partie,
+    recreer_partie_meme_joueurs,
 )
 from scrabble.moteur.plateau_partie import (
     Coup,
@@ -65,6 +67,7 @@ from scrabble.moteur.plateau_partie import (
 from scrabble.moteur.score import DetailMot, DetailScore, detailler_score
 from scrabble.persistance import (
     CHEMIN_DEFAUT,
+    demarrer_suivi,
     enregistrer_action,
     finaliser_partie,
 )
@@ -195,8 +198,11 @@ def calculer_positions(joueurs: list[Joueur]) -> list[str]:
 # fichier ``web/avatars/<id>.svg`` (portraits stylisés originaux, un jeu de
 # traits distinctifs par avatar). Une quinzaine suffit largement à garantir
 # l'absence de doublon avec au plus 4 joueurs par partie. L'ordre de cette liste
-# fait partie du contrat déterministe : ne pas la réordonner sans raison.
-AVATARS: tuple[str, ...] = tuple(f"avatar-{n:02d}" for n in range(1, 16))
+# fait partie du contrat déterministe : ne pas la réordonner sans raison. La
+# définition (source de vérité unique) vit désormais dans ``scrabble.config``
+# (issue #143), partagée avec les réglages ; on la ré-exporte ici sous son nom
+# historique ``AVATARS`` pour ne pas casser les usages existants.
+AVATARS: tuple[str, ...] = AVATARS_DISPONIBLES
 
 
 def _graine_avatar(joueur: Joueur, index: int) -> int:
@@ -212,7 +218,9 @@ def _graine_avatar(joueur: Joueur, index: int) -> int:
     return int.from_bytes(hashlib.md5(cle).digest()[:8], "big")
 
 
-def calculer_avatars(joueurs: list[Joueur]) -> list[str]:
+def calculer_avatars(
+    joueurs: list[Joueur], avatar_principal: str = ""
+) -> list[str]:
     """Avatar attribué à chaque joueur autour du plateau (index → identifiant).
 
     Renvoie une liste parallèle à ``joueurs`` où l'élément ``i`` est l'identifiant
@@ -222,8 +230,9 @@ def calculer_avatars(joueurs: list[Joueur]) -> list[str]:
     JS). Propriétés garanties (issue #34) :
 
     * **Déterminisme** : l'attribution ne dépend que de la liste ``joueurs`` (nom
-      + rang), donc un même appel sur une même partie rend toujours le même
-      résultat — pas de ré-tirage à chaque rafraîchissement d'écran.
+      + rang) et de ``avatar_principal``, donc un même appel sur une même partie
+      rend toujours le même résultat — pas de ré-tirage à chaque rafraîchissement
+      d'écran.
     * **Absence de doublon** tant qu'il reste des avatars libres : chaque joueur
       vise l'avatar de sa graine puis, s'il est déjà pris, un sondage linéaire
       lui trouve le prochain avatar libre. Avec ≤ 4 joueurs et 15 avatars, aucun
@@ -232,11 +241,33 @@ def calculer_avatars(joueurs: list[Joueur]) -> list[str]:
       (cas théorique, impossible avec ``MAX_JOUEURS`` = 4) : le sondage échoue,
       on retombe sur l'avatar préféré et un doublon est toléré plutôt que de
       planter.
+
+    Choix d'avatar du joueur humain (issue #143) : si ``avatar_principal`` est un
+    identifiant connu **et** que la partie compte au moins un joueur humain, cet
+    avatar est attribué d'office au **joueur humain de référence** (voir
+    :func:`index_humain_reference`) et retiré du pool avant le tirage des autres
+    joueurs. Aucun ordinateur ne peut donc recevoir l'avatar choisi par
+    l'humaine. Un ``avatar_principal`` vide ou inconnu (ou une partie sans humain)
+    laisse l'attribution historique inchangée.
     """
     nb = len(AVATARS)
-    assignes: list[str] = []
+    assignes: list[str] = [""] * len(joueurs)
     pris: set[int] = set()
+
+    # Réservation éventuelle de l'avatar choisi au joueur humain de référence.
+    reference = index_humain_reference(joueurs) if joueurs else -1
+    reserver = (
+        avatar_principal in AVATARS
+        and any(joueur.humain for joueur in joueurs)
+    )
+    if reserver:
+        indice_reserve = AVATARS.index(avatar_principal)
+        pris.add(indice_reserve)
+        assignes[reference] = AVATARS[indice_reserve]
+
     for index, joueur in enumerate(joueurs):
+        if reserver and index == reference:
+            continue  # avatar déjà attribué d'office à l'humain de référence
         prefere = _graine_avatar(joueur, index) % nb
         choix = prefere
         for pas in range(nb):
@@ -245,7 +276,7 @@ def calculer_avatars(joueurs: list[Joueur]) -> list[str]:
                 choix = candidat
                 break
         pris.add(choix)
-        assignes.append(AVATARS[choix])
+        assignes[index] = AVATARS[choix]
     return assignes
 
 
@@ -382,7 +413,8 @@ def index_panneau_interactif(partie: Partie) -> int | None:
       renvoie son index : le panneau est interactif pour cet humain.
     * Si le joueur courant est un **ordinateur**, la fonction renvoie ``None`` :
       aucun chevalet n'est alors exposé ni manipulable ; l'UI passe en mode
-      « attente » (message + bouton « Faire jouer l'ordinateur »).
+      « attente » (message d'attente + bouton « ▶ Jouer » dans la fiche de
+      l'ordinateur courant, issue #149).
 
     Garantie structurelle : la valeur renvoyée ne désigne **jamais** un
     ordinateur. C'est la seule source de vérité (côté Python) du choix « panneau
@@ -412,15 +444,15 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     score individuel de référence (voir :func:`evaluer_score_total`) ; ``None``
     tant que la partie n'est pas terminée.
 
-    ``historique`` (issue #37) est la portion récente de l'historique des
+    ``historique`` (issue #37, #144) est l'**intégralité** de l'historique des
     actions (voir :func:`serialiser_historique`) : la plus récente en premier,
-    plafonnée à ``min(nb_joueurs * 2, 8)`` lignes, chacune avec le détail du
-    score inclus pour l'ouverture au clic — l'UI alimente son encart glissant à
-    partir de ce seul champ, rafraîchi après chaque action (coup humain ou série
-    de tours IA).
+    chacune avec le détail du score inclus pour l'ouverture au clic — l'UI
+    alimente son encart glissant (scrollable) à partir de ce seul champ, rafraîchi
+    après chaque action (coup humain ou série de tours IA).
     """
     positions = calculer_positions(partie.joueurs)
-    avatars = calculer_avatars(partie.joueurs)
+    avatar_principal = charger_config().get("avatar_principal", "")
+    avatars = calculer_avatars(partie.joueurs, avatar_principal)
     return {
         "id_partie": id_partie,
         "taille": TAILLE,
@@ -447,22 +479,6 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
         ),
         "historique": serialiser_historique(partie),
     }
-
-
-#: Plafond du nombre de lignes de l'historique glissant affichées à l'écran.
-MAX_LIGNES_HISTORIQUE = 8
-
-
-def nb_lignes_historique(partie: Partie) -> int:
-    """Nombre de lignes d'historique à afficher : ``min(nb_joueurs * 2, 8)``.
-
-    Règle de l'issue #37 : on montre au plus les ``nb_joueurs * 2`` dernières
-    actions (soit deux « tours de table »), plafonnées à
-    :data:`MAX_LIGNES_HISTORIQUE`. En tout début de partie, il peut y avoir moins
-    d'actions jouées que cette borne : :func:`serialiser_historique` n'en renvoie
-    alors que ce qui existe (voir cette fonction).
-    """
-    return min(len(partie.joueurs) * 2, MAX_LIGNES_HISTORIQUE)
 
 
 def serialiser_entree_historique(
@@ -520,25 +536,26 @@ def serialiser_entree_historique(
 
 
 def serialiser_historique(partie: Partie) -> list[dict[str, Any]]:
-    """Sérialise la portion récente de l'historique pour l'encart glissant.
+    """Sérialise l'**intégralité** de l'historique pour l'encart « Derniers coups ».
 
-    Renvoie les ``min(nb_joueurs * 2, 8)`` dernières actions de la partie (voir
-    :func:`nb_lignes_historique`), **la plus récente en premier** (ordre décroissant
-    d'ancienneté — choix documenté de l'issue #37 : le dernier coup apparaît en
-    tête de l'encart). En début de partie, moins d'actions ont été jouées que la
-    borne : on ne renvoie alors que ce qui existe (p. ex. 2 lignes seulement à
-    1 humain + 1 ordinateur après un tour chacun).
+    Renvoie **toutes** les actions de la partie (issue #144), **la plus récente
+    en premier** (ordre décroissant d'ancienneté — choix documenté de l'issue #37 :
+    le dernier coup apparaît en tête de l'encart). En début de partie, l'historique
+    ne compte que ce qui a été joué (p. ex. 2 lignes seulement à 1 humain +
+    1 ordinateur après un tour chacun).
+
+    Le fenêtrage d'affichage historique (``min(nb_joueurs * 2, 8)`` lignes, issue
+    #37) a été retiré (issue #144) : l'encart est désormais scrollable côté UI et
+    montre toute la partie, la plus récente en haut. Aucune borne n'est donc plus
+    appliquée ici.
 
     Chaque entrée est sérialisée par :func:`serialiser_entree_historique`, en
     conservant son index d'origine dans ``partie.historique`` (identifiant stable
-    du coup, indépendant du fenêtrage).
+    du coup).
     """
-    limite = nb_lignes_historique(partie)
-    recentes = partie.historique[-limite:] if limite > 0 else []
-    debut = len(partie.historique) - len(recentes)
     entrees = [
-        serialiser_entree_historique(partie, entree, debut + decalage)
-        for decalage, entree in enumerate(recentes)
+        serialiser_entree_historique(partie, entree, index)
+        for index, entree in enumerate(partie.historique)
     ]
     entrees.reverse()  # plus récent en premier
     return entrees
@@ -1036,6 +1053,14 @@ class ApiJeu:
         # une fois les fenêtres de jeu fermées, ``lancer_jeu`` rouvre alors
         # l'écran d'accueil (au lieu de clôturer la session) — voir ``lancer_jeu``.
         self._retour_menu = False
+        # « Recommencer » depuis la modale de fin de partie (issue #142) : quand
+        # l'utilisateur choisit de rejouer avec les mêmes joueurs, on prépare ici
+        # la nouvelle partie (et son identifiant de persistance) puis on ferme les
+        # fenêtres. ``lancer_jeu``, voyant ce drapeau, relance alors l'écran de
+        # jeu sur cette nouvelle partie (au lieu de clôturer la session).
+        self._recommencer = False
+        self._nouvelle_partie: Partie | None = None
+        self._nouvel_id_partie: int | None = None
         # Garde-fou anti-boucle de la fermeture croisée par la croix (issue #94) :
         # fermer une fenêtre par sa croix détruit l'autre, dont la destruction
         # re-déclenche l'événement ``closing`` (sous GTK, ``destroy()`` passe aussi
@@ -1167,6 +1192,27 @@ class ApiJeu:
         """
         theme = charger_config().get("theme_plateau", "classique")
         return theme if theme in THEMES_PLATEAU else "classique"
+
+    def journaliser_mesure_fenetre(self, mesures: dict[str, Any]) -> dict[str, Any]:
+        """Journalise la géométrie verticale réelle de l'écran de jeu (issue #152).
+
+        Sur le modèle de la trace de tirage (issue #116) et de la modale du joker
+        (issue #140), le JS mesure — au chargement de la fenêtre plateau, sous le
+        vrai moteur WebKitGTK — la hauteur totale de la fenêtre, le bas réel du
+        plateau et l'espace restant en dessous. Objectif : objectiver la
+        régression de l'issue #152 (moins d'espace sous le plateau qu'avant, la
+        fenêtre chevalet — 175 px de haut minimum, cf. #140/#141 — empiétant sur
+        le plateau) et vérifier, après correctif, que l'espace disponible est bien
+        redevenu suffisant (``espace_sous_plateau`` >= ``chevalet_min``).
+
+        Purement informatif : n'altère aucun état, retourne toujours un succès.
+        """
+        try:
+            details = ", ".join(f"{cle}={valeur}" for cle, valeur in mesures.items())
+            journal.info(f"Jeu : géométrie réelle écran de jeu — {details}.")
+        except Exception as e:  # noqa: BLE001 - une trace ne doit jamais bloquer
+            journal.erreur("Jeu : échec de journalisation de la géométrie.", e)
+        return {"succes": True}
 
     def obtenir_chevalet(self, index_joueur: int) -> dict[str, Any]:
         """Retourne le chevalet du **seul** joueur d'index ``index_joueur``.
@@ -1388,6 +1434,137 @@ class ApiJeu:
             )
             return {"succes": False, "erreur": f"Mémorisation impossible : {e}"}
         return {"succes": True, "x": x, "y": y}
+
+    def diagnostiquer_joker_modale(self, mesures: Any = None) -> dict[str, Any]:
+        """Journalise les dimensions RÉELLES à l'ouverture de la modale du joker (issue #140).
+
+        Suite de l'issue #121 : le sélecteur de lettre du joker reste tronqué en
+        conditions réelles (WebKitGTK) alors que la mesure headless de l'issue #131
+        ne trouvait aucun débordement. C'est le second écart rendu-réel /
+        rendu-mesuré sur ce composant précis ; le projet en a déjà rencontré
+        d'autres (Wayland #93, chevalet #92/#94/#96/#97). Plutôt qu'une troisième
+        mesure headless (méthode en échec deux fois ici), on trace les valeurs du
+        vrai moteur de rendu, sur le modèle du diagnostic z-order de l'issue #93 :
+        le JS mesure le DOM effectivement affiché et le remonte via cette méthode,
+        qui l'ajoute à la géométrie native de la fenêtre chevalet lue côté Python.
+
+        ``mesures`` est le dictionnaire construit côté JS (viewport, boîte du
+        contenu de ``#joker-modale``, grille scrollable, bouton Annuler). Purement
+        diagnostique : aucune mutation d'état, tout échec est absorbé sans planter
+        le jeu. Le correctif définitif sera appliqué une fois la cause confirmée
+        par le prochain journal d'Alain, selon la même philosophie « toujours
+        accessible » retenue en #121 (grille scrollable, Annuler épinglé).
+        """
+        # 1. Géométrie native de la fenêtre chevalet au moment de l'affichage
+        #    (cible théorique CHEVALET_LARGEUR×CHEVALET_HAUTEUR = 480×175, #106).
+        native = "indisponible (fenêtre absente ou backend non-GTK)"
+        if self._window_chevalet is not None:
+            try:
+                w = int(getattr(self._window_chevalet, "width", 0))
+                h = int(getattr(self._window_chevalet, "height", 0))
+                x = int(getattr(self._window_chevalet, "x", 0))
+                y = int(getattr(self._window_chevalet, "y", 0))
+                native = f"{w}×{h} px @ ({x}, {y})"
+            except Exception as e:  # noqa: BLE001 - lecture purement diagnostique
+                native = f"illisible ({e!r})"
+        journal.info(
+            f"Jeu : [diag #140] ouverture modale joker — fenêtre chevalet native = "
+            f"{native} (cible {CHEVALET_LARGEUR}×{CHEVALET_HAUTEUR})."
+        )
+
+        # 2. Mesures DOM remontées par le JS (viewport CSS, boîtes réelles).
+        if not isinstance(mesures, dict):
+            journal.info(
+                "Jeu : [diag #140] aucune mesure DOM remontée par le JS "
+                "(mesures manquantes ou invalides)."
+            )
+            return {"succes": True}
+        try:
+            vp = mesures.get("viewport") or {}
+            de = mesures.get("documentElement") or {}
+            contenu = mesures.get("contenu") or {}
+            grille = mesures.get("grille") or {}
+            annuler = mesures.get("annuler") or {}
+            vp_h = vp.get("hauteur")
+            contenu_bas = contenu.get("bas")
+            annuler_bas = annuler.get("bas")
+            # Débordement bas = combien la boîte du contenu dépasse sous le viewport
+            # (positif => tronqué malgré le max-height:100vh du correctif #121).
+            debordement = (
+                contenu_bas - vp_h
+                if isinstance(contenu_bas, (int, float))
+                and isinstance(vp_h, (int, float))
+                else None
+            )
+            annuler_visible = (
+                annuler_bas <= vp_h
+                if isinstance(annuler_bas, (int, float))
+                and isinstance(vp_h, (int, float))
+                else None
+            )
+            grille_scroll = grille.get("scrollHeight")
+            grille_client = grille.get("clientHeight")
+            grille_defilable = (
+                grille_scroll > grille_client
+                if isinstance(grille_scroll, (int, float))
+                and isinstance(grille_client, (int, float))
+                else None
+            )
+            # Issue #146 : on objective l'agrandissement de la zone visible de la
+            # grille. « caché » = hauteur de contenu non visible sans défiler
+            # (scrollHeight - clientHeight) ; « part visible » = fraction affichée
+            # d'emblée. Le prochain journal d'Alain doit montrer une part visible
+            # nettement plus haute qu'en #140 (grille 62 px visibles / 166 px totaux
+            # ≈ 37 %) — idéalement 100 % (aucun défilement) grâce aux 9 colonnes.
+            grille_cache = (
+                max(0, grille_scroll - grille_client)
+                if isinstance(grille_scroll, (int, float))
+                and isinstance(grille_client, (int, float))
+                else None
+            )
+            grille_part_visible = (
+                round(100 * grille_client / grille_scroll)
+                if isinstance(grille_scroll, (int, float))
+                and isinstance(grille_client, (int, float))
+                and grille_scroll > 0
+                else None
+            )
+            journal.info(
+                "Jeu : [diag #140] mesures DOM réelles — "
+                f"viewport CSS {vp.get('largeur')}×{vp_h} ; "
+                f"documentElement {de.get('largeur')}×{de.get('hauteur')} ; "
+                f"devicePixelRatio {mesures.get('devicePixelRatio')} ; "
+                f"contenu boîte [haut={contenu.get('haut')}, bas={contenu_bas}, "
+                f"hauteur={contenu.get('hauteur')}] ; "
+                f"grille [scrollHeight={grille_scroll}, clientHeight={grille_client}, "
+                f"défilable={grille_defilable}] ; "
+                f"bouton Annuler [bas={annuler_bas}, visible={annuler_visible}] ; "
+                f"débordement bas sous viewport = {debordement}."
+            )
+            journal.info(
+                "Jeu : [diag #146] zone visible de la grille — "
+                f"hauteur visible (clientHeight) = {grille_client} px sur "
+                f"{grille_scroll} px de contenu total (scrollHeight), soit "
+                f"{grille_part_visible} % affichés d'emblée ; "
+                f"{grille_cache} px encore cachés derrière le défilement "
+                f"(défilable={grille_defilable}). Cible : ≥ 3-4 lignes visibles, "
+                "à comparer aux ~37 % de l'issue #140."
+            )
+            if debordement is not None and debordement > 0:
+                journal.info(
+                    "Jeu : [diag #140] ⚠ le contenu de la modale déborde SOUS le "
+                    f"viewport de {debordement} px — le max-height:100vh du "
+                    "correctif #121 ne borne pas le contenu dans le vrai rendu."
+                )
+            elif annuler_visible is False:
+                journal.info(
+                    "Jeu : [diag #140] ⚠ le bouton Annuler tombe sous le viewport "
+                    "alors que le contenu n'y déborde pas globalement — piste : le "
+                    "bouton n'est pas épinglé hors zone défilante dans le vrai rendu."
+                )
+        except Exception as e:  # noqa: BLE001 - un diagnostic raté ne bloque pas le jeu
+            journal.erreur("Jeu : [diag #140] mesures DOM illisibles.", e)
+        return {"succes": True}
 
     def _refuser_hors_tour(self) -> dict[str, Any] | None:
         """Refus normalisé si une mutation de pose est tentée hors du tour.
@@ -2017,15 +2194,17 @@ class ApiJeu:
     def faire_jouer_ia(self) -> dict[str, Any]:
         """Fait jouer **un seul** tour d'ordinateur (celui du joueur courant).
 
-        Point d'entrée du bouton « ▶ Faire jouer l'ordinateur » (issue #35,
-        revu issue #55 : un clic = un seul ordinateur). S'appuie sur
+        Point d'entrée du bouton « ▶ Jouer » de la fiche du joueur ordinateur
+        courant (issue #149, ex-« ▶ Faire jouer l'ordinateur » de la zone
+        d'attente ; issue #35, revu issue #55 : un clic = un seul ordinateur).
+        S'appuie sur
         :meth:`~scrabble.moteur.partie.Partie.jouer_tour_ia` : joue exactement le
         tour de l'ordinateur courant, puis renvoie
         ``{"succes": True, "nb_tours": ..., "etat": <état public rafraîchi>}``
         (``nb_tours`` = 1 si un tour a été joué). Sans effet si le joueur courant
         est déjà humain (``nb_tours`` = 0). Si l'ordinateur suivant est encore un
-        ordinateur, le bouton reste disponible : l'humain reclique pour le faire
-        jouer à son tour.
+        ordinateur, un bouton « ▶ Jouer » réapparaît dans sa fiche : l'humain
+        reclique pour le faire jouer à son tour.
 
         C'est la seule façon prévue de faire avancer le jeu pendant un tour IA :
         l'humain n'a jamais à manipuler le chevalet d'un ordinateur à sa place.
@@ -2166,6 +2345,75 @@ class ApiJeu:
             self._retour_menu = False
             return {"succes": False, "erreur": f"Fermeture impossible : {e}"}
 
+    def creer_partie_recommencee(self) -> Partie:
+        """Fabrique une nouvelle partie reprenant les joueurs de la partie courante.
+
+        Cœur « moteur/API » de l'action « Recommencer » (issue #142) : réutilise
+        les mêmes joueurs (noms, humain/ordinateur, niveaux de difficulté) via
+        :func:`~scrabble.moteur.partie.recreer_partie_meme_joueurs`, avec une
+        **graine explicite tirée au hasard** (nécessaire au suivi de persistance,
+        qui refuse une partie sans graine) et un **nouveau tirage d'ordre**. Le
+        dictionnaire et le réglage ``bonus_fin_partie`` sont hérités de la partie
+        courante — on ne repasse pas par l'écran de configuration.
+
+        La partie terminée courante n'est pas touchée : elle reste finalisée en
+        base (voir :meth:`_finaliser_si_terminee`) et consultable dans
+        l'historique. Méthode isolée pour rester testable sans fenêtre.
+        """
+        graine = random.randint(0, 2**31 - 1)
+        return recreer_partie_meme_joueurs(
+            self._partie,
+            self._partie.dictionnaire,
+            graine=graine,
+            tirage_ordre=True,
+        )
+
+    def recommencer(self) -> dict[str, Any]:
+        """Rejoue une nouvelle partie avec les mêmes joueurs (issue #142).
+
+        Troisième action de la modale de fin de partie. Crée une partie neuve
+        (:meth:`creer_partie_recommencee`), la déclare en base
+        (:func:`~scrabble.persistance.demarrer_suivi`) puis ferme **les deux**
+        fenêtres de jeu à la manière de :meth:`retour_menu`. Une fois la boucle
+        rendue, :func:`lancer_jeu` relance l'écran de jeu sur cette nouvelle
+        partie (drapeau ``_recommencer``).
+
+        En mode démonstration (``_id_partie`` à ``None``), aucune persistance
+        n'est déclenchée : la nouvelle partie n'est simplement pas suivie.
+
+        Retourne ``{"succes": True}`` si la fermeture a été demandée, sinon
+        ``{"succes": False, "erreur": ...}`` (le JS réactive alors le bouton).
+        """
+        if self._window_plateau is None and self._window_chevalet is None:
+            return {"succes": False, "erreur": "Aucune fenêtre associée."}
+        try:
+            nouvelle = self.creer_partie_recommencee()
+            nouvel_id: int | None = None
+            if self._id_partie is not None:
+                nouvel_id = demarrer_suivi(nouvelle, self._chemin_persistance)
+            journal.info(
+                f"Jeu : recommencer une partie avec les mêmes joueurs "
+                f"(ancienne #{self._id_partie} → nouvelle #{nouvel_id})."
+            )
+            self._nouvelle_partie = nouvelle
+            self._nouvel_id_partie = nouvel_id
+            self._recommencer = True
+            # Même garde-fou anti-boucle que ``retour_menu`` : on détruit soi-même
+            # les deux fenêtres, on neutralise donc la fermeture croisée native.
+            self._fermeture_en_cours = True
+            if self._window_chevalet is not None:
+                self._window_chevalet.destroy()
+            if self._window_plateau is not None:
+                self._window_plateau.destroy()
+            return {"succes": True}
+        except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
+            # Échec (création ou fermeture) : on n'enchaîne pas de nouvelle partie
+            # (les fenêtres restent ouvertes et le JS réactive le bouton).
+            self._recommencer = False
+            self._nouvelle_partie = None
+            self._nouvel_id_partie = None
+            return {"succes": False, "erreur": f"Recommencer impossible : {e}"}
+
 
 # --------------------------------------------------------------------------- #
 # Point d'entrée
@@ -2206,17 +2454,30 @@ def lancer_jeu(partie: Partie, id_partie: int | None) -> None:
     journal.info(f"Jeu : écran ouvert (partie #{id_partie}).")
     api = ApiJeu(partie, id_partie)
     retour_menu = False
+    recommencer = False
+    nouvelle_partie: Partie | None = None
+    nouvel_id_partie: int | None = None
     try:
         _lancer_fenetre_jeu(api)
         retour_menu = api._retour_menu
+        recommencer = api._recommencer
+        nouvelle_partie = api._nouvelle_partie
+        nouvel_id_partie = api._nouvel_id_partie
     finally:
-        # Cas « retour au menu » : la session reste ouverte pour être réutilisée
-        # par l'accueil rouvert. Dans tous les autres cas (fermeture normale de
-        # la fenêtre, ou exception traversant la boucle), on clôture la session.
-        if not retour_menu:
+        # Cas « retour au menu » ou « recommencer » : la session reste ouverte
+        # pour être réutilisée (par l'accueil rouvert, ou par la nouvelle partie
+        # enchaînée). Dans tous les autres cas (fermeture normale de la fenêtre,
+        # ou exception traversant la boucle), on clôture la session.
+        if not retour_menu and not recommencer:
             journal.cloturer_session()
     if retour_menu:
         _rouvrir_accueil(id_partie)
+    elif recommencer and nouvelle_partie is not None:
+        # Recommencer (issue #142) : on enchaîne directement une nouvelle partie
+        # avec les mêmes joueurs, en réutilisant la session de journalisation
+        # courante (symétrique du « Retour au menu »). L'écran de jeu s'ouvre à
+        # nouveau, directement sur le nouveau tirage.
+        lancer_jeu(nouvelle_partie, nouvel_id_partie)
 
 
 def _rouvrir_accueil(id_partie: int | None) -> None:
@@ -2822,10 +3083,10 @@ _MOTS_DEMO: tuple[str, ...] = (
 #: Gabarits d'actions de démonstration pour l'historique glissant (issue #49) :
 #: chaque tuple est ``(action, mot, score)``. Un ``mot`` non nul ⇒ un coup
 #: cliquable (on lui fabrique un :class:`~scrabble.moteur.score.DetailScore` à la
-#: volée) ; ``None`` ⇒ passe ou échange, sans détail. La liste est volontairement
-#: plus longue que le plafond d'affichage (:data:`MAX_LIGNES_HISTORIQUE`) pour
-#: aussi vérifier le compteur « (N) » et le fait que seules les plus récentes
-#: sont montrées.
+#: volée) ; ``None`` ⇒ passe ou échange, sans détail. La liste compte 12 entrées,
+#: volontairement plus de 8, pour vérifier visuellement le compteur « (N) » et le
+#: fait que l'encart montre désormais TOUT l'historique (issue #144), scrollable,
+#: la plus récente en haut.
 _HISTORIQUE_DEMO: list[tuple[str, str | None, int]] = [
     ("coup", "MAISON", 14),
     ("coup", "OPUS", 8),

@@ -266,17 +266,25 @@ header {
    en-tête, masqué pendant la partie (hidden → aucune place prise), affiché
    seulement à la fin. Conteneur en colonne centrée : la pastille verte du
    message au-dessus, puis un petit tableau de classement final. */
-.bandeau-fin {
+/* Modale de fin de partie (issue #142) : reprend le contenu de l'ancien bandeau
+   (message, classement, évaluation) empilé et centré, plus une rangée de trois
+   actions. Réutilise .modale / .modale-contenu / .modale-actions (commun.css) ;
+   on élargit un peu le panneau pour le tableau de classement et on autorise un
+   défilement interne si la fenêtre est très courte. */
+.modale-fin-contenu {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
-    margin: 0 auto 8px;
-    text-align: center;
+    gap: 14px;
+    max-width: 420px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
 }
 
-.bandeau-fin[hidden] {
-    display: none;
+/* Les trois actions gardent leur ordre logique (retour / rester / recommencer) ;
+   sur panneau étroit elles se replient proprement (flex-wrap hérité). */
+.modale-fin-actions {
+    margin-top: 4px;
 }
 
 /* Le message reste la pastille verte nette et centrée d'origine (issue #45). */
@@ -435,32 +443,25 @@ header {
     position: relative;
 }
 
-/* Résumé cliquable : une petite pastille discrète cohérente avec le sac et le
-   lien « Resynchroniser ». Le marqueur triangulaire natif est masqué au profit
-   d'un chevron ajouté après le titre.
-   IMPORTANT (issue #49) : on ne change PAS le `display` du <summary> lui-même.
-   Sous WebKitGTK (moteur de pywebview sous Linux), donner à un <summary> un
-   `display: flex`/`inline-flex` casse le basculement natif ouvert/fermé du
-   <details> au clic. Le summary reste donc en `display: list-item` (défaut) et
-   n'est réduit à la largeur de son contenu que par `width: fit-content` ; la
-   mise en page en ligne est confiée à `.historique-resume-inner`. */
+/* Bouton déclencheur (issue #144, ex-<summary>) : une petite pastille discrète
+   cohérente avec le sac et le lien « Resynchroniser ». Un chevron est ajouté
+   après le titre (voir .historique-resume-inner::after). Depuis l'abandon du
+   <details> natif au profit de C.configurerPopover, c'est un vrai <button> : on
+   réinitialise donc bordure et police héritées. La mise en page en ligne reste
+   confiée à `.historique-resume-inner`. */
 .historique-resume {
     width: fit-content;
     padding: 6px 12px;
+    border: none;
     border-radius: 999px;
     background: white;
     box-shadow: var(--ombre);
+    font-family: inherit;
     font-size: 0.85rem;
     font-weight: 600;
     color: #555;
     cursor: pointer;
-    list-style: none;
     white-space: nowrap;
-}
-
-/* Masque le marqueur ▸ natif (WebKit et standard). */
-.historique-resume::-webkit-details-marker {
-    display: none;
 }
 
 /* Wrapper interne : c'est LUI qui porte la disposition en ligne (titre,
@@ -478,7 +479,7 @@ header {
     transition: transform 0.15s;
 }
 
-.historique-menu[open] .historique-resume-inner::after {
+.historique-resume[aria-expanded="true"] .historique-resume-inner::after {
     transform: rotate(180deg);
 }
 
@@ -487,10 +488,12 @@ header {
     font-variant-numeric: tabular-nums;
 }
 
-/* Liste déployée : surimpression sous le résumé, largeur fixe raisonnable,
-   défilement au-delà de quelques lignes. Ne consomme aucune hauteur de mise en
-   page (position absolue) tant qu'elle n'est pas ouverte. */
-.historique-menu[open] .historique-liste {
+/* Liste déployée = popover (issue #144) : surimpression sous le bouton, largeur
+   fixe raisonnable, DÉFILEMENT vertical dès que l'historique dépasse la hauteur
+   plafond. Ne consomme aucune hauteur de mise en page (position absolue). Le
+   masquage/affichage est piloté par l'attribut [hidden] (posé/retiré par
+   C.configurerPopover), voir la règle [hidden] plus bas. */
+.historique-liste {
     position: absolute;
     top: calc(100% + 6px);
     left: 0;
@@ -498,28 +501,27 @@ header {
     /* Largeur réduite (issue #125) : 280px au lieu de 320. Le menu étant
        désormais ancré tout à gauche de la barre, il s'ouvre dans la gouttière
        verte à gauche du plateau centré ; à 280px il tient dans cette gouttière
-       (fenêtre maximisée) et ne mord donc plus sur le bord gauche du plateau,
-       même déployé sur 8 lignes. */
+       (fenêtre maximisée) et ne mord donc plus sur le bord gauche du plateau. */
     width: 280px;
     max-width: 80vw;
-    max-height: 320px;
+    /* L'historique n'étant plus plafonné à 8 lignes (issue #144), la liste peut
+       devenir longue : on borne sa hauteur (relative au viewport pour ne jamais
+       déborder de l'écran) et on la rend scrollable, la plus récente restant en
+       haut. Aucune limite de hauteur ne casse donc la mise en page. */
+    max-height: min(360px, 70vh);
     overflow-y: auto;
     background: white;
     border-radius: 10px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
     padding: 8px 10px;
-}
-
-.historique-liste {
     list-style: none;
     display: flex;
     flex-direction: column;
     gap: 3px;
 }
 
-/* Repliée, la liste ne doit rien afficher ni occuper (le <details> fermé masque
-   déjà son contenu, mais on neutralise toute hauteur résiduelle par sécurité). */
-.historique-menu:not([open]) .historique-liste {
+/* Fermée, la liste (popover) est retirée du flux et de l'affichage. */
+.historique-liste[hidden] {
     display: none;
 }
 
@@ -671,15 +673,34 @@ header {
        désormais MAXIMISÉE à une résolution logique plus modeste (cible ~1280×760
        utilisables, cf. le portable de test), une taille purement en ``vw`` +
        plafond fixe débordait en hauteur et forçait un défilement vertical.
-       On ajoute donc un terme en ``vh`` : le plateau (carré, ``aspect-ratio:
-       1 / 1``) ne dépasse jamais ~68 % de la hauteur du viewport, ce qui laisse
-       la place à la barre du sac/historique (haut), aux panneaux joueurs
-       haut/bas et à la zone d'attente IA sans scroll. Le plafond de 560px borne
-       la taille sur les grands écrans (lisibilité déjà généreuse, issue #55) ;
-       le terme en ``vw`` protège les fenêtres étroites. La plus petite des trois
-       bornes l'emporte, donc plateau + panneaux restent visibles d'un coup
-       d'œil quelle que soit la résolution logique. */
-    width: min(64vw, 68vh, 560px);
+       On ajoute donc un terme en HAUTEUR pour que le plateau (carré,
+       ``aspect-ratio: 1 / 1``) ne consomme jamais toute la hauteur du viewport,
+       ce qui laisse la place à la barre du sac/historique (haut), aux panneaux
+       joueurs haut/bas et à la zone d'attente IA sans scroll. Le plafond de 560px
+       borne la taille sur les grands écrans (lisibilité déjà généreuse, issue
+       #55) ; le terme en ``vw`` protège les fenêtres étroites. La plus petite des
+       trois bornes l'emporte, donc plateau + panneaux restent visibles d'un coup
+       d'œil quelle que soit la résolution logique.
+
+       Réserve d'espace SOUS le plateau (issue #152). Le terme de hauteur était un
+       simple ``68vh`` : borné au viewport, il ne tenait aucun compte du chrome
+       accumulé AU-DESSUS du plateau (barre du haut réorganisée #125, panneau du
+       joueur du haut avec le bouton « ▶ Jouer » #149, badges/toasts…) ni de la
+       place à réserver EN DESSOUS pour poser la fenêtre chevalet (175 px de haut
+       minimum, cf. #140/#141). À force d'ajouts, le bas du plateau descendait trop
+       bas et le chevalet, une fois posé en bas de l'écran, empiétait dessus —
+       c'est la régression #152. On remplace donc ``68vh`` par
+       ``calc(100vh - 290px)`` : la réserve fixe (~115 px de chrome au-dessus du
+       plateau + 175 px pour le chevalet) garantit, indépendamment de la hauteur de
+       la fenêtre, qu'il reste au moins la hauteur d'un chevalet sous le plateau.
+       À l'inverse d'une fraction ``vh``, cette réserve reste CONSTANTE en pixels :
+       l'espace sous le plateau ne se réduit plus quand des éléments fixes
+       s'ajoutent. Sur les grandes fenêtres, le plafond 560px / le terme ``vw``
+       l'emportent (aucun rétrécissement) ; la réserve ne mord la taille que sur
+       les fenêtres courtes, là précisément où l'empiètement se produisait. La
+       trace ``journaliser_mesure_fenetre`` (issue #152, jeu.js) mesure l'espace
+       réel restant pour ajuster ces 290 px si besoin. */
+    width: min(64vw, calc(100vh - 290px), 560px);
     aspect-ratio: 1 / 1;
 }
 
@@ -821,6 +842,19 @@ header {
     color: white;
     font-size: 0.72rem;
     font-weight: 700;
+}
+
+/* Bouton « ▶ Jouer » d'un ordinateur courant (issue #149) : remplace la pastille
+   « son tour » et déclenche le coup (api.faire_jouer_ia). Compact pour tenir sur
+   la ligne unique du panneau, style primaire vert cohérent avec l'ancien bouton
+   « Faire jouer l'ordinateur ». */
+.panneau-btn-jouer {
+    flex-shrink: 0;
+    padding: 4px 12px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
 }
 
 /* Panneau du bas (joueur humain de référence) : MÊME ligne compacte que les

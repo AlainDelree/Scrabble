@@ -82,10 +82,43 @@
     // Thèmes reconnus (alignés avec scrabble.config.THEMES_PLATEAU et le CSS).
     const THEMES = ['classique', 'vert', 'abrege'];
 
+    // Registre des popovers câblés dans CETTE fenêtre (issue #151). Chaque
+    // ``configurerPopover`` y enregistre sa fonction ``fermer`` afin qu'ouvrir un
+    // popover puisse refermer tous les autres déjà ouverts (« Derniers coups » vs
+    // « Vérification dictionnaire »). Le registre est local à la fenêtre : plateau
+    // et chevalet sont deux documents web indépendants avec chacun leur copie de
+    // ``commun.js``, donc leurs registres ne se voient pas (cf. limite cross-fenêtre
+    // documentée dans l'issue).
+    const popoversCables = [];
+
+    /** Ferme tous les popovers câblés de la fenêtre, sauf celui exclu (issue #151). */
+    function fermerAutresPopovers(exclu) {
+        popoversCables.forEach((p) => {
+            if (p.fermer !== exclu) {
+                p.fermer();
+            }
+        });
+    }
+
+    /**
+     * Ferme TOUS les popovers câblés de la fenêtre (issue #151). Sert au plateau
+     * pour refermer « Derniers coups »/« Vérification dictionnaire » restés ouverts
+     * quand une action de tour survient — y compris une action déclenchée depuis la
+     * fenêtre chevalet, dont l'effet arrive au plateau via la diffusion d'état. Les
+     * deux fenêtres étant des documents web indépendants, un clic dans le chevalet
+     * ne produit aucun événement dans le plateau : c'est ce signal applicatif qui
+     * pallie l'absence de ``blur``/clic extérieur cross-fenêtre.
+     */
+    function fermerTousPopovers() {
+        popoversCables.forEach((p) => p.fermer());
+    }
+
     /**
      * Câble un bouton déclencheur + son popover : ouverture/fermeture au clic sur
      * le bouton, fermeture au clic hors du popover ou à la touche Échap. Met à
      * jour aria-expanded. ``onOuvrir`` (optionnel) est appelé à chaque ouverture.
+     * Ouvrir un popover ferme automatiquement tout autre popover câblé encore
+     * ouvert dans la même fenêtre (issue #151).
      */
     function configurerPopover(bouton, popover, onOuvrir) {
         if (!bouton || !popover) {
@@ -99,7 +132,9 @@
             popover.hidden = true;
             bouton.setAttribute('aria-expanded', 'false');
         };
+        popoversCables.push({ fermer });
         const ouvrir = () => {
+            fermerAutresPopovers(fermer);
             popover.hidden = false;
             bouton.setAttribute('aria-expanded', 'true');
             if (typeof onOuvrir === 'function') {
@@ -120,8 +155,54 @@
     }
 
     /**
+     * Mesure la boîte réellement affichée de la modale du joker (issue #140).
+     * Renvoie un objet sérialisable {viewport, documentElement, devicePixelRatio,
+     * contenu, grille, annuler} destiné à être remonté à Python pour journalisation
+     * (diagnostic du débordement réel en WebKitGTK, sur le modèle du z-order #93).
+     * Toutes les valeurs sont arrondies à l'entier pour un journal lisible.
+     */
+    function mesurerModaleJoker(refs) {
+        const boite = (el) => {
+            if (!el) {
+                return null;
+            }
+            const r = el.getBoundingClientRect();
+            return {
+                haut: Math.round(r.top),
+                bas: Math.round(r.bottom),
+                gauche: Math.round(r.left),
+                droite: Math.round(r.right),
+                largeur: Math.round(r.width),
+                hauteur: Math.round(r.height),
+            };
+        };
+        const contenu = refs.modale.querySelector('.modale-contenu');
+        return {
+            viewport: { largeur: window.innerWidth, hauteur: window.innerHeight },
+            documentElement: {
+                largeur: document.documentElement.clientWidth,
+                hauteur: document.documentElement.clientHeight,
+            },
+            devicePixelRatio: window.devicePixelRatio,
+            contenu: boite(contenu),
+            grille: refs.grille
+                ? Object.assign(boite(refs.grille), {
+                    scrollHeight: refs.grille.scrollHeight,
+                    clientHeight: refs.grille.clientHeight,
+                })
+                : null,
+            annuler: boite(refs.annuler),
+        };
+    }
+
+    /**
      * Ouvre la modale de choix de lettre d'un joker et renvoie la lettre choisie
-     * (``A``–``Z``) ou ``null`` si annulé. ``refs`` = {modale, grille, annuler}.
+     * (``A``–``Z``) ou ``null`` si annulé. ``refs`` = {modale, grille, annuler,
+     * auOuvrir?}. ``auOuvrir`` (facultatif, issue #140) est appelé une fois la
+     * modale rendue, avec les dimensions réelles mesurées (voir
+     * :func:`mesurerModaleJoker`) : le chevalet s'en sert pour remonter un
+     * diagnostic à Python. La mesure est différée de deux ``requestAnimationFrame``
+     * pour laisser le vrai moteur de rendu poser la mise en page avant lecture.
      */
     function choisirLettreJoker(refs) {
         return new Promise((resolve) => {
@@ -142,6 +223,16 @@
             }
             refs.annuler.addEventListener('click', surAnnuler);
             refs.modale.hidden = false;
+            if (typeof refs.auOuvrir === 'function') {
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    try {
+                        refs.auOuvrir(mesurerModaleJoker(refs));
+                    } catch (e) {
+                        // Diagnostic best-effort : une mesure ratée ne bloque pas
+                        // l'ouverture de la modale ni le choix de la lettre.
+                    }
+                }));
+            }
         });
     }
 
@@ -232,6 +323,7 @@
         LABEL_BONUS,
         THEMES,
         configurerPopover,
+        fermerTousPopovers,
         choisirLettreJoker,
         creerModaleScore,
     };

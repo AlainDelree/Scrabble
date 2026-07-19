@@ -167,6 +167,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         jokerModaleOuverte = true;
         const choix = await C.choisirLettreJoker({
             modale: jokerModale, grille: jokerGrille, annuler: jokerAnnuler,
+            // Diagnostic réel (issue #140) : à l'ouverture, on remonte à Python les
+            // dimensions effectivement rendues (viewport, boîte du contenu, grille,
+            // bouton Annuler) pour tracer le débordement en conditions WebKitGTK,
+            // que la mesure headless (#131) ne reproduit pas. Best-effort : toute
+            // erreur du pont est ignorée sans gêner le choix de la lettre.
+            auOuvrir: (mesures) => {
+                if (api && typeof api.diagnostiquer_joker_modale === 'function') {
+                    Promise.resolve(api.diagnostiquer_joker_modale(mesures))
+                        .catch(() => {});
+                }
+            },
         });
         jokerModaleOuverte = false;
         if (choix) {

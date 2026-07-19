@@ -192,6 +192,19 @@ section h2 {
     text-align: center;
 }
 
+/* Portrait de l'avatar configuré du joueur humain (issue #148) : même gabarit
+   que l'icône générique (28 px, marge droite identique) pour ne pas décaler le
+   nom, avec le rendu rond « pastille » repris des panneaux de l'écran de jeu. */
+.joueur-avatar {
+    width: 28px;
+    height: 28px;
+    margin-right: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: white;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.06);
+}
+
 .joueur-info {
     flex: 1;
 }
@@ -356,6 +369,23 @@ section h2 {
 .partie-date {
     font-size: 0.85rem;
     color: #666;
+}
+
+/* Badge « Terminée » (issue #150) : distingue une partie terminée, à consulter,
+   d'une partie en cours, à reprendre. Pastille brune cohérente avec le bouton
+   « Consulter » (var(--couleur-secondaire)), posée à côté des noms de joueurs. */
+.partie-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: white;
+    background: var(--couleur-secondaire);
+    border-radius: 10px;
+    vertical-align: middle;
 }
 
 .btn-reprendre {
