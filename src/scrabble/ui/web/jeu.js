@@ -76,6 +76,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const champVerif = document.getElementById('champ-verif');
     const btnVerifier = document.getElementById('btn-verifier');
     const messageBrouillon = document.getElementById('message-brouillon');
+    const definitionBrouillon = document.getElementById('definition-brouillon');
     const btnOuvrirVerif = document.getElementById('btn-ouvrir-verif');
     const verifPopover = document.getElementById('verif-dico-popover');
 
@@ -646,10 +647,43 @@ document.addEventListener('DOMContentLoaded', async () => {
         messageBrouillon.className = 'message-brouillon' + (texte ? ' ' + (type || 'info') : '');
     }
 
+    // Affiche la définition sous le verdict (issue #124). ``definition`` est la
+    // liste de gloses ODS8 (ou null/absente). On n'appelle cette fonction que
+    // pour un mot VALIDE : une liste vide/nulle signifie « pas de définition
+    // dans l'index » (mot Hunspell uniquement) et affiche un message clair,
+    // cohérent avec l'onglet Dictionnaire des réglages (issue #111).
+    function afficherDefinitionBrouillon(definition) {
+        if (!definitionBrouillon) return;
+        definitionBrouillon.innerHTML = '';
+        if (Array.isArray(definition) && definition.length) {
+            const ol = document.createElement('ol');
+            ol.className = 'definition-gloses';
+            definition.forEach((glose) => {
+                const li = document.createElement('li');
+                li.textContent = glose;
+                ol.appendChild(li);
+            });
+            definitionBrouillon.appendChild(ol);
+        } else {
+            const p = document.createElement('p');
+            p.className = 'definition-indisponible';
+            p.textContent = 'Définition indisponible (mots ODS 8 uniquement).';
+            definitionBrouillon.appendChild(p);
+        }
+        definitionBrouillon.hidden = false;
+    }
+
+    function masquerDefinitionBrouillon() {
+        if (!definitionBrouillon) return;
+        definitionBrouillon.innerHTML = '';
+        definitionBrouillon.hidden = true;
+    }
+
     async function verifierMotDictionnaire() {
         const mot = champVerif.value;
         if (!mot.trim()) {
             afficherMessageBrouillon('Tapez un mot dans le champ pour le vérifier.', 'info');
+            masquerDefinitionBrouillon();
             return;
         }
         let res;
@@ -657,16 +691,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             res = await api.verifier_mot(mot);
         } catch (err) {
             afficherMessageBrouillon('Erreur inattendue lors de la vérification.', 'invalide');
+            masquerDefinitionBrouillon();
             return;
         }
         if (res && res.succes) {
             if (res.valide) {
                 afficherMessageBrouillon(`✓ « ${res.mot} » est dans le dictionnaire.`, 'valide');
+                // Mot valide : on montre la définition ODS8, ou « indisponible ».
+                afficherDefinitionBrouillon(res.definition);
             } else {
                 afficherMessageBrouillon(`✗ « ${res.mot} » n'est pas dans le dictionnaire.`, 'invalide');
+                masquerDefinitionBrouillon();
             }
         } else {
             afficherMessageBrouillon((res && res.erreur) || 'Vérification impossible.', 'info');
+            masquerDefinitionBrouillon();
         }
     }
 

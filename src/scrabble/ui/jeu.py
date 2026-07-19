@@ -41,7 +41,12 @@ import webview
 
 from scrabble import journal
 from scrabble.config import THEMES_PLATEAU, charger_config
-from scrabble.dictionnaire.dictionnaire import Trie, normaliser_mot
+from scrabble.dictionnaire.dictionnaire import (
+    CHEMIN_DEFINITIONS,
+    Trie,
+    definition_mot,
+    normaliser_mot,
+)
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import (
     ActionInvalide,
@@ -746,7 +751,9 @@ def _concatener_lettres(lettres: Any) -> str:
 
 
 def verifier_mot_dictionnaire(
-    dictionnaire: DictionnaireMots, lettres: Any
+    dictionnaire: DictionnaireMots,
+    lettres: Any,
+    chemin_definitions: Path = CHEMIN_DEFINITIONS,
 ) -> dict[str, Any]:
     """Teste l'appartenance au dictionnaire du mot formé par ``lettres``.
 
@@ -756,11 +763,19 @@ def verifier_mot_dictionnaire(
     :meth:`dictionnaire.contient`. **Lecture seule** : aucune mutation de la
     partie ni du dictionnaire.
 
-    Renvoie ``{"succes": True, "mot": <MOT>, "valide": bool}`` ; si la suite est
-    vide (après normalisation), ``{"succes": False, "erreur": <message>}``. Un
-    joker (``*``) laissé dans le brouillon n'est pas une lettre fixe : il empêche
-    tout mot d'être trouvé (le test renverra ``valide`` faux), ce qui est le
-    comportement attendu d'un simple test d'appartenance.
+    Renvoie ``{"succes": True, "mot": <MOT>, "valide": bool, "definition":
+    [gloses] | None}`` ; si la suite est vide (après normalisation),
+    ``{"succes": False, "erreur": <message>}``. Un joker (``*``) laissé dans le
+    brouillon n'est pas une lettre fixe : il empêche tout mot d'être trouvé (le
+    test renverra ``valide`` faux), ce qui est le comportement attendu d'un
+    simple test d'appartenance.
+
+    La définition n'est calculée que si le mot est valide, en réutilisant
+    :func:`~scrabble.dictionnaire.dictionnaire.definition_mot` (ODS8 uniquement,
+    même source que l'onglet Dictionnaire des réglages, issue #111). Un mot
+    présent seulement dans Hunspell — ou absent de l'index — renvoie
+    ``"definition": None`` : à l'UI d'afficher « définition indisponible ». Un
+    mot invalide renvoie aussi ``None`` (aucune définition n'a de sens).
     """
     mot = normaliser_mot(_concatener_lettres(lettres))
     if not mot:
@@ -768,7 +783,14 @@ def verifier_mot_dictionnaire(
             "succes": False,
             "erreur": "La zone de brouillon ne contient aucune lettre à vérifier.",
         }
-    return {"succes": True, "mot": mot, "valide": bool(dictionnaire.contient(mot))}
+    valide = bool(dictionnaire.contient(mot))
+    definition = definition_mot(mot, chemin_definitions) if valide else None
+    return {
+        "succes": True,
+        "mot": mot,
+        "valide": valide,
+        "definition": definition,
+    }
 
 
 def echanger_chevalet_complet(
@@ -1524,8 +1546,11 @@ class ApiJeu:
         ``lettres`` est la suite de jetons arrangés dans le brouillon (dans
         l'ordre affiché). Le test est en **lecture seule** : il ne pose aucun
         coup, ne consomme aucun tour et ne modifie en rien l'état de la partie.
-        Renvoie ``{"succes": True, "mot": <MOT>, "valide": bool}`` ou, si le
-        brouillon est vide, ``{"succes": False, "erreur": <message>}``.
+        Renvoie ``{"succes": True, "mot": <MOT>, "valide": bool, "definition":
+        [gloses] | None}`` ou, si le brouillon est vide, ``{"succes": False,
+        "erreur": <message>}``. La ``definition`` (ODS8 uniquement, issue #124)
+        est ``None`` quand le mot est invalide ou absent de l'index — l'UI
+        affiche alors « définition indisponible ».
         """
         return verifier_mot_dictionnaire(self._partie.dictionnaire, lettres)
 

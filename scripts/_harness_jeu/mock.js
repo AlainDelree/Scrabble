@@ -79,7 +79,7 @@
       obtenir_etat: async () => JSON.parse(JSON.stringify(etat)),
       obtenir_theme_plateau: async () => window.__THEME__ || 'classique',
       obtenir_chevalet: async () => ({ succes: true, lettres: chevalet }),
-      verifier_mot: async () => ({ succes: true, valide: true, mot: 'TEST' }),
+      verifier_mot: async () => ({ succes: true, valide: true, mot: 'TEST', definition: ['Définition de démonstration.'] }),
       echanger_tout: async () => ({ succes: true }),
       faire_jouer_ia: async () => ({ succes: true }),
       poser_mot: async () => ({ succes: true, points: 0 }),

@@ -1144,6 +1144,31 @@ header {
     outline-offset: 1px;
 }
 
+/* Définition sous le verdict de vérification (issue #124). Présentation
+   compacte, adaptée au faible espace du popover de la gouttière gauche : liste
+   ordonnée serrée pour les gloses, message discret en italique quand la
+   définition est indisponible (mot Hunspell uniquement / hors index). */
+.definition-brouillon {
+    margin-top: 6px;
+    font-size: 0.85rem;
+    line-height: 1.35;
+}
+
+.definition-brouillon .definition-gloses {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.definition-brouillon .definition-gloses li {
+    margin-bottom: 3px;
+}
+
+.definition-brouillon .definition-indisponible {
+    margin: 0;
+    color: #555;
+    font-style: italic;
+}
+
 /* Avertissement avant un « Retour au menu » avec un coup en attente (issue #74).
    Réutilise .modale / .modale-contenu ; message explicatif + deux actions en
    ligne (rester / confirmer). */

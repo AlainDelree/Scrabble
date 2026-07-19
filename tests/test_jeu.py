@@ -9,6 +9,7 @@ Couvre :
   à la fois (jamais tous en une fois).
 """
 
+import json
 from collections import Counter
 
 import pytest
@@ -1027,13 +1028,50 @@ class TestVerifierMotDictionnaire:
 
     def test_mot_valide(self):
         res = verifier_mot_dictionnaire(_DicoMots("CHAT"), ["C", "H", "A", "T"])
-        assert res == {"succes": True, "mot": "CHAT", "valide": True}
+        assert res["succes"] is True
+        assert res["mot"] == "CHAT"
+        assert res["valide"] is True
+        # La clé ``definition`` est toujours présente (issue #124).
+        assert "definition" in res
 
     def test_mot_invalide(self):
         res = verifier_mot_dictionnaire(_DicoMots("CHAT"), ["X", "Y", "Z"])
         assert res["succes"] is True
         assert res["mot"] == "XYZ"
         assert res["valide"] is False
+        # Un mot invalide n'a jamais de définition (issue #124).
+        assert res["definition"] is None
+
+    def test_definition_mot_ods8(self, tmp_path):
+        # Mot valide ET présent dans l'index de définitions ODS8.
+        fichier = tmp_path / "definitions.json"
+        fichier.write_text(
+            json.dumps({"CHAT": ["Petit félin domestique."]}),
+            encoding="utf-8",
+        )
+        res = verifier_mot_dictionnaire(
+            _DicoMots("CHAT"), ["C", "H", "A", "T"], fichier
+        )
+        assert res["valide"] is True
+        assert res["definition"] == ["Petit félin domestique."]
+
+    def test_definition_mot_hunspell_sans_definition(self, tmp_path):
+        # Mot valide mais absent de l'index (cas Hunspell uniquement) : None.
+        fichier = tmp_path / "definitions.json"
+        fichier.write_text(json.dumps({"CHAT": ["Félin."]}), encoding="utf-8")
+        res = verifier_mot_dictionnaire(
+            _DicoMots("KWYJIBO"), ["K", "W", "Y", "J", "I", "B", "O"], fichier
+        )
+        assert res["valide"] is True
+        assert res["definition"] is None
+
+    def test_definition_non_calculee_si_invalide(self, tmp_path):
+        # Même si le mot figure dans l'index, un mot invalide reste sans déf.
+        fichier = tmp_path / "definitions.json"
+        fichier.write_text(json.dumps({"XYZ": ["Bruit."]}), encoding="utf-8")
+        res = verifier_mot_dictionnaire(_DicoMots("CHAT"), ["X", "Y", "Z"], fichier)
+        assert res["valide"] is False
+        assert res["definition"] is None
 
     def test_accepte_chaine_deja_assemblee(self):
         res = verifier_mot_dictionnaire(_DicoMots("CHAT"), "chat")
