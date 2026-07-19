@@ -826,6 +826,28 @@ def echanger_chevalet_complet(
     return {"succes": True, "etat": etat_public(partie, id_partie)}
 
 
+def passer_tour(partie: Partie, id_partie: int | None) -> dict[str, Any]:
+    """Fait **passer** le joueur courant sans rien échanger (issue #132).
+
+    Cœur non-UI de :meth:`ApiJeu.passer`. Délègue à
+    :meth:`~scrabble.moteur.partie.Partie.passer`, qui incrémente
+    ``passes_consecutives`` et termine la partie par blocage lorsque tous les
+    joueurs ont passé d'affilée (``passes_consecutives >= len(joueurs)``).
+
+    Contrairement à :func:`echanger_chevalet_complet`, passer ne dépend pas du
+    sac : c'est le recours qui débloque un joueur humain sac vide (rapport #130),
+    tout en restant un droit normal du jeu utilisable à tout moment de son tour.
+    Le seul échec prévisible (partie déjà terminée) est capturé et transformé en
+    ``{"succes": False, "erreur": ...}`` sans plantage. En cas de succès, l'état
+    public rafraîchi est joint.
+    """
+    try:
+        partie.passer()
+    except ActionInvalide as err:
+        return {"succes": False, "erreur": str(err)}
+    return {"succes": True, "etat": etat_public(partie, id_partie)}
+
+
 def jouer_tours_ia_ui(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     """Joue **un seul** tour d'ordinateur puis renvoie l'état rafraîchi.
 
@@ -1685,6 +1707,40 @@ class ApiJeu:
             self._diffuser()
         else:
             journal.info(f"Jeu : échange refusé pour {nom} — {resultat.get('erreur')}")
+        return resultat
+
+    def passer(self) -> dict[str, Any]:
+        """Fait **passer** le tour du joueur courant sans rien échanger (issue #132).
+
+        Point d'entrée du bouton « Passer son tour ». Sur le modèle de
+        :meth:`echanger_tout`, mais sans toucher au sac : c'est le recours qui
+        débloque un joueur humain sac vide (rapport #130), tout en restant un
+        droit normal du jeu utilisable à tout moment de son tour. Délègue à
+        :func:`passer_tour` (qui appelle
+        :meth:`~scrabble.moteur.partie.Partie.passer`).
+
+        En cas de succès : ``{"succes": True, "etat": <état public rafraîchi>}``
+        (tour suivant, ou fin de partie par blocage si tous ont passé d'affilée),
+        l'état de pose est remis à zéro et rediffusé aux deux fenêtres. Si la
+        partie est déjà terminée : ``{"succes": False, "erreur": <message>}`` —
+        l'état n'est pas modifié.
+        """
+        nom = self._partie.joueur_courant().nom
+        nb_avant = len(self._partie.historique)
+        resultat = passer_tour(self._partie, self._id_partie)
+        if resultat.get("succes"):
+            journal.info(f"Jeu : {nom} passe son tour.")
+            self._persister_entrees(self._partie.historique[nb_avant:])
+            self._journaliser_fin_partie()
+            self._finaliser_si_terminee()
+            # Tour suivant (ou fin de partie) : on repart d'un état de pose vierge
+            # et on rediffuse le nouvel état public / privé aux deux fenêtres.
+            self._selection = None
+            self._en_attente = []
+            self._joker_demande = None
+            self._diffuser()
+        else:
+            journal.info(f"Jeu : passe refusée pour {nom} — {resultat.get('erreur')}")
         return resultat
 
     def faire_jouer_ia(self) -> dict[str, Any]:

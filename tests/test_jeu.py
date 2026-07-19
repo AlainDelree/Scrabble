@@ -44,6 +44,7 @@ from scrabble.ui.jeu import (
     jouer_placements,
     jouer_tours_ia_ui,
     nb_lignes_historique,
+    passer_tour,
     serialiser_case,
     serialiser_historique,
     serialiser_chevalet,
@@ -1231,6 +1232,87 @@ class TestEchangerChevaletComplet:
         assert res["succes"] is True
         assert res["etat"]["id_partie"] == 42
         assert partie.index_courant == 1
+
+
+class TestPasserTour:
+    """Passage « sec » du tour (sans échange) — débloque un humain sac vide (#132)."""
+
+    def _partie(self) -> Partie:
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Bob", humain=True),
+        ]
+        partie = Partie(joueurs, _DicoFactice(), graine=3)
+        partie.index_courant = 0
+        return partie
+
+    def test_passe_incremente_le_compteur_et_avance(self):
+        partie = self._partie()
+        assert partie.passes_consecutives == 0
+
+        res = passer_tour(partie, None)
+
+        assert res["succes"] is True
+        assert "etat" in res
+        # La passe a bien été comptée et le tour a avancé, sans terminer (2 joueurs).
+        assert partie.passes_consecutives == 1
+        assert partie.index_courant == 1
+        assert partie.terminee is False
+        # L'état renvoyé reste public (aucune lettre de chevalet).
+        for joueur_pub in res["etat"]["joueurs"]:
+            assert "lettres" not in joueur_pub
+
+    def test_humain_sac_vide_peut_passer(self):
+        # Cas moteur du rapport #130 : sac vide, l'humain ne peut ni poser ni
+        # échanger, mais DOIT pouvoir passer.
+        partie = self._partie()
+        partie.sac.tirer(partie.sac.jetons_restants())
+        assert partie.sac.jetons_restants() == 0
+
+        res = passer_tour(partie, None)
+
+        assert res["succes"] is True
+        assert partie.passes_consecutives == 1
+        assert partie.index_courant == 1
+
+    def test_api_passer_delegue_et_incremente(self):
+        partie = self._partie()
+        api = ApiJeu(partie, 42)
+        res = api.passer()
+        assert res["succes"] is True
+        assert res["etat"]["id_partie"] == 42
+        assert partie.passes_consecutives == 1
+        assert partie.index_courant == 1
+
+    def test_passe_refusee_partie_terminee(self):
+        partie = self._partie()
+        partie.terminee = True
+
+        res = passer_tour(partie, None)
+
+        assert res["succes"] is False
+        assert res.get("erreur")
+        assert "etat" not in res
+
+    def test_tous_passent_atteint_la_fin_par_blocage(self):
+        # De bout en bout : une partie où TOUS les joueurs (ici deux humains)
+        # passent consécutivement atteint la fin par blocage — le critère
+        # ``passes_consecutives >= len(joueurs)`` est désormais atteignable même
+        # avec des humains (via l'API), ce qui était impossible avant #132.
+        partie = self._partie()
+        api = ApiJeu(partie, id_partie=None)
+
+        res1 = api.passer()
+        assert res1["succes"] is True
+        assert partie.terminee is False
+        assert partie.passes_consecutives == 1
+
+        res2 = api.passer()
+        assert res2["succes"] is True
+        # Deux joueurs, deux passes consécutives : partie bloquée → terminée.
+        assert partie.passes_consecutives >= len(partie.joueurs)
+        assert partie.terminee is True
+        assert res2["etat"]["terminee"] is True
 
 
 # --------------------------------------------------------------------------- #

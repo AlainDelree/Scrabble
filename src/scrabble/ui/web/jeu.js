@@ -68,6 +68,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnValider = document.getElementById('btn-valider');
     const btnVerifierCoup = document.getElementById('btn-verifier-coup');
     const btnAnnuler = document.getElementById('btn-annuler');
+    const btnPasser = document.getElementById('btn-passer');
     const btnEchangerTout = document.getElementById('btn-echanger-tout');
     const messageCoup = document.getElementById('message-coup');
 
@@ -405,7 +406,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnValider.disabled = n === 0;
         btnVerifierCoup.disabled = n === 0;
         btnAnnuler.disabled = n === 0;
-        btnEchangerTout.disabled = nbLettres === 0;
+        // Passer son tour reste un droit normal du jeu : toujours actif pendant
+        // le tour de l'humain, indépendamment du coup en attente et du sac
+        // (recours pour débloquer un joueur sac vide, issue #132).
+        btnPasser.disabled = false;
+        // Le sac vide rend l'échange complet impossible : plutôt qu'un bouton
+        // cliquable qui échouerait systématiquement (rapport #130, issue #132),
+        // on le désactive dans ce cas — « Passer son tour » prend le relais.
+        const sacVide = !etat.jetons_sac;
+        btnEchangerTout.disabled = nbLettres === 0 || sacVide;
     }
 
     /** Message de retour des actions de tour (issue #101), sous les boutons. */
@@ -695,6 +704,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Python rediffuse l'état (nouveau tour) : le rendu suit via le push.
         } else {
             afficherMessageCoup((res && res.erreur) ? res.erreur : 'Coup refusé.', 'erreur');
+            majActionsTour();
+        }
+    });
+
+    // Passer son tour sans poser ni échanger de lettres (issue #132). Droit
+    // normal du jeu, utilisable à tout moment du tour — et seul recours d'un
+    // joueur humain sac vide qui ne peut ni poser ni échanger (rapport #130).
+    btnPasser.addEventListener('click', async () => {
+        btnPasser.disabled = true;
+        let res;
+        try {
+            res = await api.passer();
+        } catch (err) {
+            afficherMessageCoup('Erreur inattendue lors du passage de tour.', 'erreur');
+            majActionsTour();
+            return;
+        }
+        if (res && res.succes) {
+            afficherMessageCoup('Tour passé.', 'succes');
+            // Python rediffuse l'état (tour suivant ou fin de partie) : le rendu
+            // suit via le push.
+        } else {
+            afficherMessageCoup((res && res.erreur) || 'Impossible de passer le tour.', 'erreur');
             majActionsTour();
         }
     });
