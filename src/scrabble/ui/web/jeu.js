@@ -42,7 +42,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         bas: document.getElementById('slot-bas'),
     };
     const sacNombre = document.getElementById('sac-nombre');
-    const bandeauFin = document.getElementById('bandeau-fin');
+    // Modale de fin de partie (issue #142) : remplace l'ancien bandeau de fin.
+    // Contient le message de victoire, le classement final, l'évaluation du
+    // score, et trois boutons (retour menu / rester / recommencer).
+    const modaleFin = document.getElementById('modale-fin');
+    const modaleFinMessage = document.getElementById('modale-fin-message');
+    const modaleFinClassement = document.getElementById('modale-fin-classement');
+    const modaleFinEvaluation = document.getElementById('modale-fin-evaluation');
+    const btnFinRetourMenu = document.getElementById('fin-retour-menu');
+    const btnFinRester = document.getElementById('fin-rester');
+    const btnFinRecommencer = document.getElementById('fin-recommencer');
     const messagePlateau = document.getElementById('message-plateau');
     const historiqueListe = document.getElementById('historique-liste');
     const historiqueCompte = document.getElementById('historique-compte');
@@ -263,33 +272,51 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // Vrai une fois la modale de fin ouverte pour la partie courante (issue #142) :
+    // évite de la rouvrir à chaque état repoussé (resynchronisation, etc.) alors
+    // que l'utilisateur a choisi « Rester sur la partie ». Remis à faux dès qu'un
+    // état de partie NON terminée arrive (nouvelle partie ou reprise en cours).
+    let finModaleAffichee = false;
+
     /**
-     * Rend le bandeau de fin de partie (issue #45), étendu d'un tableau de
-     * classement final (issue #133) listant TOUS les joueurs triés par score
-     * décroissant avec leur rang, et non plus seulement le(s) gagnant(s), puis
-     * de l'évaluation officielle du score total combiné (issue #137).
+     * Pilote la modale de fin de partie (issue #142, ex-bandeau des issues
+     * #45/#133/#137). Une fois la partie terminée, elle s'ouvre par-dessus le
+     * plateau avec le message de victoire, le tableau de classement final listant
+     * TOUS les joueurs triés par score décroissant avec leur rang, et l'évaluation
+     * officielle du score total combiné (issue #137). Elle ne s'ouvre qu'une fois
+     * par partie : si l'utilisateur la ferme (« Rester sur la partie »), un état
+     * repoussé plus tard ne la rouvre pas.
      */
     function rendreFinPartie(terminee, gagnants, joueurs, evaluation) {
         if (!terminee) {
-            bandeauFin.hidden = true;
-            bandeauFin.textContent = '';
+            finModaleAffichee = false;
+            modaleFin.hidden = true;
             return;
         }
-        bandeauFin.hidden = false;
-        bandeauFin.textContent = '';
 
-        const message = document.createElement('div');
-        message.className = 'bandeau-fin-message';
-        message.textContent = gagnants && gagnants.length
+        // (Re)construit le contenu à chaque diffusion : le classement reflète
+        // toujours l'état public reçu, même si la modale est déjà (ou pas encore)
+        // ouverte.
+        modaleFinMessage.textContent = gagnants && gagnants.length
             ? `🏁 Partie terminée — ${gagnants.join(', ')}`
             : '🏁 Partie terminée';
-        bandeauFin.appendChild(message);
 
+        modaleFinClassement.textContent = '';
         const classement = construireClassement(joueurs);
-        if (classement) bandeauFin.appendChild(classement);
+        if (classement) modaleFinClassement.appendChild(classement);
 
+        modaleFinEvaluation.textContent = '';
         const eval_ = construireEvaluationScore(evaluation);
-        if (eval_) bandeauFin.appendChild(eval_);
+        if (eval_) modaleFinEvaluation.appendChild(eval_);
+
+        // Ouverture unique : à la transition vers « terminée ». Fermée à la main,
+        // la modale ne se rouvre pas tant que la partie reste terminée.
+        if (!finModaleAffichee) {
+            finModaleAffichee = true;
+            modaleFin.hidden = false;
+            // Le focus part sur « Rester » : l'action neutre par défaut.
+            btnFinRester.focus();
+        }
     }
 
     /**
@@ -763,6 +790,54 @@ document.addEventListener('DOMContentLoaded', async () => {
     retourConfirmer.addEventListener('click', () => {
         retourModale.hidden = true;
         retournerAuMenu();
+    });
+
+    // ------------------------------------------------------------------ //
+    // Modale de fin de partie — trois actions (issue #142)
+    // ------------------------------------------------------------------ //
+
+    // « Rester sur la partie » : ferme simplement la modale et laisse le plateau
+    // final affiché pour consultation libre. finModaleAffichee reste vrai : la
+    // modale ne se rouvrira pas tant que la partie reste terminée.
+    function resterSurLaPartie() {
+        modaleFin.hidden = true;
+    }
+    btnFinRester.addEventListener('click', resterSurLaPartie);
+    // Clic dehors et Échap = « Rester » (fermeture non destructrice).
+    modaleFin.addEventListener('click', (evt) => {
+        if (evt.target === modaleFin) resterSurLaPartie();
+    });
+    document.addEventListener('keydown', (evt) => {
+        if (evt.key === 'Escape' && !modaleFin.hidden) resterSurLaPartie();
+    });
+
+    // « Retour au menu » : même comportement que le bouton utilitaire du haut.
+    // En fin de partie il n'y a jamais de coup en attente : appel direct, sans
+    // la modale d'avertissement.
+    btnFinRetourMenu.addEventListener('click', () => {
+        retournerAuMenu();
+    });
+
+    // « Recommencer » : demande à Python une nouvelle partie avec les mêmes
+    // joueurs (nouveau tirage). En cas de succès, les deux fenêtres se ferment et
+    // l'écran de jeu se rouvre sur la nouvelle partie (piloté par Python) ; en cas
+    // d'échec, on réactive le bouton et on signale l'erreur.
+    btnFinRecommencer.addEventListener('click', async () => {
+        btnFinRecommencer.disabled = true;
+        let res;
+        try {
+            res = await api.recommencer();
+        } catch (err) {
+            btnFinRecommencer.disabled = false;
+            afficherMessagePlateau('Recommencer impossible : ' + err, 'erreur');
+            return;
+        }
+        if (res && res.succes === false) {
+            btnFinRecommencer.disabled = false;
+            afficherMessagePlateau(
+                'Recommencer impossible : ' + (res.erreur || 'erreur inconnue'), 'erreur');
+        }
+        // Succès : les DEUX fenêtres se ferment, une nouvelle partie s'ouvre (Python).
     });
 
     // ------------------------------------------------------------------ //

@@ -1975,6 +1975,106 @@ class TestApiJeuRetourMenu:
         assert api._retour_menu is False
 
 
+class TestApiJeuRecommencer:
+    """Tests de ``ApiJeu.recommencer`` / ``creer_partie_recommencee`` (issue #142).
+
+    Vérifie que « Recommencer » fabrique une nouvelle partie avec les mêmes
+    joueurs (nom, humain/IA, niveau), qu'elle est suivie en base sans supprimer
+    l'ancienne partie, et que les deux fenêtres sont fermées (drapeau
+    ``_recommencer``). Testé sans vraie fenêtre grâce à un objet factice.
+    """
+
+    class _FakeWindow:
+        def __init__(self):
+            self.detruite = False
+
+        def destroy(self):
+            self.detruite = True
+
+    def _partie_mixte(self, graine: int = 3) -> Partie:
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Bob", humain=True),
+            Joueur(nom="Ordi", humain=False, niveau=Niveau.EXPERT),
+        ]
+        return Partie(joueurs, _DicoFactice(), graine=graine)
+
+    def test_creer_partie_recommencee_memes_joueurs(self):
+        origine = self._partie_mixte()
+        api = ApiJeu(origine, id_partie=None)
+
+        nouvelle = api.creer_partie_recommencee()
+
+        assert nouvelle is not origine
+        cle = lambda p: {(j.nom, j.humain, j.niveau) for j in p.joueurs}
+        assert cle(nouvelle) == cle(origine)
+        # Partie neuve : graine explicite (pour le suivi), historique vierge.
+        assert nouvelle.graine is not None
+        assert nouvelle.historique == []
+        assert not nouvelle.terminee
+
+    def test_recommencer_persiste_la_nouvelle_sans_supprimer_l_ancienne(self, tmp_path):
+        chemin = tmp_path / "parties.db"
+        origine = self._partie_mixte()
+        id_origine = demarrer_suivi(origine, chemin)
+
+        api = ApiJeu(origine, id_partie=id_origine, chemin_persistance=chemin)
+        fake = self._FakeWindow()
+        api.set_window(fake)
+
+        resultat = api.recommencer()
+
+        assert resultat["succes"] is True
+        assert fake.detruite is True
+        assert api._recommencer is True
+        assert api._nouvelle_partie is not None
+        # Un nouvel identifiant, distinct de l'ancien, a été attribué.
+        assert api._nouvel_id_partie is not None
+        assert api._nouvel_id_partie != id_origine
+        # L'ancienne partie n'a PAS été supprimée : les deux coexistent en base.
+        ids = {p.id for p in lister_parties(chemin)}
+        assert ids == {id_origine, api._nouvel_id_partie}
+
+    def test_recommencer_mode_demo_ne_persiste_pas(self):
+        # id_partie None (démonstration) : la nouvelle partie n'est pas suivie,
+        # mais la mécanique de fermeture/relance fonctionne quand même.
+        api = ApiJeu(self._partie_mixte(), id_partie=None)
+        fake = self._FakeWindow()
+        api.set_window(fake)
+
+        resultat = api.recommencer()
+
+        assert resultat["succes"] is True
+        assert api._recommencer is True
+        assert api._nouvelle_partie is not None
+        assert api._nouvel_id_partie is None
+
+    def test_recommencer_sans_fenetre(self):
+        api = ApiJeu(self._partie_mixte(), id_partie=None)
+        resultat = api.recommencer()
+
+        assert resultat["succes"] is False
+        assert "erreur" in resultat
+        assert api._recommencer is False
+        assert api._nouvelle_partie is None
+
+    def test_recommencer_exception_destroy_naboutit_pas(self):
+        class FakeWindowKO:
+            def destroy(self):
+                raise RuntimeError("backend HS")
+
+        api = ApiJeu(self._partie_mixte(), id_partie=None)
+        api.set_window(FakeWindowKO())
+
+        resultat = api.recommencer()
+
+        assert resultat["succes"] is False
+        assert "backend HS" in resultat["erreur"]
+        # Échec de fermeture : on n'enchaîne PAS de nouvelle partie.
+        assert api._recommencer is False
+        assert api._nouvelle_partie is None
+
+
 class _FenetreFermable:
     """Fenêtre factice avec un vrai ``events.closing`` pywebview (issue #94).
 

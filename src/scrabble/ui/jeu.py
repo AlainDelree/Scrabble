@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +55,7 @@ from scrabble.moteur.partie import (
     EntreeHistorique,
     Joueur,
     Partie,
+    recreer_partie_meme_joueurs,
 )
 from scrabble.moteur.plateau_partie import (
     Coup,
@@ -65,6 +67,7 @@ from scrabble.moteur.plateau_partie import (
 from scrabble.moteur.score import DetailMot, DetailScore, detailler_score
 from scrabble.persistance import (
     CHEMIN_DEFAUT,
+    demarrer_suivi,
     enregistrer_action,
     finaliser_partie,
 )
@@ -1036,6 +1039,14 @@ class ApiJeu:
         # une fois les fenêtres de jeu fermées, ``lancer_jeu`` rouvre alors
         # l'écran d'accueil (au lieu de clôturer la session) — voir ``lancer_jeu``.
         self._retour_menu = False
+        # « Recommencer » depuis la modale de fin de partie (issue #142) : quand
+        # l'utilisateur choisit de rejouer avec les mêmes joueurs, on prépare ici
+        # la nouvelle partie (et son identifiant de persistance) puis on ferme les
+        # fenêtres. ``lancer_jeu``, voyant ce drapeau, relance alors l'écran de
+        # jeu sur cette nouvelle partie (au lieu de clôturer la session).
+        self._recommencer = False
+        self._nouvelle_partie: Partie | None = None
+        self._nouvel_id_partie: int | None = None
         # Garde-fou anti-boucle de la fermeture croisée par la croix (issue #94) :
         # fermer une fenêtre par sa croix détruit l'autre, dont la destruction
         # re-déclenche l'événement ``closing`` (sous GTK, ``destroy()`` passe aussi
@@ -2269,6 +2280,75 @@ class ApiJeu:
             self._retour_menu = False
             return {"succes": False, "erreur": f"Fermeture impossible : {e}"}
 
+    def creer_partie_recommencee(self) -> Partie:
+        """Fabrique une nouvelle partie reprenant les joueurs de la partie courante.
+
+        Cœur « moteur/API » de l'action « Recommencer » (issue #142) : réutilise
+        les mêmes joueurs (noms, humain/ordinateur, niveaux de difficulté) via
+        :func:`~scrabble.moteur.partie.recreer_partie_meme_joueurs`, avec une
+        **graine explicite tirée au hasard** (nécessaire au suivi de persistance,
+        qui refuse une partie sans graine) et un **nouveau tirage d'ordre**. Le
+        dictionnaire et le réglage ``bonus_fin_partie`` sont hérités de la partie
+        courante — on ne repasse pas par l'écran de configuration.
+
+        La partie terminée courante n'est pas touchée : elle reste finalisée en
+        base (voir :meth:`_finaliser_si_terminee`) et consultable dans
+        l'historique. Méthode isolée pour rester testable sans fenêtre.
+        """
+        graine = random.randint(0, 2**31 - 1)
+        return recreer_partie_meme_joueurs(
+            self._partie,
+            self._partie.dictionnaire,
+            graine=graine,
+            tirage_ordre=True,
+        )
+
+    def recommencer(self) -> dict[str, Any]:
+        """Rejoue une nouvelle partie avec les mêmes joueurs (issue #142).
+
+        Troisième action de la modale de fin de partie. Crée une partie neuve
+        (:meth:`creer_partie_recommencee`), la déclare en base
+        (:func:`~scrabble.persistance.demarrer_suivi`) puis ferme **les deux**
+        fenêtres de jeu à la manière de :meth:`retour_menu`. Une fois la boucle
+        rendue, :func:`lancer_jeu` relance l'écran de jeu sur cette nouvelle
+        partie (drapeau ``_recommencer``).
+
+        En mode démonstration (``_id_partie`` à ``None``), aucune persistance
+        n'est déclenchée : la nouvelle partie n'est simplement pas suivie.
+
+        Retourne ``{"succes": True}`` si la fermeture a été demandée, sinon
+        ``{"succes": False, "erreur": ...}`` (le JS réactive alors le bouton).
+        """
+        if self._window_plateau is None and self._window_chevalet is None:
+            return {"succes": False, "erreur": "Aucune fenêtre associée."}
+        try:
+            nouvelle = self.creer_partie_recommencee()
+            nouvel_id: int | None = None
+            if self._id_partie is not None:
+                nouvel_id = demarrer_suivi(nouvelle, self._chemin_persistance)
+            journal.info(
+                f"Jeu : recommencer une partie avec les mêmes joueurs "
+                f"(ancienne #{self._id_partie} → nouvelle #{nouvel_id})."
+            )
+            self._nouvelle_partie = nouvelle
+            self._nouvel_id_partie = nouvel_id
+            self._recommencer = True
+            # Même garde-fou anti-boucle que ``retour_menu`` : on détruit soi-même
+            # les deux fenêtres, on neutralise donc la fermeture croisée native.
+            self._fermeture_en_cours = True
+            if self._window_chevalet is not None:
+                self._window_chevalet.destroy()
+            if self._window_plateau is not None:
+                self._window_plateau.destroy()
+            return {"succes": True}
+        except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
+            # Échec (création ou fermeture) : on n'enchaîne pas de nouvelle partie
+            # (les fenêtres restent ouvertes et le JS réactive le bouton).
+            self._recommencer = False
+            self._nouvelle_partie = None
+            self._nouvel_id_partie = None
+            return {"succes": False, "erreur": f"Recommencer impossible : {e}"}
+
 
 # --------------------------------------------------------------------------- #
 # Point d'entrée
@@ -2309,17 +2389,30 @@ def lancer_jeu(partie: Partie, id_partie: int | None) -> None:
     journal.info(f"Jeu : écran ouvert (partie #{id_partie}).")
     api = ApiJeu(partie, id_partie)
     retour_menu = False
+    recommencer = False
+    nouvelle_partie: Partie | None = None
+    nouvel_id_partie: int | None = None
     try:
         _lancer_fenetre_jeu(api)
         retour_menu = api._retour_menu
+        recommencer = api._recommencer
+        nouvelle_partie = api._nouvelle_partie
+        nouvel_id_partie = api._nouvel_id_partie
     finally:
-        # Cas « retour au menu » : la session reste ouverte pour être réutilisée
-        # par l'accueil rouvert. Dans tous les autres cas (fermeture normale de
-        # la fenêtre, ou exception traversant la boucle), on clôture la session.
-        if not retour_menu:
+        # Cas « retour au menu » ou « recommencer » : la session reste ouverte
+        # pour être réutilisée (par l'accueil rouvert, ou par la nouvelle partie
+        # enchaînée). Dans tous les autres cas (fermeture normale de la fenêtre,
+        # ou exception traversant la boucle), on clôture la session.
+        if not retour_menu and not recommencer:
             journal.cloturer_session()
     if retour_menu:
         _rouvrir_accueil(id_partie)
+    elif recommencer and nouvelle_partie is not None:
+        # Recommencer (issue #142) : on enchaîne directement une nouvelle partie
+        # avec les mêmes joueurs, en réutilisant la session de journalisation
+        # courante (symétrique du « Retour au menu »). L'écran de jeu s'ouvre à
+        # nouveau, directement sur le nouveau tirage.
+        lancer_jeu(nouvelle_partie, nouvel_id_partie)
 
 
 def _rouvrir_accueil(id_partie: int | None) -> None:

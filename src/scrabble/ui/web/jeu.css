@@ -266,17 +266,25 @@ header {
    en-tête, masqué pendant la partie (hidden → aucune place prise), affiché
    seulement à la fin. Conteneur en colonne centrée : la pastille verte du
    message au-dessus, puis un petit tableau de classement final. */
-.bandeau-fin {
+/* Modale de fin de partie (issue #142) : reprend le contenu de l'ancien bandeau
+   (message, classement, évaluation) empilé et centré, plus une rangée de trois
+   actions. Réutilise .modale / .modale-contenu / .modale-actions (commun.css) ;
+   on élargit un peu le panneau pour le tableau de classement et on autorise un
+   défilement interne si la fenêtre est très courte. */
+.modale-fin-contenu {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
-    margin: 0 auto 8px;
-    text-align: center;
+    gap: 14px;
+    max-width: 420px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
 }
 
-.bandeau-fin[hidden] {
-    display: none;
+/* Les trois actions gardent leur ordre logique (retour / rester / recommencer) ;
+   sur panneau étroit elles se replient proprement (flex-wrap hérité). */
+.modale-fin-actions {
+    margin-top: 4px;
 }
 
 /* Le message reste la pastille verte nette et centrée d'origine (issue #45). */

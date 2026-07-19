@@ -141,13 +141,6 @@
             </div>
         </header>
 
-        <!-- Bandeau de fin de partie (issue #45, point 2) : l'ancien indicateur
-             de tour a disparu, mais l'annonce de fin de partie et des gagnants
-             reste une information à part entière. Masqué pendant toute la partie
-             (ne prend donc aucune place) ; il n'apparaît qu'une fois la partie
-             terminée, hors de l'en-tête resté minimal. -->
-        <div id="bandeau-fin" class="bandeau-fin" role="status" aria-live="polite" hidden></div>
-
         <!-- Message éphémère de pose (issue #90) : la pose clic-clic se pilote
              depuis la fenêtre chevalet (sélection) + la fenêtre plateau (case
              cliquée). Comme la zone de message de tour vit désormais côté
@@ -308,6 +301,35 @@
                 </button>
                 <button id="confirmation-confirmer" class="btn btn-primaire">
                     ✓ Confirmer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale de fin de partie (issue #142) : remplace l'ancien bandeau de fin
+         (issues #45/#133/#137). Une fois la partie terminée, elle s'ouvre par-dessus
+         le plateau (resté visible en arrière-plan) avec le message de victoire, le
+         tableau de classement final, l'évaluation du score combiné, et TROIS actions :
+         « Retour au menu » (ferme le jeu, rouvre l'accueil), « Rester sur la partie »
+         (ferme juste la modale pour consulter librement le plateau final) et
+         « Recommencer » (nouvelle partie, mêmes joueurs, nouveau tirage). Réutilise
+         .modale / .modale-contenu / .modale-actions. Le contenu (message, classement,
+         évaluation) est injecté par le JS depuis l'état public poussé par Python. -->
+    <div id="modale-fin" class="modale" hidden>
+        <div class="modale-contenu modale-fin-contenu" role="dialog" aria-modal="true"
+             aria-labelledby="modale-fin-message">
+            <div id="modale-fin-message" class="bandeau-fin-message"></div>
+            <div id="modale-fin-classement"></div>
+            <div id="modale-fin-evaluation"></div>
+            <div class="modale-actions modale-fin-actions">
+                <button id="fin-retour-menu" class="btn btn-secondaire">
+                    🏠 Retour au menu
+                </button>
+                <button id="fin-rester" class="btn btn-secondaire">
+                    Rester sur la partie
+                </button>
+                <button id="fin-recommencer" class="btn btn-primaire">
+                    🔄 Recommencer
                 </button>
             </div>
         </div>
