@@ -501,6 +501,40 @@
     transform: translateY(-1px);
 }
 
+/* Issue #121 : depuis le resserrage de la fenêtre chevalet à 480×175 (#102-106),
+   la grille A-Z des 26 lettres (hauteur intrinsèque ~294 px) débordait de la
+   fenêtre — dernières lignes V-W-X-Y-Z et bouton Annuler invisibles. Plutôt qu'un
+   recalibrage fragile de taille de fenêtre, on retient l'approche « toujours
+   visible » adoptée pour la modale de tirage d'ordre (#116) : on borne le contenu
+   à la hauteur de la fenêtre, la grille devient scrollable, et le bouton Annuler
+   reste épinglé en bas, hors de la zone qui défile. Robuste à tout futur
+   ajustement du panneau de lettres (aucune constante de pixels à réviser). */
+#joker-modale .modale-contenu {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 8px);
+    /* Paddings/marges verticaux resserrés (la fenêtre chevalet n'offre que ~175 px) :
+       chaque pixel récupéré est une ligne de lettres de plus visible sans scroll. */
+    padding: 12px 24px;
+}
+
+/* Titre et bouton gardent leur taille : seule la grille absorbe le manque de place. */
+#joker-modale .modale-contenu h3,
+#joker-modale #joker-annuler {
+    flex: 0 0 auto;
+}
+
+#joker-modale .modale-contenu h3 {
+    margin-bottom: 8px;
+}
+
+#joker-modale .joker-grille {
+    flex: 1 1 auto;
+    min-height: 0;      /* indispensable : sans lui, un flex-item ne peut pas défiler */
+    overflow-y: auto;
+    margin-bottom: 10px;
+}
+
 /* Modale de détail du score (issue #35), dupliquée dans les deux fenêtres. */
 .modale-score {
     max-width: 420px;
