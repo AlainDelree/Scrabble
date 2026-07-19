@@ -1073,6 +1073,34 @@ class TestVerifierMotDictionnaire:
         assert res["valide"] is False
         assert res["definition"] is None
 
+    def test_definition_ods_source_active(self, tmp_path):
+        # Non-régression #124 : mot valide en ODS8, source active ODS →
+        # définition renvoyée normalement.
+        fichier = tmp_path / "definitions.json"
+        fichier.write_text(
+            json.dumps({"CHAT": ["Petit félin domestique."]}),
+            encoding="utf-8",
+        )
+        res = verifier_mot_dictionnaire(
+            _DicoMots("CHAT"), ["C", "H", "A", "T"], fichier, source="ods"
+        )
+        assert res["valide"] is True
+        assert res["definition"] == ["Petit félin domestique."]
+
+    def test_definition_jamais_en_source_hunspell(self, tmp_path):
+        # Issue #127 : mot valide en Hunspell, présent PAR COÏNCIDENCE dans
+        # l'index ODS8 → définition None malgré tout (source active ≠ ODS).
+        fichier = tmp_path / "definitions.json"
+        fichier.write_text(
+            json.dumps({"CHAT": ["Petit félin domestique."]}),
+            encoding="utf-8",
+        )
+        res = verifier_mot_dictionnaire(
+            _DicoMots("CHAT"), ["C", "H", "A", "T"], fichier, source="hunspell"
+        )
+        assert res["valide"] is True
+        assert res["definition"] is None
+
     def test_accepte_chaine_deja_assemblee(self):
         res = verifier_mot_dictionnaire(_DicoMots("CHAT"), "chat")
         assert res["mot"] == "CHAT"
@@ -1117,6 +1145,37 @@ class TestVerifierMotDictionnaire:
         assert list(partie.joueurs[0].chevalet) == chevalet_avant
         assert partie.sac.jetons_restants() == sac_avant
         assert etat_public(partie, None) == avant
+
+    def test_api_definition_en_source_ods(self, monkeypatch):
+        # Source active ODS : la définition est bien renvoyée (issue #124/#127).
+        monkeypatch.setattr(
+            "scrabble.ui.jeu.charger_config",
+            lambda: {"source_dictionnaire": "ods"},
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.jeu.definition_mot",
+            lambda mot, chemin=None: ["Petit félin domestique."],
+        )
+        api = ApiJeu(_partie_simple(), None)
+        res = api.verifier_mot(["C", "H", "A", "T"])
+        assert res["valide"] is True
+        assert res["definition"] == ["Petit félin domestique."]
+
+    def test_api_pas_de_definition_en_source_hunspell(self, monkeypatch):
+        # Issue #127 : source active Hunspell → jamais de définition, même si le
+        # mot valide est par coïncidence présent dans l'index ODS8.
+        monkeypatch.setattr(
+            "scrabble.ui.jeu.charger_config",
+            lambda: {"source_dictionnaire": "hunspell"},
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.jeu.definition_mot",
+            lambda mot, chemin=None: ["Petit félin domestique."],
+        )
+        api = ApiJeu(_partie_simple(), None)
+        res = api.verifier_mot(["C", "H", "A", "T"])
+        assert res["valide"] is True
+        assert res["definition"] is None
 
 
 class TestEchangerChevaletComplet:

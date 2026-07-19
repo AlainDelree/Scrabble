@@ -754,6 +754,7 @@ def verifier_mot_dictionnaire(
     dictionnaire: DictionnaireMots,
     lettres: Any,
     chemin_definitions: Path = CHEMIN_DEFINITIONS,
+    source: str = "ods",
 ) -> dict[str, Any]:
     """Teste l'appartenance au dictionnaire du mot formé par ``lettres``.
 
@@ -770,12 +771,19 @@ def verifier_mot_dictionnaire(
     test renverra ``valide`` faux), ce qui est le comportement attendu d'un
     simple test d'appartenance.
 
-    La définition n'est calculée que si le mot est valide, en réutilisant
+    La définition n'est calculée que si le mot est valide **et** que la source
+    active de la partie (``source``) est ``"ods"``, en réutilisant
     :func:`~scrabble.dictionnaire.dictionnaire.definition_mot` (ODS8 uniquement,
-    même source que l'onglet Dictionnaire des réglages, issue #111). Un mot
-    présent seulement dans Hunspell — ou absent de l'index — renvoie
-    ``"definition": None`` : à l'UI d'afficher « définition indisponible ». Un
-    mot invalide renvoie aussi ``None`` (aucune définition n'a de sens).
+    même source que l'onglet Dictionnaire des réglages, issue #111). Quand la
+    partie est jouée avec ``"hunspell"`` comme source active (issue #127), la
+    définition est **systématiquement** ``None``, même si le mot valide se
+    trouve, par coïncidence, présent dans l'index ODS8 : « Vérification
+    dictionnaire » reste ainsi strictement cohérent avec ce qui valide les coups
+    sur le plateau et ne laisse pas croire que l'ODS8 joue un rôle dans cette
+    partie. En source ODS, un mot présent seulement dans Hunspell — ou absent de
+    l'index — renvoie aussi ``"definition": None`` : à l'UI d'afficher
+    « définition indisponible ». Un mot invalide renvoie toujours ``None``
+    (aucune définition n'a de sens).
     """
     mot = normaliser_mot(_concatener_lettres(lettres))
     if not mot:
@@ -784,7 +792,11 @@ def verifier_mot_dictionnaire(
             "erreur": "La zone de brouillon ne contient aucune lettre à vérifier.",
         }
     valide = bool(dictionnaire.contient(mot))
-    definition = definition_mot(mot, chemin_definitions) if valide else None
+    definition = (
+        definition_mot(mot, chemin_definitions)
+        if valide and source == "ods"
+        else None
+    )
     return {
         "succes": True,
         "mot": mot,
@@ -1551,8 +1563,20 @@ class ApiJeu:
         "erreur": <message>}``. La ``definition`` (ODS8 uniquement, issue #124)
         est ``None`` quand le mot est invalide ou absent de l'index — l'UI
         affiche alors « définition indisponible ».
+
+        Restriction à la source active (issue #127) : la définition n'est
+        renvoyée que si la partie est jouée avec ``"ods"`` comme source de
+        dictionnaire (``config["source_dictionnaire"]``, seule source de vérité
+        de la source active — ni ``Partie`` ni ``Dictionnaire`` ne la
+        mémorisent). En source ``"hunspell"``, ``definition`` vaut toujours
+        ``None``, même pour un mot par ailleurs présent dans l'index ODS8, pour
+        rester strictement cohérent avec ce qui valide réellement les coups sur
+        le plateau.
         """
-        return verifier_mot_dictionnaire(self._partie.dictionnaire, lettres)
+        source = charger_config().get("source_dictionnaire", "ods")
+        return verifier_mot_dictionnaire(
+            self._partie.dictionnaire, lettres, source=source
+        )
 
     def echanger_tout(self) -> dict[str, Any]:
         """Remet tout le chevalet du joueur courant dans le sac et passe le tour.
