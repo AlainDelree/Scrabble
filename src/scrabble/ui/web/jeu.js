@@ -1598,21 +1598,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Tour d'un joueur HUMAIN : au lieu de révéler automatiquement sa lettre, on
     // affiche une image statique du sac + le bouton « Tirer une lettre » qui la
-    // dévoile (issue #61, simplifié #166 ; sac corrigé #170).
+    // dévoile (issue #61, simplifié #166 ; image sac.png depuis #171).
     function tourHumainTirage(li, t) {
         return new Promise((resolve) => {
             li.classList.add('visible', 'en-attente-tirage');
             tirageSacZone.hidden = false;
             tirageSacZone.innerHTML = `
                 <p class="tirage-sac-consigne">À toi, ${C.escapeHtml(t.nom)} ! Tire ta lettre.</p>
-                <div class="tirage-sac" role="img" aria-label="Sac de lettres">
-                    <svg viewBox="0 0 120 140" width="120" height="140" aria-hidden="true">
-                        <path class="tirage-sac-corps" d="M32 48 C18 62 14 92 26 112 C34 126 50 132 60 132 C70 132 86 126 94 112 C106 92 102 62 88 48 C74 40 46 40 32 48 Z"/>
-                        <path class="tirage-sac-col" d="M38 46 Q60 30 82 46 Q72 55 60 55 Q48 55 38 46 Z"/>
-                        <path class="tirage-sac-cordon" d="M40 44 Q60 36 80 44"/>
-                        <text class="tirage-sac-glyphe" x="60" y="98" text-anchor="middle">?</text>
-                    </svg>
-                </div>
+                <img class="tirage-sac" src="images/sac.png" alt="Sac de lettres">
             `;
             tirageSacAction.hidden = false;
             tirageSacAction.innerHTML =
