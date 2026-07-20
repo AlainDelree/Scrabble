@@ -2325,6 +2325,163 @@ def _api_deux_fenetres_fermables() -> tuple[ApiJeu, _FenetreFermable, _FenetreFe
     return api, plateau, chevalet
 
 
+class TestDetailTirageOrdre:
+    """Tests de ``detail_tirage_ordre`` migré de l'accueil (issue #170).
+
+    La reconstitution du détail du tirage d'ordre (« Chaque joueur a tiré une
+    lettre ») vit désormais dans ``scrabble.ui.jeu``. On vérifie sa structure,
+    le drapeau ``humain`` par joueur, l'ordre alphabétique des lettres et le
+    déterminisme à graine fixée.
+    """
+
+    def test_structure_et_drapeau_humain(self):
+        from scrabble.ui.jeu import detail_tirage_ordre
+
+        detail = detail_tirage_ordre(
+            ["Alice", "Bob", "Ordi"], graine=7, noms_humains=["Alice", "Bob"]
+        )
+        assert set(detail.keys()) == {"tirages", "ordre"}
+        assert len(detail["tirages"]) == 3
+        for t in detail["tirages"]:
+            assert set(t.keys()) == {"nom", "lettre", "humain"}
+            assert isinstance(t["lettre"], str) and len(t["lettre"]) == 1
+        humain = {t["nom"]: t["humain"] for t in detail["tirages"]}
+        assert humain == {"Alice": True, "Bob": True, "Ordi": False}
+        # L'ordre annoncé est une permutation des mêmes noms, chacun une fois.
+        assert sorted(detail["ordre"]) == ["Alice", "Bob", "Ordi"]
+
+    def test_ordre_suit_les_lettres_alphabetiques(self):
+        from scrabble.ui.jeu import detail_tirage_ordre
+
+        detail = detail_tirage_ordre(["Alice", "Bob", "Ordi"], graine=11)
+        lettre_par_nom = {t["nom"]: t["lettre"] for t in detail["tirages"]}
+        lettres_dans_ordre = [lettre_par_nom[nom] for nom in detail["ordre"]]
+        # L'ordre de jeu suit l'ordre alphabétique des lettres tirées (égalités
+        # départagées par retirage, non exposé : la séquence reste croissante).
+        assert lettres_dans_ordre == sorted(lettres_dans_ordre)
+
+    def test_deterministe_a_graine_fixee(self):
+        from scrabble.ui.jeu import detail_tirage_ordre
+
+        a = detail_tirage_ordre(["Alice", "Bob"], graine=3)
+        b = detail_tirage_ordre(["Alice", "Bob"], graine=3)
+        assert a == b
+
+    def test_sans_noms_humains_tous_non_humains(self):
+        from scrabble.ui.jeu import detail_tirage_ordre
+
+        detail = detail_tirage_ordre(["Alice", "Bob"], graine=1)
+        assert all(t["humain"] is False for t in detail["tirages"])
+
+
+class TestApiJeuTirageOrdre:
+    """Tests du tirage d'ordre piloté par ``ApiJeu`` (issue #170).
+
+    Le tirage, autrefois affiché en modale de l'accueil, est désormais mené dans
+    la fenêtre Jeu : ``obtenir_tirage_ordre`` fournit son détail au démarrage (ou
+    ``None`` en reprise), ``terminer_tirage`` révèle le chevalet au clic
+    « Continuer », et ``annuler_tirage`` supprime la partie créée puis revient à
+    l'accueil. Testé sans vraie fenêtre grâce à des objets factices.
+    """
+
+    _INFOS = {
+        "noms_creation": ["Alice", "Robot"],
+        "graine": 1,
+        "noms_humains": ["Alice"],
+    }
+
+    def test_obtenir_tirage_ordre_none_sans_infos(self):
+        api = ApiJeu(_partie_simple(), id_partie=1)
+        assert api.obtenir_tirage_ordre() is None
+        # Aucun tirage à mener : considéré terminé d'emblée (garde idempotence).
+        assert api._tirage_termine is True
+
+    def test_obtenir_tirage_ordre_reconstitue_le_detail(self):
+        api = ApiJeu(_partie_simple(), id_partie=1, infos_tirage=dict(self._INFOS))
+        assert api._tirage_termine is False
+        detail = api.obtenir_tirage_ordre()
+        assert set(detail.keys()) == {"tirages", "ordre"}
+        assert len(detail["tirages"]) == 2
+        humain = {t["nom"]: t["humain"] for t in detail["tirages"]}
+        assert humain == {"Alice": True, "Robot": False}
+
+    def test_terminer_tirage_revele_le_chevalet_et_est_idempotent(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        repos: list = []
+        lies: list = []
+        monkeypatch.setattr(mod, "_repositionner_chevalet", lambda w: repos.append(w))
+        monkeypatch.setattr(
+            mod, "_lier_chevalet_au_plateau", lambda p, c: lies.append((p, c))
+        )
+
+        class _Fen:
+            def __init__(self) -> None:
+                self.montree = False
+
+            def show(self) -> None:
+                self.montree = True
+
+        api = ApiJeu(_partie_simple(), id_partie=1, infos_tirage=dict(self._INFOS))
+        plateau, chevalet = _Fen(), _Fen()
+        api.set_windows(plateau, chevalet)
+
+        res = api.terminer_tirage()
+        assert res["succes"] is True
+        assert chevalet.montree is True
+        assert repos == [chevalet]
+        assert lies == [(plateau, chevalet)]
+        assert api._tirage_termine is True
+
+        # Idempotent : un second appel (reprise/double-clic) ne re-révèle rien.
+        res2 = api.terminer_tirage()
+        assert res2["succes"] is True
+        assert repos == [chevalet]  # inchangé
+
+    def test_terminer_tirage_tolere_absence_de_chevalet(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        monkeypatch.setattr(mod, "_repositionner_chevalet", lambda w: None)
+        monkeypatch.setattr(mod, "_lier_chevalet_au_plateau", lambda p, c: None)
+
+        api = ApiJeu(_partie_simple(), id_partie=1, infos_tirage=dict(self._INFOS))
+        # Aucune fenêtre associée (contexte de test) : ne doit pas planter.
+        res = api.terminer_tirage()
+        assert res["succes"] is True
+        assert api._tirage_termine is True
+
+    def test_annuler_tirage_supprime_la_partie_et_ferme(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        supprimees: list = []
+        monkeypatch.setattr(
+            mod,
+            "supprimer_partie",
+            lambda id_p, chemin: supprimees.append(id_p) or True,
+        )
+
+        api = ApiJeu(_partie_simple(), id_partie=42, infos_tirage=dict(self._INFOS))
+        plateau = _FenetreFermable("plateau")
+        chevalet = _FenetreFermable("chevalet")
+        api.set_windows(plateau, chevalet)
+
+        res = api.annuler_tirage()
+        assert res["succes"] is True
+        # La partie fraîchement créée (aucun coup joué) est supprimée de la base.
+        assert supprimees == [42]
+        assert plateau.detruite is True
+        assert chevalet.detruite is True
+        # Retour à l'accueil via le même drapeau que « Retour au menu ».
+        assert api._retour_menu is True
+
+    def test_annuler_tirage_sans_fenetre(self):
+        api = ApiJeu(_partie_simple(), id_partie=42, infos_tirage=dict(self._INFOS))
+        res = api.annuler_tirage()
+        assert res["succes"] is False
+        assert "erreur" in res
+        assert api._retour_menu is False
+
+
 class TestFermetureCroisee:
     """Fermeture native (croix ✕) de l'une des deux fenêtres — issue #94.
 

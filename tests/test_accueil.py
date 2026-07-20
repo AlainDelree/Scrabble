@@ -529,12 +529,15 @@ class TestApiAccueilAvatarPrincipal:
         assert avatar_accueil == calculer_avatars(joueurs, "avatar-07")[0]
 
 
-class TestApiAccueilTirageOrdre:
-    """Tests du tirage d'ordre exposé par lancer_partie (issue #54).
+class TestApiAccueilInfosTirage:
+    """Tests des infos de tirage préparées par lancer_partie (issues #54, #170).
 
-    Vérifie que le tirage d'ordre est activé (``creer_partie(tirage_ordre=True)``)
-    et que le détail du tirage renvoyé au JS est cohérent avec l'ordre de jeu
-    réel de la partie créée.
+    Depuis l'issue #170, le tirage d'ordre n'est plus affiché ni renvoyé au JS
+    par l'accueil : il l'est dans la fenêtre Jeu. ``lancer_partie`` ne fait donc
+    que mémoriser, dans ``_infos_tirage``, ce qu'il faut pour le rejouer côté Jeu
+    (``noms_creation`` dans l'ordre de création, ``graine``, ``noms_humains``).
+    On vérifie que ces infos, rejouées par ``jeu.detail_tirage_ordre``, sont
+    cohérentes avec l'ordre de jeu réel de la partie créée.
     """
 
     def _api_prete(self, monkeypatch):
@@ -551,133 +554,55 @@ class TestApiAccueilTirageOrdre:
         )
         return ApiAccueil()
 
-    def test_lancer_partie_expose_tirage_ordre(self, monkeypatch):
-        """lancer_partie() renvoie le détail du tirage d'ordre."""
+    def test_lancer_partie_ne_renvoie_plus_le_tirage(self, monkeypatch):
+        """lancer_partie() n'expose plus le détail du tirage au JS (issue #170)."""
+        api = self._api_prete(monkeypatch)
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Intermédiaire")
+
+        result = api.lancer_partie()
+
+        assert result["succes"] is True
+        assert "tirage_ordre" not in result
+
+    def test_infos_tirage_memorisees(self, monkeypatch):
+        """Les infos de tirage sont mémorisées dans l'ordre de création."""
         api = self._api_prete(monkeypatch)
         api.ajouter_humain("Alice")
         api.ajouter_humain("Bob")
         api.ajouter_ordinateur("Intermédiaire")  # nom tiré automatiquement
 
-        result = api.lancer_partie()
+        api.lancer_partie()
 
-        assert result["succes"] is True
-        tirage = result["tirage_ordre"]
-        # Une lettre par joueur, avec le nom associé et un drapeau humain
-        # (issue #61 : le JS distingue les tours humains des ordinateurs).
-        assert len(tirage["tirages"]) == 3
-        for entree in tirage["tirages"]:
-            assert set(entree.keys()) == {"nom", "lettre", "humain"}
-            assert isinstance(entree["lettre"], str) and len(entree["lettre"]) == 1
-            assert isinstance(entree["humain"], bool)
-        # Les deux humains sont marqués humain=True, l'ordinateur humain=False.
-        humain_par_nom = {t["nom"]: t["humain"] for t in tirage["tirages"]}
-        assert humain_par_nom["Alice"] is True
-        assert humain_par_nom["Bob"] is True
-        assert sum(1 for v in humain_par_nom.values() if v) == 2
-        # L'ordre annoncé contient tous les joueurs, une seule fois chacun.
-        noms_config = {j.nom for j in api.config_partie.joueurs}
-        assert set(tirage["ordre"]) == noms_config
-        assert len(tirage["ordre"]) == 3
+        infos = api._infos_tirage
+        assert infos is not None
+        assert set(infos.keys()) == {"noms_creation", "graine", "noms_humains"}
+        # Ordre de création : humains d'abord, ordinateurs ensuite.
+        assert infos["noms_creation"][:2] == ["Alice", "Bob"]
+        assert infos["noms_humains"] == ["Alice", "Bob"]
+        assert len(infos["noms_creation"]) == 3
+        assert isinstance(infos["graine"], int)
 
-    def test_ordre_annonce_correspond_a_la_partie(self, monkeypatch):
-        """L'ordre du tirage annoncé reflète l'ordre réel de partie.joueurs."""
+    def test_infos_tirage_reconstituent_l_ordre_de_la_partie(self, monkeypatch):
+        """detail_tirage_ordre(_infos_tirage) reproduit l'ordre réel de la partie."""
+        from scrabble.ui.jeu import detail_tirage_ordre
+
         api = self._api_prete(monkeypatch)
         api.ajouter_humain("Alice")
         api.ajouter_humain("Bob")
         api.ajouter_ordinateur("Expert")
 
-        result = api.lancer_partie()
+        api.lancer_partie()
 
+        detail = detail_tirage_ordre(**api._infos_tirage)
         ordre_partie = [j.nom for j in api._partie.joueurs]
-        assert result["tirage_ordre"]["ordre"] == ordre_partie
-
-    def test_lettres_dans_ordre_alphabetique(self, monkeypatch):
-        """Les lettres des joueurs départagés suivent l'ordre alphabétique."""
-        api = self._api_prete(monkeypatch)
-        api.ajouter_humain("Alice")
-        api.ajouter_humain("Bob")
-        api.ajouter_ordinateur("Facile")
-
-        result = api.lancer_partie()
-
-        tirage = result["tirage_ordre"]
-        lettre_par_nom = {t["nom"]: t["lettre"] for t in tirage["tirages"]}
-        lettres_dans_ordre = [lettre_par_nom[nom] for nom in tirage["ordre"]]
-        # L'ordre de jeu suit l'ordre alphabétique des lettres tirées (les
-        # égalités éventuelles sont départagées par retirage, non exposé, mais
-        # la séquence des premières lettres reste croissante ou égale).
-        assert lettres_dans_ordre == sorted(lettres_dans_ordre)
-
-
-class TestApiAccueilAnnulerPartie:
-    """Tests de annuler_partie_creee (issue #67).
-
-    Annuler depuis la modale de tirage doit supprimer la partie fraîchement
-    créée de la persistance et réinitialiser l'état interne, sans fermer
-    l'accueil.
-    """
-
-    def test_annuler_supprime_partie_et_reinitialise(self, monkeypatch):
-        """L'annulation supprime la partie suivie et remet l'état à zéro."""
-        from scrabble.ui.accueil import ApiAccueil
-
-        supprimees = []
-        monkeypatch.setattr(
-            "scrabble.ui.accueil.supprimer_partie",
-            lambda id_partie: supprimees.append(id_partie) or True,
-        )
-
-        api = ApiAccueil()
-        api._partie = object()  # partie factice, non utilisée par l'annulation
-        api._id_partie = 42
-
-        result = api.annuler_partie_creee()
-
-        assert result["succes"] is True
-        assert result["supprimee"] is True
-        assert supprimees == [42]
-        # État remis à zéro : plus de partie ni d'identifiant en mémoire.
-        assert api._partie is None
-        assert api._id_partie is None
-
-    def test_annuler_sans_partie_ne_fait_rien(self, monkeypatch):
-        """Sans partie créée, l'annulation réussit sans appeler la suppression."""
-        from scrabble.ui.accueil import ApiAccueil
-
-        appels = []
-        monkeypatch.setattr(
-            "scrabble.ui.accueil.supprimer_partie",
-            lambda id_partie: appels.append(id_partie) or True,
-        )
-
-        api = ApiAccueil()  # aucun _id_partie
-        result = api.annuler_partie_creee()
-
-        assert result["succes"] is True
-        assert result["supprimee"] is False
-        assert appels == []  # suppression jamais tentée
-
-    def test_annuler_remonte_erreur_de_suppression(self, monkeypatch):
-        """Une erreur de suppression est remontée sans réinitialiser l'état."""
-        from scrabble.ui.accueil import ApiAccueil
-
-        def _echoue(id_partie):
-            raise RuntimeError("base verrouillée")
-
-        monkeypatch.setattr("scrabble.ui.accueil.supprimer_partie", _echoue)
-
-        api = ApiAccueil()
-        partie_factice = object()
-        api._partie = partie_factice
-        api._id_partie = 7
-
-        result = api.annuler_partie_creee()
-
-        assert result["succes"] is False
-        assert "erreur" in result
-        # L'état n'a pas été effacé : la partie reste connue.
-        assert api._partie is partie_factice
-        assert api._id_partie == 7
+        assert detail["ordre"] == ordre_partie
+        # Une lettre par joueur, drapeau humain cohérent avec la config.
+        humain_par_nom = {t["nom"]: t["humain"] for t in detail["tirages"]}
+        assert humain_par_nom["Alice"] is True
+        assert humain_par_nom["Bob"] is True
+        assert humain_par_nom[ordre_partie[-1] if not humain_par_nom.get("Alice") else
+                              next(n for n, h in humain_par_nom.items() if not h)] is False
 
 
 class TestApiAccueilPartieUnique:

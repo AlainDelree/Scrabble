@@ -362,46 +362,11 @@
          ferment désormais directement la fenêtre d'accueil et ouvrent l'écran
          de jeu automatiquement. -->
 
-    <!-- Modale résultat du tirage d'ordre (issue #54) : montrée après création
-         de la partie et avant la fermeture de l'accueil. -->
-    <div id="modale-tirage" class="modale" hidden>
-        <div class="modale-contenu">
-            <h3>Tirage de l'ordre de jeu</h3>
-            <!-- Corps scrollable (issue #82) : si le contenu (image du sac +
-                 consigne, liste des tirages) dépasse la hauteur de la fenêtre,
-                 c'est cette zone qui défile, et non toute la modale — ainsi les
-                 boutons Annuler / Continuer restent toujours visibles en bas. -->
-            <div class="modale-corps">
-                <p class="tirage-intro">
-                    Chaque joueur a tiré une lettre. L'ordre de jeu suit l'ordre
-                    alphabétique des lettres tirées.
-                </p>
-                <ul id="tirage-lettres" class="tirage-lettres"></ul>
-                <!-- Zone de tirage (issue #61, simplifiée #166), remplie par le
-                     JS le temps du tour d'un joueur humain : consigne + image
-                     statique du sac. Le bouton « Tirer une lettre » n'y est PLUS
-                     (issue #116) — il est épinglé hors du corps scrollable. -->
-                <div id="tirage-sac-zone" class="tirage-sac-zone" hidden></div>
-                <p id="tirage-ordre-resultat" class="tirage-ordre-resultat"></p>
-            </div>
-            <!-- Bouton « Tirer une lettre » épinglé (issue #116) : hors du corps
-                 scrollable, dans la même zone fixe que Annuler / Continuer, il
-                 reste TOUJOURS visible par construction — plus aucun calibrage de
-                 taille de fenêtre/aire pour qu'il tienne. Rempli par le JS pendant
-                 le tour d'un joueur humain, masqué le reste du temps. -->
-            <div id="tirage-sac-action" class="tirage-sac-action" hidden></div>
-            <div class="modale-actions">
-                <button type="button" class="btn btn-secondaire" id="btn-annuler-tirage">
-                    Annuler
-                </button>
-                <!-- Désactivé jusqu'à la fin complète du tirage (issue #67) :
-                     réactivé par le JS une fois l'ordre de jeu affiché. -->
-                <button type="button" class="btn btn-primaire" id="btn-continuer-tirage" disabled>
-                    Continuer
-                </button>
-            </div>
-        </div>
-    </div>
+    <!-- La modale de tirage de l'ordre de jeu a migré vers la fenêtre Jeu
+         (issue #170) : elle s'y affiche « à la place » du plateau, des fiches
+         joueurs et de la barre globale, tant que l'ordre n'est pas déterminé.
+         L'accueil se ferme désormais directement au clic sur « Lancer la
+         partie », sans transition entre deux fenêtres. -->
 
     <script src="accueil.js"></script>
 </body>
