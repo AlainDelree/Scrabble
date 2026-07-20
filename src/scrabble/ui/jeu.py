@@ -1417,6 +1417,28 @@ class ApiJeu:
                 _lier_chevalet_au_plateau(self._window_plateau, chevalet)
         return {"succes": True}
 
+    def masquer_chevalet(self) -> None:
+        """Masque la fenêtre chevalet compagnon sans la détruire (issue #181).
+
+        Dans la coquille unifiée (issue #180), le chevalet est une fenêtre
+        physique **persistante** créée une seule fois au lancement : lors d'une
+        transition Jeu→Accueil (« Retour au menu », « Annuler le tirage ») ou du
+        redémarrage d'une partie (« Recommencer », nouveau tirage à mener), on le
+        remet simplement **masqué** (``hide()``) au lieu de le ``destroy()`` comme
+        le fait le chemin de production. :meth:`finaliser_entree_vue_jeu` /
+        :meth:`terminer_tirage` le ré-révéleront (``show()``) à la bonne étape.
+
+        Tolère l'absence de fenêtre chevalet (tests, lancement autonome) et une
+        erreur de backend (une révélation/masquage raté ne doit rien bloquer).
+        """
+        chevalet = self._window_chevalet
+        if chevalet is None:
+            return
+        try:
+            chevalet.hide()
+        except Exception as e:  # noqa: BLE001 - un masquage raté ne bloque rien
+            journal.erreur("Jeu : masquage de la fenêtre chevalet impossible.", e)
+
     def finaliser_entree_vue_jeu(self) -> None:
         """Rejoue la finalisation des fenêtres à chaque entrée en vue Jeu (issue #180).
 
@@ -1477,6 +1499,37 @@ class ApiJeu:
         if self._partie is not None:
             self._diffuser()
 
+    def supprimer_partie_annulee(self) -> None:
+        """Supprime de la persistance la partie créée puis annulée au tirage (issue #170).
+
+        Cœur « persistance » de l'annulation du tirage, isolé pour être partagé
+        entre le chemin de production (:meth:`annuler_tirage`, qui enchaîne ensuite
+        un ``destroy()`` des fenêtres) et la coquille unifiée
+        (:meth:`~scrabble.ui.application.ApiRouteur.annuler_tirage_accueil`, qui
+        enchaîne un retour à l'accueil par ``load_url``). À ce stade la partie a
+        été créée et suivie en base mais **aucun coup n'a été joué** : on la
+        supprime pour qu'elle n'apparaisse pas comme partie fantôme dans
+        « Reprendre une partie ».
+
+        Sans identifiant de persistance (``_id_partie`` à ``None``, mode
+        démonstration) il n'y a rien à supprimer. Une erreur de suppression est
+        seulement tracée : elle ne doit pas empêcher le retour à l'accueil.
+        """
+        if self._id_partie is None:
+            return
+        try:
+            supprimee = supprimer_partie(self._id_partie, self._chemin_persistance)
+            journal.info(
+                f"Jeu : tirage annulé — partie #{self._id_partie} supprimée "
+                f"(supprimee={supprimee})."
+            )
+        except Exception as e:  # noqa: BLE001 - on trace, sans planter la fermeture
+            journal.erreur(
+                f"Jeu : suppression de la partie #{self._id_partie} annulée "
+                "impossible.",
+                e,
+            )
+
     def annuler_tirage(self) -> dict[str, Any]:
         """Annule le tirage : supprime la partie créée et revient à l'accueil.
 
@@ -1497,21 +1550,7 @@ class ApiJeu:
         """
         if self._window_plateau is None and self._window_chevalet is None:
             return {"succes": False, "erreur": "Aucune fenêtre associée."}
-        if self._id_partie is not None:
-            try:
-                supprimee = supprimer_partie(
-                    self._id_partie, self._chemin_persistance
-                )
-                journal.info(
-                    f"Jeu : tirage annulé — partie #{self._id_partie} supprimée "
-                    f"(supprimee={supprimee})."
-                )
-            except Exception as e:  # noqa: BLE001 - on trace, sans planter la fermeture
-                journal.erreur(
-                    f"Jeu : suppression de la partie #{self._id_partie} annulée "
-                    "impossible.",
-                    e,
-                )
+        self.supprimer_partie_annulee()
         try:
             # Retour à l'accueil via le même chemin que « Retour au menu ».
             self._retour_menu = True
@@ -2597,15 +2636,45 @@ class ApiJeu:
             tirage_ordre=True,
         )
 
+    def preparer_partie_recommencee(
+        self,
+    ) -> tuple[Partie, int | None, dict[str, Any] | None]:
+        """Crée et suit en base la nouvelle partie de « Recommencer » (issue #181).
+
+        Cœur « moteur + persistance » de l'action « Recommencer », isolé pour être
+        partagé entre le chemin de production (:meth:`recommencer`, qui enchaîne
+        ensuite un ``destroy()`` des fenêtres et positionne les drapeaux inter-
+        boucles) et la coquille unifiée
+        (:meth:`~scrabble.ui.application.ApiRouteur.recommencer_jeu`, qui enchaîne
+        un ``load_url('jeu.html')``). Fabrique la nouvelle partie
+        (:meth:`creer_partie_recommencee`, mêmes joueurs, nouveau tirage) et, hors
+        mode démonstration (``_id_partie`` non ``None``), la déclare en base
+        (:func:`~scrabble.persistance.demarrer_suivi`) sans toucher à l'ancienne.
+
+        Retourne ``(nouvelle_partie, nouvel_id, infos_tirage)`` — ``infos_tirage``
+        étant le détail préparé par :meth:`creer_partie_recommencee`
+        (``_nouvelles_infos_tirage``) pour rejouer l'écran de tirage d'ordre. Ne
+        positionne **aucun** drapeau inter-boucles (``_recommencer`` &co.) : ceux-ci
+        n'existent que pour le pont entre boucles séparées du chemin de production.
+        """
+        nouvelle = self.creer_partie_recommencee()
+        nouvel_id: int | None = None
+        if self._id_partie is not None:
+            nouvel_id = demarrer_suivi(nouvelle, self._chemin_persistance)
+        journal.info(
+            f"Jeu : recommencer une partie avec les mêmes joueurs "
+            f"(ancienne #{self._id_partie} → nouvelle #{nouvel_id})."
+        )
+        return nouvelle, nouvel_id, self._nouvelles_infos_tirage
+
     def recommencer(self) -> dict[str, Any]:
         """Rejoue une nouvelle partie avec les mêmes joueurs (issue #142).
 
         Troisième action de la modale de fin de partie. Crée une partie neuve
-        (:meth:`creer_partie_recommencee`), la déclare en base
-        (:func:`~scrabble.persistance.demarrer_suivi`) puis ferme **les deux**
-        fenêtres de jeu à la manière de :meth:`retour_menu`. Une fois la boucle
-        rendue, :func:`lancer_jeu` relance l'écran de jeu sur cette nouvelle
-        partie (drapeau ``_recommencer``).
+        (:meth:`preparer_partie_recommencee`) puis ferme **les deux** fenêtres de
+        jeu à la manière de :meth:`retour_menu`. Une fois la boucle rendue,
+        :func:`lancer_jeu` relance l'écran de jeu sur cette nouvelle partie
+        (drapeau ``_recommencer``).
 
         En mode démonstration (``_id_partie`` à ``None``), aucune persistance
         n'est déclenchée : la nouvelle partie n'est simplement pas suivie.
@@ -2616,14 +2685,7 @@ class ApiJeu:
         if self._window_plateau is None and self._window_chevalet is None:
             return {"succes": False, "erreur": "Aucune fenêtre associée."}
         try:
-            nouvelle = self.creer_partie_recommencee()
-            nouvel_id: int | None = None
-            if self._id_partie is not None:
-                nouvel_id = demarrer_suivi(nouvelle, self._chemin_persistance)
-            journal.info(
-                f"Jeu : recommencer une partie avec les mêmes joueurs "
-                f"(ancienne #{self._id_partie} → nouvelle #{nouvel_id})."
-            )
+            nouvelle, nouvel_id, _ = self.preparer_partie_recommencee()
             self._nouvelle_partie = nouvelle
             self._nouvel_id_partie = nouvel_id
             self._recommencer = True

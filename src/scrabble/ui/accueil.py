@@ -294,6 +294,47 @@ class ApiAccueil:
         )
         return True
 
+    def reinitialiser_pour_retour_accueil(self) -> None:
+        """Remet l'accueil dans son état d'ouverture après un retour Jeu→Accueil (issue #181).
+
+        Dans le chemin de **production**, l'écran d'accueil est *recréé* à chaque
+        retour au menu : une ``ApiAccueil`` neuve repart d'une configuration
+        vierge, re-seede le joueur humain et la liste « parties en cours » est
+        relue à l'ouverture. Dans la **coquille unifiée** (issue #179), la même
+        instance d':class:`ApiAccueil` est réutilisée d'une visite à l'autre (la
+        fenêtre navigue par ``load_url`` plutôt que d'être recréée) : sans remise
+        à zéro explicite, la configuration de la partie précédente (joueurs
+        ajoutés, humain déjà présent, ``_partie``/``_id_partie`` résiduels)
+        subsisterait à la réouverture de ``accueil.html``.
+
+        On restaure donc à la main l'état d'un accueil fraîchement construit :
+
+        * ``config_partie`` remis à une :class:`ConfigPartie` vierge ;
+        * ``_partie``/``_id_partie``/``_infos_tirage`` remis à ``None`` (aucune
+          partie préparée ne doit fuiter dans un futur ``demarrer_jeu``) ;
+        * joueur humain de référence re-seedé (:meth:`initialiser_joueur_humain`,
+          exactement comme au lancement de la coquille).
+
+        La liste « parties en cours » n'est pas mise en cache côté Python
+        (:meth:`lister_parties_en_cours` relit la persistance à chaque appel) :
+        le ``load_url('accueil.html')`` qui suit ce retour déclenche, via le
+        ``pywebviewready`` du JS, un nouvel appel — la liste est donc toujours à
+        jour sans état à purger ici.
+
+        Ne touche ni à la fenêtre (``_window``, partagée et persistante) ni à la
+        session de journalisation (une seule couvre toute la coquille unifiée,
+        issue #179) : cette méthode ne fait que réinitialiser l'état métier.
+        """
+        self.config_partie = ConfigPartie()
+        self._partie = None
+        self._id_partie = None
+        self._infos_tirage = None
+        self.initialiser_joueur_humain()
+        journal.info(
+            "Accueil : état réinitialisé pour un retour à l'accueil "
+            "(coquille unifiée)."
+        )
+
     def sauvegarder_prenom_principal(self, prenom: str) -> bool:
         """Sauvegarde le prénom comme prénom principal."""
         try:

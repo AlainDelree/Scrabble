@@ -2593,6 +2593,113 @@ class TestApiJeuTirageOrdre:
         assert api._retour_menu is False
 
 
+class TestApiJeuHelpersCoquilleUnifiee:
+    """Méthodes ApiJeu extraites/ajoutées pour la coquille unifiée (issue #181).
+
+    ``masquer_chevalet``, ``preparer_partie_recommencee`` et
+    ``supprimer_partie_annulee`` sont réutilisées par le routeur unifié
+    (``ApiRouteur``) sans détruire de fenêtre ni positionner de drapeau inter-
+    boucles. Elles sont aussi le cœur partagé du chemin de production.
+    """
+
+    _INFOS = {
+        "noms_creation": ["Alice", "Robot"],
+        "graine": 1,
+        "noms_humains": ["Alice"],
+    }
+
+    def _partie_mixte(self, graine: int = 3) -> Partie:
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Ordi", humain=False, niveau=Niveau.EXPERT),
+        ]
+        return Partie(joueurs, _DicoFactice(), graine=graine)
+
+    def test_masquer_chevalet_appelle_hide(self):
+        class _Fen:
+            def __init__(self) -> None:
+                self.masquee = False
+
+            def hide(self) -> None:
+                self.masquee = True
+
+        api = ApiJeu(_partie_simple(), id_partie=1)
+        plateau, chevalet = _Fen(), _Fen()
+        api.set_windows(plateau, chevalet)
+
+        api.masquer_chevalet()
+
+        assert chevalet.masquee is True
+        # La fenêtre plateau n'est jamais masquée par cette méthode.
+        assert plateau.masquee is False
+
+    def test_masquer_chevalet_tolere_absence_de_chevalet(self):
+        # Aucune fenêtre chevalet associée (set_window seule) : ne doit pas planter.
+        api = ApiJeu(_partie_simple(), id_partie=1)
+        api.set_window(object())
+        api.masquer_chevalet()  # ne lève pas
+
+    def test_preparer_partie_recommencee_persiste_sans_toucher_les_drapeaux(
+        self, tmp_path
+    ):
+        chemin = tmp_path / "parties.db"
+        origine = self._partie_mixte()
+        id_origine = demarrer_suivi(origine, chemin)
+        api = ApiJeu(origine, id_partie=id_origine, chemin_persistance=chemin)
+
+        nouvelle, nouvel_id, infos = api.preparer_partie_recommencee()
+
+        # Nouvelle partie distincte, mêmes joueurs, suivie sous un nouvel id.
+        assert nouvelle is not origine
+        cle = lambda p: {(j.nom, j.humain, j.niveau) for j in p.joueurs}
+        assert cle(nouvelle) == cle(origine)
+        assert nouvel_id is not None and nouvel_id != id_origine
+        ids = {p.id for p in lister_parties(chemin)}
+        assert ids == {id_origine, nouvel_id}
+        # Infos de tirage d'ordre transmises pour rejouer l'écran de tirage.
+        assert set(infos.keys()) == {"noms_creation", "graine", "noms_humains"}
+        # Aucun drapeau inter-boucles positionné (chemin unifié : pas de pont).
+        assert api._recommencer is False
+        assert api._nouvelle_partie is None
+        assert api._nouvel_id_partie is None
+
+    def test_preparer_partie_recommencee_mode_demo_ne_persiste_pas(self):
+        api = ApiJeu(self._partie_mixte(), id_partie=None)
+        nouvelle, nouvel_id, infos = api.preparer_partie_recommencee()
+        assert nouvelle is not None
+        assert nouvel_id is None
+        assert infos is not None
+
+    def test_supprimer_partie_annulee_supprime_via_persistance(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        supprimees: list = []
+        monkeypatch.setattr(
+            mod, "supprimer_partie",
+            lambda id_p, chemin: supprimees.append(id_p) or True,
+        )
+        api = ApiJeu(_partie_simple(), id_partie=42, infos_tirage=dict(self._INFOS))
+
+        api.supprimer_partie_annulee()
+
+        assert supprimees == [42]
+
+    def test_supprimer_partie_annulee_mode_demo_ne_supprime_rien(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        supprimees: list = []
+        monkeypatch.setattr(
+            mod, "supprimer_partie",
+            lambda id_p, chemin: supprimees.append(id_p) or True,
+        )
+        # id_partie None (démonstration) : rien à supprimer.
+        api = ApiJeu(_partie_simple(), id_partie=None, infos_tirage=dict(self._INFOS))
+
+        api.supprimer_partie_annulee()
+
+        assert supprimees == []
+
+
 class TestFermetureCroisee:
     """Fermeture native (croix ✕) de l'une des deux fenêtres — issue #94.
 

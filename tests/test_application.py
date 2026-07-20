@@ -17,6 +17,7 @@ import inspect
 
 import pytest
 
+from scrabble.moteur.ia import Niveau
 from scrabble.ui.accueil import ApiAccueil
 from scrabble.ui.application import (
     VUE_ACCUEIL,
@@ -201,13 +202,21 @@ class TestChargerJeu:
 
 
 class _FenetreFactice:
-    """Fenêtre pywebview minimale traçant ``load_url`` (transition issue #180)."""
+    """Fenêtre pywebview minimale traçant ``load_url``/``hide``/``show`` (issues #180/#181)."""
 
     def __init__(self) -> None:
         self.urls: list[str] = []
+        self.masquee = False
+        self.montree = False
 
     def load_url(self, url: str) -> None:
         self.urls.append(url)
+
+    def hide(self) -> None:
+        self.masquee = True
+
+    def show(self) -> None:
+        self.montree = True
 
 
 class TestDemarrerJeu:
@@ -296,6 +305,144 @@ class TestDemarrerJeu:
         assert inspect.ismethod(routeur.demarrer_jeu)
         assert routeur.demarrer_jeu.__func__ is ApiRouteur.demarrer_jeu
         assert "demarrer_jeu" in ApiRouteur._CONTROLE
+
+
+class TestTransitionsJeuAccueil:
+    """Transitions Jeu→Accueil dans la fenêtre unique (issue #181).
+
+    « Retour au menu », « Recommencer » et « Annuler le tirage » naviguent par
+    ``load_url`` dans la MÊME fenêtre (aucune destruction/recréation), masquent le
+    chevalet persistant, réinitialisent l'état Accueil au retour et n'ouvrent/ne
+    ferment aucune session de journalisation supplémentaire.
+    """
+
+    def _routeur_en_jeu(self, monkeypatch, id_partie=None):
+        """Routeur en vue Jeu, partie chargée, chevalet monté, finalisation neutralisée."""
+        routeur = ApiRouteur()
+        fenetre = _FenetreFactice()
+        routeur.set_window(fenetre)
+        chevalet = _FenetreFactice()
+        # Chevalet compagnon persistant (créé une fois au démarrage, issue #180).
+        routeur._api_jeu._window_chevalet = chevalet
+        partie, _id = _partie_deux_joueurs()
+        routeur.charger_jeu(partie, id_partie)
+        routeur.activer_vue(VUE_JEU)
+        appels: list[str] = []
+        monkeypatch.setattr(
+            routeur._api_jeu,
+            "finaliser_entree_vue_jeu",
+            lambda: appels.append("finaliser"),
+        )
+        return routeur, fenetre, chevalet, partie, appels
+
+    def test_retourner_accueil_masque_reinitialise_et_navigue(self, monkeypatch):
+        routeur, fenetre, chevalet, _partie, _appels = self._routeur_en_jeu(
+            monkeypatch
+        )
+        # Prénom principal configuré : le retour doit re-seeder l'humain.
+        monkeypatch.setattr(
+            routeur._api_accueil, "obtenir_prenom_principal", lambda: "Alice"
+        )
+        # Résidu de configuration/partie sur l'accueil persistant.
+        routeur._api_accueil.config_partie.ajouter_ordinateur("Robot", Niveau.FACILE)
+        routeur._api_accueil._partie = object()
+        routeur._api_accueil._id_partie = 5
+
+        resultat = routeur.retourner_accueil()
+
+        assert resultat["succes"] is True
+        # 1. chevalet compagnon masqué (jamais détruit).
+        assert chevalet.masquee is True
+        # 2. accueil réinitialisé : config vierge, humain re-seedé, partie purgée.
+        assert routeur._api_accueil.config_partie.nb_ordinateurs == 0
+        assert routeur._api_accueil.config_partie.nb_humains == 1
+        assert routeur._api_accueil.config_partie.joueurs[0].nom == "Alice"
+        assert routeur._api_accueil._partie is None
+        assert routeur._api_accueil._id_partie is None
+        # 3. vue Accueil active AVANT la navigation (course #178).
+        assert routeur._vue_active == VUE_ACCUEIL
+        # 4. navigation load_url vers accueil.html dans la MÊME fenêtre.
+        assert len(fenetre.urls) == 1
+        assert fenetre.urls[0].endswith("accueil.html")
+
+    def test_recommencer_jeu_recharge_et_remasque_le_chevalet(self, monkeypatch):
+        routeur, fenetre, chevalet, partie, appels = self._routeur_en_jeu(
+            monkeypatch
+        )
+
+        resultat = routeur.recommencer_jeu()
+
+        assert resultat["succes"] is True
+        # Nouvelle partie chargée (distincte), tirage d'ordre à mener.
+        assert routeur._api_jeu._partie is not partie
+        assert routeur._api_jeu._infos_tirage is not None
+        assert routeur._api_jeu._tirage_termine is False
+        # Reste en vue Jeu et recharge jeu.html (DOM neuf).
+        assert routeur._vue_active == VUE_JEU
+        assert fenetre.urls[-1].endswith("jeu.html")
+        # Chevalet remis masqué (nouveau tirage) + finalisation rejouée.
+        assert chevalet.masquee is True
+        assert appels == ["finaliser"]
+        # Aucun drapeau inter-boucles positionné dans le chemin unifié.
+        assert routeur._api_jeu._recommencer is False
+
+    def test_annuler_tirage_accueil_supprime_puis_retourne(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        supprimees: list = []
+        monkeypatch.setattr(
+            mod, "supprimer_partie",
+            lambda id_p, chemin: supprimees.append(id_p) or True,
+        )
+        routeur, fenetre, chevalet, _partie, _appels = self._routeur_en_jeu(
+            monkeypatch, id_partie=99
+        )
+
+        resultat = routeur.annuler_tirage_accueil()
+
+        assert resultat["succes"] is True
+        # Partie créée puis annulée : supprimée de la persistance.
+        assert supprimees == [99]
+        # Puis même chemin que « Retour au menu » : chevalet masqué + nav accueil.
+        assert chevalet.masquee is True
+        assert routeur._vue_active == VUE_ACCUEIL
+        assert fenetre.urls[-1].endswith("accueil.html")
+
+    def test_transitions_nouvrent_ni_ne_ferment_de_session(self, monkeypatch):
+        """Les trois transitions ne touchent JAMAIS à la session (issue #179)."""
+        from scrabble import journal
+
+        demarrees: list = []
+        cloturees: list = []
+        monkeypatch.setattr(
+            journal, "demarrer_session", lambda *a, **k: demarrees.append(1)
+        )
+        monkeypatch.setattr(
+            journal, "cloturer_session", lambda *a, **k: cloturees.append(1)
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.jeu.supprimer_partie", lambda id_p, chemin: True
+        )
+
+        routeur, _fenetre, _chevalet, partie, _appels = self._routeur_en_jeu(
+            monkeypatch
+        )
+        routeur.retourner_accueil()
+        routeur.charger_jeu(partie, None)
+        routeur.activer_vue(VUE_JEU)
+        routeur.recommencer_jeu()
+        routeur.annuler_tirage_accueil()
+
+        assert demarrees == []
+        assert cloturees == []
+
+    def test_nouvelles_methodes_sont_de_controle(self):
+        """Les trois transitions sont des méthodes de contrôle (jamais routées)."""
+        routeur = ApiRouteur()
+        for nom in ("retourner_accueil", "recommencer_jeu", "annuler_tirage_accueil"):
+            assert nom in ApiRouteur._CONTROLE
+            assert inspect.ismethod(getattr(routeur, nom))
+            assert getattr(routeur, nom).__func__ is getattr(ApiRouteur, nom)
 
 
 class _DicoFactice:

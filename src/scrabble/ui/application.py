@@ -82,7 +82,15 @@ class ApiRouteur:
     # ``hasattr(type(self), nom)`` de :meth:`_installer_routes` suffirait, mais
     # cet ensemble explicite documente l'intention.)
     _CONTROLE = frozenset(
-        {"set_window", "activer_vue", "charger_jeu", "demarrer_jeu"}
+        {
+            "set_window",
+            "activer_vue",
+            "charger_jeu",
+            "demarrer_jeu",
+            "retourner_accueil",
+            "recommencer_jeu",
+            "annuler_tirage_accueil",
+        }
     )
 
     def __init__(
@@ -269,6 +277,115 @@ class ApiRouteur:
         #    vue Jeu — la coquille unifiée n'a qu'une seule boucle webview.start.
         self._api_jeu.finaliser_entree_vue_jeu()
         return {"succes": True}
+
+    def retourner_accueil(self) -> dict[str, Any]:
+        """Transition Jeu→Accueil dans la fenêtre unique via ``load_url`` (issue #181).
+
+        Méthode de contrôle appelée depuis ``jeu.js`` (« 🏠 Retour au menu »)
+        **uniquement dans la coquille unifiée** : le JS ne l'appelle que s'il la
+        détecte (``typeof api.retourner_accueil === 'function'``), sinon il conserve
+        le comportement de production (``api.retour_menu()`` → ``destroy()`` des
+        fenêtres + réouverture d'une nouvelle boucle Accueil). Voir la note de
+        détection dans ``jeu.js``.
+
+        Contrairement au chemin de production, on ne détruit **rien** : la fenêtre
+        physique unique navigue de ``jeu.html`` vers ``accueil.html`` et le chevalet
+        compagnon (persistant depuis #180) est simplement masqué. Aucune session de
+        journalisation n'est ouverte ou fermée ici : la coquille unifiée n'en a
+        qu'une, ouverte/fermée par :func:`lancer_application_unifiee` autour de
+        l'unique ``webview.start()`` (issue #179).
+
+        Séquence, dans l'ordre exigé par le rapport #178 (course de routage) :
+
+        1. :meth:`ApiJeu.masquer_chevalet` — le chevalet compagnon repasse masqué ;
+        2. :meth:`ApiAccueil.reinitialiser_pour_retour_accueil` — l'``ApiAccueil``
+           persistante est remise dans son état d'ouverture (config vierge, humain
+           re-seedé, ``_partie``/``_id_partie`` purgés ; la liste « parties en
+           cours » sera relue par le JS au chargement) ;
+        3. :meth:`activer_vue` ``(VUE_ACCUEIL)`` — **avant** la navigation, pour que
+           le premier ``obtenir_etat()`` de l'``accueil.js`` fraîchement chargé
+           tombe déjà sur la sous-API Accueil ;
+        4. ``window.load_url('accueil.html')`` — même fenêtre physique.
+        """
+        self._api_jeu.masquer_chevalet()
+        self._api_accueil.reinitialiser_pour_retour_accueil()
+        self.activer_vue(VUE_ACCUEIL)
+        if self._window is not None:
+            self._window.load_url(str(DOSSIER_WEB / "accueil.html"))
+            journal.info(
+                "Routeur : navigation Jeu→Accueil (load_url accueil.html)."
+            )
+        return {"succes": True}
+
+    def recommencer_jeu(self) -> dict[str, Any]:
+        """Recommence une partie (mêmes joueurs) dans la fenêtre unique (issue #181).
+
+        Méthode de contrôle appelée depuis ``jeu.js`` (« Recommencer » de la modale
+        de fin de partie) **uniquement dans la coquille unifiée** : le JS ne
+        l'appelle que s'il la détecte (``typeof api.recommencer_jeu === 'function'``),
+        sinon il conserve le comportement de production (``api.recommencer()`` →
+        ``destroy()`` + récursion ``lancer_jeu``). Voir la note de détection dans
+        ``jeu.js``.
+
+        On reste dans la vue logique Jeu (pas de bascule), mais on **recharge le
+        DOM** (``load_url('jeu.html')``) pour repartir d'un état JS neuf, exactement
+        comme une entrée en jeu depuis l'accueil. Aucune session de journalisation
+        n'est ouverte/fermée (une seule couvre toute la coquille, issue #179) ;
+        aucun drapeau inter-boucles (``_recommencer`` &co.) n'est positionné — ce
+        chemin ne pontant pas deux boucles séparées.
+
+        Séquence :
+
+        1. :meth:`ApiJeu.preparer_partie_recommencee` — crée la nouvelle partie et
+           la suit en base (l'ancienne reste intacte), en récupérant ses infos de
+           tirage d'ordre ;
+        2. :meth:`charger_jeu` — installe la nouvelle partie dans la sous-API Jeu
+           (remise à zéro complète comprise, nouveau tirage à mener) ;
+        3. :meth:`activer_vue` ``(VUE_JEU)`` — déjà active, réaffirmée par symétrie
+           avec :meth:`demarrer_jeu` ;
+        4. ``window.load_url('jeu.html')`` — recharge le document dans la MÊME
+           fenêtre ;
+        5. :meth:`ApiJeu.masquer_chevalet` — chevalet remis masqué le temps du
+           nouveau tirage (:meth:`ApiJeu.terminer_tirage` le révélera au
+           « Continuer ») ;
+        6. :meth:`ApiJeu.finaliser_entree_vue_jeu` — maximise le plateau et amorce
+           le chevalet (masqué), en tâche de fond.
+        """
+        nouvelle, nouvel_id, infos_tirage = (
+            self._api_jeu.preparer_partie_recommencee()
+        )
+        self.charger_jeu(nouvelle, nouvel_id, infos_tirage)
+        self.activer_vue(VUE_JEU)
+        if self._window is not None:
+            self._window.load_url(str(DOSSIER_WEB / "jeu.html"))
+            journal.info(
+                f"Routeur : recommencer (load_url jeu.html, nouvelle "
+                f"#{nouvel_id})."
+            )
+        # Nouveau tirage à mener : le chevalet compagnon repart masqué.
+        self._api_jeu.masquer_chevalet()
+        self._api_jeu.finaliser_entree_vue_jeu()
+        return {"succes": True}
+
+    def annuler_tirage_accueil(self) -> dict[str, Any]:
+        """Annule le tirage et revient à l'accueil, fenêtre unique (issue #181).
+
+        Méthode de contrôle appelée depuis ``jeu.js`` (bouton « Annuler » de
+        l'écran de tirage d'ordre) **uniquement dans la coquille unifiée** : le JS
+        ne l'appelle que s'il la détecte (``typeof api.annuler_tirage_accueil ===
+        'function'``), sinon il conserve le comportement de production
+        (``api.annuler_tirage()`` → ``supprimer_partie`` + ``destroy()``). Voir la
+        note de détection dans ``jeu.js``.
+
+        À ce stade la partie a été créée et suivie en base mais **aucun coup n'a
+        été joué** : on la supprime (:meth:`ApiJeu.supprimer_partie_annulee`) pour
+        qu'elle n'apparaisse pas comme partie fantôme dans « Reprendre une partie »,
+        puis on emprunte exactement le même chemin de retour que « Retour au menu »
+        (:meth:`retourner_accueil`) — chevalet masqué, accueil réinitialisé,
+        navigation ``load_url``.
+        """
+        self._api_jeu.supprimer_partie_annulee()
+        return self.retourner_accueil()
 
 
 def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
