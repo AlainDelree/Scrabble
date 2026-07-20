@@ -1,11 +1,15 @@
 # Environnements virtuels
 venv/
 .venv/
+.venv_build/
 
 # Sorties de build / packaging (PyInstaller)
 build/
 dist/
 *.spec
+# Exception : le .spec de l'exécutable Windows (issue #154) est committé
+# volontairement, contrairement aux artefacts *.spec habituels (temporaires).
+!scrabble.spec
 
 # Caches Python
 __pycache__/

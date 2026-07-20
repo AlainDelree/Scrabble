@@ -13,12 +13,21 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
 # Racine du projet : ce fichier est src/scrabble/config.py, donc parents[2].
-RACINE_PROJET = Path(__file__).resolve().parents[2]
+# Empaqueté par PyInstaller (issue #154), le module est importé directement
+# sous le nom de package "scrabble" (le dossier "src" n'existe plus dans le
+# bundle) : parents[2] pointerait alors hors du dossier de l'exécutable.
+# ``sys._MEIPASS`` (mode --onedir : le dossier de l'exe lui-même, persistant
+# d'un lancement à l'autre) est donc utilisé à la place quand l'app est gelée.
+if getattr(sys, "frozen", False):
+    RACINE_PROJET = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+else:
+    RACINE_PROJET = Path(__file__).resolve().parents[2]
 CHEMIN_CONFIG = RACINE_PROJET / "config.json"
 
 # Valeurs par défaut sûres, utilisées quand le fichier est absent/corrompu.
