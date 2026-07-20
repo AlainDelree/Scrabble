@@ -1,7 +1,10 @@
-"""Tests de l'API Python de la fenêtre de réglages (``scrabble.ui.reglages``).
+"""Tests de l'API Réglages, désormais portée par l'accueil (``scrabble.ui.accueil``).
 
-On teste l'adaptateur ``ApiReglages`` (js_api) **sans lancer pywebview** : les
-méthodes sont appelées directement, et les fonctions de domaine sous-jacentes
+Depuis l'issue #169, les réglages ne sont plus une fenêtre pywebview autonome
+(``ui/reglages.py`` supprimé) mais un panneau intégré à la fenêtre d'accueil :
+les méthodes de l'ex-``ApiReglages`` ont été migrées telles quelles dans
+``ApiAccueil``. On les teste ici **sans lancer pywebview** : les méthodes sont
+appelées directement, et les fonctions de domaine sous-jacentes
 (``modifier_reglage`` de ``config``/``reglages``, ``rechercher_statut`` /
 ``modifier_appartenance`` du dictionnaire) sont remplacées par des doublures pour
 ne toucher ni ``config.json`` ni les vrais fichiers du dictionnaire (le dépliage
@@ -10,8 +13,8 @@ Hunspell réel serait de toute façon trop coûteux ici).
 
 from __future__ import annotations
 
-import scrabble.ui.reglages as r
-from scrabble.ui.reglages import ApiReglages
+import scrabble.ui.accueil as r
+from scrabble.ui.accueil import ApiAccueil
 
 
 # --------------------------------------------------------------------------- #
@@ -20,7 +23,7 @@ from scrabble.ui.reglages import ApiReglages
 
 def test_obtenir_reglages_generaux_structure():
     """Renvoie les valeurs courantes + les options des menus (thèmes/sources)."""
-    api = ApiReglages()
+    api = ApiAccueil()
     data = api.obtenir_reglages_generaux()
 
     assert set(data) >= {
@@ -40,7 +43,7 @@ def test_obtenir_reglages_generaux_expose_avatars():
     """La grille d'avatars (issue #143) est livrée avec l'avatar courant."""
     from scrabble.config import AVATARS_DISPONIBLES
 
-    data = ApiReglages().obtenir_reglages_generaux()
+    data = ApiAccueil().obtenir_reglages_generaux()
 
     assert "avatar_principal" in data
     # Chaque vignette est un couple {valeur, image} exploitable tel quel par le JS.
@@ -61,7 +64,7 @@ def test_enregistrer_avatar_principal_delegue(monkeypatch):
 
     monkeypatch.setattr(r, "modifier_reglage", faux_modifier)
 
-    res = ApiReglages().enregistrer_reglage("avatar_principal", "avatar-07")
+    res = ApiAccueil().enregistrer_reglage("avatar_principal", "avatar-07")
 
     assert res == {"succes": True, "valeur": "avatar-07"}
     assert appels == {"avatar_principal": "avatar-07"}
@@ -77,7 +80,7 @@ def test_enregistrer_reglage_delegue_a_modifier_reglage(monkeypatch):
 
     monkeypatch.setattr(r, "modifier_reglage", faux_modifier)
 
-    res = ApiReglages().enregistrer_reglage("theme_plateau", "vert")
+    res = ApiAccueil().enregistrer_reglage("theme_plateau", "vert")
 
     assert res == {"succes": True, "valeur": "vert"}
     assert appels == {"theme_plateau": "vert"}
@@ -93,7 +96,7 @@ def test_enregistrer_reglage_booleen_transmis_tel_quel(monkeypatch):
 
     monkeypatch.setattr(r, "modifier_reglage", faux_modifier)
 
-    res = ApiReglages().enregistrer_reglage("bonus_fin_partie", True)
+    res = ApiAccueil().enregistrer_reglage("bonus_fin_partie", True)
 
     assert res == {"succes": True, "valeur": True}
     assert appels == {"bonus_fin_partie": True}
@@ -103,7 +106,7 @@ def test_obtenir_reglages_generaux_expose_bonus_fin_partie(monkeypatch):
     """La structure renvoyée expose bonus_fin_partie sous forme de booléen."""
     monkeypatch.setattr(r, "lire_reglage", lambda cle: True if cle == "bonus_fin_partie" else "")
 
-    data = ApiReglages().obtenir_reglages_generaux()
+    data = ApiAccueil().obtenir_reglages_generaux()
 
     assert data["bonus_fin_partie"] is True
 
@@ -115,7 +118,7 @@ def test_obtenir_reglages_generaux_expose_type_echange(monkeypatch):
         lambda cle: "partiel" if cle == "type_echange" else "",
     )
 
-    data = ApiReglages().obtenir_reglages_generaux()
+    data = ApiAccueil().obtenir_reglages_generaux()
 
     assert data["type_echange"] == "partiel"
     valeurs = {o["valeur"] for o in data["types_echange"]}
@@ -133,7 +136,7 @@ def test_enregistrer_type_echange_delegue(monkeypatch):
 
     monkeypatch.setattr(r, "modifier_reglage", faux_modifier)
 
-    res = ApiReglages().enregistrer_reglage("type_echange", "partiel")
+    res = ApiAccueil().enregistrer_reglage("type_echange", "partiel")
 
     assert res == {"succes": True, "valeur": "partiel"}
     assert appels == {"type_echange": "partiel"}
@@ -146,7 +149,7 @@ def test_enregistrer_reglage_source_invalide_refusee(monkeypatch):
 
     monkeypatch.setattr(r, "modifier_reglage", interdit)
 
-    res = ApiReglages().enregistrer_reglage("source_dictionnaire", "klingon")
+    res = ApiAccueil().enregistrer_reglage("source_dictionnaire", "klingon")
 
     assert res["succes"] is False
     assert "klingon" in res["erreur"]
@@ -159,7 +162,7 @@ def test_enregistrer_reglage_cle_inconnue(monkeypatch):
 
     monkeypatch.setattr(r, "modifier_reglage", faux_modifier)
 
-    res = ApiReglages().enregistrer_reglage("cle_bidon", "x")
+    res = ApiAccueil().enregistrer_reglage("cle_bidon", "x")
 
     assert res["succes"] is False
 
@@ -174,7 +177,7 @@ def test_rechercher_mot_ajoute_le_drapeau_succes(monkeypatch):
         r, "rechercher_statut", lambda mot: {"mot": "CHAT", "sources": {}}
     )
 
-    res = ApiReglages().rechercher_mot("chat")
+    res = ApiAccueil().rechercher_mot("chat")
 
     assert res["succes"] is True
     assert res["mot"] == "CHAT"
@@ -187,7 +190,7 @@ def test_rechercher_mot_erreur_encapsulee(monkeypatch):
 
     monkeypatch.setattr(r, "rechercher_statut", boom)
 
-    res = ApiReglages().rechercher_mot("chat")
+    res = ApiAccueil().rechercher_mot("chat")
 
     assert res["succes"] is False
     assert "spylls" in res["erreur"]
@@ -206,7 +209,7 @@ def test_ajouter_mot_applique_et_rafraichit(monkeypatch):
         r, "rechercher_statut", lambda mot: {"mot": mot, "sources": {}}
     )
 
-    res = ApiReglages().ajouter_mot("chat", "ods")
+    res = ApiAccueil().ajouter_mot("chat", "ods")
 
     assert res["succes"] is True
     assert appels["args"] == ("chat", "ods", True)
@@ -225,7 +228,7 @@ def test_retirer_mot_present_false(monkeypatch):
         r, "rechercher_statut", lambda mot: {"mot": mot, "sources": {}}
     )
 
-    res = ApiReglages().retirer_mot("chat", "ods")
+    res = ApiAccueil().retirer_mot("chat", "ods")
 
     assert res["succes"] is True
     assert appels["present"] is False
@@ -238,7 +241,7 @@ def test_modifier_mot_invalide_encapsule_valueerror(monkeypatch):
 
     monkeypatch.setattr(r, "modifier_appartenance", faux_modifier)
 
-    res = ApiReglages().ajouter_mot("ch1en", "ods")
+    res = ApiAccueil().ajouter_mot("ch1en", "ods")
 
     assert res["succes"] is False
     assert "non jouable" in res["erreur"]
@@ -250,7 +253,7 @@ def test_modifier_mot_invalide_encapsule_valueerror(monkeypatch):
 
 def test_fermer_fenetre_sans_fenetre():
     """Sans fenêtre associée, la fermeture renvoie un échec explicite."""
-    res = ApiReglages().fermer_fenetre()
+    res = ApiAccueil().fermer_fenetre()
     assert res["succes"] is False
 
 
@@ -263,7 +266,7 @@ def test_fermer_fenetre_appelle_destroy():
         def destroy(self):
             self.detruite = True
 
-    api = ApiReglages()
+    api = ApiAccueil()
     fenetre = FausseFenetre()
     api.set_window(fenetre)
 

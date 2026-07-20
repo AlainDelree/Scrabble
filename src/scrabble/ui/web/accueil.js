@@ -636,25 +636,391 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Ouvrir la fenêtre de réglages à onglets (issue #111). Elle s'ouvre comme
-    // seconde fenêtre par-dessus l'accueil ; à sa fermeture on revient ici.
-    btnReglages.addEventListener('click', async () => {
-        btnReglages.disabled = true;
-        try {
-            const res = await api.ouvrir_reglages();
-            if (res && !res.succes) {
-                alert(res.erreur || 'Impossible d\'ouvrir les réglages.');
+    // =====================================================================
+    // Panneau Réglages intégré (issue #169).
+    //
+    // Les réglages ne sont plus une fenêtre pywebview séparée : c'est une
+    // seconde VUE de la fenêtre d'accueil (``#vue-reglages``), montrée à la
+    // place de la vue configuration (``#vue-config``) au clic sur ⚙, et masquée
+    // au clic sur « Fermer » (ou Échap). Toute la logique de l'ex-``reglages.js``
+    // est reprise ici et parle à la même ``ApiAccueil`` (méthodes migrées).
+    // =====================================================================
+    const vueConfig = document.getElementById('vue-config');
+    const vueReglages = document.getElementById('vue-reglages');
+    const btnFermerReglages = document.getElementById('btn-fermer-reglages');
+
+    // Libellés des sources, renseignés depuis Python au premier chargement.
+    let labelsSources = { ods: 'ODS 8', hunspell: 'Hunspell' };
+    // Chargement paresseux : on ne peuple l'onglet Général qu'à la première
+    // ouverture du panneau (inutile tant que l'utilisateur reste en config).
+    let reglagesCharges = false;
+
+    // ---- Onglets (bascule pur CSS/JS, aria-selected pour l'a11y) ----
+    const onglets = vueReglages.querySelectorAll('.onglet');
+    const panneaux = vueReglages.querySelectorAll('.panneau');
+
+    function activerOnglet(onglet) {
+        onglets.forEach((o) => {
+            const actif = o === onglet;
+            o.classList.toggle('active', actif);
+            o.setAttribute('aria-selected', actif ? 'true' : 'false');
+        });
+        panneaux.forEach((p) => {
+            p.classList.toggle('active', p.id === onglet.dataset.panneau);
+        });
+    }
+
+    onglets.forEach((onglet) => {
+        onglet.addEventListener('click', () => activerOnglet(onglet));
+    });
+
+    // ---- Onglet Général ----
+    const inputPrenomPrincipal = document.getElementById('input-prenom-principal');
+    const grilleAvatars = document.getElementById('grille-avatars');
+    const selectTheme = document.getElementById('select-theme');
+    const selectSource = document.getElementById('select-source');
+    const checkBonusFin = document.getElementById('check-bonus-fin');
+    const radiosTypeEchange = document.getElementById('radios-type-echange');
+    const statutGeneral = document.getElementById('statut-general');
+
+    let horlogeStatut = null;
+
+    /** Affiche un court message d'enregistrement (vert, ou rouge si erreur). */
+    function afficherStatutGeneral(message, erreur) {
+        statutGeneral.textContent = message;
+        statutGeneral.classList.toggle('erreur', Boolean(erreur));
+        statutGeneral.hidden = false;
+        if (horlogeStatut) {
+            clearTimeout(horlogeStatut);
+        }
+        horlogeStatut = setTimeout(() => {
+            statutGeneral.hidden = true;
+        }, 2500);
+    }
+
+    /** Construit un groupe de boutons radio [{valeur, libelle}] + valeur active.
+     *  Chaque changement enregistre le réglage ``cle`` via l'API Python. */
+    function remplirRadios(conteneur, cle, options, valeurActive) {
+        conteneur.innerHTML = '';
+        (options || []).forEach((opt) => {
+            const label = document.createElement('label');
+            label.className = 'radio-label';
+            const input = document.createElement('input');
+            input.type = 'radio';
+            input.name = cle;
+            input.value = opt.valeur;
+            input.checked = opt.valeur === valeurActive;
+            input.addEventListener('change', async () => {
+                if (!input.checked) {
+                    return;
+                }
+                const retenue = await enregistrerReglage(cle, input.value);
+                // La normalisation Python peut retomber sur une autre valeur : on
+                // resynchronise le groupe pour ne pas afficher un choix trompeur.
+                if (retenue && retenue !== input.value) {
+                    syncRadios(conteneur, retenue);
+                }
+            });
+            const span = document.createElement('span');
+            span.textContent = opt.libelle;
+            label.appendChild(input);
+            label.appendChild(span);
+            conteneur.appendChild(label);
+        });
+    }
+
+    /** Recoche l'option ``valeur`` d'un groupe de radios (après normalisation). */
+    function syncRadios(conteneur, valeur) {
+        conteneur.querySelectorAll('input[type="radio"]').forEach((input) => {
+            input.checked = input.value === valeur;
+        });
+    }
+
+    /** Avatar actuellement choisi (identifiant, ou '' pour « aucun choix »). */
+    let avatarChoisi = '';
+
+    /** Met en évidence la vignette sélectionnée dans la grille d'avatars. */
+    function syncGrilleAvatars() {
+        grilleAvatars.querySelectorAll('.avatar-vignette').forEach((btn) => {
+            const actif = btn.dataset.valeur === avatarChoisi;
+            btn.classList.toggle('actif', actif);
+            btn.setAttribute('aria-checked', actif ? 'true' : 'false');
+        });
+    }
+
+    /** Construit la grille de vignettes d'avatars [{valeur, image}] + choix actif.
+     *  Un clic sélectionne l'avatar ; re-cliquer celui déjà choisi le désélectionne
+     *  (retour à « aucun choix »), enregistré via l'API Python. */
+    function remplirGrilleAvatars(avatars, valeurActive) {
+        avatarChoisi = valeurActive || '';
+        grilleAvatars.innerHTML = '';
+        (avatars || []).forEach((av) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'avatar-vignette';
+            btn.dataset.valeur = av.valeur;
+            btn.setAttribute('role', 'radio');
+            btn.setAttribute('aria-checked', 'false');
+            btn.setAttribute('aria-label', av.valeur);
+            btn.title = av.valeur;
+            const img = document.createElement('img');
+            img.src = av.image;
+            img.alt = '';
+            btn.appendChild(img);
+            btn.addEventListener('click', async () => {
+                // Toggle : re-cliquer l'avatar courant revient à « aucun choix ».
+                const cible = av.valeur === avatarChoisi ? '' : av.valeur;
+                const retenue = await enregistrerReglage('avatar_principal', cible);
+                if (retenue !== null) {
+                    avatarChoisi = retenue;
+                    syncGrilleAvatars();
+                }
+            });
+            grilleAvatars.appendChild(btn);
+        });
+        syncGrilleAvatars();
+    }
+
+    /** Remplit un <select> à partir d'options [{valeur, libelle}] + valeur active. */
+    function remplirSelect(select, options, valeurActive) {
+        select.innerHTML = '';
+        options.forEach((opt) => {
+            const el = document.createElement('option');
+            el.value = opt.valeur;
+            el.textContent = opt.libelle;
+            if (opt.valeur === valeurActive) {
+                el.selected = true;
             }
-        } finally {
-            btnReglages.disabled = false;
+            select.appendChild(el);
+        });
+    }
+
+    async function chargerGeneral() {
+        const r = await api.obtenir_reglages_generaux();
+        inputPrenomPrincipal.value = r.prenom_principal || '';
+        remplirGrilleAvatars(r.avatars, r.avatar_principal);
+        remplirSelect(selectTheme, r.themes, r.theme_plateau);
+        remplirSelect(selectSource, r.sources, r.source_dictionnaire);
+        checkBonusFin.checked = Boolean(r.bonus_fin_partie);
+        remplirRadios(radiosTypeEchange, 'type_echange', r.types_echange, r.type_echange);
+        labelsSources = {};
+        (r.sources || []).forEach((s) => { labelsSources[s.valeur] = s.libelle; });
+    }
+
+    /** Enregistre un réglage et signale le résultat. */
+    async function enregistrerReglage(cle, valeur) {
+        const res = await api.enregistrer_reglage(cle, valeur);
+        if (res.succes) {
+            afficherStatutGeneral('Changement sauvé automatiquement', false);
+            return res.valeur;
+        }
+        afficherStatutGeneral(res.erreur || 'Échec de l\'enregistrement.', true);
+        return null;
+    }
+
+    // Le prénom est en texte libre : on enregistre à la perte de focus.
+    inputPrenomPrincipal.addEventListener('change', () => {
+        enregistrerReglage('prenom_principal', inputPrenomPrincipal.value.trim());
+    });
+    selectTheme.addEventListener('change', () => {
+        enregistrerReglage('theme_plateau', selectTheme.value);
+    });
+    selectSource.addEventListener('change', async () => {
+        const retenue = await enregistrerReglage('source_dictionnaire', selectSource.value);
+        // La normalisation Python peut retomber sur une autre valeur : on
+        // resynchronise le menu pour ne pas laisser un choix trompeur affiché.
+        if (retenue && retenue !== selectSource.value) {
+            selectSource.value = retenue;
+        }
+    });
+    // Case booléenne : on transmet un vrai booléen (accepté par modifier_reglage
+    // pour les clés booléennes) et on resynchronise sur la valeur retenue.
+    checkBonusFin.addEventListener('change', async () => {
+        const retenue = await enregistrerReglage('bonus_fin_partie', checkBonusFin.checked);
+        if (retenue !== null) {
+            checkBonusFin.checked = Boolean(retenue);
         }
     });
 
-    // Fermer modales avec Escape
+    // ---- Onglet Dictionnaire ----
+    const formRecherche = document.getElementById('form-recherche');
+    const inputMot = document.getElementById('input-mot');
+    const btnRechercher = document.getElementById('btn-rechercher');
+    const chargement = document.getElementById('chargement');
+    const messageDico = document.getElementById('message-dico');
+    const resultat = document.getElementById('resultat');
+    const resultatMot = document.getElementById('resultat-mot');
+    const sourcesEl = document.getElementById('sources');
+    const definitionContenu = document.getElementById('definition-contenu');
+
+    function afficherMessageDico(texte) {
+        messageDico.textContent = texte;
+        messageDico.hidden = !texte;
+    }
+
+    /** Construit la carte de statut d'une source, boutons d'action compris. */
+    function carteSource(source, statut) {
+        const carte = document.createElement('div');
+        carte.className = 'source-carte';
+
+        let pastilleClasse = statut.present ? 'present' : 'absent';
+        let pastilleTexte = statut.present ? 'Présent' : 'Absent';
+        if (statut.indisponible) {
+            pastilleClasse = 'indisponible';
+            pastilleTexte = 'Indisponible';
+        }
+
+        // Détail de l'origine du statut (personnalisation manuelle éventuelle).
+        let detail = '';
+        if (statut.indisponible) {
+            detail = 'Source non chargée (bibliothèque manquante ?).';
+        } else if (statut.ajout_manuel) {
+            detail = 'Ajouté manuellement.';
+        } else if (statut.retrait_manuel) {
+            detail = 'Retiré manuellement'
+                + (statut.present_brut ? ' (présent d\'origine).' : '.');
+        } else if (statut.present_brut) {
+            detail = 'Présent d\'origine.';
+        } else {
+            detail = 'Absent d\'origine.';
+        }
+
+        carte.innerHTML = `
+            <div class="source-titre">
+                <span>${escapeHtml(labelsSources[source] || source)}</span>
+                <span class="pastille ${pastilleClasse}">${pastilleTexte}</span>
+            </div>
+            <div class="source-detail">${escapeHtml(detail)}</div>
+            <div class="source-actions"></div>
+        `;
+
+        const actions = carte.querySelector('.source-actions');
+        if (!statut.indisponible) {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-petit '
+                + (statut.present ? 'btn-retirer' : 'btn-ajouter');
+            btn.textContent = statut.present ? 'Retirer' : 'Ajouter';
+            btn.addEventListener('click', () => modifierMot(source, !statut.present));
+            actions.appendChild(btn);
+        }
+        return carte;
+    }
+
+    /** Rend le résultat complet d'une recherche (statut + définition). */
+    function afficherResultat(data) {
+        resultatMot.textContent = data.mot;
+        sourcesEl.innerHTML = '';
+        Object.keys(data.sources).forEach((source) => {
+            sourcesEl.appendChild(carteSource(source, data.sources[source]));
+        });
+
+        definitionContenu.innerHTML = '';
+        if (Array.isArray(data.definition) && data.definition.length) {
+            const ol = document.createElement('ol');
+            data.definition.forEach((glose) => {
+                const li = document.createElement('li');
+                li.textContent = glose;
+                ol.appendChild(li);
+            });
+            definitionContenu.appendChild(ol);
+        } else {
+            const p = document.createElement('p');
+            p.className = 'indisponible';
+            p.textContent = 'Définition indisponible (mots ODS 8 uniquement).';
+            definitionContenu.appendChild(p);
+        }
+        resultat.hidden = false;
+    }
+
+    let motCourant = '';
+
+    async function rechercher(mot) {
+        afficherMessageDico('');
+        chargement.hidden = false;
+        btnRechercher.disabled = true;
+        try {
+            const data = await api.rechercher_mot(mot);
+            if (!data.succes) {
+                resultat.hidden = true;
+                afficherMessageDico(data.erreur || 'Recherche impossible.');
+                return;
+            }
+            if (!data.mot) {
+                resultat.hidden = true;
+                afficherMessageDico('Saisissez un mot à rechercher.');
+                return;
+            }
+            motCourant = data.mot;
+            afficherResultat(data);
+        } finally {
+            chargement.hidden = true;
+            btnRechercher.disabled = false;
+        }
+    }
+
+    /** Ajoute ou retire le mot courant d'une source puis rafraîchit l'affichage. */
+    async function modifierMot(source, ajouter) {
+        if (!motCourant) {
+            return;
+        }
+        const appel = ajouter ? api.ajouter_mot : api.retirer_mot;
+        const data = await appel(motCourant, source);
+        if (!data.succes) {
+            afficherMessageDico(data.erreur || 'Modification impossible.');
+            return;
+        }
+        afficherMessageDico('');
+        afficherResultat(data);
+    }
+
+    formRecherche.addEventListener('submit', (e) => {
+        e.preventDefault();
+        rechercher(inputMot.value);
+    });
+
+    // ---- Bascule entre les deux vues ----
+    /** Montre le panneau Réglages à la place de la configuration (issue #169). */
+    async function afficherReglages() {
+        // Peuplement paresseux au premier affichage (les valeurs sont ensuite
+        // maintenues à jour par les enregistrements en direct).
+        if (!reglagesCharges) {
+            try {
+                await chargerGeneral();
+                reglagesCharges = true;
+            } catch (err) {
+                alert('Impossible de charger les réglages : ' + err);
+                return;
+            }
+        }
+        vueConfig.hidden = true;
+        vueReglages.hidden = false;
+        window.scrollTo(0, 0);
+    }
+
+    /** Revient à la vue configuration (« Fermer » ou Échap). */
+    function masquerReglages() {
+        vueReglages.hidden = true;
+        vueConfig.hidden = false;
+    }
+
+    btnReglages.addEventListener('click', () => {
+        afficherReglages();
+    });
+    btnFermerReglages.addEventListener('click', () => {
+        masquerReglages();
+    });
+
+    // Fermer modales avec Escape ; à défaut, revenir de la vue Réglages à la
+    // configuration (issue #169), comme le faisait l'ex-fenêtre autonome.
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (!modaleHumain.hidden) cacherModale(modaleHumain);
-            if (!modaleOrdinateur.hidden) cacherModale(modaleOrdinateur);
+            if (!modaleHumain.hidden) {
+                cacherModale(modaleHumain);
+            } else if (!modaleOrdinateur.hidden) {
+                cacherModale(modaleOrdinateur);
+            } else if (!vueReglages.hidden) {
+                masquerReglages();
+            }
         }
     });
 

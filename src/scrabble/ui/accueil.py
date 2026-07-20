@@ -47,8 +47,19 @@ from typing import Any
 import webview
 
 from scrabble import journal
-from scrabble.config import AVATARS_DISPONIBLES, charger_config
-from scrabble.dictionnaire.dictionnaire import charger_dictionnaire, obtenir_trie
+from scrabble.config import (
+    AVATARS_DISPONIBLES,
+    THEMES_PLATEAU,
+    TYPES_ECHANGE,
+    charger_config,
+)
+from scrabble.dictionnaire.dictionnaire import (
+    SOURCES,
+    charger_dictionnaire,
+    modifier_appartenance,
+    obtenir_trie,
+    rechercher_statut,
+)
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.ordre import determiner_ordre_jeu
 from scrabble.moteur.partie import MAX_JOUEURS, Partie, creer_partie
@@ -74,6 +85,25 @@ NIVEAUX_LABELS: dict[str, Niveau] = {
     "Facile": Niveau.FACILE,
     "Intermédiaire": Niveau.INTERMEDIAIRE,
     "Expert": Niveau.EXPERT,
+}
+
+# Libellés français des valeurs à choix fini pour le panneau Réglages intégré
+# à l'accueil (issue #169, ex-fenêtre autonome ``ui/reglages.py``). Les clés
+# restent les identifiants de code (alignés avec config.THEMES_PLATEAU,
+# config.TYPES_ECHANGE et dictionnaire.SOURCES) ; le JS construit ses <option>
+# et boutons radio directement à partir de ces couples {valeur, libelle}.
+LABELS_THEMES: dict[str, str] = {
+    "classique": "Classique",
+    "vert": "Vert",
+    "abrege": "Abrégé",
+}
+LABELS_SOURCES: dict[str, str] = {
+    "ods": "ODS 8",
+    "hunspell": "Hunspell",
+}
+LABELS_TYPES_ECHANGE: dict[str, str] = {
+    "complet": "Échange complet",
+    "partiel": "Échange partiel",
 }
 
 
@@ -577,39 +607,148 @@ class ApiAccueil:
             journal.erreur("Accueil : échec de journalisation de la géométrie.", e)
         return {"succes": True}
 
-    def ouvrir_reglages(self) -> dict[str, Any]:
-        """Ouvre la fenêtre de réglages à onglets (issue #111).
+    # ------------------------------------------------------------------ #
+    # Panneau Réglages intégré (issue #169)
+    #
+    # Les réglages sont désormais un panneau affiché/masqué DANS la fenêtre
+    # d'accueil (fini la fenêtre pywebview autonome ``ui/reglages.py`` et sa
+    # transition visuelle disgracieuse) : le clic sur ⚙ bascule la vue côté JS,
+    # et l'API ci-dessous — reprise à l'identique de l'ex-``ApiReglages`` —
+    # sert les onglets Général et Dictionnaire depuis la même ``ApiAccueil``.
+    # ------------------------------------------------------------------ #
 
-        La fenêtre de réglages est ouverte comme **seconde fenêtre** de la boucle
-        pywebview déjà démarrée par l'accueil (``webview.create_window`` sans
-        relancer ``webview.start()``) : point d'entrée naturel hors partie, où
-        changer la source de dictionnaire ou le thème est sans risque. À sa
-        fermeture, le contrôle revient à l'accueil, qui reste ouvert en dessous.
+    def obtenir_reglages_generaux(self) -> dict[str, Any]:
+        """Renvoie les valeurs courantes + les options des menus déroulants.
 
-        L'import est différé pour ne pas coupler le chargement de l'accueil à la
-        fenêtre de réglages. Retourne ``{"succes": bool, ...}`` pour que le JS
-        signale un éventuel échec plutôt que de rester silencieux.
+        S'appuie entièrement sur ``reglages.lire_reglage`` (donc sur la config
+        auto-réparante) : les valeurs renvoyées sont déjà normalisées. Les
+        options sont livrées ``[{"valeur", "libelle"}, ...]`` pour que le JS
+        construise directement les ``<option>`` sans dupliquer les libellés.
+        """
+        return {
+            "prenom_principal": self._lire("prenom_principal"),
+            "theme_plateau": self._lire("theme_plateau"),
+            "source_dictionnaire": self._lire("source_dictionnaire"),
+            "bonus_fin_partie": self._lire_bool("bonus_fin_partie"),
+            "type_echange": self._lire("type_echange"),
+            "avatar_principal": self._lire("avatar_principal"),
+            # Grille d'avatars disponibles pour le sélecteur visuel (issue #143) :
+            # on livre l'identifiant et le chemin du SVG (relatif à la page web)
+            # pour que le JS construise les vignettes sans dupliquer la liste.
+            "avatars": [
+                {"valeur": a, "image": f"avatars/{a}.svg"}
+                for a in AVATARS_DISPONIBLES
+            ],
+            "themes": [
+                {"valeur": t, "libelle": LABELS_THEMES.get(t, t)}
+                for t in THEMES_PLATEAU
+            ],
+            "sources": [
+                {"valeur": s, "libelle": LABELS_SOURCES.get(s, s)}
+                for s in SOURCES
+            ],
+            "types_echange": [
+                {"valeur": t, "libelle": LABELS_TYPES_ECHANGE.get(t, t)}
+                for t in TYPES_ECHANGE
+            ],
+        }
+
+    def enregistrer_reglage(self, cle: str, valeur: Any) -> dict[str, Any]:
+        """Enregistre un réglage de l'onglet Général et renvoie la valeur retenue.
+
+        Passe par ``reglages.modifier_reglage`` (normalisation + écriture atomique
+        de ``config.py``). Pour ``source_dictionnaire``, non contraint par
+        ``config.py`` mais qui ne connaît que :data:`SOURCES`, on rejette en amont
+        toute valeur inconnue (une source invalide dégraderait silencieusement la
+        validation en repartant sur l'ODS). ``valeur`` est une chaîne pour la
+        plupart des clés (vide autorisée pour le prénom principal, en texte
+        libre) et un booléen pour les clés booléennes (ex. ``bonus_fin_partie``).
+        Retourne ``{"succes", "valeur"}`` ou ``{"succes": False, "erreur"}``.
         """
         try:
-            import threading
-
-            from scrabble.ui.backend_graphique import deployer_fenetre_maximisee
-            from scrabble.ui.reglages import creer_fenetre_reglages
-
-            window = creer_fenetre_reglages()
-            # La boucle pywebview de l'accueil tourne déjà : on ne repasse pas par
-            # ``webview.start``. Le déploiement plein écran (issue #159) attend
-            # l'affichage de la fenêtre (jusqu'à ~5 s) — on le lance donc dans un fil
-            # dédié pour ne pas bloquer le pont JS de l'accueil pendant ce temps.
-            threading.Thread(
-                target=deployer_fenetre_maximisee,
-                args=(window, "réglages"),
-                daemon=True,
-            ).start()
-            journal.info("Accueil : ouverture de la fenêtre de réglages.")
-            return {"succes": True}
+            if cle == "source_dictionnaire" and valeur not in SOURCES:
+                return {
+                    "succes": False,
+                    "erreur": f"Source de dictionnaire inconnue : « {valeur} ».",
+                }
+            retenue = modifier_reglage(cle, valeur)
+            journal.info(f"Réglages : « {cle} » = {retenue!r}.")
+            return {"succes": True, "valeur": retenue}
+        except KeyError:
+            return {"succes": False, "erreur": f"Réglage inconnu : « {cle} »."}
+        except TypeError as e:
+            return {"succes": False, "erreur": str(e)}
         except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
-            journal.erreur("Accueil : échec d'ouverture des réglages.", e)
+            journal.erreur(f"Réglages : échec d'enregistrement de « {cle} ».", e)
+            return {"succes": False, "erreur": str(e)}
+
+    @staticmethod
+    def _lire(cle: str) -> str:
+        """Lit un réglage en tolérant l'absence (renvoie chaîne vide)."""
+        try:
+            return lire_reglage(cle) or ""
+        except Exception:  # noqa: BLE001 - config illisible : on dégrade en vide
+            return ""
+
+    @staticmethod
+    def _lire_bool(cle: str) -> bool:
+        """Lit un réglage booléen en tolérant l'absence (renvoie ``False``)."""
+        try:
+            return bool(lire_reglage(cle))
+        except Exception:  # noqa: BLE001 - config illisible : on dégrade en False
+            return False
+
+    def rechercher_mot(self, mot: str) -> dict[str, Any]:
+        """Recherche un mot et renvoie son statut par source + définition.
+
+        Délègue à :func:`~scrabble.dictionnaire.dictionnaire.rechercher_statut`.
+        ⚠️ Le premier accès à la source Hunspell la déplie (plusieurs secondes,
+        puis mise en cache mémoire) : le JS affiche un indicateur d'attente. Une
+        source indisponible (spylls absent) est signalée par ``indisponible`` sans
+        planter. Renvoie ``{"succes": True, ...statut...}`` ou une erreur.
+        """
+        try:
+            statut = rechercher_statut(mot)
+            statut["succes"] = True
+            return statut
+        except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
+            journal.erreur(f"Réglages : échec de recherche de « {mot} ».", e)
+            return {"succes": False, "erreur": str(e)}
+
+    def ajouter_mot(self, mot: str, source: str) -> dict[str, Any]:
+        """Ajoute manuellement un mot à une source précise, puis renvoie le statut."""
+        return self._modifier(mot, source, present=True, verbe="ajouté à")
+
+    def retirer_mot(self, mot: str, source: str) -> dict[str, Any]:
+        """Retire manuellement un mot d'une source précise, puis renvoie le statut."""
+        return self._modifier(mot, source, present=False, verbe="retiré de")
+
+    @staticmethod
+    def _modifier(
+        mot: str, source: str, present: bool, verbe: str
+    ) -> dict[str, Any]:
+        """Applique un ajout/retrait manuel et renvoie le statut rafraîchi.
+
+        L'écriture des fichiers de personnalisation périme automatiquement le
+        cache Trie de la source (mtime) ; le statut renvoyé est recalculé après
+        modification pour que l'UI reflète immédiatement le nouvel état.
+        """
+        try:
+            norme = modifier_appartenance(mot, source, present)
+            journal.info(
+                f"Réglages : « {norme} » {verbe} la source « {source} »."
+            )
+            statut = rechercher_statut(norme)
+            statut["succes"] = True
+            return statut
+        except ValueError as e:
+            return {"succes": False, "erreur": str(e)}
+        except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
+            journal.erreur(
+                f"Réglages : échec de modification de « {mot} » "
+                f"(source {source}).",
+                e,
+            )
             return {"succes": False, "erreur": str(e)}
 
 

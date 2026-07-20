@@ -97,7 +97,8 @@ THEMES_PLATEAU: tuple[str, ...] = ("classique", "vert", "abrege")
 
 # Types d'échange de lettres reconnus (issue #138). "complet" : on remet tout
 # le chevalet ; "partiel" : on choisit librement 1 à 7 lettres. Doivent rester
-# alignés avec les libellés de ``ui/reglages.py`` et de ``ui/web/reglages.js``.
+# alignés avec les libellés de ``ui/accueil.py`` et de ``ui/web/accueil.js``
+# (panneau Réglages intégré à l'accueil, issue #169).
 TYPES_ECHANGE: tuple[str, ...] = ("complet", "partiel")
 
 # Clés dont la valeur est contrainte à un ensemble fini : toute valeur hors de
