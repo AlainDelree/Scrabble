@@ -755,25 +755,19 @@ def lancer_accueil(
             "Scrabble - Nouvelle partie",
             str(chemin_html),
             js_api=api,
-            # Fenêtre maximisée par défaut (issue #159) : l'accueil et sa modale de
-            # tirage d'ordre restent lisibles au lieu de s'ouvrir en petit format
-            # flottant. ``maximized=True`` étant un no-op sous XWayland (cf. #95),
-            # le déploiement effectif est forcé après démarrage de la boucle par le
-            # callback ``deployer_fenetre_maximisee`` passé à ``webview.start`` plus
-            # bas. ``width``/``height`` restent la taille de restauration/repli.
+            # Fenêtre maximisée par défaut (issue #159) : l'accueil (configuration
+            # des joueurs et panneau Réglages intégré, issue #169) reste lisible au
+            # lieu de s'ouvrir en petit format flottant. ``maximized=True`` étant un
+            # no-op sous XWayland (cf. #95), le déploiement effectif est forcé après
+            # démarrage de la boucle par le callback ``deployer_fenetre_maximisee``
+            # passé à ``webview.start`` plus bas. ``width``/``height`` restent la
+            # taille de restauration/repli.
             maximized=True,
             width=700,
-            # Hauteur relevée (issues #82 puis #115) : la modale de tirage
-            # d'ordre affiche AUTANT de lignes que de joueurs (toutes présentes
-            # dès le départ, même masquées en fondu → elles occupent la place)
-            # plus le sac et une consigne pouvant tenir sur deux lignes. 720 px
-            # (issue #82) ne suffisait qu'au cas — irréaliste — d'un seul
-            # tirage : dès 2 joueurs (partie minimale), le bouton « Tirer une
-            # lettre » repassait sous le scroll de secours. 780 px laisse le cas
-            # courant (2 à 3 joueurs + consigne sur deux lignes) entièrement
-            # visible sans défilement. Le CSS (#modale-tirage à corps scrollable
-            # + aire du sac bornée en vh) reste le filet de sécurité pour les
-            # écrans plus courts et les parties à nombreux joueurs.
+            # Taille de restauration/repli (issues #82 puis #115) : le tirage
+            # d'ordre a migré vers la fenêtre Jeu (issue #170), mais 780 px reste
+            # une hauteur de repli confortable pour la configuration et le panneau
+            # Réglages sur les écrans qui n'honorent pas la maximisation.
             height=780,
             resizable=True,
             # Fond vert dès le mappage de la fenêtre (issue #113) : évite le
