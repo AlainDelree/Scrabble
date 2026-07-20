@@ -48,14 +48,18 @@ class TestConfigPartieCompteurs:
         assert config.nb_total == 0
 
     def test_compteurs_mixtes(self):
-        """Les compteurs distinguent humains et ordinateurs."""
+        """Les compteurs distinguent humains et ordinateurs.
+
+        Un seul humain est désormais autorisé (issue #175) : on complète donc
+        avec des ordinateurs pour exercer le mélange des compteurs.
+        """
         config = ConfigPartie()
         config.ajouter_humain("Alice")
-        config.ajouter_humain("Bob")
+        config.ajouter_ordinateur("Bob", Niveau.FACILE)
         config.ajouter_ordinateur("Camille", Niveau.INTERMEDIAIRE)
 
-        assert config.nb_humains == 2
-        assert config.nb_ordinateurs == 1
+        assert config.nb_humains == 1
+        assert config.nb_ordinateurs == 2
         assert config.nb_total == 3
 
 
@@ -72,15 +76,24 @@ class TestConfigPartieContraintes:
         config = ConfigPartie()
         assert config.peut_ajouter_ordinateur() is True
 
-    def test_limite_4_humains(self):
-        """On ne peut pas dépasser 4 joueurs humains."""
-        config = ConfigPartie()
-        for i in range(MAX_HUMAINS):
-            assert config.peut_ajouter_humain() is True
-            config.ajouter_humain(f"Joueur{i}")
+    def test_limite_un_seul_humain(self):
+        """On ne peut pas dépasser UN joueur humain (issue #175).
 
-        assert config.nb_humains == 4
+        ``MAX_HUMAINS`` vaut désormais 1 : dès le premier humain ajouté,
+        ``peut_ajouter_humain`` repasse à ``False`` et un second ajout est
+        refusé (le bouton « Ajouter un joueur » disparaît côté UI).
+        """
+        assert MAX_HUMAINS == 1
+        config = ConfigPartie()
+        assert config.peut_ajouter_humain() is True
+
+        assert config.ajouter_humain("Alice") is True
+        assert config.nb_humains == 1
         assert config.peut_ajouter_humain() is False
+
+        # Le second ajout est refusé sans modifier la configuration.
+        assert config.ajouter_humain("Bob") is False
+        assert config.nb_humains == 1
 
     def test_limite_3_ordinateurs(self):
         """On ne peut pas dépasser 3 ordinateurs."""
@@ -94,10 +107,10 @@ class TestConfigPartieContraintes:
         assert config.peut_ajouter_ordinateur() is False
 
     def test_limite_4_joueurs_total(self):
-        """Le total ne peut pas dépasser 4 joueurs."""
+        """Le total ne peut pas dépasser 4 joueurs (1 humain + 3 ordinateurs)."""
         config = ConfigPartie()
         config.ajouter_humain("Alice")
-        config.ajouter_humain("Bob")
+        config.ajouter_ordinateur("Bob", Niveau.FACILE)
         config.ajouter_ordinateur("Camille", Niveau.FACILE)
         config.ajouter_ordinateur("Daniel", Niveau.EXPERT)
 
@@ -105,17 +118,20 @@ class TestConfigPartieContraintes:
         assert config.peut_ajouter_humain() is False
         assert config.peut_ajouter_ordinateur() is False
 
-    def test_mix_humains_ordinateurs_limite(self):
-        """3 humains + 1 ordinateur = 4, plus aucun ajout possible."""
-        config = ConfigPartie()
-        config.ajouter_humain("A")
-        config.ajouter_humain("B")
-        config.ajouter_humain("C")
-        config.ajouter_ordinateur("X", Niveau.DEBUTANT)
+    def test_second_humain_refuse_meme_table_non_pleine(self):
+        """Un second humain est refusé même quand la table n'est pas pleine.
 
-        assert config.nb_total == 4
+        La contrainte « un seul humain » (issue #175) est indépendante de la
+        limite de 4 joueurs : avec un seul humain configuré, ``peut_ajouter_
+        humain`` est déjà ``False`` alors que ``peut_ajouter_ordinateur`` reste
+        ``True``.
+        """
+        config = ConfigPartie()
+        config.ajouter_humain("Alice")
+
+        assert config.nb_total == 1
         assert config.peut_ajouter_humain() is False
-        assert config.peut_ajouter_ordinateur() is False
+        assert config.peut_ajouter_ordinateur() is True
 
 
 class TestConfigPartieLancement:
@@ -143,6 +159,23 @@ class TestConfigPartieLancement:
         config.ajouter_ordinateur("Charlie", Niveau.DEBUTANT)
         assert config.peut_lancer() is True
 
+    def test_ne_peut_pas_lancer_avec_deux_humains(self):
+        """Exactement un humain est requis (issue #175).
+
+        ``ajouter_humain`` refusant déjà un second humain, on force ici une
+        configuration invalide en insérant directement les ``JoueurConfig`` pour
+        vérifier que ``peut_lancer`` (garde-fou backend non contournable) rejette
+        bien le multi-humains.
+        """
+        config = ConfigPartie(
+            joueurs=[
+                JoueurConfig(nom="Alice", humain=True),
+                JoueurConfig(nom="Bob", humain=True),
+            ]
+        )
+        assert config.nb_humains == 2
+        assert config.peut_lancer() is False
+
 
 class TestConfigPartieNoms:
     """Tests de la gestion des noms utilisés."""
@@ -153,10 +186,10 @@ class TestConfigPartieNoms:
         assert config.noms_utilises() == set()
 
     def test_noms_utilises_humains(self):
-        """Les noms des humains sont dans les noms utilisés."""
+        """Le nom de l'humain (unique désormais) est dans les noms utilisés."""
         config = ConfigPartie()
         config.ajouter_humain("Alice")
-        config.ajouter_humain("Bob")
+        config.ajouter_ordinateur("Bob", Niveau.FACILE)
         assert config.noms_utilises() == {"Alice", "Bob"}
 
     def test_noms_utilises_mixtes(self):
@@ -174,10 +207,10 @@ class TestConfigPartieRetrait:
         """Retirer un joueur à un index valide fonctionne."""
         config = ConfigPartie()
         config.ajouter_humain("Alice")
-        config.ajouter_humain("Bob")
+        config.ajouter_ordinateur("Bob", Niveau.FACILE)
 
         assert config.retirer(0) is True
-        assert config.nb_humains == 1
+        assert config.nb_humains == 0
         assert config.joueurs[0].nom == "Bob"
 
     def test_retrait_index_invalide(self):
@@ -191,10 +224,13 @@ class TestConfigPartieRetrait:
         assert config.nb_humains == 1
 
     def test_retrait_reactive_boutons(self):
-        """Retirer un joueur réactive les possibilités d'ajout."""
+        """Retirer l'humain réactive la possibilité d'en ajouter un (issue #175).
+
+        Le bouton « Ajouter un joueur » (masqué tant qu'un humain est présent)
+        doit réapparaître dès que cet humain est retiré.
+        """
         config = ConfigPartie()
-        for i in range(4):
-            config.ajouter_humain(f"J{i}")
+        config.ajouter_humain("Alice")
 
         assert config.peut_ajouter_humain() is False
         config.retirer(0)
@@ -210,11 +246,11 @@ class TestConfigPartieAjoutAvecRetour:
         assert config.ajouter_humain("Alice") is True
 
     def test_ajouter_humain_echec(self):
-        """Ajouter un humain quand impossible retourne False."""
+        """Ajouter un second humain retourne False (issue #175)."""
         config = ConfigPartie()
-        for i in range(4):
-            config.ajouter_humain(f"J{i}")
+        assert config.ajouter_humain("Alice") is True
         assert config.ajouter_humain("Trop") is False
+        assert config.nb_humains == 1
 
     def test_ajouter_ordinateur_succes(self):
         """Ajouter un ordinateur retourne True."""
@@ -349,6 +385,41 @@ class TestApiAccueilLancement:
         assert result["succes"] is False
         assert "pret" not in result
         assert "erreur" in result
+
+    def test_lancer_partie_refuse_plusieurs_humains(self):
+        """lancer_partie() refuse plus d'un humain avec un message dédié (issue #175).
+
+        Garde-fou backend non contournable : on force une configuration à deux
+        humains en insérant directement les ``JoueurConfig`` (l'UI n'y arrive
+        plus), et on vérifie que la création est refusée avant tout appel au
+        moteur, avec un message explicite.
+        """
+        from scrabble.ui.accueil import ApiAccueil, JoueurConfig
+
+        api = ApiAccueil()
+        api.config_partie.joueurs = [
+            JoueurConfig(nom="Alice", humain=True),
+            JoueurConfig(nom="Bob", humain=True),
+        ]
+
+        result = api.lancer_partie()
+
+        assert result["succes"] is False
+        assert "pret" not in result
+        assert "un seul joueur humain" in result["erreur"].lower()
+        assert api._partie is None
+
+    def test_ajouter_humain_api_refuse_le_second(self):
+        """ApiAccueil.ajouter_humain refuse le second humain avec un message clair."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        assert api.ajouter_humain("Alice")["succes"] is True
+
+        result = api.ajouter_humain("Bob")
+        assert result["succes"] is False
+        assert "un seul joueur humain" in result["erreur"].lower()
+        assert api.config_partie.nb_humains == 1
 
 
 class TestApiAccueilJoueurHumainParDefaut:
@@ -566,20 +637,24 @@ class TestApiAccueilInfosTirage:
         assert "tirage_ordre" not in result
 
     def test_infos_tirage_memorisees(self, monkeypatch):
-        """Les infos de tirage sont mémorisées dans l'ordre de création."""
+        """Les infos de tirage sont mémorisées dans l'ordre de création.
+
+        Un seul humain est désormais autorisé (issue #175) : l'ordre de création
+        reste « humain d'abord, ordinateurs ensuite ».
+        """
         api = self._api_prete(monkeypatch)
         api.ajouter_humain("Alice")
-        api.ajouter_humain("Bob")
         api.ajouter_ordinateur("Intermédiaire")  # nom tiré automatiquement
+        api.ajouter_ordinateur("Expert")  # nom tiré automatiquement
 
         api.lancer_partie()
 
         infos = api._infos_tirage
         assert infos is not None
         assert set(infos.keys()) == {"noms_creation", "graine", "noms_humains"}
-        # Ordre de création : humains d'abord, ordinateurs ensuite.
-        assert infos["noms_creation"][:2] == ["Alice", "Bob"]
-        assert infos["noms_humains"] == ["Alice", "Bob"]
+        # Ordre de création : l'humain d'abord, ordinateurs ensuite.
+        assert infos["noms_creation"][0] == "Alice"
+        assert infos["noms_humains"] == ["Alice"]
         assert len(infos["noms_creation"]) == 3
         assert isinstance(infos["graine"], int)
 
@@ -589,7 +664,6 @@ class TestApiAccueilInfosTirage:
 
         api = self._api_prete(monkeypatch)
         api.ajouter_humain("Alice")
-        api.ajouter_humain("Bob")
         api.ajouter_ordinateur("Expert")
 
         api.lancer_partie()
@@ -597,12 +671,12 @@ class TestApiAccueilInfosTirage:
         detail = detail_tirage_ordre(**api._infos_tirage)
         ordre_partie = [j.nom for j in api._partie.joueurs]
         assert detail["ordre"] == ordre_partie
-        # Une lettre par joueur, drapeau humain cohérent avec la config.
+        # Une lettre par joueur, drapeau humain cohérent avec la config :
+        # Alice est l'unique humain, l'ordinateur porte ``humain=False``.
         humain_par_nom = {t["nom"]: t["humain"] for t in detail["tirages"]}
         assert humain_par_nom["Alice"] is True
-        assert humain_par_nom["Bob"] is True
-        assert humain_par_nom[ordre_partie[-1] if not humain_par_nom.get("Alice") else
-                              next(n for n, h in humain_par_nom.items() if not h)] is False
+        assert sum(1 for h in humain_par_nom.values() if h) == 1
+        assert any(h is False for h in humain_par_nom.values())
 
 
 class TestApiAccueilPartieUnique:
