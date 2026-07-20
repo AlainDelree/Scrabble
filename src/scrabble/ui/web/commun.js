@@ -196,20 +196,49 @@
     }
 
     /**
-     * Ouvre la modale de choix de lettre d'un joker et renvoie la lettre choisie
+     * Ouvre le sélecteur de lettre d'un joker et renvoie la lettre choisie
      * (``A``–``Z``) ou ``null`` si annulé. ``refs`` = {modale, grille, annuler,
-     * auOuvrir?}. ``auOuvrir`` (facultatif, issue #140) est appelé une fois la
-     * modale rendue, avec les dimensions réelles mesurées (voir
-     * :func:`mesurerModaleJoker`) : le chevalet s'en sert pour remonter un
-     * diagnostic à Python. La mesure est différée de deux ``requestAnimationFrame``
-     * pour laisser le vrai moteur de rendu poser la mise en page avant lecture.
+     * bouton?, popover?, auOuvrir?}. ``modale`` est l'élément à afficher/masquer
+     * (basculé via ``hidden``) : une vraie modale, ou — depuis l'issue #168 — le
+     * popover « Lettre du joker » ancré sur le plateau.
+     *
+     * Deux options facultatives pour le mode popover (issue #168), sans effet si
+     * absentes (compatibilité) :
+     *   - ``bouton`` : le bouton d'ancrage, dont ``aria-expanded`` est tenu à jour ;
+     *   - ``popover`` (booléen) : câble la fermeture façon « Derniers coups » — un
+     *     clic HORS du popover (et de son bouton) ou la touche Échap annule le choix.
+     *
+     * ``auOuvrir`` (facultatif, issue #140) est appelé une fois le sélecteur rendu,
+     * avec les dimensions réelles mesurées (voir :func:`mesurerModaleJoker`), pour
+     * remonter un diagnostic à Python. La mesure est différée de deux
+     * ``requestAnimationFrame`` pour laisser le vrai moteur de rendu poser la mise
+     * en page avant lecture.
      */
     function choisirLettreJoker(refs) {
         return new Promise((resolve) => {
             refs.grille.innerHTML = '';
+            // Garde de fermeture unique : empêche un double-résolu et, surtout, que
+            // le rAF d'armement des écouteurs (mode popover) ne les pose APRÈS une
+            // fermeture déjà survenue dans la même frame (fuite d'écouteurs).
+            let ferme = false;
+            let surClicExterieur = null;
+            let surTouche = null;
             const fermer = (valeur) => {
+                if (ferme) {
+                    return;
+                }
+                ferme = true;
                 refs.modale.hidden = true;
                 refs.annuler.removeEventListener('click', surAnnuler);
+                if (surClicExterieur) {
+                    document.removeEventListener('click', surClicExterieur, true);
+                }
+                if (surTouche) {
+                    document.removeEventListener('keydown', surTouche);
+                }
+                if (refs.bouton) {
+                    refs.bouton.setAttribute('aria-expanded', 'false');
+                }
                 resolve(valeur);
             };
             const surAnnuler = () => fermer(null);
@@ -223,6 +252,33 @@
             }
             refs.annuler.addEventListener('click', surAnnuler);
             refs.modale.hidden = false;
+            if (refs.bouton) {
+                refs.bouton.setAttribute('aria-expanded', 'true');
+            }
+            // Mode popover (issue #168) : fermeture façon « Derniers coups ». Les
+            // écouteurs sont différés d'une frame pour ne pas capter le clic/appui
+            // qui vient d'ouvrir le sélecteur ; le clic est écouté en phase de
+            // capture pour l'attraper même si une cible arrête sa propagation.
+            if (refs.popover) {
+                surClicExterieur = (evt) => {
+                    if (!refs.modale.contains(evt.target)
+                        && !(refs.bouton && refs.bouton.contains(evt.target))) {
+                        fermer(null);
+                    }
+                };
+                surTouche = (evt) => {
+                    if (evt.key === 'Escape') {
+                        fermer(null);
+                    }
+                };
+                requestAnimationFrame(() => {
+                    if (ferme) {
+                        return;
+                    }
+                    document.addEventListener('click', surClicExterieur, true);
+                    document.addEventListener('keydown', surTouche);
+                });
+            }
             if (typeof refs.auOuvrir === 'function') {
                 requestAnimationFrame(() => requestAnimationFrame(() => {
                     try {

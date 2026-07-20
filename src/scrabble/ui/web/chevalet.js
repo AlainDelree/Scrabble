@@ -31,11 +31,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const panneauEl = document.getElementById('panneau');
 
-    // Modale de choix de lettre pour un joker (reste côté chevalet : la lettre
-    // vient d'ici, issue #90/#101).
-    const jokerModale = document.getElementById('joker-modale');
-    const jokerGrille = document.getElementById('joker-grille');
-    const jokerAnnuler = document.getElementById('joker-annuler');
+    // Le sélecteur de lettre du joker a quitté cette fenêtre (issue #168) : c'est
+    // désormais un menu déroulant de la fenêtre plateau (même patron que
+    // « Derniers coups »), qui réagit directement à la réponse ``joker_requis`` de
+    // Python. Le clic sur un joker du panneau (ci-dessous) ne fait donc plus que la
+    // sélection habituelle ; plus aucun agrandissement de cette fenêtre n'est requis.
 
     // --- État courant côté vue ---
     let etat = null;                 // dernier payload chevalet reçu de Python
@@ -43,7 +43,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     let panneauSignature = null;     // signature des lettres pour (re)bâtir le panneau
     let panneauLettres = [];         // {lettre, valeur, joker, indexOrigine} + 2 vides (null)
     let panneauSelection = null;     // index (dans panneauLettres) de la case sélectionnée
-    let jokerModaleOuverte = false;  // évite de rouvrir la modale à chaque push
 
     // ------------------------------------------------------------------ //
     // Rendu
@@ -155,55 +154,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         rendrePanneau();
 
-        // Demande de choix de lettre pour un joker (déclenchée par un clic sur une
-        // case de la fenêtre plateau) : on ouvre la modale ici.
-        if (etat.joker_demande && !jokerModaleOuverte) {
-            ouvrirModaleJoker(etat.joker_demande);
-        }
+        // Le choix de la lettre d'un joker est désormais piloté par la fenêtre
+        // plateau (menu déroulant, issue #168) : rien à faire ici, même si
+        // ``etat.joker_demande`` reste renseigné par Python (bookkeeping interne).
     }
     window.appliquerEtatChevalet = appliquerEtatChevalet;
-
-    async function ouvrirModaleJoker(demande) {
-        jokerModaleOuverte = true;
-        // Issue #157 : la fenêtre chevalet compacte (480×175) ne peut afficher les
-        // 26 lettres sans troncature. On l'agrandit le temps du choix (Python
-        // restaure sa taille à la fermeture). Best-effort et attendu avant
-        // l'affichage pour que la modale se centre dans la fenêtre déjà agrandie.
-        if (api && typeof api.dimensionner_pour_joker === 'function') {
-            try { await api.dimensionner_pour_joker(true); } catch (e) { /* best-effort */ }
-        }
-        let choix = null;
-        try {
-            choix = await C.choisirLettreJoker({
-                modale: jokerModale, grille: jokerGrille, annuler: jokerAnnuler,
-                // Diagnostic réel (issue #140) : à l'ouverture, on remonte à Python les
-                // dimensions effectivement rendues (viewport, boîte du contenu, grille,
-                // bouton Annuler) pour tracer le débordement en conditions WebKitGTK,
-                // que la mesure headless (#131) ne reproduit pas. Best-effort : toute
-                // erreur du pont est ignorée sans gêner le choix de la lettre.
-                auOuvrir: (mesures) => {
-                    if (api && typeof api.diagnostiquer_joker_modale === 'function') {
-                        Promise.resolve(api.diagnostiquer_joker_modale(mesures))
-                            .catch(() => {});
-                    }
-                },
-            });
-        } finally {
-            // Restaure la taille compacte quelle que soit l'issue (choix ou annulation,
-            // y compris en cas d'erreur du sélecteur) — issue #157.
-            if (api && typeof api.dimensionner_pour_joker === 'function') {
-                try { await api.dimensionner_pour_joker(false); } catch (e) { /* best-effort */ }
-            }
-            jokerModaleOuverte = false;
-        }
-        if (choix) {
-            await api.poser_lettre_en_attente(
-                demande.ligne, demande.colonne, choix, true, 0, demande.index);
-        } else {
-            // Annulé : on abandonne la demande de joker (garde les autres poses).
-            await api.selectionner_lettre(null);
-        }
-    }
 
     // ------------------------------------------------------------------ //
     // Gestionnaires d'événements

@@ -8,9 +8,10 @@
  * l'ordinateur » ; un tour IA relève du plateau, l'humain n'a rien à jouer),
  * la vérification dictionnaire (saisie libre, sans lien avec le chevalet), le
  * « Retour au menu » et une copie de la modale de détail du score (ouverte depuis
- * l'historique). Le chevalet, le brouillon, la mécanique de pose (sélection +
- * boutons Jouer/Vérifier/Annuler) et la modale de choix du joker vivent dans la
- * fenêtre chevalet flottante (chevalet.html / chevalet.js).
+ * l'historique) ainsi que le sélecteur de lettre du joker (menu déroulant, même
+ * patron que « Derniers coups », issue #168). Le chevalet, le brouillon et la
+ * sélection des lettres vivent dans la fenêtre chevalet flottante (chevalet.html
+ * / chevalet.js).
  *
  * Source de vérité de l'état de pose : Python (``ApiJeu``, issue #90). Cette
  * fenêtre est une simple vue :
@@ -57,6 +58,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const historiqueListe = document.getElementById('historique-liste');
     const historiqueCompte = document.getElementById('historique-compte');
     const btnRafraichir = document.getElementById('btn-rafraichir');
+    // Sélecteur de lettre du joker (issue #168) : menu déroulant ancré dans la
+    // barre globale, même patron que « Derniers coups ». Remplace la modale de la
+    // fenêtre chevalet (issue #90/#157). Bouton d'ancrage + popover masqués tant
+    // qu'aucun joker n'est en cours de pose ; révélés par ouvrirSelecteurJoker().
+    const jokerBouton = document.getElementById('btn-joker');
+    const jokerPopover = document.getElementById('joker-popover');
+    const jokerGrille = document.getElementById('joker-grille');
+    const jokerAnnuler = document.getElementById('joker-annuler');
     // Retour au menu (issue #74) : bouton discret de la barre du haut + modale
     // d'avertissement affichée uniquement s'il reste un coup en attente.
     const btnRetourMenu = document.getElementById('btn-retour-menu');
@@ -620,6 +629,70 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ------------------------------------------------------------------ //
+    // Sélecteur de lettre du joker (issue #168)
+    // ------------------------------------------------------------------ //
+
+    // Garde de réentrance : un seul sélecteur de joker ouvert à la fois (Python
+    // ne demande qu'un choix à la fois, mais on se protège d'un double push).
+    let jokerSelecteurOuvert = false;
+
+    /**
+     * Ouvre le sélecteur de lettre du joker (issue #168) : menu déroulant ancré
+     * dans la barre globale de CETTE fenêtre plateau, même famille visuelle que
+     * « Derniers coups », en remplacement de l'ancienne modale de la fenêtre
+     * chevalet (qui imposait de l'agrandir, issue #157).
+     *
+     * ``demande`` = {ligne, colonne, index} renvoyé par Python dans la réponse
+     * ``joker_requis`` (au clic sur une case avec un joker sélectionné). La
+     * confidentialité est préservée : ``index`` est une simple position de
+     * chevalet — déjà connue de cette fenêtre puisque Python la lui renvoie — et
+     * jamais la lettre. À la sélection, on finalise la pose par le MÊME appel API
+     * qu'auparavant depuis le chevalet
+     * (``poser_lettre_en_attente(l, c, lettre, true, 0, index)``) ; à l'abandon,
+     * on relâche la sélection (``selectionner_lettre(null)``), le joker
+     * redevenant disponible au chevalet.
+     */
+    async function ouvrirSelecteurJoker(demande) {
+        if (jokerSelecteurOuvert) {
+            return;
+        }
+        jokerSelecteurOuvert = true;
+        // Referme d'abord les autres popovers de la barre (« Derniers coups » /
+        // « Vérification dictionnaire ») pour ne pas empiler deux surimpressions,
+        // puis révèle le bouton d'ancrage du menu joker.
+        C.fermerTousPopovers();
+        jokerBouton.hidden = false;
+        let choix = null;
+        try {
+            choix = await C.choisirLettreJoker({
+                modale: jokerPopover, grille: jokerGrille, annuler: jokerAnnuler,
+                bouton: jokerBouton, popover: true,
+            });
+        } finally {
+            jokerSelecteurOuvert = false;
+            jokerPopover.hidden = true;
+            jokerBouton.hidden = true;
+        }
+        if (choix) {
+            try {
+                await api.poser_lettre_en_attente(
+                    demande.ligne, demande.colonne, choix, true, 0, demande.index);
+                afficherMessagePlateau('');
+            } catch (err) {
+                afficherMessagePlateau('Erreur lors de la pose du joker.', 'erreur');
+            }
+        } else {
+            // Abandon (Annuler, clic extérieur ou Échap) : on relâche la sélection.
+            try {
+                await api.selectionner_lettre(null);
+            } catch (err) {
+                /* best-effort : l'abandon ne doit jamais planter le jeu */
+            }
+            afficherMessagePlateau('');
+        }
+    }
+
+    // ------------------------------------------------------------------ //
     // Application d'un état poussé par Python (issue #90)
     // ------------------------------------------------------------------ //
 
@@ -696,9 +769,12 @@ document.addEventListener('DOMContentLoaded', async () => {
      *    l'ancienne repartant au chevalet (issue #129) ;
      *  - case déjà occupée par une tuile validée : refus (message clair) ;
      *  - case vide : on demande la pose ; Python résout la lettre sélectionnée
-     *    (dans la fenêtre chevalet) et, s'il s'agit d'un joker, ouvre la modale de
-     *    choix côté chevalet. La confidentialité est respectée : cette fenêtre ne
-     *    connaît jamais la lettre du chevalet, elle ne transmet que la case visée.
+     *    (dans la fenêtre chevalet) et, s'il s'agit d'un joker, renvoie
+     *    ``joker_requis`` — on ouvre alors le sélecteur de lettre du joker, menu
+     *    déroulant de CETTE fenêtre plateau (issue #168). La confidentialité est
+     *    respectée : cette fenêtre ne connaît jamais la lettre du chevalet, elle ne
+     *    transmet que la case visée et reçoit en retour l'``index`` (position) de la
+     *    lettre à finaliser, jamais son identité.
      */
     plateauEl.addEventListener('click', async (evt) => {
         const caseEl = evt.target.closest('.case');
@@ -712,7 +788,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         //  - sans sélection dans le chevalet : retrait simple (comportement d'origine) ;
         //  - avec une lettre sélectionnée : remplacement — l'ancienne lettre revient
         //    au chevalet, la sélection prend sa place (issue #129). Sur un joker
-        //    sélectionné, la modale de choix s'ouvre côté chevalet (joker_requis).
+        //    sélectionné, le sélecteur de lettre s'ouvre ici même (menu déroulant du
+        //    plateau, issue #168 ; joker_requis).
         if (attenteEn(ligne, colonne)) {
             afficherMessagePlateau('');
             let res;
@@ -723,8 +800,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
             if (res && res.joker_requis) {
-                afficherMessagePlateau(
-                    'Choisissez la lettre du joker dans la fenêtre « Chevalet ».', 'info');
+                // Joker : le choix de la lettre se fait dans le menu déroulant du
+                // plateau (issue #168), plus dans la fenêtre chevalet.
+                ouvrirSelecteurJoker(
+                    { ligne: res.ligne, colonne: res.colonne, index: res.index });
             } else if (res && res.succes === false) {
                 afficherMessagePlateau(res.erreur || 'Remplacement impossible.', 'info');
             }
@@ -748,8 +827,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         if (res && res.joker_requis) {
-            afficherMessagePlateau(
-                'Choisissez la lettre du joker dans la fenêtre « Chevalet ».', 'info');
+            // Joker : ouverture du sélecteur de lettre (menu déroulant du plateau,
+            // issue #168) au lieu d'un renvoi vers la fenêtre chevalet.
+            ouvrirSelecteurJoker(
+                { ligne: res.ligne, colonne: res.colonne, index: res.index });
         } else if (res && res.succes === false) {
             afficherMessagePlateau(res.erreur || 'Pose impossible.', 'info');
         } else {

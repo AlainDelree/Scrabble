@@ -1036,16 +1036,13 @@ class ApiJeu:
         self._mode_echange: bool = False
         self._selection_echange: list[int] = []
         # Pose d'un joker en attente du choix de lettre (issue #90) : lorsqu'un
-        # clic sur une case du plateau (fenêtre plateau) porte sur un joker, la
-        # modale de choix s'ouvre côté chevalet. On mémorise ici la case visée en
-        # attendant ce choix : ``{ligne, colonne, index}`` ou ``None``.
+        # clic sur une case du plateau porte sur un joker, la pose est différée le
+        # temps que le joueur choisisse la lettre représentée. Depuis l'issue #168,
+        # ce choix se fait dans un menu déroulant de la fenêtre plateau (et non plus
+        # dans une modale de la fenêtre chevalet) ; le contrat côté Python est
+        # inchangé — on mémorise ici la case visée en attendant ce choix :
+        # ``{ligne, colonne, index}`` ou ``None``.
         self._joker_demande: dict[str, Any] | None = None
-        # Géométrie (x, y, largeur, hauteur) de la fenêtre chevalet mémorisée juste
-        # avant l'ouverture de la modale de choix de lettre du joker (issue #157) :
-        # la fenêtre est agrandie le temps d'afficher les 26 lettres sans troncature,
-        # puis restaurée à l'identique à la fermeture. ``None`` = pas d'agrandissement
-        # en cours.
-        self._chevalet_geom_avant_joker: tuple[int, int, int, int] | None = None
         # Évite de journaliser plusieurs fois la même fin de partie (issue #66).
         self._fin_journalisee = False
         # Anti-flood pour le glisser-déposer applicatif du chevalet
@@ -1413,72 +1410,6 @@ class ApiJeu:
         except Exception as e:  # noqa: BLE001 - un déplacement raté ne bloque pas le jeu
             return {"succes": False, "erreur": f"Déplacement impossible : {e}"}
 
-    def dimensionner_pour_joker(self, ouverte: Any) -> dict[str, Any]:
-        """Agrandit / restaure la fenêtre chevalet autour de la modale du joker (issue #157).
-
-        La modale de choix de lettre (« Quelle lettre représente le joker ? ») vit
-        dans la fenêtre chevalet (issue #90), qui ne fait que
-        :data:`CHEVALET_LARGEUR`×:data:`CHEVALET_HAUTEUR` (480×175). Une modale en
-        ``position: fixed`` est bornée à ce viewport : les 26 lettres + le titre + le
-        bouton « Annuler » n'y tiennent pas sans troncature ni défilement — le défaut
-        rapporté en #157 (seules A–H visibles, flèche de défilement à droite). Le
-        correctif CSS de #121/#146 (grille scrollable + ombres) ne fait que rendre le
-        défilement moins pénible ; il ne supprime pas la contrainte de hauteur.
-
-        Plutôt que de recalibrer au pixel une hauteur de fenêtre fragile, on agrandit
-        temporairement la fenêtre à :data:`CHEVALET_JOKER_HAUTEUR` le temps du choix,
-        puis on la restaure à l'identique. La fenêtre étant posée vers le bas de
-        l'écran, on la fait croître **vers le haut** (on remonte ``y`` d'autant) pour
-        ne pas la pousser hors écran par le bas ; la position exacte d'origine
-        (mémorisée dans ``_chevalet_geom_avant_joker``) est rendue à la fermeture,
-        indépendamment de tout déplacement de l'utilisateur entre-temps.
-
-        ``ouverte`` (véracité) : ``True`` à l'ouverture de la modale, ``False`` à sa
-        fermeture. Best-effort : tout échec (backend sans ``resize``/``move``,
-        géométrie illisible) est absorbé sans bloquer le choix de la lettre.
-        """
-        if self._window_chevalet is None:
-            return {"succes": False, "erreur": "Aucune fenêtre chevalet."}
-        fenetre = self._window_chevalet
-        redimensionner = getattr(fenetre, "resize", None)
-        deplacer = getattr(fenetre, "move", None)
-        if not callable(redimensionner) or not callable(deplacer):
-            return {"succes": False, "erreur": "Backend sans resize/move."}
-        try:
-            if ouverte:
-                # Mémorise la géométrie compacte AVANT d'agrandir, pour la restaurer
-                # exactement (même si l'agrandissement est demandé plusieurs fois de
-                # suite, on ne mémorise que la première — la vraie taille compacte).
-                if self._chevalet_geom_avant_joker is None:
-                    x = int(getattr(fenetre, "x", 0))
-                    y = int(getattr(fenetre, "y", 0))
-                    self._chevalet_geom_avant_joker = (
-                        x, y, CHEVALET_LARGEUR, CHEVALET_HAUTEUR
-                    )
-                    delta = CHEVALET_JOKER_HAUTEUR - CHEVALET_HAUTEUR
-                    redimensionner(CHEVALET_LARGEUR, CHEVALET_JOKER_HAUTEUR)
-                    # Croissance vers le haut : bord bas inchangé, jamais hors écran.
-                    deplacer(x, max(0, y - delta))
-                    journal.info(
-                        f"Jeu : fenêtre chevalet agrandie pour la modale joker "
-                        f"({CHEVALET_LARGEUR}×{CHEVALET_JOKER_HAUTEUR}, issue #157)."
-                    )
-            else:
-                geom = self._chevalet_geom_avant_joker
-                self._chevalet_geom_avant_joker = None
-                if geom is not None:
-                    x, y, larg, haut = geom
-                    redimensionner(larg, haut)
-                    deplacer(x, y)
-                    journal.info(
-                        "Jeu : fenêtre chevalet restaurée après la modale joker "
-                        f"({larg}×{haut} @ ({x}, {y}), issue #157)."
-                    )
-            return {"succes": True}
-        except Exception as e:  # noqa: BLE001 - un redimensionnement raté ne bloque pas le choix
-            self._chevalet_geom_avant_joker = None
-            return {"succes": False, "erreur": f"Redimensionnement impossible : {e}"}
-
     def fin_deplacement_chevalet(self) -> dict[str, Any]:
         """Mémorise la position de la fenêtre chevalet à la **fin** d'un drag (issue #135).
 
@@ -1506,137 +1437,6 @@ class ApiJeu:
             )
             return {"succes": False, "erreur": f"Mémorisation impossible : {e}"}
         return {"succes": True, "x": x, "y": y}
-
-    def diagnostiquer_joker_modale(self, mesures: Any = None) -> dict[str, Any]:
-        """Journalise les dimensions RÉELLES à l'ouverture de la modale du joker (issue #140).
-
-        Suite de l'issue #121 : le sélecteur de lettre du joker reste tronqué en
-        conditions réelles (WebKitGTK) alors que la mesure headless de l'issue #131
-        ne trouvait aucun débordement. C'est le second écart rendu-réel /
-        rendu-mesuré sur ce composant précis ; le projet en a déjà rencontré
-        d'autres (Wayland #93, chevalet #92/#94/#96/#97). Plutôt qu'une troisième
-        mesure headless (méthode en échec deux fois ici), on trace les valeurs du
-        vrai moteur de rendu, sur le modèle du diagnostic z-order de l'issue #93 :
-        le JS mesure le DOM effectivement affiché et le remonte via cette méthode,
-        qui l'ajoute à la géométrie native de la fenêtre chevalet lue côté Python.
-
-        ``mesures`` est le dictionnaire construit côté JS (viewport, boîte du
-        contenu de ``#joker-modale``, grille scrollable, bouton Annuler). Purement
-        diagnostique : aucune mutation d'état, tout échec est absorbé sans planter
-        le jeu. Le correctif définitif sera appliqué une fois la cause confirmée
-        par le prochain journal d'Alain, selon la même philosophie « toujours
-        accessible » retenue en #121 (grille scrollable, Annuler épinglé).
-        """
-        # 1. Géométrie native de la fenêtre chevalet au moment de l'affichage
-        #    (cible théorique CHEVALET_LARGEUR×CHEVALET_HAUTEUR = 480×175, #106).
-        native = "indisponible (fenêtre absente ou backend non-GTK)"
-        if self._window_chevalet is not None:
-            try:
-                w = int(getattr(self._window_chevalet, "width", 0))
-                h = int(getattr(self._window_chevalet, "height", 0))
-                x = int(getattr(self._window_chevalet, "x", 0))
-                y = int(getattr(self._window_chevalet, "y", 0))
-                native = f"{w}×{h} px @ ({x}, {y})"
-            except Exception as e:  # noqa: BLE001 - lecture purement diagnostique
-                native = f"illisible ({e!r})"
-        journal.info(
-            f"Jeu : [diag #140] ouverture modale joker — fenêtre chevalet native = "
-            f"{native} (cible {CHEVALET_LARGEUR}×{CHEVALET_HAUTEUR})."
-        )
-
-        # 2. Mesures DOM remontées par le JS (viewport CSS, boîtes réelles).
-        if not isinstance(mesures, dict):
-            journal.info(
-                "Jeu : [diag #140] aucune mesure DOM remontée par le JS "
-                "(mesures manquantes ou invalides)."
-            )
-            return {"succes": True}
-        try:
-            vp = mesures.get("viewport") or {}
-            de = mesures.get("documentElement") or {}
-            contenu = mesures.get("contenu") or {}
-            grille = mesures.get("grille") or {}
-            annuler = mesures.get("annuler") or {}
-            vp_h = vp.get("hauteur")
-            contenu_bas = contenu.get("bas")
-            annuler_bas = annuler.get("bas")
-            # Débordement bas = combien la boîte du contenu dépasse sous le viewport
-            # (positif => tronqué malgré le max-height:100vh du correctif #121).
-            debordement = (
-                contenu_bas - vp_h
-                if isinstance(contenu_bas, (int, float))
-                and isinstance(vp_h, (int, float))
-                else None
-            )
-            annuler_visible = (
-                annuler_bas <= vp_h
-                if isinstance(annuler_bas, (int, float))
-                and isinstance(vp_h, (int, float))
-                else None
-            )
-            grille_scroll = grille.get("scrollHeight")
-            grille_client = grille.get("clientHeight")
-            grille_defilable = (
-                grille_scroll > grille_client
-                if isinstance(grille_scroll, (int, float))
-                and isinstance(grille_client, (int, float))
-                else None
-            )
-            # Issue #146 : on objective l'agrandissement de la zone visible de la
-            # grille. « caché » = hauteur de contenu non visible sans défiler
-            # (scrollHeight - clientHeight) ; « part visible » = fraction affichée
-            # d'emblée. Le prochain journal d'Alain doit montrer une part visible
-            # nettement plus haute qu'en #140 (grille 62 px visibles / 166 px totaux
-            # ≈ 37 %) — idéalement 100 % (aucun défilement) grâce aux 9 colonnes.
-            grille_cache = (
-                max(0, grille_scroll - grille_client)
-                if isinstance(grille_scroll, (int, float))
-                and isinstance(grille_client, (int, float))
-                else None
-            )
-            grille_part_visible = (
-                round(100 * grille_client / grille_scroll)
-                if isinstance(grille_scroll, (int, float))
-                and isinstance(grille_client, (int, float))
-                and grille_scroll > 0
-                else None
-            )
-            journal.info(
-                "Jeu : [diag #140] mesures DOM réelles — "
-                f"viewport CSS {vp.get('largeur')}×{vp_h} ; "
-                f"documentElement {de.get('largeur')}×{de.get('hauteur')} ; "
-                f"devicePixelRatio {mesures.get('devicePixelRatio')} ; "
-                f"contenu boîte [haut={contenu.get('haut')}, bas={contenu_bas}, "
-                f"hauteur={contenu.get('hauteur')}] ; "
-                f"grille [scrollHeight={grille_scroll}, clientHeight={grille_client}, "
-                f"défilable={grille_defilable}] ; "
-                f"bouton Annuler [bas={annuler_bas}, visible={annuler_visible}] ; "
-                f"débordement bas sous viewport = {debordement}."
-            )
-            journal.info(
-                "Jeu : [diag #146] zone visible de la grille — "
-                f"hauteur visible (clientHeight) = {grille_client} px sur "
-                f"{grille_scroll} px de contenu total (scrollHeight), soit "
-                f"{grille_part_visible} % affichés d'emblée ; "
-                f"{grille_cache} px encore cachés derrière le défilement "
-                f"(défilable={grille_defilable}). Cible : ≥ 3-4 lignes visibles, "
-                "à comparer aux ~37 % de l'issue #140."
-            )
-            if debordement is not None and debordement > 0:
-                journal.info(
-                    "Jeu : [diag #140] ⚠ le contenu de la modale déborde SOUS le "
-                    f"viewport de {debordement} px — le max-height:100vh du "
-                    "correctif #121 ne borne pas le contenu dans le vrai rendu."
-                )
-            elif annuler_visible is False:
-                journal.info(
-                    "Jeu : [diag #140] ⚠ le bouton Annuler tombe sous le viewport "
-                    "alors que le contenu n'y déborde pas globalement — piste : le "
-                    "bouton n'est pas épinglé hors zone défilante dans le vrai rendu."
-                )
-        except Exception as e:  # noqa: BLE001 - un diagnostic raté ne bloque pas le jeu
-            journal.erreur("Jeu : [diag #140] mesures DOM illisibles.", e)
-        return {"succes": True}
 
     def _refuser_hors_tour(self) -> dict[str, Any] | None:
         """Refus normalisé si une mutation de pose est tentée hors du tour.
@@ -2610,14 +2410,6 @@ def _rouvrir_accueil(id_partie: int | None) -> None:
 # sous la taille du contenu.
 CHEVALET_LARGEUR = 480
 CHEVALET_HAUTEUR = 175
-# Hauteur temporaire de la fenêtre chevalet pendant l'affichage de la modale de
-# choix de lettre du joker (issue #157). Les 175 px du chevalet compact ne suffisent
-# pas à afficher les 26 lettres + titre + bouton « Annuler » sans troncature ni
-# défilement (a fortiori sous Windows, au rendu plus grand qu'en WebKitGTK — cf. le
-# diagnostic #140) : on agrandit donc la fenêtre le temps du choix, puis on restaure
-# 175 px. 340 px laissent tenir sans scroll une grille 7 colonnes × 4 lignes
-# (7+7+7+5) aux cellules confortables, avec une large marge même sous Windows.
-CHEVALET_JOKER_HAUTEUR = 340
 # Marge basse : la fenêtre chevalet est posée près du bas de l'écran, à cette
 # distance du bord inférieur de la zone de travail.
 CHEVALET_MARGE_BAS = 40

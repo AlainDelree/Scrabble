@@ -597,6 +597,52 @@ header {
 }
 
 /* --------------------------------------------------------------------------- */
+/* Sélecteur de lettre du joker (issue #168)                                    */
+/* --------------------------------------------------------------------------- */
+/* Menu déroulant construit sur le MÊME patron que « Derniers coups » : un
+   bouton pastille (.historique-resume, réutilisé tel quel) ancré dans la barre
+   globale, dont la liste s'ouvre en surimpression dessous (.historique-liste,
+   réutilisée pour la boîte : position absolue, fond blanc, ombre). Il remplace
+   l'ancienne modale logée dans la fenêtre chevalet, qu'elle obligeait à agrandir
+   le temps du choix (issue #157). Le plateau étant maximisé, la place ne manque
+   pas ; le popover s'ouvre dans la gouttière gauche (haut de l'écran), hors de la
+   zone que le chevalet flottant recouvre (bas de l'écran) — aucun réglage de
+   z-order nécessaire (point #1 de l'issue). */
+.joker-menu {
+    position: relative;
+}
+
+/* Le popover réutilise .historique-liste (surimpression absolue, fond blanc,
+   ombre) mais héberge un titre + la grille 7 colonnes des 26 lettres + le bouton
+   « Annuler » : on l'élargit pour loger la grille et on centre son contenu. */
+.joker-popover {
+    width: auto;
+    min-width: 300px;
+    align-items: center;
+    text-align: center;
+    padding: 12px 14px;
+    gap: 8px;
+}
+
+.joker-popover-titre {
+    margin: 0 0 2px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--couleur-secondaire, #5d4037);
+}
+
+/* La grille remplit la largeur du popover ; le bouton « Annuler » reste compact
+   et centré sous elle (il ne s'étire pas comme un enfant flex par défaut). */
+.joker-popover .joker-grille {
+    width: 100%;
+    margin-bottom: 0;
+}
+
+.joker-popover #joker-annuler {
+    align-self: center;
+}
+
+/* --------------------------------------------------------------------------- */
 /* Table de jeu : plateau central entouré des panneaux joueurs (issue #33)      */
 /* --------------------------------------------------------------------------- */
 /* Grille 3×3 : le plateau au centre, un panneau par côté (haut / gauche /

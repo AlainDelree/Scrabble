@@ -38,15 +38,13 @@
         </div>
     </div>
 
-    <!-- Modale de choix de la lettre représentée par un joker (issue #90 : la
-         lettre vient du chevalet, la modale s'ouvre donc côté chevalet). -->
-    <div id="joker-modale" class="modale" hidden>
-        <div class="modale-contenu">
-            <h3>Quelle lettre représente le joker ?</h3>
-            <div id="joker-grille" class="joker-grille"></div>
-            <button id="joker-annuler" class="btn btn-secondaire">Annuler</button>
-        </div>
-    </div>
+    <!-- Le sélecteur de lettre du joker a quitté cette fenêtre (issue #168) : il
+         obligeait à agrandir temporairement le chevalet compact (480×175 → 480×340)
+         le temps du choix (issue #157). Il est désormais un menu déroulant ancré
+         sur la fenêtre plateau (même patron que « Derniers coups », voir
+         jeu.html / jeu.js) : le plateau, maximisé, a la place. La sélection de la
+         lettre de départ reste faite ici (clic sur le joker du panneau), mais le
+         choix de la lettre représentée se fait côté plateau, sans redimensionnement. -->
 
     <!-- La modale de détail du score (« Vérifier et calculer ») vit désormais côté
          fenêtre plateau (issue #101 : les actions de tour y ont été déplacées). -->

@@ -108,6 +108,39 @@
                         aria-live="polite" hidden></ol>
                 </div>
 
+                <!-- Sélecteur de lettre du joker (issue #168) : déplacé de la
+                     fenêtre chevalet (qu'il obligeait à agrandir temporairement,
+                     issue #157) vers ici, sur le plateau. MÊME famille visuelle que
+                     « Derniers coups » — un bouton ancré dans la barre globale dont
+                     la liste s'ouvre en surimpression dessous (position absolue),
+                     sans redimensionner AUCUNE fenêtre. Le plateau étant maximisé,
+                     la place ne manque pas (contrairement au chevalet compact). Le
+                     bouton et son popover restent masqués tant qu'aucun joker n'est
+                     en cours de pose ; jeu.js les révèle quand Python signale
+                     ``joker_requis`` (clic sur une case avec un joker sélectionné),
+                     puis les re-masque une fois la lettre choisie ou le choix
+                     abandonné. Le popover s'ouvrant dans la gouttière gauche (haut
+                     de l'écran), il ne tombe jamais sous la fenêtre chevalet
+                     flottante (posée en bas) : aucun réglage de z-order nécessaire
+                     (point #1 de l'issue). -->
+                <div class="joker-menu" id="joker-menu">
+                    <button id="btn-joker" class="historique-resume joker-resume"
+                            aria-haspopup="dialog" aria-expanded="false" hidden>
+                        <span class="historique-resume-inner">
+                            <span class="historique-resume-titre">🃏 Lettre du joker</span>
+                        </span>
+                    </button>
+                    <div id="joker-popover" class="historique-liste joker-popover"
+                         role="dialog"
+                         aria-label="Choisir la lettre représentée par le joker" hidden>
+                        <h3 class="joker-popover-titre">Quelle lettre représente le joker ?</h3>
+                        <div id="joker-grille" class="joker-grille"></div>
+                        <button id="joker-annuler" class="btn btn-secondaire btn-petit">
+                            Annuler
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Sac de lettres restantes (🎒 + nombre). Déplacé À DROITE
                      (issue #125), en tête du groupe droit : ``margin-left:auto``
                      sur .sac (voir jeu.css) le pousse, lui et les deux boutons
@@ -152,8 +185,10 @@
              depuis la fenêtre chevalet (sélection) + la fenêtre plateau (case
              cliquée). Comme la zone de message de tour vit désormais côté
              chevalet, ce court retour (« sélectionnez d'abord une lettre »,
-             « case occupée », « choisissez la lettre du joker côté chevalet »)
-             s'affiche ici, en surimpression discrète, sans repousser la table. -->
+             « case occupée »…) s'affiche ici, en surimpression discrète, sans
+             repousser la table. Le choix de la lettre d'un joker, lui, se fait
+             désormais dans le menu déroulant « Lettre du joker » de cette même
+             fenêtre (issue #168), et non plus par un renvoi vers le chevalet. -->
         <div id="message-plateau" class="message-plateau" role="status" aria-live="polite" hidden></div>
 
         <!-- Table de jeu : plateau central entouré des panneaux joueurs, chacun
@@ -344,9 +379,11 @@
         </div>
     </div>
 
-    <!-- La modale de choix de lettre d'un joker vit désormais côté fenêtre
-         chevalet (chevalet.html) : la lettre vient du chevalet, le choix s'y fait
-         donc (issue #90). -->
+    <!-- Le sélecteur de lettre d'un joker vit désormais dans la barre globale de
+         CETTE fenêtre plateau (menu déroulant « Lettre du joker », plus haut),
+         même patron que « Derniers coups » (issue #168). Il a quitté la fenêtre
+         chevalet (issue #90), dont il imposait d'agrandir la fenêtre compacte le
+         temps du choix (issue #157). -->
 
     <!-- Calque de célébration festive quand un Scrabble (7 lettres, +50 pts) est
          posé (issue #64, suite de #58). Superposé plein écran mais totalement

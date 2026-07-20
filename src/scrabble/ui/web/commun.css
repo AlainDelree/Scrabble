@@ -479,11 +479,12 @@
 
 .joker-grille {
     display: grid;
-    /* 7 colonnes (issue #157) : 26 lettres sur 4 lignes (7+7+7+5), cellules
-       confortables et lisibles. La contrainte de hauteur qui avait imposé 9 colonnes
-       en #146 (fenêtre chevalet bloquée à 175 px) est levée : la fenêtre est
-       désormais agrandie le temps de la modale (voir CHEVALET_JOKER_HAUTEUR côté
-       Python), les 4 lignes tiennent alors sans défilement. */
+    /* 7 colonnes : 26 lettres sur 4 lignes (7+7+7+5), cellules confortables et
+       lisibles. Depuis l'issue #168, le sélecteur est un menu déroulant de la
+       fenêtre plateau (maximisée) et non plus une modale de la fenêtre chevalet
+       compacte : la contrainte de hauteur qui avait imposé de jongler avec le
+       nombre de colonnes (#146/#157) a disparu — les 4 lignes tiennent sans
+       défilement. */
     grid-template-columns: repeat(7, 1fr);
     gap: 5px;
     margin-bottom: 16px;
@@ -504,68 +505,6 @@
 .joker-lettre:hover {
     background: #e8d09a;
     transform: translateY(-1px);
-}
-
-/* Issue #121 : depuis le resserrage de la fenêtre chevalet à 480×175 (#102-106),
-   la grille A-Z des 26 lettres (hauteur intrinsèque ~294 px) débordait de la
-   fenêtre — dernières lignes V-W-X-Y-Z et bouton Annuler invisibles. Plutôt qu'un
-   recalibrage fragile de taille de fenêtre, on retient l'approche « toujours
-   visible » adoptée pour la modale de tirage d'ordre (#116) : on borne le contenu
-   à la hauteur de la fenêtre, la grille devient scrollable, et le bouton Annuler
-   reste épinglé en bas, hors de la zone qui défile. Robuste à tout futur
-   ajustement du panneau de lettres (aucune constante de pixels à réviser). */
-#joker-modale .modale-contenu {
-    display: flex;
-    flex-direction: column;
-    max-height: calc(100vh - 8px);
-    /* Issue #146 : on élargit la modale pour occuper presque toute la largeur de la
-       fenêtre chevalet (480 px) au lieu des 360 px hérités de .modale-contenu. Une
-       grille plus large tient sur 9 colonnes / 3 lignes, donc plus de lettres
-       visibles d'un coup. Paddings/marges verticaux resserrés au strict nécessaire
-       (la fenêtre n'offre que ~175 px) : chaque pixel récupéré est une ligne de
-       lettres de plus visible sans défilement. */
-    max-width: calc(100vw - 12px);
-    padding: 8px 16px;
-}
-
-/* Titre et bouton gardent leur rôle d'ancrage (jamais défilés), mais leur taille est
-   réduite au minimum pour rendre l'espace vertical à la grille (issue #146). */
-#joker-modale .modale-contenu h3,
-#joker-modale #joker-annuler {
-    flex: 0 0 auto;
-}
-
-#joker-modale .modale-contenu h3 {
-    font-size: 0.95rem;
-    margin-bottom: 6px;
-}
-
-#joker-modale #joker-annuler {
-    padding: 6px 16px;
-}
-
-/* La grille absorbe le manque de place : elle défile si besoin, min-height:0 est
-   indispensable pour qu'un flex-item puisse défiler. Un indice de défilement (ombres
-   haut/bas, technique Lea Verou en dégradés local/scroll) apparaît automatiquement
-   quand du contenu dépasse et disparaît aux extrémités — sous WebKitGTK la barre de
-   défilement est invisible, cet indice signale donc qu'il reste des lettres à voir
-   (issue #146). */
-#joker-modale .joker-grille {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    margin-bottom: 8px;
-    background:
-        /* voiles blancs (local) : masquent l'ombre à l'extrémité où l'on est posé */
-        linear-gradient(white 30%, rgba(255, 255, 255, 0)) top / 100% 24px,
-        linear-gradient(rgba(255, 255, 255, 0), white 70%) bottom / 100% 24px,
-        /* ombres (scroll) : révélées dès qu'il reste du contenu au-dessus/dessous */
-        radial-gradient(farthest-side at 50% 0,
-            rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0)) top / 100% 12px,
-        radial-gradient(farthest-side at 50% 100%,
-            rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0)) bottom / 100% 12px;
-    background-repeat: no-repeat;
-    background-attachment: local, local, scroll, scroll;
 }
 
 /* Modale de détail du score (issue #35), dupliquée dans les deux fenêtres. */
