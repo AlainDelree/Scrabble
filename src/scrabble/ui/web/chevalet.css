@@ -76,7 +76,14 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    overflow: auto;
+    /* Issue #158 : plus de ``overflow: auto`` — la fenêtre chevalet est fixe et
+       non redimensionnable (480×175), son contenu essentiel (les 9 cases) doit
+       toujours tenir sans défilement. ``auto`` faisait apparaître une scrollbar
+       verticale dès que le titre du panneau se repliait sur 2-3 lignes sous
+       WebKitGTK (rendu de police plus haut qu'estimé). On masque donc tout
+       débordement : combiné au titre forcé sur une seule ligne (``.panneau-titre``
+       ci-dessous), le contenu reste largement sous les 175 px. */
+    overflow: hidden;
     padding: 8px 14px;
 }
 
@@ -100,13 +107,27 @@ body {
 }
 
 .panneau-titre {
-    display: inline;
+    /* Issue #158 : le titre + sa note d'aide tenaient sur une seule ligne dans
+       l'estimation d'origine, mais se repliaient sur 2-3 lignes au rendu réel
+       (WebKitGTK), poussant le panneau des lettres hors de la fenêtre de 175 px
+       et déclenchant une scrollbar. On force désormais une seule ligne :
+       ``nowrap`` empêche tout repli, et l'ellipsis tronque proprement la note si
+       la fenêtre est trop étroite plutôt que de grandir en hauteur. ``block`` est
+       nécessaire pour que ``text-overflow: ellipsis`` s'applique. */
+    display: block;
     margin-bottom: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 
 .panneau-titre-groupe {
     position: relative;
-    display: inline;
+    /* ``block`` + ``min-width: 0`` : laisse le titre rétrécir dans l'en-tête flex
+       et l'ellipsis opérer (issue #158). */
+    display: block;
+    min-width: 0;
 }
 
 .panneau {
