@@ -165,21 +165,37 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function ouvrirModaleJoker(demande) {
         jokerModaleOuverte = true;
-        const choix = await C.choisirLettreJoker({
-            modale: jokerModale, grille: jokerGrille, annuler: jokerAnnuler,
-            // Diagnostic réel (issue #140) : à l'ouverture, on remonte à Python les
-            // dimensions effectivement rendues (viewport, boîte du contenu, grille,
-            // bouton Annuler) pour tracer le débordement en conditions WebKitGTK,
-            // que la mesure headless (#131) ne reproduit pas. Best-effort : toute
-            // erreur du pont est ignorée sans gêner le choix de la lettre.
-            auOuvrir: (mesures) => {
-                if (api && typeof api.diagnostiquer_joker_modale === 'function') {
-                    Promise.resolve(api.diagnostiquer_joker_modale(mesures))
-                        .catch(() => {});
-                }
-            },
-        });
-        jokerModaleOuverte = false;
+        // Issue #157 : la fenêtre chevalet compacte (480×175) ne peut afficher les
+        // 26 lettres sans troncature. On l'agrandit le temps du choix (Python
+        // restaure sa taille à la fermeture). Best-effort et attendu avant
+        // l'affichage pour que la modale se centre dans la fenêtre déjà agrandie.
+        if (api && typeof api.dimensionner_pour_joker === 'function') {
+            try { await api.dimensionner_pour_joker(true); } catch (e) { /* best-effort */ }
+        }
+        let choix = null;
+        try {
+            choix = await C.choisirLettreJoker({
+                modale: jokerModale, grille: jokerGrille, annuler: jokerAnnuler,
+                // Diagnostic réel (issue #140) : à l'ouverture, on remonte à Python les
+                // dimensions effectivement rendues (viewport, boîte du contenu, grille,
+                // bouton Annuler) pour tracer le débordement en conditions WebKitGTK,
+                // que la mesure headless (#131) ne reproduit pas. Best-effort : toute
+                // erreur du pont est ignorée sans gêner le choix de la lettre.
+                auOuvrir: (mesures) => {
+                    if (api && typeof api.diagnostiquer_joker_modale === 'function') {
+                        Promise.resolve(api.diagnostiquer_joker_modale(mesures))
+                            .catch(() => {});
+                    }
+                },
+            });
+        } finally {
+            // Restaure la taille compacte quelle que soit l'issue (choix ou annulation,
+            // y compris en cas d'erreur du sélecteur) — issue #157.
+            if (api && typeof api.dimensionner_pour_joker === 'function') {
+                try { await api.dimensionner_pour_joker(false); } catch (e) { /* best-effort */ }
+            }
+            jokerModaleOuverte = false;
+        }
         if (choix) {
             await api.poser_lettre_en_attente(
                 demande.ligne, demande.colonne, choix, true, 0, demande.index);

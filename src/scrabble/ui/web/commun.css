@@ -479,11 +479,12 @@
 
 .joker-grille {
     display: grid;
-    /* 9 colonnes (issue #146) : 26 lettres tiennent alors sur 3 lignes (9+9+8) au
-       lieu de 4 sur 7 colonnes — une ligne de moins à faire défiler dans la fenêtre
-       chevalet très basse (175 px). La fenêtre fait 480 px de large : 9 colonnes y
-       restent largement lisibles. */
-    grid-template-columns: repeat(9, 1fr);
+    /* 7 colonnes (issue #157) : 26 lettres sur 4 lignes (7+7+7+5), cellules
+       confortables et lisibles. La contrainte de hauteur qui avait imposé 9 colonnes
+       en #146 (fenêtre chevalet bloquée à 175 px) est levée : la fenêtre est
+       désormais agrandie le temps de la modale (voir CHEVALET_JOKER_HAUTEUR côté
+       Python), les 4 lignes tiennent alors sans défilement. */
+    grid-template-columns: repeat(7, 1fr);
     gap: 5px;
     margin-bottom: 16px;
 }
