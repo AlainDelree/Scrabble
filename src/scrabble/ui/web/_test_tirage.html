@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="commun.css">
+    <link rel="stylesheet" href="jeu.css">
+</head>
+<body class="tirage-en-cours">
+    <div id="ecran-tirage" class="ecran-tirage">
+        <div class="ecran-tirage-contenu">
+            <h2>Tirage de l'ordre de jeu</h2>
+            <div class="ecran-tirage-corps">
+                <p class="tirage-intro">Chaque joueur a tiré une lettre. L'ordre de jeu suit l'ordre alphabétique des lettres tirées.</p>
+                <ul id="tirage-lettres" class="tirage-lettres"></ul>
+                <p id="tirage-ordre-resultat" class="tirage-ordre-resultat"></p>
+            </div>
+            <div id="tirage-sac-zone" class="tirage-sac-zone" hidden></div>
+            <div id="tirage-sac-action" class="tirage-sac-action" hidden></div>
+            <div class="ecran-tirage-actions">
+                <button type="button" class="btn btn-secondaire" id="btn-annuler-tirage">Annuler</button>
+                <button type="button" class="btn btn-primaire" id="btn-continuer-tirage" disabled>Continuer</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const N = parseInt(location.hash.slice(1)) || 2;
+        const ul = document.getElementById('tirage-lettres');
+        for (let i = 0; i < N; i++) {
+            const li = document.createElement('li');
+            li.className = 'visible';
+            li.innerHTML = `<span class="tirage-nom">Joueur ${i+1}</span> a tiré <span class="tirage-lettre">A</span>`;
+            ul.appendChild(li);
+        }
+        const res = document.getElementById('tirage-ordre-resultat');
+        res.textContent = 'Ordre de jeu : 1, 2';
+        res.classList.add('visible');
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            const c = document.querySelector('.ecran-tirage-corps');
+            const barW = c.offsetWidth - c.clientWidth;  // >0 si une scrollbar est réellement rendue
+            document.title = `RESULT n=${N} scrollH=${c.scrollHeight} clientH=${c.clientHeight} barW=${barW} bar=${barW>0}`;
+        }));
+    </script>
+</body>
+</html>
