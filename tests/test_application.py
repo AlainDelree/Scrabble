@@ -14,10 +14,12 @@ La remise à zéro complète de ``ApiJeu.charger_partie`` est testée dans
 """
 
 import inspect
+import threading
 
 import pytest
 
 from scrabble.moteur.ia import Niveau
+from scrabble.ui import application as _mod_application
 from scrabble.ui.accueil import ApiAccueil
 from scrabble.ui.application import (
     VUE_ACCUEIL,
@@ -26,6 +28,27 @@ from scrabble.ui.application import (
     lancer_application_unifiee,
 )
 from scrabble.ui.jeu import ApiJeu
+
+# Référence vers le VRAI ``_differer`` (fil démon + délai), capturée avant tout
+# ``monkeypatch`` : la fixture autouse ci-dessous le remplace par une exécution
+# synchrone pour tous les tests, mais son comportement réel reste testable via
+# cette référence (cf. ``TestNavigationDifferee``).
+_DIFFERER_REEL = _mod_application._differer
+
+
+@pytest.fixture(autouse=True)
+def _navigation_synchrone(monkeypatch):
+    """Rend la navigation différée (issue #183) synchrone pendant les tests.
+
+    En production, ``_differer`` repousse le ``load_url`` dans un fil démon (après
+    un court délai) pour éviter le « callback de retour orphelin ». En test, on
+    l'exécute immédiatement : les assertions sur ``load_url``/finalisation restent
+    déterministes, sans fil ni délai. Les tests qui veulent observer le différé
+    lui-même re-patchent ``_differer`` localement.
+    """
+    monkeypatch.setattr(
+        "scrabble.ui.application._differer", lambda action: action()
+    )
 
 
 class _SousApiFactice:
@@ -713,6 +736,93 @@ class TestParcoursCompletUnifie:
         # Exactement UNE session ouverte et UNE fermée pour tout le parcours.
         assert demarrees == [1]
         assert cloturees == [1]
+
+
+class TestNavigationDifferee:
+    """La navigation ``load_url`` est différée après le retour de l'appel JS (issue #183).
+
+    pywebview livre la valeur de retour de l'appel JS courant (résolution du
+    ``Promise``) sur le document ENCORE affiché, juste après le retour de la
+    méthode Python. Si ``load_url`` remplace ce document trop tôt, le callback de
+    retour devient orphelin et le JS lève (exception non bloquante au terminal).
+    Le routeur diffère donc toute navigation déclenchée par un appel JS.
+    """
+
+    def _routeur_pret(self, monkeypatch, capture):
+        """Routeur en vue Jeu, partie chargée, chevalet monté ; ``_differer`` capturé."""
+        monkeypatch.setattr(
+            "scrabble.ui.application._differer",
+            lambda action: capture.append(action),
+        )
+        routeur = ApiRouteur()
+        fenetre = _FenetreFactice()
+        routeur.set_window(fenetre)
+        routeur._api_jeu._window_chevalet = _FenetreFactice()
+        monkeypatch.setattr(
+            routeur._api_jeu, "finaliser_entree_vue_jeu", lambda: None
+        )
+        return routeur, fenetre
+
+    def test_demarrer_jeu_ne_navigue_pas_avant_le_retour(self, monkeypatch):
+        """``demarrer_jeu`` rend la main (succès) SANS avoir encore navigué."""
+        capture: list = []
+        routeur, fenetre = self._routeur_pret(monkeypatch, capture)
+        partie, id_partie = _partie_deux_joueurs()
+        routeur._api_accueil._partie = partie
+        routeur._api_accueil._id_partie = id_partie
+
+        resultat = routeur.demarrer_jeu()
+
+        # Succès rendu, mais navigation encore EN ATTENTE (différée) : la valeur de
+        # retour peut être livrée sur accueil.html sans callback orphelin.
+        assert resultat["succes"] is True
+        assert fenetre.urls == []
+        assert len(capture) == 1
+        # La vue est déjà basculée AVANT la navigation (course #178, point 3).
+        assert routeur._vue_active == VUE_JEU
+
+        # L'action différée, une fois jouée, navigue effectivement vers jeu.html.
+        capture[0]()
+        assert fenetre.urls[-1].endswith("jeu.html")
+
+    def test_retourner_accueil_ne_navigue_pas_avant_le_retour(self, monkeypatch):
+        """``retourner_accueil`` diffère aussi sa navigation vers accueil.html."""
+        capture: list = []
+        routeur, fenetre = self._routeur_pret(monkeypatch, capture)
+        routeur.activer_vue(VUE_JEU)
+
+        resultat = routeur.retourner_accueil()
+
+        assert resultat["succes"] is True
+        assert fenetre.urls == []
+        assert len(capture) == 1
+        assert routeur._vue_active == VUE_ACCUEIL
+
+        capture[0]()
+        assert fenetre.urls[-1].endswith("accueil.html")
+
+    def test_recommencer_jeu_ne_navigue_pas_avant_le_retour(self, monkeypatch):
+        """``recommencer_jeu`` diffère le rechargement de jeu.html."""
+        capture: list = []
+        routeur, fenetre = self._routeur_pret(monkeypatch, capture)
+        partie, _id = _partie_deux_joueurs()
+        routeur.charger_jeu(partie, None)
+        routeur.activer_vue(VUE_JEU)
+
+        resultat = routeur.recommencer_jeu()
+
+        assert resultat["succes"] is True
+        assert fenetre.urls == []
+        assert len(capture) == 1
+
+        capture[0]()
+        assert fenetre.urls[-1].endswith("jeu.html")
+
+    def test_differer_execute_bien_l_action_dans_un_fil(self):
+        """Le vrai ``_differer`` finit par exécuter l'action (fil démon + délai)."""
+        fait = threading.Event()
+        _DIFFERER_REEL(fait.set)
+        assert fait.wait(timeout=2.0) is True
 
 
 class _DicoFactice:

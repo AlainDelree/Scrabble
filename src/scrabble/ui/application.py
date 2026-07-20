@@ -33,8 +33,10 @@ scrabble.ui.application``) **sans** modifier le chemin de production par défaut
 
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import webview
 
@@ -50,6 +52,36 @@ DOSSIER_WEB = Path(__file__).parent / "web"
 VUE_ACCUEIL = "accueil"
 VUE_JEU = "jeu"
 VUES = (VUE_ACCUEIL, VUE_JEU)
+
+# Délai (secondes) avant une navigation ``load_url`` déclenchée EN RÉPONSE à un
+# appel JS (issue #183). Mécanique pywebview (cf. ``webview.util.js_bridge_call``)
+# : chaque appel ``api.xxx()`` du JS est exécuté côté Python dans un fil, puis sa
+# valeur de retour est livrée au JS via un ``window.evaluate_js(...)`` qui résout
+# le ``Promise`` — SUR LE DOCUMENT ENCORE AFFICHÉ — juste APRÈS le retour de la
+# méthode Python. Si cette méthode a, entre-temps, remplacé le document par un
+# ``load_url`` synchrone, la nouvelle page ne possède plus le callback attendu
+# (``window.pywebview._returnValuesCallbacks[func][id]`` est ``undefined``) : le
+# JS lève alors un « callback de retour orphelin », visible (non bloquant) au
+# terminal. On repousse donc la navigation d'un court instant, le temps que la
+# résolution soit livrée sur la page d'origine. Imperceptible à l'œil.
+DELAI_NAVIGATION_DIFFEREE_S = 0.05
+
+
+def _differer(action: Callable[[], None]) -> None:
+    """Exécute ``action`` après un court délai, dans un fil démon (issue #183).
+
+    Sert à repousser une navigation ``load_url`` juste après le retour de l'appel
+    JS courant, pour éviter le « callback de retour orphelin » décrit sur
+    :data:`DELAI_NAVIGATION_DIFFEREE_S`. Isolé au niveau module pour être
+    remplaçable en test (exécution synchrone via ``monkeypatch``), sans fil ni
+    délai réels.
+    """
+
+    def _corps() -> None:
+        time.sleep(DELAI_NAVIGATION_DIFFEREE_S)
+        action()
+
+    threading.Thread(target=_corps, name="navigation-differee", daemon=True).start()
 
 
 class ApiRouteur:
@@ -272,16 +304,31 @@ class ApiRouteur:
         self.charger_jeu(partie, id_partie, infos_tirage)
         # 2. Basculer le routage AVANT la navigation (course #178, point 3).
         self.activer_vue(VUE_JEU)
-        # 3. Naviguer vers jeu.html dans la MÊME fenêtre (load_url, décision #178).
+        # 3. Naviguer vers jeu.html dans la MÊME fenêtre (load_url, décision #178),
+        #    mais en DIFFÉRÉ : la navigation doit survenir APRÈS que pywebview a
+        #    livré la valeur de retour de cet appel ``demarrer_jeu()`` sur
+        #    ``accueil.html`` (page encore affichée), sinon le JS lève un
+        #    « callback de retour orphelin » (issue #183, cf. :func:`_differer`).
+        #    La finalisation (étape 4) suit la navigation, dans le même différé.
         if self._window is not None:
-            self._window.load_url(str(DOSSIER_WEB / "jeu.html"))
-            journal.info(
-                f"Routeur : navigation Accueil→Jeu (load_url jeu.html, "
-                f"partie #{id_partie})."
-            )
-        # 4. Rejouer la finalisation (maximisation, chevalet) à chaque entrée en
-        #    vue Jeu — la coquille unifiée n'a qu'une seule boucle webview.start.
-        self._api_jeu.finaliser_entree_vue_jeu()
+            window = self._window
+            cible = str(DOSSIER_WEB / "jeu.html")
+
+            def _entrer_en_jeu() -> None:
+                window.load_url(cible)
+                journal.info(
+                    f"Routeur : navigation Accueil→Jeu (load_url jeu.html, "
+                    f"partie #{id_partie})."
+                )
+                # 4. Rejouer la finalisation (maximisation, chevalet) à chaque
+                #    entrée en vue Jeu — une seule boucle webview.start.
+                self._api_jeu.finaliser_entree_vue_jeu()
+
+            _differer(_entrer_en_jeu)
+        else:
+            # Sans fenêtre (tests unitaires, lancement autonome) : aucune
+            # navigation à différer, on rejoue directement la finalisation.
+            self._api_jeu.finaliser_entree_vue_jeu()
         return {"succes": True}
 
     def retourner_accueil(self) -> dict[str, Any]:
@@ -316,11 +363,20 @@ class ApiRouteur:
         self._api_jeu.masquer_chevalet()
         self._api_accueil.reinitialiser_pour_retour_accueil()
         self.activer_vue(VUE_ACCUEIL)
+        # Navigation DIFFÉRÉE : elle doit survenir APRÈS la livraison de la valeur
+        # de retour de l'appel JS courant sur ``jeu.html`` (encore affiché), sinon
+        # « callback de retour orphelin » (issue #183, cf. :func:`_differer`).
         if self._window is not None:
-            self._window.load_url(str(DOSSIER_WEB / "accueil.html"))
-            journal.info(
-                "Routeur : navigation Jeu→Accueil (load_url accueil.html)."
-            )
+            window = self._window
+            cible = str(DOSSIER_WEB / "accueil.html")
+
+            def _entrer_en_accueil() -> None:
+                window.load_url(cible)
+                journal.info(
+                    "Routeur : navigation Jeu→Accueil (load_url accueil.html)."
+                )
+
+            _differer(_entrer_en_accueil)
         return {"succes": True}
 
     def recommencer_jeu(self) -> dict[str, Any]:
@@ -362,15 +418,29 @@ class ApiRouteur:
         )
         self.charger_jeu(nouvelle, nouvel_id, infos_tirage)
         self.activer_vue(VUE_JEU)
+        # Navigation DIFFÉRÉE (issue #183) : APRÈS la livraison de la valeur de
+        # retour de l'appel JS courant sur ``jeu.html``. Le remasquage du chevalet
+        # et la finalisation (étapes 5-6) suivent la navigation, dans le différé.
         if self._window is not None:
-            self._window.load_url(str(DOSSIER_WEB / "jeu.html"))
-            journal.info(
-                f"Routeur : recommencer (load_url jeu.html, nouvelle "
-                f"#{nouvel_id})."
-            )
-        # Nouveau tirage à mener : le chevalet compagnon repart masqué.
-        self._api_jeu.masquer_chevalet()
-        self._api_jeu.finaliser_entree_vue_jeu()
+            window = self._window
+            cible = str(DOSSIER_WEB / "jeu.html")
+
+            def _recharger_jeu() -> None:
+                window.load_url(cible)
+                journal.info(
+                    f"Routeur : recommencer (load_url jeu.html, nouvelle "
+                    f"#{nouvel_id})."
+                )
+                # Nouveau tirage à mener : le chevalet compagnon repart masqué.
+                self._api_jeu.masquer_chevalet()
+                self._api_jeu.finaliser_entree_vue_jeu()
+
+            _differer(_recharger_jeu)
+        else:
+            # Sans fenêtre (tests, lancement autonome) : pas de navigation à
+            # différer, on rejoue directement remasquage + finalisation.
+            self._api_jeu.masquer_chevalet()
+            self._api_jeu.finaliser_entree_vue_jeu()
         return {"succes": True}
 
     def annuler_tirage_accueil(self) -> dict[str, Any]:
