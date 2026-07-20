@@ -89,7 +89,16 @@ body {
    gauche défile en interne si son contenu dépasse (voir .colonne-gauche). */
 .container {
     display: grid;
-    grid-template-columns: minmax(300px, 340px) 1fr;
+    /* Marge gauche ÉLARGIE (issue #189, retour visuel d'Alain sur #186/#187) :
+       passée de ``minmax(300px, 340px)`` à ``minmax(440px, 480px)``. La largeur
+       supplémentaire dégage la place horizontale nécessaire pour regrouper les
+       pastilles système côte à côte (zone A, 2 lignes) et les actions humaines
+       (zone D), et surtout pour que le chevalet (zone C) tienne sur UNE SEULE
+       ligne (9 emplacements de 40px, voir .zone-chevalet .panneau). Le plateau se
+       décale d'autant vers la droite (colonne ``1fr``) : il reste carré et occupe
+       la pleine hauteur, l'esprit de #186 (plus petite des bornes largeur/hauteur,
+       via le flex centré de .colonne-plateau) étant préservé. */
+    grid-template-columns: minmax(440px, 480px) 1fr;
     gap: 12px;
     height: 100vh;
     box-sizing: border-box;
@@ -126,11 +135,23 @@ body {
     min-height: 0;
 }
 
-/* Zone A : boutons système, disposés en lignes qui se replient (issue #186).
-   Reprend l'esprit de l'ex-barre globale horizontale mais sur la largeur réduite
-   de la marge : les pastilles (retour menu, resync, sac, loupe, derniers coups)
-   s'alignent et passent à la ligne selon la place. */
+/* Zone A : boutons système répartis sur 2 lignes explicites (issue #189, croquis
+   d'Alain). La marge élargie (voir .container) laisse la place de grouper les
+   pastilles côte à côte : plutôt que de laisser le simple ``flex-wrap`` décider
+   des retours (issue #186), on impose deux rangées via des conteneurs
+   ``.zone-systeme-ligne`` :
+     - Ligne 1 : Retour au menu · Resynchroniser (icône seule) · Sac ;
+     - Ligne 2 : loupe (vérification dictionnaire) · Derniers coups.
+   La section elle-même reste une colonne (héritée de .zone-gauche) empilant ces
+   deux rangées. */
 .zone-systeme {
+    gap: 8px;
+}
+
+/* Une rangée de la zone A : pastilles alignées horizontalement, repli propre si
+   la marge devient trop étroite. */
+.zone-systeme-ligne {
+    display: flex;
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
@@ -160,12 +181,15 @@ body {
 /* --------------------------------------------------------------------------- */
 /* Panneau unifié des lettres du chevalet (issue #100, migré en zone C #187)    */
 /* --------------------------------------------------------------------------- */
-/* Migré depuis chevalet.css et adapté à la marge gauche étroite (~300-340px) :
-   les 9 cases (7 lettres + 2 vides) passent d'une rangée horizontale unique à une
-   grille compacte 3×3 (rapport d'investigation #187), et les tuiles sont réduites
-   (~36px) pour tenir dans la largeur de la marge sans défilement. La logique JS
-   (sélection, réarrangement, échange) est indépendante de cette disposition : elle
-   travaille sur les index d'un tableau plat, inchangé. */
+/* Migré depuis chevalet.css (issue #187) puis REVENU à la rangée unique (issue
+   #189). La grille 3×3 de #187 (imposée par la marge étroite ~300-340px) empilait
+   les 9 emplacements sur 3 lignes, jugé trop chargé verticalement. Avec la marge
+   élargie (voir .container, ~440-480px), on retrouve la disposition d'origine de
+   l'ex-fenêtre flottante : les 9 cases (7 lettres + 2 vides) tiennent sur UNE
+   SEULE ligne (``flex; flex-wrap: nowrap``), tuiles ramenées à leur taille
+   d'origine (40×44px). La logique JS (sélection, réarrangement, échange) est
+   indépendante de cette disposition : elle travaille sur les index d'un tableau
+   plat, inchangé. */
 .bloc-panneau {
     padding: 8px 10px 10px;
     background: #f3eee4;
@@ -200,19 +224,23 @@ body {
     min-width: 0;
 }
 
-/* Grille 3×3 (rapport #187) : 9 emplacements (7 lettres + 2 vides) répartis sur
-   trois colonnes de largeur égale. Remplace le flex horizontal ``nowrap`` de
-   l'ancienne fenêtre large (480px) qui ne tiendrait pas dans la marge. */
+/* Rangée unique (issue #189) : les 9 emplacements (7 lettres + 2 vides) alignés
+   horizontalement sans repli (``nowrap``), centrés dans la largeur du panneau.
+   Remplace la grille 3×3 de #187 : la marge élargie (voir .container) offre
+   désormais la place nécessaire (9 tuiles de 40px + interstices ≈ 400px, tenues
+   par la borne min de 440px de la marge). Objectif prioritaire de l'issue :
+   revenir à l'unique ligne de l'ex-fenêtre flottante. */
 .zone-chevalet .panneau {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-    justify-items: center;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: 5px;
 }
 
 .panneau-case {
-    width: 36px;
-    height: 40px;
+    width: 40px;
+    height: 44px;
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -285,8 +313,9 @@ body {
 
 /* Emplacements vides : servent au réarrangement local (réflexion). Toujours 2. */
 .panneau-case-vide {
-    width: 36px;
-    height: 40px;
+    width: 40px;
+    height: 44px;
+    flex: 0 0 auto;
     border-radius: 4px;
     border: 2px dashed #c9a961;
     background: rgba(201, 169, 97, 0.10);
@@ -1568,6 +1597,17 @@ body {
     font-weight: 600;
 }
 
+/* Bouton réduit à sa seule icône (issue #189) : le « ↻ Resynchroniser », jamais
+   utilisé par Alain, doit rester discret. Pastille carrée compacte, sans libellé
+   texte (retiré du DOM affiché mais conservé via aria-label/title). Cible cliquable
+   confortable préservée (min 40px, public senior). */
+.btn-icone-seule {
+    padding: 8px;
+    min-width: 40px;
+    line-height: 1;
+    font-size: 1.05rem;
+}
+
 /* Zones d'actions de tour (issue #101, réorganisées #160) : rapatriées depuis la
    fenêtre chevalet, désormais réparties de part et d'autre de la fiche du joueur
    humain (voir .panneau-bas) plutôt qu'en barre séparée sous la fiche. Chaque zone
@@ -1739,13 +1779,14 @@ body {
 /* Responsive minimal : sur fenêtre étroite, les 2 colonnes s'empilent          */
 /* --------------------------------------------------------------------------- */
 /* La fenêtre de jeu n'est pas toujours maximisée (issue #186, point 4). Quand
-   elle devient trop étroite pour loger côte à côte la marge gauche (~300px) et un
-   plateau lisible, on bascule en UNE colonne : la marge gauche (4 zones) passe
-   au-dessus, le plateau en dessous. On rend la hauteur du conteneur « auto » pour
-   autoriser un défilement vertical de la page entière plutôt que d'écraser le
-   plateau. Repli minimal, sans recherche de perfection responsive au-delà de
-   l'existant. */
-@media (max-width: 720px) {
+   elle devient trop étroite pour loger côte à côte la marge gauche et un plateau
+   lisible, on bascule en UNE colonne : la marge gauche (4 zones) passe au-dessus,
+   le plateau en dessous. On rend la hauteur du conteneur « auto » pour autoriser
+   un défilement vertical de la page entière plutôt que d'écraser le plateau. Repli
+   minimal, sans recherche de perfection responsive au-delà de l'existant.
+   Seuil relevé de 720 à 880px avec l'élargissement de la marge (issue #189, borne
+   min 440px) : en dessous, la marge et le plateau ne cohabitent plus lisiblement. */
+@media (max-width: 880px) {
     .container {
         grid-template-columns: 1fr;
         height: auto;

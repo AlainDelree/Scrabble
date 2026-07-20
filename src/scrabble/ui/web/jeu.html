@@ -45,32 +45,50 @@
                  (issue #37/#144). Le menu joker (issue #168) reste ici : masqué
                  tant qu'aucun joker n'est en cours de pose. Contenu et id
                  strictement inchangés — simple relocalisation. -->
+            <!-- Zone A répartie sur 2 lignes explicites (issue #189, croquis d'Alain) :
+                 la marge élargie (voir .container) dégage assez de place pour
+                 regrouper les pastilles côte à côte au lieu de les empiler. Deux
+                 conteneurs ``.zone-systeme-ligne`` (rangées flex) portent le
+                 découpage :
+                   - Ligne 1 : Retour au menu · Resynchroniser (icône seule) · Sac ;
+                   - Ligne 2 : loupe (vérification dictionnaire) · Derniers coups.
+                 Contenu et id strictement inchangés — seul le regroupement change. -->
             <section class="zone-gauche zone-systeme" aria-label="Actions système">
-                <!-- Bouton « Retour au menu » (issue #74 ; issue #78). Ferme
-                     l'écran de jeu et rouvre l'accueil ; la partie reste persistée
-                     et reprenable. Avertissement (modale) si des lettres sont
-                     posées mais non validées. -->
-                <button id="btn-retour-menu" class="btn btn-secondaire btn-utilitaire"
-                        title="Fermer la partie et revenir au menu d'accueil (la partie reste reprenable)">
-                    🏠 Retour au menu
-                </button>
+                <!-- Ligne 1 : retour au menu, resynchroniser (icône seule), sac. -->
+                <div class="zone-systeme-ligne">
+                    <!-- Bouton « Retour au menu » (issue #74 ; issue #78). Ferme
+                         l'écran de jeu et rouvre l'accueil ; la partie reste persistée
+                         et reprenable. Avertissement (modale) si des lettres sont
+                         posées mais non validées. -->
+                    <button id="btn-retour-menu" class="btn btn-secondaire btn-utilitaire"
+                            title="Fermer la partie et revenir au menu d'accueil (la partie reste reprenable)">
+                        🏠 Retour au menu
+                    </button>
 
-                <!-- Bouton « Resynchroniser » (issue #41 point 3 ; issue #78).
-                     Force un rechargement de la vue depuis le moteur en cas de
-                     doute sur la synchronisation. -->
-                <button id="btn-rafraichir" class="btn btn-secondaire btn-utilitaire"
-                        title="Recharger l'affichage depuis le moteur (en cas de doute sur la synchronisation)">
-                    ↻ Resynchroniser
-                </button>
+                    <!-- Bouton « Resynchroniser » (issue #41 point 3 ; issue #78).
+                         Force un rechargement de la vue depuis le moteur en cas de
+                         doute sur la synchronisation. Réduit à sa seule icône (issue
+                         #189) : Alain n'en a jamais eu besoin, il doit rester discret.
+                         Le libellé texte est retiré de l'affichage mais reste porté
+                         par ``title`` + ``aria-label`` pour l'accessibilité. -->
+                    <button id="btn-rafraichir" class="btn btn-secondaire btn-utilitaire btn-icone-seule"
+                            aria-label="Resynchroniser"
+                            title="Recharger l'affichage depuis le moteur (en cas de doute sur la synchronisation)">
+                        ↻
+                    </button>
 
-                <!-- Sac de lettres restantes (image + nombre). L'emoji 🎒 est
-                     remplacé par l'image fournie (issue #171). -->
-                <div class="sac">
-                    <img class="sac-icone" src="images/sac.png" alt="Sac de lettres">
-                    <span class="sac-nombre" id="sac-nombre">—</span>
-                    <span class="sac-label">lettres</span>
+                    <!-- Sac de lettres restantes (image + nombre). L'emoji 🎒 est
+                         remplacé par l'image fournie (issue #171). -->
+                    <div class="sac">
+                        <img class="sac-icone" src="images/sac.png" alt="Sac de lettres">
+                        <span class="sac-nombre" id="sac-nombre">—</span>
+                        <span class="sac-label">lettres</span>
+                    </div>
                 </div>
 
+                <!-- Ligne 2 : loupe de vérification dictionnaire + Derniers coups
+                     (et le menu joker, masqué tant qu'aucun joker n'est en pose). -->
+                <div class="zone-systeme-ligne">
                 <!-- Vérification dictionnaire (issue #86) : le champ + le bouton
                      de vérification vivent dans un popover ouvert au clic sur une
                      loupe discrète. MÊME comportement / mêmes id (#champ-verif,
@@ -139,6 +157,7 @@
                         </button>
                     </div>
                 </div>
+                </div><!-- /zone-systeme-ligne (ligne 2) -->
             </section>
 
             <!-- ============================================================ -->
@@ -232,7 +251,7 @@
                 <div id="zone-actions-gauche" class="zone-actions zone-actions-gauche" hidden>
                     <button id="btn-echanger-tout" class="btn btn-secondaire" disabled
                             title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
-                        ♻️ Remettre toutes ses lettres et passer
+                        ♻️ Échanger les lettres
                     </button>
                     <button id="btn-commencer-echange" class="btn btn-secondaire" hidden
                             title="Choisissez librement les lettres à échanger sur votre chevalet, puis validez">
