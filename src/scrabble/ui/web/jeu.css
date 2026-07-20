@@ -160,12 +160,16 @@ body {
 
 /* Zone B : fiches joueurs empilées. Prend une part de la hauteur libre pour
    rester lisible ; ``align-items: stretch`` laisse chaque fiche occuper la
-   largeur de la marge. */
+   largeur de la marge. ``justify-content: center`` (issue #190) répartit la
+   hauteur libre de la zone ÉQUITABLEMENT au-dessus et en dessous du bloc de
+   fiches, plutôt que de la concentrer en bas (ancien ``flex-start``, qui
+   collait les fiches sous « Derniers coups » et laissait un grand vide avant le
+   chevalet). Les fiches paraissent ainsi centrées entre la zone A et la zone C. */
 .zone-joueurs {
     align-items: stretch;
     gap: 8px;
     flex: 1 1 auto;
-    justify-content: flex-start;
+    justify-content: center;
 }
 
 /* Zone C : chevalet du joueur humain de référence (issue #187, Issue B).
