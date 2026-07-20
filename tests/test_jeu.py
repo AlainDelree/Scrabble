@@ -1590,8 +1590,9 @@ class TestBoutonJouerDansFicheJoueur:
     joueur expose un bouton « ▶ Jouer » (classe ``panneau-btn-jouer``) à la place
     de l'ancien label « ● son tour », qui déclenche ``api.faire_jouer_ia`` ; l'humain
     courant garde sa pastille « ● à vous ». L'ancien bouton séparé de la zone
-    d'attente IA (``#btn-jouer-ia``, « Faire jouer l'ordinateur ») est retiré ;
-    seul le message d'attente subsiste dans cette zone.
+    d'attente IA (``#btn-jouer-ia``, « Faire jouer l'ordinateur ») est retiré ; et
+    depuis l'issue #160 le cadre d'attente lui-même (« En attente du coup de… ») est
+    entièrement supprimé.
     """
 
     def _lire(self, nom: str) -> str:
@@ -1637,13 +1638,20 @@ class TestBoutonJouerDansFicheJoueur:
         assert "btn-jouer-ia" not in js
         assert "btnJouerIA" not in js
 
-    def test_zone_attente_conserve_son_message(self):
-        """La zone d'attente IA garde son message « En attente du coup de… »."""
+    def test_cadre_attente_supprime(self):
+        """Le cadre « En attente du coup de… » est supprimé (issue #160).
+
+        La réorganisation des actions de tour autour de la fiche du joueur humain
+        (issue #160) supprime complètement ce bandeau : pendant le tour d'un
+        ordinateur, son coup se déclenche déjà via le bouton « ▶ Jouer » de sa
+        propre fiche (issue #149), ce cadre n'apportait plus rien. On vérifie que
+        ni le conteneur, ni le message, ni le texte ne subsistent.
+        """
         html = self._lire("jeu.html")
         js = self._lire("jeu.js")
-        assert 'id="zone-attente-ia"' in html
-        assert 'id="attente-ia-message"' in html
-        assert "En attente du coup de" in js
+        assert 'id="zone-attente-ia"' not in html
+        assert 'id="attente-ia-message"' not in html
+        assert "En attente du coup de" not in js
 
 
 class TestFermetureMutuellePopovers:

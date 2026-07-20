@@ -641,7 +641,22 @@ header {
 .slot-gauche { grid-area: gauche; justify-self: end; }
 .slot-droite { grid-area: droite; justify-self: start; }
 .zone-plateau { grid-area: plateau; }
-.panneau-bas { grid-area: bas; }
+/* Panneau du bas (issue #160) : la fiche du joueur humain est encadrée sur la
+   MÊME ligne par ses deux zones d'actions (gauche : échange + passer ; droite :
+   annuler + vérifier + jouer). Auparavant la fiche occupait une ligne et les
+   boutons une barre séparée en dessous : ce regroupement horizontal supprime une
+   rangée entière sous le plateau, rendant la hauteur au plateau (voir la formule
+   de largeur de .plateau, revue en #160). Flex centré : la fiche reste centrée
+   sous le plateau, les groupes d'actions se collent de part et d'autre. En fenêtre
+   étroite, ``flex-wrap`` autorise le repli sans casser la mise en page. */
+.panneau-bas {
+    grid-area: bas;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
 
 /* Un slot latéral vide ne réserve aucune place (colonne « auto »). */
 .slot:empty { display: none; }
@@ -699,8 +714,20 @@ header {
        l'emportent (aucun rétrécissement) ; la réserve ne mord la taille que sur
        les fenêtres courtes, là précisément où l'empiètement se produisait. La
        trace ``journaliser_mesure_fenetre`` (issue #152, jeu.js) mesure l'espace
-       réel restant pour ajuster ces 290 px si besoin. */
-    width: min(64vw, calc(100vh - 290px), 560px);
+       réel restant pour ajuster cette réserve si besoin.
+
+       Agrandissement du plateau (issue #160). Le regroupement des boutons d'action
+       de part et d'autre de la fiche du joueur humain (au lieu d'une barre séparée
+       SOUS la fiche) supprime une rangée entière sous le plateau (~55 px). Cette
+       hauteur est rendue au plateau : la réserve fixe passe de 290 px à 235 px (la
+       barre d'actions ne compte plus dans le chrome), le plafond de taille de 560 à
+       620 px et le terme ``vw`` de 64 à 66 vw. Résultat : sur la résolution cible du
+       portable de test (viewport ~728 px), le terme de hauteur ``calc(100vh-235px)``
+       vaut ~493 px contre ~438 px avant — un plateau nettement plus grand, aux
+       chiffres de score de lettre non chevauchés, tout en gardant les 175 px
+       réservés en bas pour la fenêtre chevalet. La plus petite des trois bornes
+       l'emporte toujours : aucun débordement sur les grands écrans. */
+    width: min(66vw, calc(100vh - 235px), 620px);
     aspect-ratio: 1 / 1;
 }
 
@@ -1283,44 +1310,30 @@ header {
     font-weight: 600;
 }
 
-/* Barre des actions de tour (issue #101) : rapatriée depuis la fenêtre chevalet
-   dans le pied de la fenêtre plateau, sous la zone d'attente IA. Elle regroupe
-   les actions de tour (Remettre / Annuler / Vérifier / Jouer) ; ``width: 100%``
-   lui fait occuper toute la largeur du panneau du bas. Affichée uniquement
-   pendant le tour du joueur humain (voir majActionsTour dans jeu.js). */
-.zone-jeu {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--couleur-bordure);
-    width: 100%;
-    /* Contexte de positionnement pour le message de retour (issue #108) : celui-ci
-       est sorti du flux et ancré en surimpression juste au-dessus de cette barre
-       (voir .message-coup ci-dessous). */
-    position: relative;
-}
-
-/* Masquée hors du tour humain (issue #101) : le JS bascule l'attribut `hidden`
-   via majActionsTour(). Règle explicite car un futur `display` sur .zone-jeu
-   masquerait sinon l'effet natif de [hidden]. */
-.zone-jeu[hidden] {
-    display: none;
-}
-
-/* Barre de contrôles de pose. Le lien discret « remettre ses lettres » y est
-   calé à gauche (issue #42, point 6) ; le bouton de sens éventuel suit ; les
-   actions Annuler/Valider sont poussées à droite. Ainsi le lien d'échange n'est
-   jamais seul sur sa ligne, y compris en partie à un seul humain. */
-.zone-jeu-controles {
+/* Zones d'actions de tour (issue #101, réorganisées #160) : rapatriées depuis la
+   fenêtre chevalet, désormais réparties de part et d'autre de la fiche du joueur
+   humain (voir .panneau-bas) plutôt qu'en barre séparée sous la fiche. Chaque zone
+   aligne ses boutons sur une ligne, sans jamais s'étirer sur toute la largeur : la
+   fiche reste centrée entre les deux groupes. Affichées uniquement pendant le tour
+   du joueur humain (le JS bascule l'attribut `hidden` via majActionsTour). */
+.zone-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
 }
 
-.zone-jeu-actions {
-    margin-left: auto;
-    display: inline-flex;
-    gap: 10px;
+/* Masquées hors du tour humain (issue #160) : règle explicite car un `display`
+   sur .zone-actions masquerait sinon l'effet natif de [hidden]. */
+.zone-actions[hidden] {
+    display: none;
+}
+
+/* Zone de DROITE (issue #160) : contexte de positionnement du message de retour
+   (#message-coup), sorti du flux et ancré en surimpression au-dessus des boutons
+   « Vérifier et calculer » / « Jouer » (voir .message-coup ci-dessous). */
+.zone-actions-droite {
+    position: relative;
 }
 
 /* Flux d'échange partiel (issue #138) : les deux boutons (valider / annuler)
@@ -1339,10 +1352,11 @@ header {
    collé au bord bas de la fenêtre plateau maximisée : à la résolution cible du
    portable de test (~1280×728), il débordait sous le bord visible et était
    partiellement coupé (le pied de page + le plateau saturaient déjà la hauteur).
-   On le sort du flux et on l'ancre juste AU-DESSUS de la barre d'actions, aligné
-   à droite sur « Vérifier et calculer »/« Jouer » : il reste clairement associé
-   à ces boutons, n'allonge plus le pied de page (donc ne pousse plus rien sous le
-   bord) et reste entièrement visible sans redimensionner ni défiler. Un message
+   On le sort du flux et on l'ancre juste AU-DESSUS de la zone d'actions de droite
+   (issue #160), aligné à droite sur « Vérifier et calculer »/« Jouer » : il reste
+   clairement associé à ces boutons, n'allonge plus le pied de page (donc ne pousse
+   plus rien sous le bord) et reste entièrement visible sans redimensionner ni
+   défiler. Un message
    long grandit vers le HAUT (ancrage par le bas), à l'écart des boutons. Pastille
    blanche à ombre légère, comme #message-plateau, pour rester lisible par-dessus
    le tapis vert ; masquée quand vide pour ne laisser aucune pastille fantôme. */
@@ -1458,31 +1472,10 @@ header {
     margin-bottom: 16px;
 }
 
-/* Mode « attente d'un tour d'ordinateur » (issue #35) : remplace toute la
-   mécanique interactive quand le joueur courant est un ordinateur. */
-.zone-attente-ia {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    padding: 18px;
-    margin: 6px 0;
-    background: var(--couleur-ordinateur-fond, #f3e5f5);
-    border: 1px dashed var(--couleur-ordinateur, #6a1b9a);
-    border-radius: var(--rayon-bordure);
-    text-align: center;
-}
-
-.zone-attente-ia[hidden] {
-    display: none;
-}
-
-.attente-ia-message {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--couleur-ordinateur, #6a1b9a);
-}
+/* Le cadre « En attente d'un tour d'ordinateur » (ancien .zone-attente-ia,
+   issue #35) a été supprimé (issue #160) : pendant le tour d'un ordinateur, les
+   deux zones d'actions sont simplement masquées et le coup se déclenche via le
+   bouton « ▶ Jouer » de la fiche de l'ordinateur courant (issue #149). */
 
 /* --------------------------------------------------------------------------- */
 /* Responsive : sur fenêtre étroite, la table 3×3 s'empile en une colonne      */

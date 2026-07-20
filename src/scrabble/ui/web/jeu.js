@@ -72,18 +72,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const confirmationAnnuler = document.getElementById('confirmation-annuler');
     const confirmationConfirmer = document.getElementById('confirmation-confirmer');
 
-    // Mode « attente d'un tour d'ordinateur » (issue #35) déplacé côté plateau
-    // (issue #90) : bloc + message « En attente du coup de… ». Le déclenchement du
-    // coup se fait désormais via le bouton « ▶ Jouer » de la fiche du joueur
-    // ordinateur courant (issue #149), plus par un bouton séparé.
-    const zoneAttenteIA = document.getElementById('zone-attente-ia');
-    const attenteMessageIA = document.getElementById('attente-ia-message');
-
-    // Actions de tour (issue #101) : rapatriées depuis la fenêtre chevalet. Elles
-    // ne sont visibles/actives que pendant le tour du joueur humain (voir
-    // majActionsTour). Le message de retour dédié (#message-coup) s'affiche sous
-    // les boutons, distinct du message éphémère de pose (#message-plateau).
-    const zoneJeu = document.getElementById('zone-jeu');
+    // Actions de tour (issue #101, réorganisées issue #160) : rapatriées depuis la
+    // fenêtre chevalet, désormais réparties de part et d'autre de la fiche du joueur
+    // humain (gauche : échange + passer ; droite : annuler + vérifier + jouer). Les
+    // deux zones ne sont visibles/actives que pendant le tour du joueur humain (voir
+    // majActionsTour). Le message de retour dédié (#message-coup) s'affiche en
+    // surimpression au-dessus des boutons de droite, distinct du message éphémère de
+    // pose (#message-plateau). L'ancien cadre d'attente d'un tour d'ordinateur
+    // (#zone-attente-ia et son message) est supprimé (issue #160) : le tour d'un
+    // ordinateur se déclenche via le bouton « ▶ Jouer » de sa fiche (issue #149).
+    const zoneActionsGauche = document.getElementById('zone-actions-gauche');
+    const zoneActionsDroite = document.getElementById('zone-actions-droite');
     const btnValider = document.getElementById('btn-valider');
     const btnVerifierCoup = document.getElementById('btn-verifier-coup');
     const btnAnnuler = document.getElementById('btn-annuler');
@@ -532,14 +531,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Mode « attente d'un tour d'ordinateur » (issue #35)
     // ------------------------------------------------------------------ //
 
-    /** Bascule interactif / attente (tour d'un ordinateur), issue #35/#90. */
+    /** Bascule interactif / attente (tour d'un ordinateur), issue #35/#90.
+     *  L'ancien cadre d'attente d'un tour d'ordinateur a été supprimé (issue #160) : pendant le
+     *  tour d'un ordinateur, majActionsTour masque simplement les deux zones
+     *  d'actions, et le coup se déclenche via le bouton « ▶ Jouer » de la fiche de
+     *  l'ordinateur courant (issue #149). */
     function majModeTour() {
-        const courant = etat.joueurs[etat.index_courant];
-        const attenteIA = Boolean(etat && !etat.terminee && !etat.tour_humain);
-        zoneAttenteIA.hidden = !attenteIA;
-        if (attenteIA && courant) {
-            attenteMessageIA.textContent = `En attente du coup de ${courant.nom}…`;
-        }
         majActionsTour();
     }
 
@@ -553,7 +550,10 @@ document.addEventListener('DOMContentLoaded', async () => {
      */
     function majActionsTour() {
         const tourHumain = Boolean(etat && !etat.terminee && etat.tour_humain);
-        zoneJeu.hidden = !tourHumain;
+        // Les deux zones d'actions (gauche/droite) apparaissent/disparaissent
+        // ensemble, uniquement pendant le tour du joueur humain (issue #160).
+        zoneActionsGauche.hidden = !tourHumain;
+        zoneActionsDroite.hidden = !tourHumain;
         if (!tourHumain) {
             afficherMessageCoup('');
             return;

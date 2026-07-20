@@ -174,84 +174,82 @@
 
             <div id="slot-droite" class="slot slot-droite" aria-label="Joueur de droite"></div>
 
-            <!-- Panneau du bas : joueur humain de référence. Il porte, sous son
-                 panneau public, le chevalet + le brouillon + les actions de tour.
-                 L'historique n'y est plus (issue #45, point 4 : déplacé en colonne
-                 à gauche de la table) : la zone chevalet/brouillon s'élargit donc
-                 sur toute la largeur disponible sous le plateau. -->
+            <!-- Panneau du bas : joueur humain de référence, encadré par ses
+                 actions de tour (issue #160). Pour gagner de la hauteur (et donc
+                 agrandir le plateau), les boutons d'action ne forment plus une
+                 barre séparée EN DESSOUS de la fiche : ils sont répartis SUR LA
+                 MÊME LIGNE, de part et d'autre de la fiche du joueur humain —
+                 « Remettre / Passer » à gauche, « Annuler / Vérifier / Jouer » à
+                 droite. Le cadre « En attente du coup de… » d'un tour d'ordinateur
+                 (ancien #zone-attente-ia) est supprimé : le tour d'un ordinateur se
+                 déclenche déjà via le bouton « ▶ Jouer » de sa propre fiche
+                 (issue #149), ce bandeau n'apportait plus rien. -->
             <footer class="panneau-bas" id="panneau-bas">
-            <div id="slot-bas" class="slot slot-bas" aria-label="Votre panneau"></div>
-
-            <!-- Mode « attente » d'un tour d'ordinateur (issue #35) déplacé côté
-                 fenêtre PLATEAU (issue #90) : le chevalet de l'ordinateur n'est
-                 jamais exposé, et faire avancer un tour IA relève du plateau
-                 (l'humain n'a rien à jouer). Le chevalet, le brouillon et les
-                 contrôles de pose vivent désormais dans la fenêtre chevalet
-                 flottante (chevalet.html) — voir issue #90. Depuis l'issue #149,
-                 le déclenchement du coup passe par le bouton « ▶ Jouer » de la
-                 fiche du joueur ordinateur courant : cette zone ne garde que le
-                 message d'attente (plus de bouton séparé). -->
-            <div id="zone-attente-ia" class="zone-attente-ia" hidden>
-                <p id="attente-ia-message" class="attente-ia-message" role="status" aria-live="polite"></p>
+            <!-- Actions de tour À GAUCHE de la fiche (issue #160) : échange complet
+                 (ou flux d'échange partiel selon le réglage « type_echange ») +
+                 « Passer son tour ». Affichées UNIQUEMENT pendant le tour du joueur
+                 humain (masquées pendant l'attente d'un tour d'ordinateur et une
+                 fois la partie terminée). La sélection d'une lettre se fait toujours
+                 côté chevalet ; ces boutons pilotent le coup en attente via les
+                 mêmes méthodes API qu'avant (echanger_tout / passer_tour…). Le garde
+                 de tour côté API (issue #99) reste la protection de fond : masquer
+                 ces boutons n'est qu'une aide visuelle. -->
+            <div id="zone-actions-gauche" class="zone-actions zone-actions-gauche" hidden>
+                <!-- Échange COMPLET (réglage « type_echange » = complet, défaut) :
+                     un seul bouton qui remet tout le chevalet et passe. Bouton
+                     à part entière (issue #139) — même style que les autres
+                     actions de tour (secondaire), moins proéminent que « Jouer ». -->
+                <button id="btn-echanger-tout" class="btn btn-secondaire" disabled
+                        title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
+                    ♻️ Remettre toutes ses lettres et passer
+                </button>
+                <!-- Échange PARTIEL (réglage « type_echange » = partiel, issue #138) :
+                     on entre dans un mode de sélection multiple côté chevalet, puis
+                     on valide. Ces boutons ne sont visibles qu'en mode partiel.
+                     Bouton à part entière (issue #147) — même famille visuelle que
+                     « Remettre toutes ses lettres et passer » du mode complet
+                     (« btn btn-secondaire »), pour une apparence de bouton cohérente
+                     dès l'état initial, avant même d'engager la sélection. -->
+                <button id="btn-commencer-echange" class="btn btn-secondaire" hidden
+                        title="Choisissez librement les lettres à échanger sur votre chevalet, puis validez">
+                    ♻️ Échanger des lettres…
+                </button>
+                <span id="zone-echange-partiel" class="zone-echange-partiel" hidden>
+                    <button id="btn-echanger-selection" class="btn btn-primaire" disabled
+                            title="Remet les lettres marquées dans le sac, en tire autant, et passe votre tour">
+                        ♻️ Échanger la sélection et passer
+                    </button>
+                    <button id="btn-annuler-echange" class="btn btn-secondaire"
+                            title="Quitte le mode d'échange sans rien échanger">
+                        ✗ Annuler la sélection
+                    </button>
+                </span>
+                <button id="btn-passer" class="btn btn-secondaire"
+                        title="Passe votre tour sans poser ni échanger de lettres">
+                    ⏭ Passer son tour
+                </button>
             </div>
 
-            <!-- Actions de tour (issue #101) : rapatriées ici depuis la fenêtre
-                 chevalet, aux côtés de la zone d'attente IA. Affichées UNIQUEMENT
-                 pendant le tour du joueur humain (masquées pendant l'attente d'un
-                 tour d'ordinateur et une fois la partie terminée). La sélection
-                 d'une lettre se fait toujours côté chevalet ; ces boutons pilotent
-                 le coup en attente via les mêmes méthodes API qu'avant
-                 (annuler_pose / verifier_coup / poser_mot / echanger_tout). Le
-                 garde de tour côté API (issue #99) reste la protection de fond :
-                 masquer ces boutons n'est qu'une aide visuelle. -->
-            <div id="zone-jeu" class="zone-jeu" hidden>
-                <div class="zone-jeu-controles">
-                    <!-- Échange COMPLET (réglage « type_echange » = complet, défaut) :
-                         un seul bouton qui remet tout le chevalet et passe. Bouton
-                         à part entière (issue #139) — même style que les autres
-                         actions de tour (secondaire), moins proéminent que « Jouer ». -->
-                    <button id="btn-echanger-tout" class="btn btn-secondaire" disabled
-                            title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
-                        ♻️ Remettre toutes ses lettres et passer
-                    </button>
-                    <!-- Échange PARTIEL (réglage « type_echange » = partiel, issue #138) :
-                         on entre dans un mode de sélection multiple côté chevalet, puis
-                         on valide. Ces boutons ne sont visibles qu'en mode partiel.
-                         Bouton à part entière (issue #147) — même famille visuelle que
-                         « Remettre toutes ses lettres et passer » du mode complet
-                         (« btn btn-secondaire »), pour une apparence de bouton cohérente
-                         dès l'état initial, avant même d'engager la sélection. -->
-                    <button id="btn-commencer-echange" class="btn btn-secondaire" hidden
-                            title="Choisissez librement les lettres à échanger sur votre chevalet, puis validez">
-                        ♻️ Échanger des lettres…
-                    </button>
-                    <span id="zone-echange-partiel" class="zone-echange-partiel" hidden>
-                        <button id="btn-echanger-selection" class="btn btn-primaire" disabled
-                                title="Remet les lettres marquées dans le sac, en tire autant, et passe votre tour">
-                            ♻️ Échanger la sélection et passer
-                        </button>
-                        <button id="btn-annuler-echange" class="btn btn-secondaire"
-                                title="Quitte le mode d'échange sans rien échanger">
-                            ✗ Annuler la sélection
-                        </button>
-                    </span>
-                    <span class="zone-jeu-actions">
-                        <button id="btn-passer" class="btn btn-secondaire"
-                                title="Passe votre tour sans poser ni échanger de lettres">
-                            ⏭ Passer son tour
-                        </button>
-                        <button id="btn-annuler" class="btn btn-secondaire" disabled>
-                            ✗ Annuler
-                        </button>
-                        <button id="btn-verifier-coup" class="btn btn-secondaire" disabled
-                                title="Calcule les points du coup en attente sans le jouer (rien n'est perdu)">
-                            🔎 Vérifier et calculer
-                        </button>
-                        <button id="btn-valider" class="btn btn-primaire" disabled>
-                            ✓ Jouer
-                        </button>
-                    </span>
-                </div>
+            <!-- Fiche du joueur humain de référence : centrée, encadrée par ses
+                 actions de tour (issue #160). -->
+            <div id="slot-bas" class="slot slot-bas" aria-label="Votre panneau"></div>
+
+            <!-- Actions de tour À DROITE de la fiche (issue #160) : « Annuler »,
+                 « Vérifier et calculer » et « Jouer ». Mêmes id / mêmes appels API
+                 qu'avant le regroupement (annuler_pose / verifier_coup / poser_mot).
+                 Le message de retour dédié (#message-coup) reste ancré à cette zone,
+                 en surimpression au-dessus des boutons (voir jeu.css). -->
+            <div id="zone-actions-droite" class="zone-actions zone-actions-droite" hidden>
+                <button id="btn-annuler" class="btn btn-secondaire" disabled>
+                    ✗ Annuler
+                </button>
+                <button id="btn-verifier-coup" class="btn btn-secondaire" disabled
+                        title="Calcule les points du coup en attente sans le jouer (rien n'est perdu)">
+                    🔎 Vérifier et calculer
+                </button>
+                <button id="btn-valider" class="btn btn-primaire" disabled>
+                    ✓ Jouer
+                </button>
                 <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
             </div>
             </footer>
