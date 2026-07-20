@@ -7,7 +7,11 @@
     <link rel="stylesheet" href="commun.css">
     <link rel="stylesheet" href="jeu.css">
 </head>
-<body>
+<!-- ``jeu-en-init`` masque le plateau/les fiches/le décor DÈS le premier rendu,
+     avant même l'exécution de jeu.js : évite le flash du plateau au lancement
+     d'une partie tant que la décision tirage-en-cours / plateau n'est pas prise
+     (issue #191). jeu.js retire cette classe une fois l'état initial appliqué. -->
+<body class="jeu-en-init">
     <!-- Refonte de l'écran de jeu en 2 colonnes (issue #186, Issue A). L'ancienne
          disposition « en croix » (grille 3×3 : plateau central, une fiche joueur
          par côté) est remplacée par :

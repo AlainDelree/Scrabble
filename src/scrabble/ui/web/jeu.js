@@ -2023,6 +2023,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         /* le premier push de Python amorcera le chevalet si cet appel échoue */
     }
 
+    // Révélation du plateau (issue #191). Jusqu'ici ``body.jeu-en-init`` (posée
+    // en dur dans jeu.html) maintenait le plateau, les fiches et le décor cachés
+    // pour éviter tout flash au lancement. Maintenant que la décision est prise
+    // (écran de tirage affiché, ou plateau à afficher directement en reprise) et
+    // que l'état initial est appliqué, on peut révéler l'interface. Si l'écran de
+    // tirage est encore actif, ``body.tirage-en-cours`` continue seul de masquer
+    // le plateau ; il ne sera visible qu'après « Continuer » (terminer_tirage).
+    document.body.classList.remove('jeu-en-init');
+
     // Diagnostic géométrie (issue #152) : deux rAF pour lire la mise en page réelle
     // une fois le plateau rendu et posé par WebKitGTK.
     requestAnimationFrame(() => {

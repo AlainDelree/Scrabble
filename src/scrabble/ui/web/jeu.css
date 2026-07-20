@@ -1836,6 +1836,22 @@ body.tirage-en-cours #message-plateau {
     display: none !important;
 }
 
+/* Masquage AU CHARGEMENT (issue #191). ``jeu-en-init`` est posée en dur dans le
+   HTML : le plateau, les fiches, le décor et la loupe restent invisibles dès le
+   premier rendu, AVANT même l'exécution de jeu.js. Sans cela, le plateau
+   s'affichait une fraction de seconde puis était masqué par ``tirage-en-cours``
+   (posée seulement après l'appel asynchrone à api.obtenir_tirage_ordre()), d'où
+   un flash. jeu.js retire ``jeu-en-init`` une fois la décision prise et l'état
+   initial appliqué (soit l'écran de tirage, soit le plateau directement en
+   reprise). Le body reste sur son feutre vert pendant ce court instant, jamais
+   sur un plateau intermédiaire incorrect. */
+body.jeu-en-init .container,
+body.jeu-en-init .decor-scrabble,
+body.jeu-en-init .verif-dico-ancre,
+body.jeu-en-init #message-plateau {
+    display: none !important;
+}
+
 /* Conteneur plein écran de l'écran de tirage, centré sur le tapis vert. Masqué
    par défaut (attribut hidden) ; jeu.js retire hidden et pose body.tirage-en-cours. */
 .ecran-tirage {
