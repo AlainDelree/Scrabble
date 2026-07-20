@@ -528,6 +528,23 @@ section h2 {
     display: flex;
     flex-direction: column;
     max-height: calc(100vh - 32px);
+    /* Fond vert tapis cohérent avec le reste de l'application (issue #166) :
+       on reprend À L'IDENTIQUE le feutre vert du body (accueil + écran de jeu)
+       — même variable, même dégradé radial — au lieu du fond blanc qui détonnait.
+       Les textes de la modale sont adaptés en blanc juste en dessous, comme les
+       titres/sous-titres posés sur le tapis (issue #77). */
+    background: var(--tapis-vert);
+    background-image:
+        radial-gradient(120% 90% at 50% 30%, var(--tapis-vert-clair) 0%, var(--tapis-vert) 55%, var(--tapis-vert-fonce) 100%);
+    color: #ffffff;
+}
+
+/* Titre « Tirage de l'ordre de jeu » : le brun (var(--couleur-secondaire)) de
+   .modale-contenu h3 est illisible sur le vert (issue #166). Blanc + ombre
+   portée, comme les titres de l'accueil (issue #77). */
+#modale-tirage .modale-contenu h3 {
+    color: #ffffff;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .modale-corps {
@@ -572,7 +589,10 @@ section h2 {
 .tirage-intro {
     /* Marge basse resserrée 12 -> 10 (issue #115). */
     margin-bottom: 10px;
-    color: #555;
+    /* Gris #555 illisible sur le fond vert (issue #166) : blanc adouci + ombre
+       portée, comme le sous-titre de l'accueil (issue #77). */
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .tirage-lettres {
@@ -590,7 +610,11 @@ section h2 {
 
 .tirage-lettres li {
     padding: 8px 12px;
-    border: 2px solid var(--couleur-bordure);
+    /* Sur le fond vert (issue #166) : liseré gris clair (var(--couleur-bordure))
+       illisible, remplacé par un cadre blanc translucide sur un léger voile,
+       façon carte posée sur le tapis (issue #77). */
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.08);
     border-radius: 6px;
     /* État initial masqué : la ligne est révélée en fondu + léger glissement
        quand le JS lui ajoute .visible, l'une après l'autre (issue #58). */
@@ -621,7 +645,10 @@ section h2 {
 
 .tirage-ordre-resultat {
     font-weight: 600;
-    color: var(--couleur-secondaire);
+    /* Résultat « Ordre de jeu : … » : brun (var(--couleur-secondaire)) illisible
+       sur le fond vert (issue #166), passé en blanc + ombre portée (issue #77). */
+    color: #ffffff;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
     /* Apparaît en fondu une fois toutes les lettres révélées (issue #58). */
     opacity: 0;
     transition: opacity 0.4s ease;
@@ -647,13 +674,14 @@ section h2 {
     text-align: center;
 }
 
-/* Zone « secouer le sac puis tirer » du joueur humain (issue #61). */
+/* Zone de tirage du joueur humain (issue #61, simplifiée #166) : consigne +
+   image statique du sac. */
 .tirage-sac-zone {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 10px;
-    /* Consigne + aire du sac uniquement (issue #116) : le bouton « Tirer une
+    /* Consigne + image du sac uniquement (issue #116) : le bouton « Tirer une
        lettre » a quitté cette zone scrollable pour être épinglé plus bas
        (.tirage-sac-action). Marge basse conservée pour aérer avant le bouton.
        Marge haute supprimée (4 -> 0, issue #117) : c'est désormais la seule
@@ -665,48 +693,21 @@ section h2 {
 .tirage-sac-consigne {
     margin: 0;
     font-weight: 600;
-    color: var(--couleur-secondaire);
+    /* Consigne « À toi, X ! … » : brun illisible sur le fond vert (issue #166),
+       passée en blanc + ombre portée (issue #77). */
+    color: #ffffff;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
     text-align: center;
 }
 
-/* Zone carrée large autour du sac (issue #68) : le sac s'y déplace en
-   suivant le curseur pour une secousse nettement plus marquée. La taille est
-   fixe mais bornée pour ne jamais déborder de la modale. */
-.tirage-sac-aire {
-    /* Taille stable de 224px (issue #115, ex-256px de l'issue #83, ex-280px de
-       l'issue #68) : assez grande pour secouer franchement le sac.
-       Issue #116 — SUPPRESSION de la borne « 40vh ». Depuis que le bouton
-       « Tirer une lettre » est épinglé hors du corps scrollable, l'aire n'a plus
-       à rétrécir pour lui laisser la place : le corps défile si besoin. Or cette
-       borne `vh` se comportait anormalement sous WebKitGTK (sac décalé en bas à
-       droite du cadre pointillé au lieu d'être centré, cf. capture de l'issue) —
-       la hauteur de fenêtre réelle après soustraction du chrome diffère de
-       l'estimation headless Chromium. On revient donc à des dimensions fixes en
-       px, stables quel que soit le moteur de rendu ; `max-width: 70vw` (unité
-       horizontale, bien plus fiable) suffit à éviter tout débordement latéral
-       sur fenêtre étroite. */
-    width: 224px;
-    height: 224px;
-    max-width: 70vw;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--rayon-bordure);
-    background: rgba(124, 78, 33, 0.06);
-    border: 2px dashed rgba(124, 78, 33, 0.28);
-}
-
+/* Image statique du sac de lettres (issue #166).
+   La mécanique de secouage (aire carrée + suivi du curseur, issues #68/#116) a
+   été retirée : plus d'aire, de zone pointillée, de curseur « grab » ni de
+   transition — juste le dessin du sac centré, avec une ombre portée douce pour
+   le détacher du fond vert. Le bouton « Tirer une lettre » reste juste dessous
+   (.tirage-sac-action). */
 .tirage-sac {
-    cursor: grab;
-    /* Suivi fluide du curseur pendant le déplacement dans la zone. */
-    transform-origin: 50% 20%;
-    transition: transform 0.08s ease-out;
-    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.25));
-    will-change: transform;
-}
-
-.tirage-sac:active {
-    cursor: grabbing;
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
 }
 
 .tirage-sac-corps {
@@ -747,8 +748,7 @@ section h2 {
     .tirage-lettres li,
     .tirage-lettres li.visible,
     .tirage-ordre-resultat,
-    .tirage-ordre-resultat.visible,
-    .tirage-sac {
+    .tirage-ordre-resultat.visible {
         transition: none;
     }
 

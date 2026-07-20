@@ -281,84 +281,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Fabrique un générateur de son « sac de lettres secoué » (issue #61).
+     * Tour d'un joueur HUMAIN dans le tirage d'ordre (issue #61, simplifié
+     * issue #166) : au lieu de révéler automatiquement sa lettre, on affiche
+     * une simple image STATIQUE du sac de lettres avec, juste en dessous, le
+     * bouton « Tirer une lettre » qui dévoile sa lettre.
      *
-     * Web Audio pur, sans fichier externe : chaque appel à `secouer()` déclenche
-     * une courte bouffée de bruit blanc filtrée (passe-bande) avec une enveloppe
-     * de gain qui monte puis retombe — l'illusion de lettres qui s'entrechoquent.
-     * Les bouffées sont **bridées** (une toutes les ~90 ms max) et de faible
-     * volume pour éviter tout son continu strident. Rien de continu n'est joué :
-     * `arreter()` n'a donc qu'à cesser d'en planifier, et `fermer()` libère le
-     * contexte audio quand on a fini (clic « Tirer » ou sortie de zone).
-     */
-    function creerSonSac() {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        let ctx = null;
-        let bufferBruit = null;
-        let dernierBruit = -Infinity;
-
-        function assurerContexte() {
-            if (!AC) return null;
-            if (!ctx) {
-                ctx = new AC();
-                // Buffer de bruit blanc réutilisé pour toutes les bouffées.
-                const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.3), ctx.sampleRate);
-                const data = buf.getChannelData(0);
-                for (let i = 0; i < data.length; i++) {
-                    data[i] = Math.random() * 2 - 1;
-                }
-                bufferBruit = buf;
-            }
-            if (ctx.state === 'suspended') ctx.resume();
-            return ctx;
-        }
-
-        return {
-            secouer() {
-                const c = assurerContexte();
-                if (!c) return;
-                const now = c.currentTime;
-                if (now - dernierBruit < 0.09) return;  // bridage anti-strident
-                dernierBruit = now;
-
-                const duree = 0.05 + Math.random() * 0.05;
-                const src = c.createBufferSource();
-                src.buffer = bufferBruit;
-
-                const filtre = c.createBiquadFilter();
-                filtre.type = 'bandpass';
-                filtre.frequency.value = 2200 + Math.random() * 2600;
-                filtre.Q.value = 0.7;
-
-                const gain = c.createGain();
-                const volume = 0.05 + Math.random() * 0.04;  // faible
-                gain.gain.setValueAtTime(0.0001, now);
-                gain.gain.linearRampToValueAtTime(volume, now + 0.006);
-                gain.gain.exponentialRampToValueAtTime(0.0001, now + duree);
-
-                src.connect(filtre).connect(gain).connect(c.destination);
-                src.start(now);
-                src.stop(now + duree + 0.02);
-            },
-            arreter() {
-                // Les bouffées sont brèves et s'auto-terminent : il suffit de
-                // cesser d'en planifier (l'appelant arrête d'appeler secouer()).
-                dernierBruit = -Infinity;
-            },
-            fermer() {
-                if (ctx) {
-                    ctx.close().catch(() => {});
-                    ctx = null;
-                }
-            },
-        };
-    }
-
-    /**
-     * Tour d'un joueur HUMAIN dans le tirage d'ordre (issue #61) : au lieu de
-     * révéler automatiquement sa lettre, on affiche un sac que le joueur secoue
-     * en passant la souris dessus (secousse visuelle + son) puis un bouton
-     * « Tirer une lettre » qui dévoile sa lettre.
+     * La mécanique de « secouage » du sac (suivi du curseur + son, issues
+     * #61/#68/#71) a été retirée : elle n'affichait plus correctement le sac
+     * pendant l'animation et n'apportait rien au flux. Le reste (révélation de
+     * la lettre au clic, suite de la séquence) est inchangé.
      *
      * @param {HTMLElement} li Ligne de résultat correspondante (nom + lettre).
      * @param {{nom: string, lettre: string}} t Tirage du joueur humain.
@@ -369,19 +300,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             // La ligne apparaît, mais la lettre reste masquée jusqu'au tirage.
             li.classList.add('visible', 'en-attente-tirage');
 
-            // Corps scrollable : consigne + aire du sac à secouer.
+            // Corps scrollable : consigne + image statique du sac de lettres.
             tirageSacZone.hidden = false;
             tirageSacZone.innerHTML = `
-                <p class="tirage-sac-consigne">À toi, ${escapeHtml(t.nom)} ! Secoue le sac, puis tire ta lettre.</p>
-                <div class="tirage-sac-aire" aria-hidden="true">
-                    <div class="tirage-sac" title="Secoue-moi !" role="img" aria-label="Sac de lettres à secouer">
-                        <svg viewBox="0 0 100 110" width="120" height="132" aria-hidden="true">
-                            <path class="tirage-sac-corps" d="M22 42 Q50 28 78 42 L88 96 Q50 112 12 96 Z"/>
-                            <path class="tirage-sac-col" d="M34 40 Q50 22 66 40 Q50 34 34 40 Z"/>
-                            <line class="tirage-sac-cordon" x1="34" y1="40" x2="66" y2="40"/>
-                            <text class="tirage-sac-glyphe" x="50" y="80" text-anchor="middle">?</text>
-                        </svg>
-                    </div>
+                <p class="tirage-sac-consigne">À toi, ${escapeHtml(t.nom)} ! Tire ta lettre.</p>
+                <div class="tirage-sac" role="img" aria-label="Sac de lettres">
+                    <svg viewBox="0 0 100 110" width="120" height="132" aria-hidden="true">
+                        <path class="tirage-sac-corps" d="M22 42 Q50 28 78 42 L88 96 Q50 112 12 96 Z"/>
+                        <path class="tirage-sac-col" d="M34 40 Q50 22 66 40 Q50 34 34 40 Z"/>
+                        <line class="tirage-sac-cordon" x1="34" y1="40" x2="66" y2="40"/>
+                        <text class="tirage-sac-glyphe" x="50" y="80" text-anchor="middle">?</text>
+                    </svg>
                 </div>
             `;
 
@@ -392,48 +321,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             tirageSacAction.innerHTML =
                 '<button type="button" class="btn btn-primaire tirage-sac-bouton">Tirer une lettre</button>';
 
-            const aire = tirageSacZone.querySelector('.tirage-sac-aire');
-            const sac = tirageSacZone.querySelector('.tirage-sac');
             const bouton = tirageSacAction.querySelector('.tirage-sac-bouton');
-            const son = creerSonSac();
-
-            // Le sac se déplace dans une large zone carrée en suivant le curseur
-            // (issue #68) : bien plus perceptible qu'une simple rotation.
-            function surMouvement(e) {
-                const rect = aire.getBoundingClientRect();
-                // Amplitude max = espace libre entre le sac et les bords de la zone,
-                // pour que le sac suive le curseur sans jamais déborder (issue #68).
-                const maxX = Math.max(0, (rect.width - sac.offsetWidth) / 2);
-                const maxY = Math.max(0, (rect.height - sac.offsetHeight) / 2);
-                // Suivi DIRECT du curseur (issue #71) : le sac se déplace pixel
-                // pour pixel vers le curseur, borné à l'amplitude disponible.
-                // L'ancien mappage normalisé (nx * maxX) appliquait un gain ~0,5
-                // et restait quasi immobile au centre — là où l'on secoue
-                // justement le sac ; d'où l'impression de mouvement statique.
-                const dx = e.clientX - (rect.left + rect.width / 2);
-                const dy = e.clientY - (rect.top + rect.height / 2);
-                const tx = Math.max(-maxX, Math.min(maxX, dx));
-                const ty = Math.max(-maxY, Math.min(maxY, dy));
-                // Rotation proportionnelle au déplacement horizontal (balancement).
-                const angle = (maxX ? tx / maxX : 0) * 12;
-                sac.style.transform =
-                    `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) rotate(${angle.toFixed(1)}deg)`;
-                son.secouer();
-            }
-            function surSortie() {
-                // Désactivation propre si l'on quitte la zone avant de tirer.
-                sac.style.transform = '';
-                son.arreter();
-            }
-
-            aire.addEventListener('mousemove', surMouvement);
-            aire.addEventListener('mouseleave', surSortie);
 
             bouton.addEventListener('click', () => {
-                aire.removeEventListener('mousemove', surMouvement);
-                aire.removeEventListener('mouseleave', surSortie);
-                son.arreter();
-                son.fermer();
                 li.classList.remove('en-attente-tirage');  // dévoile la lettre
                 tirageSacZone.hidden = true;
                 tirageSacZone.innerHTML = '';
@@ -450,15 +340,15 @@ document.addEventListener('DOMContentLoaded', async () => {
      *
      * Les joueurs ordinateurs sont révélés séquentiellement en fondu (issue
      * #58). Pour chaque joueur HUMAIN, la révélation automatique est remplacée
-     * par une interaction « secouer le sac puis tirer » (issue #61) : la
-     * séquence se met en pause jusqu'au clic sur « Tirer une lettre », puis
-     * reprend. Le résultat « Ordre de jeu : … » n'apparaît qu'une fois TOUTES
-     * les lettres révélées.
+     * par une image statique du sac + un bouton « Tirer une lettre » (issue
+     * #61, simplifié #166) : la séquence se met en pause jusqu'au clic sur
+     * « Tirer une lettre », puis reprend. Le résultat « Ordre de jeu : … »
+     * n'apparaît qu'une fois TOUTES les lettres révélées.
      *
      * Deux garde-fous (issue #67) :
      * - « Continuer » reste désactivé tant que TOUS les tirages ne sont pas
-     *   terminés (y compris l'interaction « secouer puis tirer » du/des joueurs
-     *   humains) ; il ne devient actif qu'une fois l'ordre de jeu final affiché.
+     *   terminés (y compris le tirage du/des joueurs humains) ; il ne devient
+     *   actif qu'une fois l'ordre de jeu final affiché.
      * - « Annuler » est actif à tout moment : un clic supprime la partie
      *   fraîchement créée (``api.annuler_partie_creee()``) et interrompt la
      *   séquence, même en plein tour humain, pour revenir à la configuration.
