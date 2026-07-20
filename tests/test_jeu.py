@@ -3232,6 +3232,74 @@ class TestLierChevaletAuPlateau:
         # Ne doit pas lever : la liaison est simplement ignorée.
         mod._lier_chevalet_au_plateau(plateau, chevalet)
 
+    def test_dispatch_windows_utilise_le_backend_natif(self, monkeypatch):
+        """Sous Windows, on route vers le mécanisme owned, pas vers GTK (issue #165)."""
+        import sys
+
+        from scrabble.ui import jeu as mod
+
+        monkeypatch.setattr(mod, "_attendre_fenetre_affichee", lambda *a, **k: None)
+        monkeypatch.setattr(sys, "platform", "win32")
+        appels: list[str] = []
+        monkeypatch.setattr(
+            mod, "_lier_chevalet_windows", lambda p, c: appels.append("win")
+        )
+        monkeypatch.setattr(
+            mod, "_lier_chevalet_gtk", lambda p, c: appels.append("gtk")
+        )
+        plateau = _FenetreNative(object())
+        chevalet = _FenetreNative(object())
+
+        mod._lier_chevalet_au_plateau(plateau, chevalet)
+
+        assert appels == ["win"]
+
+    def test_dispatch_linux_utilise_le_backend_gtk(self, monkeypatch):
+        """Sous Linux, on conserve le mécanisme transiente GTK (issue #105)."""
+        import sys
+
+        from scrabble.ui import jeu as mod
+
+        monkeypatch.setattr(mod, "_attendre_fenetre_affichee", lambda *a, **k: None)
+        monkeypatch.setattr(sys, "platform", "linux")
+        appels: list[str] = []
+        monkeypatch.setattr(
+            mod, "_lier_chevalet_windows", lambda p, c: appels.append("win")
+        )
+        monkeypatch.setattr(
+            mod, "_lier_chevalet_gtk", lambda p, c: appels.append("gtk")
+        )
+        plateau = _FenetreNative(_NatifEspion())
+        chevalet = _FenetreNative(_NatifEspion())
+
+        mod._lier_chevalet_au_plateau(plateau, chevalet)
+
+        assert appels == ["gtk"]
+
+
+class TestHwndDepuisForm:
+    """Extraction du HWND d'une fenêtre WinForms pywebview (issue #165)."""
+
+    def test_privilegie_toint64(self):
+        from scrabble.ui import jeu as mod
+
+        class _IntPtr:
+            def ToInt64(self):
+                return 123456
+
+        class _Form:
+            Handle = _IntPtr()
+
+        assert mod._hwnd_depuis_form(_Form()) == 123456
+
+    def test_repli_sur_int_si_pas_de_toint64(self):
+        from scrabble.ui import jeu as mod
+
+        class _Form:
+            Handle = 789
+
+        assert mod._hwnd_depuis_form(_Form()) == 789
+
 
 class TestDimensionsChevalet:
     """La fenêtre chevalet est assez large pour Brouillon + « À jouer » (point 4)."""

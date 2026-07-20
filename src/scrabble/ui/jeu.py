@@ -2859,33 +2859,38 @@ def _finaliser_fenetres(
 def _lier_chevalet_au_plateau(
     window_plateau: "webview.Window", window_chevalet: "webview.Window"
 ) -> None:
-    """Lie la fenêtre chevalet au plateau via ``set_transient_for`` (issue #105).
+    """Empile le chevalet au-dessus du plateau — et de lui seul (issues #105/#165).
 
-    Remplace l'ancien « always-on-top » global (``on_top`` / ``set_keep_above``,
-    issues #91/#93, ré-affirmé après chaque interaction) par une relation
-    **transiente** : le chevalet est déclaré fenêtre transitoire (au sens des
-    boîtes de dialogue) du plateau. Le gestionnaire de fenêtres empile alors les
-    deux ensemble — le chevalet reste au-dessus du plateau, mais passe **sous**
-    une autre application lorsque celle-ci prend le focus (contrairement à
-    ``on_top``, qui le forçait au-dessus de tout le système).
+    Objectif inchangé depuis #105 : remplacer l'ancien « always-on-top » global
+    (``on_top`` / ``set_keep_above``, issues #91/#93) par une liaison qui garde le
+    chevalet au-dessus du **plateau uniquement**, sans le forcer au-dessus de tout
+    le système. Le chevalet doit repasser **sous** une autre application lorsque
+    celle-ci prend le focus.
 
-    Les deux fenêtres doivent être affichées (``shown``) avant l'appel : sous GTK,
-    ``set_transient_for`` opère sur les ``Gtk.Window`` natives, disponibles une
-    fois les fenêtres mappées. On réutilise donc :func:`_attendre_fenetre_affichee`
-    (déjà en place pour la maximisation/le repositionnement). En renfort optionnel
-    (évoqué par #103), on pose aussi l'indice ``Gdk.WindowTypeHint.UTILITY``, qui
-    invite le WM à traiter le chevalet comme une fenêtre utilitaire et non comme
-    une fenêtre principale (importé comme dans :func:`_zone_travail_ecran`).
+    Le mécanisme dépend du backend pywebview, **spécifique à l'OS** (issue #165) :
+
+    * **Linux** : pywebview utilise GTK/GDK → relation transiente
+      (``set_transient_for`` + indice ``Gdk.WindowTypeHint.UTILITY``), cf.
+      :func:`_lier_chevalet_gtk`.
+    * **Windows** : pywebview utilise WebView2/WinForms (pythonnet), dépourvu de la
+      notion GTK → relation de **propriété** Win32 (fenêtre « owned » via
+      ``SetWindowLongPtr(hwnd, GWLP_HWNDPARENT, hwnd_plateau)``), cf.
+      :func:`_lier_chevalet_windows`. C'est la correction #165 : sous #105 le
+      chevalet passait toujours derrière le plateau car l'API GTK ne s'applique
+      pas au backend Windows.
+
+    Les deux fenêtres doivent être affichées (``shown``) avant l'appel : dans les
+    deux backends, la liaison opère sur la fenêtre native, disponible une fois
+    mappée. On réutilise donc :func:`_attendre_fenetre_affichee` (déjà en place
+    pour la maximisation/le repositionnement).
 
     Tolère les fenêtres factices des tests, dépourvues d'attribut ``native``
     (garde ``getattr``) : la liaison est alors simplement ignorée. Toute erreur est
     journalisée sans interrompre le jeu.
 
-    Point d'incertitude (issue #103/#105) : la fiabilité réelle du ré-empilement
-    sous Mutter/XWayland ne peut être garantie qu'après une vérification visuelle —
-    ce correctif n'est pas à considérer comme définitivement validé tant qu'Alain
-    n'a pas confirmé en pratique que le chevalet reste bien au-dessus du plateau
-    (et seulement du plateau) après ce changement.
+    Point d'incertitude (issues #103/#105/#165) : la fiabilité réelle du
+    ré-empilement (Mutter/XWayland côté Linux, WebView2 côté Windows) ne peut être
+    garantie qu'après une vérification visuelle sur chaque plateforme.
     """
     _attendre_fenetre_affichee(window_plateau, "plateau")
     _attendre_fenetre_affichee(window_chevalet, "chevalet")
@@ -2895,10 +2900,30 @@ def _lier_chevalet_au_plateau(
     if natif_plateau is None or natif_chevalet is None:
         journal.info(
             "Jeu : liaison chevalet↔plateau ignorée — fenêtre native indisponible "
-            "(backend non-GTK ou fenêtre factice de test)."
+            "(backend inattendu ou fenêtre factice de test)."
         )
         return
 
+    import sys
+
+    if sys.platform.startswith("win"):
+        _lier_chevalet_windows(natif_plateau, natif_chevalet)
+    else:
+        _lier_chevalet_gtk(natif_plateau, natif_chevalet)
+
+
+def _lier_chevalet_gtk(natif_plateau: Any, natif_chevalet: Any) -> None:
+    """Liaison chevalet↔plateau sous Linux/GTK via ``set_transient_for`` (issue #105).
+
+    Déclare le chevalet fenêtre **transiente** (au sens des boîtes de dialogue) du
+    plateau : le gestionnaire de fenêtres empile alors les deux ensemble — le
+    chevalet reste au-dessus du plateau, mais passe sous une autre application qui
+    prend le focus. En renfort optionnel (évoqué par #103), on pose aussi l'indice
+    ``Gdk.WindowTypeHint.UTILITY``, qui invite le WM à traiter le chevalet comme une
+    fenêtre utilitaire (GDK importé à la demande, comme dans :func:`_zone_travail_ecran`).
+
+    Toute erreur est journalisée sans interrompre le jeu.
+    """
     try:
         natif_chevalet.set_transient_for(natif_plateau)
         journal.info(
@@ -2924,6 +2949,77 @@ def _lier_chevalet_au_plateau(
             f"Jeu : indice type_hint UTILITY non posé sur le chevalet ({e!r}) — "
             "renfort optionnel ignoré."
         )
+
+
+def _lier_chevalet_windows(natif_plateau: Any, natif_chevalet: Any) -> None:
+    """Liaison chevalet↔plateau sous Windows via une fenêtre « owned » (issue #165).
+
+    Sous Windows, pywebview utilise le backend WebView2/WinForms (pythonnet), qui
+    ne connaît pas la relation transiente GTK de #105 — d'où le chevalet passant
+    toujours derrière le plateau (bug constaté en build CCW). On reproduit l'effet
+    « au-dessus du plateau, et seulement de lui » via la relation de **propriété**
+    de Win32 : une fenêtre « owned » reste automatiquement au-dessus de son
+    propriétaire dans l'ordre d'empilement, sans imposer un « toujours au premier
+    plan » global gênant pour le reste du bureau.
+
+    On récupère le handle natif (HWND) de chaque fenêtre — ``native`` est ici un
+    ``System.Windows.Forms.Form`` dont la propriété ``Handle`` (un ``IntPtr``)
+    donne le HWND — puis on déclare le plateau propriétaire du chevalet via
+    ``SetWindowLongPtr(hwnd_chevalet, GWLP_HWNDPARENT, hwnd_plateau)``.
+
+    Implémentation via ``ctypes`` (bibliothèque standard) plutôt que pywin32 :
+    aucune dépendance supplémentaire n'est ajoutée au projet, et la variante
+    ``…Ptr`` de l'API (indispensable pour ne pas tronquer un HWND 64 bits) est
+    ciblée directement avec les ``argtypes`` adéquats. Repli sur ``SetWindowLongW``
+    sur les rares Python 32 bits. Toute erreur est journalisée sans interrompre le jeu.
+    """
+    try:
+        hwnd_plateau = _hwnd_depuis_form(natif_plateau)
+        hwnd_chevalet = _hwnd_depuis_form(natif_chevalet)
+    except Exception as e:  # noqa: BLE001 - handle indisponible : on renonce sans bloquer
+        journal.erreur(
+            "Jeu : HWND du plateau/chevalet indisponible — liaison owned (Windows) impossible.",
+            e,
+        )
+        return
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        # GWLP_HWNDPARENT : offset qui, pour une fenêtre de plus haut niveau, définit
+        # son propriétaire (owner). Ce n'est PAS un vrai parent (pas de clipping) : la
+        # fenêtre owned reste flottante mais toujours au-dessus de son owner.
+        GWLP_HWNDPARENT = -8
+
+        user32 = ctypes.windll.user32
+        # SetWindowLongPtrW sur 64 bits ; repli SetWindowLongW sur 32 bits (où
+        # SetWindowLongPtrW n'est pas exporté).
+        set_window_long_ptr = getattr(
+            user32, "SetWindowLongPtrW", user32.SetWindowLongW
+        )
+        set_window_long_ptr.restype = ctypes.c_void_p
+        set_window_long_ptr.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+
+        set_window_long_ptr(hwnd_chevalet, GWLP_HWNDPARENT, hwnd_plateau)
+        journal.info(
+            "Jeu : chevalet déclaré fenêtre « owned » du plateau via "
+            "SetWindowLongPtr/GWLP_HWNDPARENT (issue #165) ; ré-empilement à "
+            "confirmer visuellement sous Windows."
+        )
+    except Exception as e:  # noqa: BLE001 - une liaison ratée ne bloque pas le jeu
+        journal.erreur("Jeu : liaison owned chevalet↔plateau (Windows) impossible.", e)
+
+
+def _hwnd_depuis_form(natif: Any) -> int:
+    """Extrait le HWND (entier) d'une fenêtre native WinForms pywebview (issue #165).
+
+    ``native.Handle`` est un ``System.IntPtr`` : on privilégie ``ToInt64()`` (exact
+    en 64 bits) et on retombe sur ``int(...)`` si la méthode est absente.
+    """
+    handle = natif.Handle
+    to_int64 = getattr(handle, "ToInt64", None)
+    return to_int64() if callable(to_int64) else int(handle)
 
 
 def _zone_travail_ecran() -> tuple[int, int, int, int] | None:
