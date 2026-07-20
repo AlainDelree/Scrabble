@@ -100,8 +100,8 @@
     <div id="modale-tirage" class="modale" hidden>
         <div class="modale-contenu">
             <h3>Tirage de l'ordre de jeu</h3>
-            <!-- Corps scrollable (issue #82) : si le contenu (sac + consigne sur
-                 deux lignes, liste des tirages) dépasse la hauteur de la fenêtre,
+            <!-- Corps scrollable (issue #82) : si le contenu (image du sac +
+                 consigne, liste des tirages) dépasse la hauteur de la fenêtre,
                  c'est cette zone qui défile, et non toute la modale — ainsi les
                  boutons Annuler / Continuer restent toujours visibles en bas. -->
             <div class="modale-corps">
@@ -110,10 +110,10 @@
                     alphabétique des lettres tirées.
                 </p>
                 <ul id="tirage-lettres" class="tirage-lettres"></ul>
-                <!-- Zone d'interaction « secouer puis tirer » (issue #61), remplie
-                     par le JS le temps du tour d'un joueur humain : consigne +
-                     aire du sac à secouer. Le bouton « Tirer une lettre » n'y est
-                     PLUS (issue #116) — il est épinglé hors du corps scrollable. -->
+                <!-- Zone de tirage (issue #61, simplifiée #166), remplie par le
+                     JS le temps du tour d'un joueur humain : consigne + image
+                     statique du sac. Le bouton « Tirer une lettre » n'y est PLUS
+                     (issue #116) — il est épinglé hors du corps scrollable. -->
                 <div id="tirage-sac-zone" class="tirage-sac-zone" hidden></div>
                 <p id="tirage-ordre-resultat" class="tirage-ordre-resultat"></p>
             </div>
