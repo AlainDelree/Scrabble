@@ -101,6 +101,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=os.path.join(RACINE, "assets", "scrabble.ico"),
     # Désactive le sous-dossier "_internal" (nouveau défaut depuis PyInstaller
     # 6.0) : sys._MEIPASS reste alors le dossier de l'exe lui-même, à côté
     # duquel scrabble.config.RACINE_PROJET écrit config.json/logs/data en mode
