@@ -1,0 +1,276 @@
+"""Coquille mono-fenêtre unifiée + routeur d'API (issue #179).
+
+Suite au rapport d'investigation #178 (confirmé) : Accueil et Jeu doivent être
+fusionnés en **une seule fenêtre physique** — via ``load_url`` (changement de
+document dans la même fenêtre) plutôt que par cohabitation DOM — pilotée par un
+**routeur d'API à deux sous-API préservées** plutôt qu'une fusion des classes
+``ApiAccueil``/``ApiJeu``.
+
+Ce module pose la **fondation invisible** de ce chantier :
+
+- :class:`ApiRouteur` — objet-pont mince exposé au JS comme ``js_api``. Il
+  détient une instance d'``ApiAccueil`` et une d'``ApiJeu``, garde la trace de
+  la vue active (« accueil » ou « jeu »), et route dynamiquement chaque appel JS
+  vers la sous-API **actuellement active**. Cela résout notamment la collision
+  réelle sur ``obtenir_etat`` (méthode présente dans les deux classes) sans rien
+  renommer côté JS existant.
+- :func:`lancer_application_unifiee` — nouvelle coquille qui crée **une seule**
+  fenêtre pywebview (``accueil.html``, avec le routeur comme ``js_api``) et
+  démarre **une seule** boucle ``webview.start()``.
+
+À ce stade, **aucune transition accueil→jeu n'est câblée** (objectif de l'issue
+B) : ce module se développe en parallèle du chemin historique
+(``lancer_accueil``/``lancer_jeu``), qui reste intact et fonctionnel. La coquille
+n'est donc branchée par aucun point d'entrée par défaut ; elle est testable en
+isolation.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import webview
+
+from scrabble import journal
+from scrabble.moteur.partie import Partie
+from scrabble.ui import TAPIS_VERT
+from scrabble.ui.accueil import ApiAccueil
+from scrabble.ui.jeu import ApiJeu
+
+DOSSIER_WEB = Path(__file__).parent / "web"
+
+# Identifiants des deux vues physiques que le routeur sait servir.
+VUE_ACCUEIL = "accueil"
+VUE_JEU = "jeu"
+VUES = (VUE_ACCUEIL, VUE_JEU)
+
+
+class ApiRouteur:
+    """Routeur d'API à deux sous-API préservées (issue #179).
+
+    Objet-pont **mince** passé à pywebview comme ``js_api`` de la fenêtre unique.
+    Il détient une instance d':class:`~scrabble.ui.accueil.ApiAccueil` et une
+    d':class:`~scrabble.ui.jeu.ApiJeu` (cette dernière pouvant être « vide » tant
+    qu'aucune partie n'est chargée, cf. :meth:`ApiJeu.charger_partie`), et route
+    chaque appel JS vers la sous-API **actuellement active** selon la vue chargée.
+
+    Résolution de collision : ``obtenir_etat`` existe dans les DEUX classes. Le
+    routeur tranche l'ambiguïté au moment de l'appel, selon ``vue_active``, sans
+    renommer quoi que ce soit côté JS existant (``accueil.js`` et ``jeu.js``
+    appellent tous deux ``api.obtenir_etat()`` ; chacun est chargé quand sa propre
+    vue est active, donc chacun tombe sur la bonne sous-API).
+
+    Exposition dynamique à pywebview : pywebview énumère les méthodes publiques de
+    l'objet ``js_api`` (``dir()``, hors ``_``). On installe donc, à la
+    construction, un **attribut d'instance** par nom de méthode publique de l'une
+    ou l'autre sous-API : une petite fonction de routage qui redirige vers la
+    sous-API active à l'appel. Les méthodes de **contrôle** propres au routeur
+    (``set_window``, ``activer_vue``, ``charger_jeu``) sont, elles, de vraies
+    méthodes de classe, jamais routées.
+
+    Course à garder en tête (rapport #178) : dans les issues suivantes, le routeur
+    devra être pointé sur la bonne sous-API (:meth:`activer_vue`) **avant** un
+    ``load_url``, pour que le premier appel du JS fraîchement chargé tombe déjà
+    sur la bonne cible. :meth:`activer_vue` est donc conçue pour être appelée
+    juste avant la navigation (aucune navigation n'étant encore câblée ici).
+    """
+
+    # Noms réservés au contrôle du routeur : jamais routés vers une sous-API,
+    # même si un nom identique existe côté ``ApiAccueil``/``ApiJeu``. (Ces noms
+    # correspondent à de vraies méthodes de classe ci-dessous ; le filtre
+    # ``hasattr(type(self), nom)`` de :meth:`_installer_routes` suffirait, mais
+    # cet ensemble explicite documente l'intention.)
+    _CONTROLE = frozenset({"set_window", "activer_vue", "charger_jeu"})
+
+    def __init__(
+        self,
+        api_accueil: ApiAccueil | None = None,
+        api_jeu: ApiJeu | None = None,
+        vue_active: str = VUE_ACCUEIL,
+    ) -> None:
+        if vue_active not in VUES:
+            raise ValueError(f"Vue inconnue : {vue_active!r} (attendu : {VUES}).")
+        self._api_accueil = api_accueil if api_accueil is not None else ApiAccueil()
+        # ``ApiJeu`` créée « vide » : la partie sera chargée après coup via
+        # :meth:`charger_jeu` (nouveau modèle mono-fenêtre, issue #179).
+        self._api_jeu = api_jeu if api_jeu is not None else ApiJeu()
+        self._vue_active = vue_active
+        # Handle de la fenêtre physique **unique** partagée. Renseigné par
+        # :meth:`set_window` (qui le propage aussi aux deux sous-API).
+        self._window: webview.Window | None = None
+        self._installer_routes()
+
+    # ------------------------------------------------------------------ #
+    # État interne du routeur (accès privés — non exposés au JS)
+    # ------------------------------------------------------------------ #
+
+    def _api_active(self) -> ApiAccueil | ApiJeu:
+        """Retourne la sous-API vers laquelle router selon la vue active."""
+        return self._api_accueil if self._vue_active == VUE_ACCUEIL else self._api_jeu
+
+    # ------------------------------------------------------------------ #
+    # Câblage dynamique des routes
+    # ------------------------------------------------------------------ #
+
+    def _installer_routes(self) -> None:
+        """Installe une route par méthode publique de l'une OU l'autre sous-API.
+
+        Chaque route est une fonction (stockée comme attribut d'instance, donc
+        vue par ``dir()`` et par l'énumération de pywebview) qui, à l'appel,
+        redirige vers la sous-API active. Les noms de contrôle du routeur et tout
+        nom déjà porté par une méthode de la classe ``ApiRouteur`` sont ignorés
+        (la méthode de classe l'emporte).
+        """
+        noms: set[str] = set()
+        for sous_api in (self._api_accueil, self._api_jeu):
+            for nom in dir(sous_api):
+                if nom.startswith("_"):
+                    continue
+                if not callable(getattr(sous_api, nom, None)):
+                    continue
+                noms.add(nom)
+        for nom in sorted(noms):
+            if nom in self._CONTROLE or hasattr(type(self), nom):
+                continue
+            setattr(self, nom, self._creer_route(nom))
+
+    def _creer_route(self, nom: str):
+        """Fabrique la fonction de routage pour la méthode ``nom``.
+
+        La fonction résout la sous-API active **à l'appel** (pas à la
+        construction) : un ``activer_vue`` intercalé change donc bien la cible.
+        Si la sous-API active n'expose pas ``nom`` (ex. ``obtenir_niveaux`` propre
+        à l'accueil, appelée alors que la vue jeu est active), une
+        ``AttributeError`` explicite est levée — signe d'un JS qui appelle une
+        méthode hors de sa vue.
+        """
+
+        def route(*args: Any, **kwargs: Any) -> Any:
+            active = self._api_active()
+            methode = getattr(active, nom, None)
+            if methode is None:
+                raise AttributeError(
+                    f"La vue active « {self._vue_active} » n'expose pas "
+                    f"la méthode « {nom} »."
+                )
+            return methode(*args, **kwargs)
+
+        route.__name__ = nom
+        route.__qualname__ = f"ApiRouteur.route<{nom}>"
+        return route
+
+    # ------------------------------------------------------------------ #
+    # Méthodes de contrôle (exposées au JS mais jamais routées)
+    # ------------------------------------------------------------------ #
+
+    def set_window(self, window: webview.Window) -> None:
+        """Porte le handle de la fenêtre physique unique et le propage.
+
+        Les deux sous-API ont besoin de la même fenêtre (l'accueil pour
+        ``fermer_fenetre``, le jeu pour ses diffusions/positionnements). On la
+        pose ici et on la relaie à chacune via leur propre ``set_window``
+        (``ApiJeu.set_window`` renseigne sa fenêtre « plateau », le chevalet
+        restant hors périmètre de cette issue — issue B).
+        """
+        self._window = window
+        self._api_accueil.set_window(window)
+        self._api_jeu.set_window(window)
+
+    def activer_vue(self, vue: str) -> dict[str, Any]:
+        """Bascule la vue active vers laquelle les appels JS sont routés.
+
+        À appeler **avant** un futur ``load_url`` (course signalée par le rapport
+        #178) pour que le premier appel du JS fraîchement chargé tombe déjà sur la
+        bonne sous-API. Aucune navigation n'étant encore câblée dans cette issue,
+        cette méthode ne fait pour l'instant que déplacer le curseur de routage.
+        """
+        if vue not in VUES:
+            return {"succes": False, "erreur": f"Vue inconnue : {vue!r}."}
+        self._vue_active = vue
+        journal.info(f"Routeur : vue active = « {vue} ».")
+        return {"succes": True, "vue": vue}
+
+    def charger_jeu(
+        self,
+        partie: Partie,
+        id_partie: int | None,
+        infos_tirage: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Charge une partie dans la sous-API Jeu (sans encore basculer la vue).
+
+        Fine délégation à :meth:`ApiJeu.charger_partie` : prépare la sous-API Jeu
+        pour une partie donnée (remise à zéro complète de son état incluse), en
+        vue d'une bascule ultérieure ``activer_vue(VUE_JEU)`` + ``load_url`` (non
+        câblée ici). Séparer le chargement de la bascule laisse l'appelant décider
+        de l'ordre (typiquement : charger, activer, puis naviguer).
+        """
+        self._api_jeu.charger_partie(partie, id_partie, infos_tirage)
+        return {"succes": True}
+
+
+def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
+    """Lance la coquille mono-fenêtre unique (issue #179) — non branchée par défaut.
+
+    Crée **une seule** fenêtre pywebview chargeant ``accueil.html`` avec le
+    :class:`ApiRouteur` comme ``js_api``, et démarre **une seule** boucle
+    ``webview.start()``. La sélection du backend graphique
+    (``configurer_backend_graphique``) est remontée au tout début, avant ce
+    premier (et unique) ``webview.start()`` (exigence de l'issue #93, ici
+    centralisée pour la fenêtre unique).
+
+    **Aucune transition n'est encore câblée** : la fenêtre s'ouvre sur l'accueil
+    et le routeur y est pointé (``activer_vue(VUE_ACCUEIL)``), mais rien ne fait
+    encore basculer vers le Jeu. Cette fonction cohabite avec le chemin
+    historique ``lancer_accueil``/``lancer_jeu`` sans le remplacer.
+
+    ``routeur`` est injectable (tests / futurs appelants) ; par défaut un
+    :class:`ApiRouteur` neuf est construit. Retourne le routeur utilisé.
+    """
+    # Import local (comme le chemin historique) pour éviter d'imposer pywebview
+    # aux imports de test qui n'ouvrent aucune fenêtre.
+    from scrabble.ui.backend_graphique import (
+        configurer_backend_graphique,
+        deployer_fenetre_maximisee,
+    )
+
+    # Bascule XWayland AVANT le premier (et unique) ``webview.start()`` du
+    # processus (issue #93) : sous GNOME/Wayland, GTK ignore ``move()``/
+    # positionnement en client Wayland natif. Remontée ici en tête de la coquille
+    # mono-fenêtre.
+    configurer_backend_graphique()
+
+    if journal.session_courante() is None:
+        journal.demarrer_session()
+    try:
+        if routeur is None:
+            routeur = ApiRouteur()
+        # Vue accueil active dès le départ : la fenêtre charge ``accueil.html``,
+        # donc le premier ``obtenir_etat()`` du JS doit tomber sur ``ApiAccueil``.
+        routeur.activer_vue(VUE_ACCUEIL)
+        # Joueur humain présent d'office (issue #141), comme dans ``lancer_accueil``.
+        routeur._api_accueil.initialiser_joueur_humain()
+
+        chemin_html = DOSSIER_WEB / "accueil.html"
+        window = webview.create_window(
+            "Scrabble",
+            str(chemin_html),
+            js_api=routeur,
+            # Fenêtre maximisée par défaut (issue #159) ; ``maximized=True`` étant
+            # un no-op sous XWayland (#95), le déploiement effectif est forcé par
+            # le callback ``deployer_fenetre_maximisee`` après démarrage de la
+            # boucle. ``width``/``height`` = taille de restauration/repli.
+            maximized=True,
+            width=700,
+            height=780,
+            resizable=True,
+            # Fond vert dès le mappage (issue #113) : évite le flash blanc.
+            background_color=TAPIS_VERT,
+        )
+        routeur.set_window(window)
+        journal.info("Application unifiée : fenêtre unique ouverte sur l'accueil.")
+        # UNE seule boucle pywebview pour toute l'application (issue #179).
+        webview.start(deployer_fenetre_maximisee, (window, "application"))
+        return routeur
+    finally:
+        journal.cloturer_session()
