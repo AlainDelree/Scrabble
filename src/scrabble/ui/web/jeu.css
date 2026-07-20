@@ -76,13 +76,117 @@ body {
     min-height: 100vh;
 }
 
-/* Largeur élargie (issue #45, point 4) pour loger la colonne d'historique à
-   gauche de la table sans rogner le plateau (qui reste l'élément dominant,
-   point 7). Le plateau garde sa taille min(52vw, 400px). */
+/* Refonte en 2 colonnes (issue #186, Issue A). L'ancien contenu centré (max-width
+   1180px) laissait de larges gouttières vertes à gauche et à droite, un plateau
+   contraint au centre et des fiches dispersées en croix autour. On passe à une
+   grille pleine largeur/pleine hauteur : une MARGE GAUCHE étroite
+   (``minmax(300px, 340px)``) qui empile les 4 zones fonctionnelles, et une
+   COLONNE DROITE (``1fr``) qui reçoit le plateau agrandi. La hauteur ``100vh``
+   (avec ``box-sizing: border-box`` pour que le padding n'ajoute pas de
+   débordement) donne au plateau une pleine hauteur de référence ; la colonne
+   gauche défile en interne si son contenu dépasse (voir .colonne-gauche). */
 .container {
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 8px 20px 14px;
+    display: grid;
+    grid-template-columns: minmax(300px, 340px) 1fr;
+    gap: 12px;
+    height: 100vh;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    align-items: stretch;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Marge gauche : 4 zones empilées (issue #186)                                 */
+/* --------------------------------------------------------------------------- */
+/* Colonne étroite qui regroupe verticalement ce qui était dispersé : boutons
+   système (A), fiches joueurs (B), emplacement chevalet réservé (C) et actions
+   du joueur humain (D). ``min-height: 0`` + ``overflow-y: auto`` : sur une
+   fenêtre courte (le jeu n'est pas toujours maximisé), la colonne défile en
+   interne au lieu de pousser le plateau ou de déborder. */
+.colonne-gauche {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* Gabarit commun aux 4 zones : une carte discrète sur le tapis vert, cohérente
+   avec les encarts existants (fond translucide, coins arrondis). La zone B
+   (joueurs) et la zone C (chevalet) peuvent grandir pour répartir la hauteur
+   libre ; A et D restent à leur hauteur naturelle. */
+.zone-gauche {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 0 0 auto;
+    min-height: 0;
+}
+
+/* Zone A : boutons système, disposés en lignes qui se replient (issue #186).
+   Reprend l'esprit de l'ex-barre globale horizontale mais sur la largeur réduite
+   de la marge : les pastilles (retour menu, resync, sac, loupe, derniers coups)
+   s'alignent et passent à la ligne selon la place. */
+.zone-systeme {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Zone B : fiches joueurs empilées. Prend une part de la hauteur libre pour
+   rester lisible ; ``align-items: stretch`` laisse chaque fiche occuper la
+   largeur de la marge. */
+.zone-joueurs {
+    align-items: stretch;
+    gap: 8px;
+    flex: 1 1 auto;
+    justify-content: flex-start;
+}
+
+/* Zone C : emplacement chevalet réservé (vide à ce stade, issue #186 Issue A).
+   Cadre en pointillés discret matérialisant la place que le chevalet occupera à
+   l'Issue B, sans rien afficher pour l'instant. Prend le reste de la hauteur
+   libre pour maintenir la zone D en bas de la marge. */
+.zone-chevalet {
+    flex: 1 1 auto;
+    min-height: 90px;
+    border: 2px dashed rgba(255, 255, 255, 0.35);
+    border-radius: var(--rayon-bordure);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* Zone D : actions du joueur humain, les deux groupes empilés (issue #186). */
+.zone-actions-humain {
+    gap: 10px;
+    flex: 0 0 auto;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Colonne droite : le plateau agrandi (issue #186)                             */
+/* --------------------------------------------------------------------------- */
+/* Le plateau occupe toute la hauteur disponible en restant carré et centré dans
+   l'espace restant à droite de la marge. Flex centré : le plateau se cale au
+   milieu horizontalement et verticalement quelle que soit la largeur de la
+   colonne. ``min-width/min-height: 0`` évite qu'un enfant en aspect-ratio ne
+   force la colonne à déborder. */
+.colonne-plateau {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 0;
+}
+
+.colonne-plateau .zone-plateau {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
 }
 
 /* --------------------------------------------------------------------------- */
@@ -145,14 +249,12 @@ body {
     -webkit-user-select: none;
 }
 
-/* Affiché uniquement quand la fenêtre est assez large pour que la gouttière
-   gauche (≈ (100vw − 1180px) / 2) loge la colonne de texte sans toucher le
-   contenu. En dessous, il reste masqué (display:none par défaut). */
-@media (min-width: 1300px) {
-    .decor-scrabble {
-        display: block;
-    }
-}
+/* Neutralisé depuis la refonte #186 : la gouttière gauche où le décor pouvait
+   s'afficher sans gêner le contenu a disparu (la marge gauche est désormais
+   occupée par les 4 zones fonctionnelles). Le décor reste donc masqué en
+   permanence (``display: none`` hérité de la règle ci-dessus) pour ne jamais
+   chevaucher la zone A. Le nœud est conservé dans le DOM par cohérence
+   historique ; l'Issue C nettoiera ce qui devient définitivement obsolète. */
 
 /* --------------------------------------------------------------------------- */
 /* Vérification dictionnaire déportée à gauche (issue #86)                      */
@@ -167,11 +269,14 @@ body {
    panneaux, plateau), quelle que soit la largeur. Plancher (100vw − 52px) : sur
    les fenêtres trop étroites où la gouttière disparaît, le bouton reste épinglé
    dans le coin haut-gauche (icône seule) plutôt que de sortir de l'écran. */
+/* Depuis la refonte #186 (Issue A) la loupe n'est plus une ancre fixe en
+   gouttière : elle vit désormais DANS la zone A (boutons système) de la marge
+   gauche, en flux normal. ``position: relative`` la garde comme contexte
+   d'ancrage du popover (qui s'ouvre en dessous, en surimpression). z-index élevé
+   pour que le popover passe au-dessus des zones voisines de la marge. */
 .verif-dico-ancre {
-    position: fixed;
-    top: 12px;
-    right: min(calc(50vw + 598px), calc(100vw - 66px));
-    z-index: 6;                /* au-dessus du décor (z-index:0), sous les modales */
+    position: relative;
+    z-index: 6;
 }
 
 /* Bouton discret d'ouverture. Repli par défaut (fenêtres étroites, décor masqué,
@@ -230,37 +335,19 @@ body {
     display: none;
 }
 
-/* Fenêtre large (typiquement plein écran/maximisé) : la gouttière gauche est
-   assez profonde pour loger, entre le décor « SCRABBLE » et le contenu centré,
-   le bouton complet avec son libellé sans recouvrir ni le contenu ni le décor.
-   On réaffiche alors le texte. En dessous de ce seuil, le bouton reste en icône
-   seule (repli sensé prévu par l'issue #86). */
-@media (min-width: 1780px) {
-    .verif-dico-libelle {
-        display: inline;
-    }
-}
+/* Depuis la refonte #186 la loupe vit dans la marge gauche étroite (zone A) :
+   on la garde en ICÔNE SEULE (le libellé reste masqué, toujours accessible via
+   aria-label/title) pour ne pas élargir la pastille au point de casser la
+   disposition en lignes de la zone A sur une marge de ~300–340px. */
 
 /* Barre globale unique (issue #47, point 2) : sac, accès à l'historique et lien
    « Resynchroniser » fusionnés sur une seule ligne horizontale compacte. Se
    replie proprement si la fenêtre est trop étroite. */
-header {
-    display: flex;
-    align-items: center;
-    margin-bottom: 8px;
-}
-
-/* Une seule ligne : sac à gauche, menu historique juste à côté, lien
-   « Resynchroniser » poussé à droite (margin-left auto). Reste sur une hauteur
-   minimale ; l'historique déplié s'ouvre en surimpression (position absolue) et
-   ne pousse donc pas la table vers le bas. */
-.barre-globale {
-    display: flex;
-    align-items: center;
-    gap: 10px 14px;
-    flex-wrap: wrap;
-    width: 100%;
-}
+/* L'ancienne barre globale horizontale (``header`` / ``.barre-globale``) a été
+   supprimée du DOM par la refonte #186 : son contenu (retour menu, resync, sac,
+   loupe, derniers coups, joker) est réparti dans la zone A de la marge gauche.
+   Les styles de ce contenu (pastilles .sac, .historique-resume, .btn-verif-dico…)
+   restent définis plus bas et s'appliquent tels quels dans la zone A. */
 
 /* Bandeau de fin de partie (issue #45, point 2 ; étendu issue #133) : hors
    en-tête, masqué pendant la partie (hidden → aucune place prise), affiché
@@ -643,68 +730,25 @@ header {
 }
 
 /* --------------------------------------------------------------------------- */
-/* Table de jeu : plateau central entouré des panneaux joueurs (issue #33)      */
+/* Fiches joueurs empilées dans la zone B (issue #186)                          */
 /* --------------------------------------------------------------------------- */
-/* Grille 3×3 : le plateau au centre, un panneau par côté (haut / gauche /
-   droite / bas) placé dans sa zone. Chaque panneau est rendu par le JS dans le
-   « slot » du côté que Python lui a assigné.
+/* L'ancienne grille 3×3 « en croix » (plateau central, un slot par côté, issues
+   #33/#56) est supprimée : les 4 fiches sont désormais empilées verticalement
+   dans la zone B de la marge gauche (voir .zone-joueurs). Chaque slot garde son
+   id — jeu.js (rendrePanneaux) y place toujours la fiche du côté assigné par
+   Python — mais n'a plus de placement en grille : l'ordre d'empilement suit
+   simplement l'ordre du DOM (haut, gauche, droite, bas). Les anciennes règles
+   ``grid-area`` / ``justify-self`` n'ont plus lieu d'être.
 
-   Alignement des panneaux autour du plateau (issue #56). Les colonnes latérales
-   sont en ``1fr`` (et non ``auto``) : la rangée du bas — qui porte la large zone
-   chevalet/brouillon (nettement plus large que le plateau) — étire la table
-   au-delà de la largeur du plateau. Avec des colonnes ``auto``, cet excédent se
-   répartissait de façon ASYMÉTRIQUE : le plateau se retrouvait décalé du centre
-   de la table, les panneaux haut/bas n'étaient plus centrés sur lui et les
-   panneaux gauche/droite « flottaient » à une distance variable de ses bords.
-   Deux colonnes ``1fr`` identiques encadrant le plateau garantissent au
-   contraire un excédent réparti SYMÉTRIQUEMENT : le plateau reste exactement
-   centré dans la table quelle que soit la largeur de la zone du bas ou du
-   contenu latéral. Les panneaux haut/bas se centrent alors sur le plateau, et
-   les panneaux gauche/droite se collent à ses bords (voir justify-self). */
-.table {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    grid-template-rows: auto auto auto;
-    grid-template-areas:
-        ".      haut     ."
-        "gauche plateau  droite"
-        "bas    bas      bas";
-    gap: 8px;
-    justify-content: center;
-    align-items: center;
-}
-
-/* Panneaux haut/bas : centrés horizontalement SUR LE PLATEAU. Le panneau du
-   haut vit dans la colonne centrale (celle du plateau) et s'y centre ; le
-   panneau du bas est centré par .slot-bas dans la rangée pleine largeur, elle
-   aussi symétrique autour du plateau (issue #56). */
-.slot-haut { grid-area: haut; justify-self: center; }
-/* Panneaux gauche/droite : collés contre les bords du plateau (issue #56).
-   ``justify-self: end`` colle le panneau de gauche contre le bord GAUCHE du
-   plateau (bord interne de sa colonne) ; ``start`` colle celui de droite contre
-   le bord DROIT. Ils ne « flottent » plus au milieu de leur colonne à une
-   distance variable : seul l'écart de grille (gap) les sépare du plateau. */
-.slot-gauche { grid-area: gauche; justify-self: end; }
-.slot-droite { grid-area: droite; justify-self: start; }
-.zone-plateau { grid-area: plateau; }
-/* Panneau du bas (issue #160) : la fiche du joueur humain est encadrée sur la
-   MÊME ligne par ses deux zones d'actions (gauche : échange + passer ; droite :
-   annuler + vérifier + jouer). Auparavant la fiche occupait une ligne et les
-   boutons une barre séparée en dessous : ce regroupement horizontal supprime une
-   rangée entière sous le plateau, rendant la hauteur au plateau (voir la formule
-   de largeur de .plateau, revue en #160). Flex centré : la fiche reste centrée
-   sous le plateau, les groupes d'actions se collent de part et d'autre. En fenêtre
-   étroite, ``flex-wrap`` autorise le repli sans casser la mise en page. */
-.panneau-bas {
-    grid-area: bas;
+   ``.slot`` occupe la largeur de la marge et se centre sur la fiche (les fiches
+   ont une largeur ``auto``, voir .panneau-joueur). Un slot vide ne réserve
+   aucune place. */
+.slot {
     display: flex;
-    align-items: center;
     justify-content: center;
-    gap: 12px;
-    flex-wrap: wrap;
+    width: 100%;
 }
 
-/* Un slot latéral vide ne réserve aucune place (colonne « auto »). */
 .slot:empty { display: none; }
 
 /* Plateau 15x15 */
@@ -728,52 +772,33 @@ header {
     padding: 5px;
     border-radius: var(--rayon-bordure);
     box-shadow: var(--ombre);
-    /* Dimensionnement contraint par la LARGEUR *et* la HAUTEUR (issue #90).
-       Avant la séparation en deux fenêtres (issue #90), le plateau était calé sur
-       une fenêtre fixe 1320×980 (``min(68vw, 560px)``) : en fenêtre plateau
-       désormais MAXIMISÉE à une résolution logique plus modeste (cible ~1280×760
-       utilisables, cf. le portable de test), une taille purement en ``vw`` +
-       plafond fixe débordait en hauteur et forçait un défilement vertical.
-       On ajoute donc un terme en HAUTEUR pour que le plateau (carré,
-       ``aspect-ratio: 1 / 1``) ne consomme jamais toute la hauteur du viewport,
-       ce qui laisse la place à la barre du sac/historique (haut), aux panneaux
-       joueurs haut/bas et à la zone d'attente IA sans scroll. Le plafond de 560px
-       borne la taille sur les grands écrans (lisibilité déjà généreuse, issue
-       #55) ; le terme en ``vw`` protège les fenêtres étroites. La plus petite des
-       trois bornes l'emporte, donc plateau + panneaux restent visibles d'un coup
-       d'œil quelle que soit la résolution logique.
+    /* Dimensionnement PLEINE HAUTEUR (refonte #186, Issue A). La disposition « en
+       croix » a disparu : le plateau ne partage plus sa colonne avec des fiches
+       joueurs (haut/bas) ni avec la fenêtre chevalet posée en dessous. Il vit seul
+       dans la colonne droite (.colonne-plateau) et doit occuper TOUTE la hauteur
+       disponible en restant carré. Les anciennes contraintes pensées pour la croix
+       — réserve fixe de 235 px sous le plateau pour le chevalet flottant (#152/#160),
+       plafond 620 px, terme 66vw — n'ont plus lieu d'être : elles bridaient
+       inutilement la taille.
 
-       Réserve d'espace SOUS le plateau (issue #152). Le terme de hauteur était un
-       simple ``68vh`` : borné au viewport, il ne tenait aucun compte du chrome
-       accumulé AU-DESSUS du plateau (barre du haut réorganisée #125, panneau du
-       joueur du haut avec le bouton « ▶ Jouer » #149, badges/toasts…) ni de la
-       place à réserver EN DESSOUS pour poser la fenêtre chevalet (175 px de haut
-       minimum, cf. #140/#141). À force d'ajouts, le bas du plateau descendait trop
-       bas et le chevalet, une fois posé en bas de l'écran, empiétait dessus —
-       c'est la régression #152. On remplace donc ``68vh`` par
-       ``calc(100vh - 290px)`` : la réserve fixe (~115 px de chrome au-dessus du
-       plateau + 175 px pour le chevalet) garantit, indépendamment de la hauteur de
-       la fenêtre, qu'il reste au moins la hauteur d'un chevalet sous le plateau.
-       À l'inverse d'une fraction ``vh``, cette réserve reste CONSTANTE en pixels :
-       l'espace sous le plateau ne se réduit plus quand des éléments fixes
-       s'ajoutent. Sur les grandes fenêtres, le plafond 560px / le terme ``vw``
-       l'emportent (aucun rétrécissement) ; la réserve ne mord la taille que sur
-       les fenêtres courtes, là précisément où l'empiètement se produisait. La
-       trace ``journaliser_mesure_fenetre`` (issue #152, jeu.js) mesure l'espace
-       réel restant pour ajuster cette réserve si besoin.
-
-       Agrandissement du plateau (issue #160). Le regroupement des boutons d'action
-       de part et d'autre de la fiche du joueur humain (au lieu d'une barre séparée
-       SOUS la fiche) supprime une rangée entière sous le plateau (~55 px). Cette
-       hauteur est rendue au plateau : la réserve fixe passe de 290 px à 235 px (la
-       barre d'actions ne compte plus dans le chrome), le plafond de taille de 560 à
-       620 px et le terme ``vw`` de 64 à 66 vw. Résultat : sur la résolution cible du
-       portable de test (viewport ~728 px), le terme de hauteur ``calc(100vh-235px)``
-       vaut ~493 px contre ~438 px avant — un plateau nettement plus grand, aux
-       chiffres de score de lettre non chevauchés, tout en gardant les 175 px
-       réservés en bas pour la fenêtre chevalet. La plus petite des trois bornes
-       l'emporte toujours : aucun débordement sur les grands écrans. */
-    width: min(66vw, calc(100vh - 235px), 620px);
+       Nouvelle formule, deux bornes seulement :
+         - ``calc(100vh - 24px)`` : la HAUTEUR de la fenêtre moins les marges
+           verticales du conteneur (padding 10px haut+bas + une petite garde). Le
+           plateau étant carré (``aspect-ratio: 1 / 1``), cette borne fixe aussi sa
+           largeur : il remplit la hauteur sans jamais forcer de défilement
+           vertical.
+         - ``100%`` : la LARGEUR de la colonne droite. Sur une fenêtre plus large que
+           haute (cas courant), c'est la hauteur qui limite ; sur une fenêtre étroite
+           où la colonne droite devient plus petite que la hauteur, cette borne
+           empêche le plateau de déborder horizontalement.
+       La plus petite des deux l'emporte : plateau maximal, carré, toujours
+       entièrement visible, quel que soit le rapport largeur/hauteur de la fenêtre
+       (qui n'est pas toujours maximisée). La fenêtre chevalet flottante reste en
+       bas à gauche, sous la marge — elle ne recouvre plus le plateau (décalé à
+       droite), donc aucune réserve d'espace n'est nécessaire. La trace
+       ``journaliser_mesure_fenetre`` (issue #152, jeu.js) continue de mesurer la
+       géométrie réelle pour diagnostic. */
+    width: min(100%, calc(100vh - 24px));
     aspect-ratio: 1 / 1;
 }
 
@@ -893,6 +918,40 @@ header {
     font-size: 0.82rem;
     color: #555;
     flex-shrink: 0;
+}
+
+/* Adaptation des fiches à la marge gauche étroite (issue #186, zone B). Le
+   gabarit compact d'origine (``.panneau-joueur``) visait une LARGE rangée sous le
+   plateau : nom sur une seule ligne insécable (``white-space: nowrap``), le nom
+   étant le seul élément rétrécissable (``.panneau-nom`` en ``flex: 0 1 auto`` +
+   ellipse). Empilées dans une marge de ~300–340px, les fiches les plus fournies —
+   surtout celle de l'ordinateur COURANT, qui porte en plus le bouton « ▶ Jouer »
+   — dépassaient la largeur : le nom se rétrécissait jusqu'à DISPARAÎTRE (« Marie »
+   invisible), ce qui empêchait d'identifier le joueur. Puisque les fiches sont
+   désormais empilées (elles ne rivalisent plus horizontalement avec le plateau),
+   on les laisse occuper toute la largeur de la marge et PASSER À LA LIGNE au
+   besoin (le bouton « ▶ Jouer » descend alors sous les infos), le nom restant
+   TOUJOURS entièrement visible. Portée limitée à la zone B : les autres usages du
+   gabarit (le cas échéant) restent inchangés. */
+.zone-joueurs .panneau-joueur {
+    width: 100%;
+    max-width: 100%;
+    flex-wrap: wrap;
+    white-space: normal;
+    row-gap: 4px;
+}
+
+.zone-joueurs .panneau-nom {
+    overflow: visible;
+    text-overflow: clip;
+    flex: 0 0 auto;
+}
+
+/* Le bouton « ▶ Jouer » de l'ordinateur courant, quand la fiche passe à la ligne,
+   se cale à droite sous les infos (repoussé par la marge auto) pour rester bien
+   visible et cliquable. */
+.zone-joueurs .panneau-btn-jouer {
+    margin-left: auto;
 }
 
 /* Icône « ordinateur » (issue #59, point 2) : affichée après le nombre de
@@ -1266,12 +1325,10 @@ header {
     border-radius: 999px;
     background: white;
     box-shadow: var(--ombre);
-    /* Réorganisation issue #125 : le sac ouvre le groupe droit de la barre.
-       ``margin-left:auto`` absorbe l'espace libre à sa gauche et pousse le sac
-       + les boutons « Resynchroniser » / « Retour au menu » tout à droite,
-       laissant « Derniers coups » seul à gauche (avec sa gouttière libre pour
-       ouvrir son menu déroulant sans recouvrir le plateau). */
-    margin-left: auto;
+    /* Refonte #186 : le sac vit maintenant dans la zone A de la marge gauche, en
+       ligne avec les autres pastilles système. L'ancien ``margin-left: auto``
+       (issue #125, qui le poussait à droite de la barre horizontale) n'a plus
+       lieu d'être et est retiré. */
 }
 
 /* Petite image du sac dans la barre globale (issue #171), alignée avec le
@@ -1528,37 +1585,33 @@ header {
    bouton « ▶ Jouer » de la fiche de l'ordinateur courant (issue #149). */
 
 /* --------------------------------------------------------------------------- */
-/* Responsive : sur fenêtre étroite, la table 3×3 s'empile en une colonne      */
+/* Responsive minimal : sur fenêtre étroite, les 2 colonnes s'empilent          */
 /* --------------------------------------------------------------------------- */
-/* Les panneaux latéraux (haut / gauche / droite) passent au-dessus du plateau,
-   côte à côte s'ils tiennent, puis le panneau du bas. La logique de placement
-   (issue #33) reste inchangée : seul l'agencement visuel se replie. */
-@media (max-width: 820px) {
-    .table {
+/* La fenêtre de jeu n'est pas toujours maximisée (issue #186, point 4). Quand
+   elle devient trop étroite pour loger côte à côte la marge gauche (~300px) et un
+   plateau lisible, on bascule en UNE colonne : la marge gauche (4 zones) passe
+   au-dessus, le plateau en dessous. On rend la hauteur du conteneur « auto » pour
+   autoriser un défilement vertical de la page entière plutôt que d'écraser le
+   plateau. Repli minimal, sans recherche de perfection responsive au-delà de
+   l'existant. */
+@media (max-width: 720px) {
+    .container {
         grid-template-columns: 1fr;
-        grid-template-areas:
-            "haut"
-            "gauche"
-            "droite"
-            "plateau"
-            "bas";
-        gap: 10px;
-        justify-items: center;
+        height: auto;
+        min-height: 100vh;
     }
 
-    .slot-haut,
-    .slot-gauche,
-    .slot-droite {
-        justify-self: center;
+    /* La marge gauche ne défile plus en interne (c'est la page qui défile) et
+       garde sa largeur pleine. */
+    .colonne-gauche {
+        overflow-y: visible;
     }
 
+    /* Le plateau se dimensionne alors sur la LARGEUR de la fenêtre (borné par la
+       hauteur) : il reste carré et entièrement visible sous la marge. */
     .plateau {
-        width: min(92vw, 500px);
+        width: min(95vw, calc(100vh - 24px));
     }
-
-    /* Ligne unique conservée en repli : les quatre côtés, panneau du bas
-       compris, gardent exactement le même gabarit compact (issue #47, point 1).
-       Aucune largeur fixe : la ligne reste aussi étroite que son contenu. */
 }
 
 /* =========================================================================
