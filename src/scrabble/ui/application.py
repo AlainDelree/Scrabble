@@ -81,7 +81,9 @@ class ApiRouteur:
     # correspondent à de vraies méthodes de classe ci-dessous ; le filtre
     # ``hasattr(type(self), nom)`` de :meth:`_installer_routes` suffirait, mais
     # cet ensemble explicite documente l'intention.)
-    _CONTROLE = frozenset({"set_window", "activer_vue", "charger_jeu"})
+    _CONTROLE = frozenset(
+        {"set_window", "activer_vue", "charger_jeu", "demarrer_jeu"}
+    )
 
     def __init__(
         self,
@@ -208,6 +210,66 @@ class ApiRouteur:
         self._api_jeu.charger_partie(partie, id_partie, infos_tirage)
         return {"succes": True}
 
+    def demarrer_jeu(self) -> dict[str, Any]:
+        """Transition Accueil→Jeu dans la fenêtre unique via ``load_url`` (issue #180).
+
+        Point d'entrée appelé depuis ``accueil.js`` (boutons « Lancer la partie »
+        et « Reprendre une partie ») **uniquement dans la coquille unifiée** : le
+        JS ne l'appelle que s'il détecte cette méthode (``typeof
+        api.demarrer_jeu === 'function'``), sinon il conserve le comportement de
+        production (``api.fermer_fenetre()``). Voir la note de détection dans
+        ``accueil.js``.
+
+        À ce stade, ``ApiAccueil.lancer_partie``/``reprendre`` (déjà appelée par le
+        JS et routée vers la sous-API accueil) a créé/repris la partie et l'a
+        déposée dans ``self._api_accueil`` (``_partie``/``_id_partie``/
+        ``_infos_tirage``). On la lit ici **côté Python** — un objet ``Partie`` ne
+        peut pas transiter par le pont JS —, exactement comme le chemin historique
+        (``lancer_accueil`` lit ``api._partie`` avant d'appeler ``lancer_jeu``).
+
+        Séquence, dans l'ordre exigé par le rapport #178 (point 3, course de
+        routage) :
+
+        1. :meth:`charger_jeu` — installe la partie dans la sous-API Jeu (remise à
+           zéro complète comprise) ;
+        2. :meth:`activer_vue` ``(VUE_JEU)`` — **avant** la navigation, pour que le
+           premier ``obtenir_etat()``/``obtenir_tirage_ordre()`` du ``jeu.js``
+           fraîchement chargé (déclenché par son propre ``pywebviewready``) tombe
+           déjà sur la sous-API Jeu ;
+        3. ``window.load_url('jeu.html')`` — même fenêtre physique, pas de
+           destruction/recréation ;
+        4. :meth:`ApiJeu.finaliser_entree_vue_jeu` — maximise le plateau, révèle le
+           chevalet (si pas de tirage en cours) et l'amorce, en tâche de fond.
+
+        Retourne ``{"succes": True}`` ou une charge d'erreur (le JS réactive alors
+        le bouton) si aucune partie n'est prête.
+        """
+        # Lecture côté Python de la partie préparée par la sous-API accueil (même
+        # accès direct que ``lancer_accueil`` dans le chemin historique).
+        partie = self._api_accueil._partie
+        id_partie = self._api_accueil._id_partie
+        infos_tirage = self._api_accueil._infos_tirage
+        if partie is None:
+            return {
+                "succes": False,
+                "erreur": "Aucune partie prête à démarrer (lancer/reprendre requis).",
+            }
+        # 1. Charger la partie dans la sous-API Jeu (délégation à ApiJeu.charger_partie).
+        self.charger_jeu(partie, id_partie, infos_tirage)
+        # 2. Basculer le routage AVANT la navigation (course #178, point 3).
+        self.activer_vue(VUE_JEU)
+        # 3. Naviguer vers jeu.html dans la MÊME fenêtre (load_url, décision #178).
+        if self._window is not None:
+            self._window.load_url(str(DOSSIER_WEB / "jeu.html"))
+            journal.info(
+                f"Routeur : navigation Accueil→Jeu (load_url jeu.html, "
+                f"partie #{id_partie})."
+            )
+        # 4. Rejouer la finalisation (maximisation, chevalet) à chaque entrée en
+        #    vue Jeu — la coquille unifiée n'a qu'une seule boucle webview.start.
+        self._api_jeu.finaliser_entree_vue_jeu()
+        return {"succes": True}
+
 
 def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
     """Lance la coquille mono-fenêtre unique (issue #179) — non branchée par défaut.
@@ -233,6 +295,7 @@ def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
         configurer_backend_graphique,
         deployer_fenetre_maximisee,
     )
+    from scrabble.ui.jeu import _creer_fenetre_chevalet
 
     # Bascule XWayland AVANT le premier (et unique) ``webview.start()`` du
     # processus (issue #93) : sous GNOME/Wayland, GTK ignore ``move()``/
@@ -268,7 +331,29 @@ def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
             background_color=TAPIS_VERT,
         )
         routeur.set_window(window)
-        journal.info("Application unifiée : fenêtre unique ouverte sur l'accueil.")
+
+        # Chevalet compagnon (issue #180) : il reste une fenêtre physique séparée
+        # (raison légitime déjà actée par #178), mais il est créé **une seule fois**
+        # ici, au lancement — masqué (``hidden=True``) — au lieu d'être créé/détruit
+        # à chaque partie. La logique de création est factorisée avec le chemin
+        # historique (:func:`~scrabble.ui.jeu._creer_fenetre_chevalet`). Son
+        # ``js_api`` est directement la sous-API Jeu : ``chevalet.js`` parle toujours
+        # au jeu, jamais au routeur (aucune de ses méthodes n'est en collision).
+        # Toutes les fenêtres doivent être déclarées avant l'unique ``webview.start``.
+        window_chevalet = _creer_fenetre_chevalet(routeur._api_jeu, hidden=True)
+        # Rattache les DEUX fenêtres à ``ApiJeu`` via ``set_windows`` (plateau =
+        # fenêtre unique partagée avec l'accueil ; chevalet = compagnon masqué).
+        # ``show()``/``hide()`` du chevalet se feront à l'entrée/sortie de la vue Jeu
+        # (:meth:`ApiJeu.finaliser_entree_vue_jeu` / :meth:`ApiJeu.terminer_tirage`).
+        routeur._api_jeu.set_windows(window, window_chevalet)
+        # Fermeture croisée (issue #94) : fermer nativement l'une des deux fenêtres
+        # détruit l'autre et quitte l'application (pas de fenêtre orpheline).
+        routeur._api_jeu.installer_fermeture_croisee()
+
+        journal.info(
+            "Application unifiée : fenêtre unique ouverte sur l'accueil "
+            "(chevalet compagnon créé masqué)."
+        )
         # UNE seule boucle pywebview pour toute l'application (issue #179).
         webview.start(deployer_fenetre_maximisee, (window, "application"))
         return routeur

@@ -35,6 +35,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -1415,6 +1416,66 @@ class ApiJeu:
             if self._window_plateau is not None:
                 _lier_chevalet_au_plateau(self._window_plateau, chevalet)
         return {"succes": True}
+
+    def finaliser_entree_vue_jeu(self) -> None:
+        """Rejoue la finalisation des fenêtres à chaque entrée en vue Jeu (issue #180).
+
+        Appelée par le routeur de la coquille mono-fenêtre unifiée
+        (:meth:`~scrabble.ui.application.ApiRouteur.demarrer_jeu`) juste après un
+        ``load_url('jeu.html')`` dans la fenêtre unique. Elle **rejoue à la
+        demande** ce que le chemin historique ne faisait qu'une fois, dans le
+        callback de ``webview.start`` (:func:`_finaliser_fenetres`) — car la
+        coquille unifiée n'a qu'**une seule** boucle ``webview.start`` pour toute
+        la session (rapport #178, risque 3) :
+
+        * **maximisation du plateau** (:func:`_maximiser_plateau`) — la fenêtre
+          unique, déjà affichée, est (ré)affirmée maximisée à chaque entrée ;
+        * **révélation + liaison du chevalet** si aucun tirage n'est en cours
+          (reprise) : le chevalet, créé **une seule fois** masqué au démarrage
+          (issue #180), est montré (``show()``), repositionné
+          (:func:`_repositionner_chevalet`) et re-lié au plateau
+          (:func:`_lier_chevalet_au_plateau`, risque 4 du rapport #178 : la
+          liaison transiente/owned est re-posée à chaque entrée). Si un tirage est
+          en cours, le chevalet reste masqué : :meth:`terminer_tirage` le révélera
+          au clic « Continuer », comme dans le chemin historique ;
+        * **amorçage du chevalet** (:meth:`_diffuser`) : sa fenêtre ayant été
+          chargée une seule fois au démarrage — **avant** qu'une partie n'existe —
+          son ``obtenir_etat_chevalet`` initial n'a rien reçu. On lui pousse donc
+          l'état frais (même masqué, l'``evaluate_js`` traverse le pont), pour que
+          les bonnes lettres soient prêtes dès sa révélation.
+
+        Exécutée dans un **fil dédié** (comme le callback de ``webview.start``) :
+        elle enchaîne des attentes ``shown`` et des déplacements de fenêtre qui ne
+        doivent pas bloquer le pont JS (l'appel ``api.demarrer_jeu()`` rend la main
+        immédiatement).
+        """
+        threading.Thread(
+            target=self._finaliser_entree_vue_jeu,
+            name="finaliser-entree-vue-jeu",
+            daemon=True,
+        ).start()
+
+    def _finaliser_entree_vue_jeu(self) -> None:
+        """Corps (hors fil) de :meth:`finaliser_entree_vue_jeu` — voir sa docstring."""
+        plateau = self._window_plateau
+        chevalet = self._window_chevalet
+        if plateau is not None:
+            _maximiser_plateau(plateau)
+        # ``_tirage_termine`` est faux tant qu'un tirage d'ordre doit s'afficher :
+        # dans ce cas on laisse le chevalet masqué (terminer_tirage s'en chargera).
+        tirage_en_cours = not self._tirage_termine
+        if not tirage_en_cours and chevalet is not None:
+            try:
+                chevalet.show()
+            except Exception as e:  # noqa: BLE001 - une révélation ratée ne bloque pas le jeu
+                journal.erreur("Jeu : affichage de la fenêtre chevalet impossible.", e)
+            _repositionner_chevalet(chevalet)
+            if plateau is not None:
+                _lier_chevalet_au_plateau(plateau, chevalet)
+        # Amorce le chevalet pré-chargé (créé une fois au démarrage, avant toute
+        # partie) avec l'état frais, même s'il est encore masqué.
+        if self._partie is not None:
+            self._diffuser()
 
     def annuler_tirage(self) -> dict[str, Any]:
         """Annule le tirage : supprime la partie créée et revient à l'accueil.
@@ -2849,6 +2910,54 @@ def _position_chevalet_memorisee(
     return x, y
 
 
+def _creer_fenetre_chevalet(
+    js_api: Any, hidden: bool
+) -> "webview.Window":
+    """Crée la fenêtre flottante du chevalet (issue #90, factorisée #180).
+
+    Extrait de :func:`_lancer_fenetre_jeu` afin d'être réutilisé à l'identique par
+    la coquille mono-fenêtre unifiée (issue #180), qui crée la fenêtre chevalet
+    **une seule fois** au démarrage de l'application (masquée) au lieu de la
+    créer/détruire à chaque partie. La logique de création — dimensions resserrées
+    au panneau, position bas-centre, ``frameless``, drag applicatif — est donc
+    posée ici une fois pour les deux chemins de lancement.
+
+    * ``js_api`` : objet exposé au JS du chevalet (``chevalet.js``). Dans le chemin
+      historique c'est l'instance :class:`ApiJeu` (partagée avec la fenêtre
+      plateau) ; dans la coquille unifiée c'est **aussi** l':class:`ApiJeu` — le
+      chevalet parle toujours directement au jeu, jamais au routeur (aucune de ses
+      méthodes n'est en collision, cf. :class:`~scrabble.ui.application.ApiRouteur`).
+    * ``hidden`` : fenêtre créée masquée (``True``) le temps d'un tirage d'ordre
+      (issue #170) ou, dans la coquille unifiée, tant que la vue Jeu n'est pas
+      activée ; révélée ensuite par ``show()`` (:meth:`ApiJeu.terminer_tirage` ou
+      :meth:`ApiJeu.finaliser_entree_vue_jeu`).
+
+    Comme dans le code d'origine, la position bas-centre calculée ici est
+    approximative (``webview.screens`` n'est fiable qu'une fois la boucle démarrée,
+    issue #91) : elle est corrigée après coup par :func:`_repositionner_chevalet`.
+    """
+    x_chev, y_chev = _position_chevalet()
+    return webview.create_window(
+        "Scrabble - Chevalet",
+        str(DOSSIER_WEB / "chevalet.html"),
+        js_api=js_api,
+        width=CHEVALET_LARGEUR,
+        height=CHEVALET_HAUTEUR,
+        x=x_chev,
+        y=y_chev,
+        hidden=hidden,
+        frameless=True,     # fenêtre sans cadre ni barre de titre
+        # Plus d'``on_top`` global (issue #105) : le chevalet est lié au plateau
+        # par une relation transiente (:func:`_lier_chevalet_au_plateau`), posée
+        # une fois les deux fenêtres affichées — il reste au-dessus du plateau
+        # sans être forcé au-dessus de toutes les applications du système.
+        resizable=False,    # non redimensionnable par erreur
+        easy_drag=False,    # pas de drag « corps entier » : drag applicatif ciblé
+        # Fond vert dès le mappage de la fenêtre (issue #113), comme le plateau.
+        background_color=TAPIS_VERT,
+    )
+
+
 def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
     """Crée les **deux** fenêtres de jeu (plateau + chevalet) et démarre la boucle.
 
@@ -2891,31 +3000,12 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
         # par défaut de pywebview pendant le chargement HTML/CSS.
         background_color=TAPIS_VERT,
     )
-    x_chev, y_chev = _position_chevalet()
     # Tirage d'ordre en cours (issue #170) : tant que l'ordre n'est pas déterminé,
     # l'écran de tirage occupe la fenêtre plateau et la fenêtre chevalet ne doit
     # pas apparaître. On la crée donc **masquée** (``hidden=True``) ; elle sera
     # révélée et finalisée par :meth:`ApiJeu.terminer_tirage` au clic « Continuer ».
     tirage_en_cours = api._infos_tirage is not None
-    window_chevalet = webview.create_window(
-        "Scrabble - Chevalet",
-        str(DOSSIER_WEB / "chevalet.html"),
-        js_api=api,
-        width=CHEVALET_LARGEUR,
-        height=CHEVALET_HAUTEUR,
-        x=x_chev,
-        y=y_chev,
-        hidden=tirage_en_cours,  # masquée le temps du tirage (issue #170)
-        frameless=True,     # fenêtre sans cadre ni barre de titre
-        # Plus d'``on_top`` global (issue #105) : le chevalet est lié au plateau
-        # par une relation transiente (:func:`_lier_chevalet_au_plateau`), posée
-        # une fois les deux fenêtres affichées — il reste au-dessus du plateau
-        # sans être forcé au-dessus de toutes les applications du système.
-        resizable=False,    # non redimensionnable par erreur
-        easy_drag=False,    # pas de drag « corps entier » : drag applicatif ciblé
-        # Fond vert dès le mappage de la fenêtre (issue #113), comme le plateau.
-        background_color=TAPIS_VERT,
-    )
+    window_chevalet = _creer_fenetre_chevalet(api, hidden=tirage_en_cours)
     api.set_windows(window_plateau, window_chevalet)
     # Fermeture croisée par la croix (issue #94) : fermer nativement l'une des deux
     # fenêtres détruit l'autre et quitte l'application (plus de fenêtre orpheline).

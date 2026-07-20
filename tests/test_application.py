@@ -200,6 +200,104 @@ class TestChargerJeu:
         assert routeur._vue_active == VUE_ACCUEIL
 
 
+class _FenetreFactice:
+    """Fenêtre pywebview minimale traçant ``load_url`` (transition issue #180)."""
+
+    def __init__(self) -> None:
+        self.urls: list[str] = []
+
+    def load_url(self, url: str) -> None:
+        self.urls.append(url)
+
+
+class TestDemarrerJeu:
+    """``demarrer_jeu`` câble la transition Accueil→Jeu dans la fenêtre unique."""
+
+    def _routeur_avec_partie(self, monkeypatch, infos_tirage=None):
+        """Routeur prêt : partie déposée sur l'accueil, finalisation neutralisée."""
+        routeur = ApiRouteur()
+        fenetre = _FenetreFactice()
+        routeur.set_window(fenetre)
+        # Simule ce que ``ApiAccueil.lancer_partie``/``reprendre`` a déjà déposé.
+        partie, id_partie = _partie_deux_joueurs()
+        routeur._api_accueil._partie = partie
+        routeur._api_accueil._id_partie = id_partie
+        routeur._api_accueil._infos_tirage = infos_tirage
+        # Neutralise la finalisation (fils + fenêtres réelles) : on trace l'appel.
+        appels = []
+        monkeypatch.setattr(
+            routeur._api_jeu,
+            "finaliser_entree_vue_jeu",
+            lambda: appels.append("finaliser"),
+        )
+        return routeur, fenetre, partie, id_partie, appels
+
+    def test_sequence_dans_le_bon_ordre(self, monkeypatch):
+        """Charge la partie, bascule la vue AVANT ``load_url``, puis finalise."""
+        routeur, fenetre, partie, id_partie, appels = self._routeur_avec_partie(
+            monkeypatch
+        )
+
+        resultat = routeur.demarrer_jeu()
+
+        assert resultat["succes"] is True
+        # 1. partie chargée dans la sous-API Jeu (reprise : pas de tirage).
+        assert routeur._api_jeu._partie is partie
+        assert routeur._api_jeu._id_partie == id_partie
+        assert routeur._api_jeu._tirage_termine is True
+        # 2. la vue Jeu est active (basculée avant la navigation).
+        assert routeur._vue_active == VUE_JEU
+        # 3. navigation load_url vers jeu.html dans la MÊME fenêtre.
+        assert len(fenetre.urls) == 1
+        assert fenetre.urls[0].endswith("jeu.html")
+        # 4. finalisation rejouée.
+        assert appels == ["finaliser"]
+
+    def test_transmet_infos_tirage_nouvelle_partie(self, monkeypatch):
+        """Une nouvelle partie (infos_tirage) laisse le tirage à mener côté Jeu."""
+        infos = {"noms_creation": ["Alice", "Robot"], "graine": 42,
+                 "noms_humains": ["Alice"]}
+        routeur, _fenetre, _partie, _id, _appels = self._routeur_avec_partie(
+            monkeypatch, infos_tirage=infos
+        )
+
+        routeur.demarrer_jeu()
+
+        assert routeur._api_jeu._infos_tirage == infos
+        # Tirage encore à mener : terminer_tirage révélera le chevalet au « Continuer ».
+        assert routeur._api_jeu._tirage_termine is False
+
+    def test_sans_partie_prete_echoue_sans_naviguer(self, monkeypatch):
+        """Sans partie déposée, la transition échoue proprement (bouton réactivé)."""
+        routeur = ApiRouteur()
+        fenetre = _FenetreFactice()
+        routeur.set_window(fenetre)
+        appels = []
+        monkeypatch.setattr(
+            routeur._api_jeu,
+            "finaliser_entree_vue_jeu",
+            lambda: appels.append("finaliser"),
+        )
+
+        resultat = routeur.demarrer_jeu()
+
+        assert resultat["succes"] is False
+        assert "erreur" in resultat
+        # Aucune navigation, aucune bascule de vue, aucune finalisation.
+        assert fenetre.urls == []
+        assert routeur._vue_active == VUE_ACCUEIL
+        assert appels == []
+
+    def test_demarrer_jeu_est_methode_de_controle(self):
+        """``demarrer_jeu`` est une vraie méthode du routeur (jamais une route)."""
+        import inspect
+
+        routeur = ApiRouteur()
+        assert inspect.ismethod(routeur.demarrer_jeu)
+        assert routeur.demarrer_jeu.__func__ is ApiRouteur.demarrer_jeu
+        assert "demarrer_jeu" in ApiRouteur._CONTROLE
+
+
 class _DicoFactice:
     """Dictionnaire minimal (accepte tout)."""
 

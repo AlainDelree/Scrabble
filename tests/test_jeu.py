@@ -3077,6 +3077,83 @@ class TestApiJeuDiffusionConfidentialite:
         api._diffuser()
 
 
+class _FenetreChevaletFactice(_FenetreEspionne):
+    """Fenêtre espionne qui trace en plus ``show()`` (chevalet, issue #180)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.montree = False
+
+    def show(self) -> None:
+        self.montree = True
+
+
+class TestFinaliserEntreeVueJeu:
+    """``_finaliser_entree_vue_jeu`` rejoue la finalisation à chaque entrée (#180)."""
+
+    def _api(self, monkeypatch, infos_tirage=None):
+        """API prête + fenêtres espionnes ; neutralise les fonctions plein écran."""
+        from scrabble.ui import jeu as mod
+
+        api, plateau, _chev = _api_pose("CHATSER")
+        chevalet = _FenetreChevaletFactice()
+        api.set_windows(plateau, chevalet)
+        if infos_tirage is not None:
+            # Rejoue le contrat de charger_partie : tirage encore à mener.
+            api._infos_tirage = infos_tirage
+            api._tirage_termine = False
+        # Neutralise les opérations fenêtre réelles (attente shown, WM, GDK).
+        appels = []
+        monkeypatch.setattr(mod, "_maximiser_plateau",
+                            lambda w: appels.append("maximiser"))
+        monkeypatch.setattr(mod, "_repositionner_chevalet",
+                            lambda w: appels.append("repositionner"))
+        monkeypatch.setattr(mod, "_lier_chevalet_au_plateau",
+                            lambda p, c: appels.append("lier"))
+        return api, plateau, chevalet, appels
+
+    def test_reprise_revele_et_amorce_le_chevalet(self, monkeypatch):
+        """Sans tirage : plateau maximisé, chevalet montré/lié et amorcé (_diffuser)."""
+        api, _plateau, chevalet, appels = self._api(monkeypatch)  # reprise
+
+        api._finaliser_entree_vue_jeu()
+
+        assert appels == ["maximiser", "repositionner", "lier"]
+        assert chevalet.montree is True
+        # Chevalet pré-chargé amorcé : un appliquerEtatChevalet lui a été poussé.
+        assert any("appliquerEtatChevalet" in s for s in chevalet.scripts)
+
+    def test_tirage_en_cours_laisse_le_chevalet_masque(self, monkeypatch):
+        """Avec tirage : plateau maximisé, mais chevalet ni montré ni lié."""
+        infos = {"noms_creation": ["Alice", "Robot"], "graine": 1,
+                 "noms_humains": ["Alice"]}
+        api, _plateau, chevalet, appels = self._api(monkeypatch, infos_tirage=infos)
+
+        api._finaliser_entree_vue_jeu()
+
+        # Seule la maximisation du plateau est rejouée ; pas de show/reposition/lier.
+        assert appels == ["maximiser"]
+        assert chevalet.montree is False
+        # Le chevalet est tout de même amorcé (masqué) pour terminer_tirage.
+        assert any("appliquerEtatChevalet" in s for s in chevalet.scripts)
+
+    def test_thread_lance_le_corps(self, monkeypatch):
+        """``finaliser_entree_vue_jeu`` exécute bien le corps (via un fil)."""
+        api, _plateau, _chevalet, _appels = self._api(monkeypatch)
+        marqueur = []
+        monkeypatch.setattr(api, "_finaliser_entree_vue_jeu",
+                            lambda: marqueur.append("fait"))
+
+        api.finaliser_entree_vue_jeu()
+        # Le fil est daemon : on lui laisse le temps de tourner.
+        import time
+        for _ in range(50):
+            if marqueur:
+                break
+            time.sleep(0.01)
+        assert marqueur == ["fait"]
+
+
 class TestApiJeuPoseViaEtatInterne:
     """``poser_mot``/``verifier_coup`` lisent ``_en_attente`` (issue #90)."""
 

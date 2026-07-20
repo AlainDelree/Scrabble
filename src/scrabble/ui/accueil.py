@@ -536,6 +536,13 @@ class ApiAccueil:
             trie = obtenir_trie()
             self._partie = reprendre_partie(id_partie, trie)
             self._id_partie = id_partie
+            # Reprise = pas de tirage d'ordre à rejouer : on efface tout
+            # ``_infos_tirage`` résiduel d'un éventuel « Lancer la partie »
+            # antérieur. Sans effet dans le chemin de production (une ``ApiAccueil``
+            # neuve par ouverture d'accueil), mais indispensable dans la coquille
+            # unifiée (issue #180) où l'instance persiste toute la session : sinon
+            # la reprise ouvrirait à tort l'écran de tirage.
+            self._infos_tirage = None
             journal.info(f"Accueil : partie #{id_partie} reprise.")
             return {
                 "succes": True,
