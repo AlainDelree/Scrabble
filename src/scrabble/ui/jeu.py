@@ -50,6 +50,7 @@ from scrabble.dictionnaire.dictionnaire import (
     normaliser_mot,
 )
 from scrabble.moteur.ia import Niveau
+from scrabble.moteur.ordre import determiner_ordre_jeu
 from scrabble.moteur.partie import (
     ActionInvalide,
     EntreeHistorique,
@@ -71,6 +72,7 @@ from scrabble.persistance import (
     enregistrer_action,
     finaliser_partie,
 )
+from scrabble.persistance.stockage import supprimer_partie
 from scrabble.moteur.validation import CoupInvalide, DictionnaireMots, valider_coup
 from scrabble.regles.lettres import JOKER, valeur_lettre
 from scrabble.regles.plateau import TAILLE, type_case
@@ -981,6 +983,59 @@ def jouer_tours_ia_ui(partie: Partie, id_partie: int | None) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# Tirage de l'ordre de jeu (logique non-UI) — migré de ApiAccueil (issue #170)
+# --------------------------------------------------------------------------- #
+# Le tirage de l'ordre de jeu (« Chaque joueur a tiré une lettre ») était
+# autrefois calculé et affiché DANS la fenêtre d'accueil (issues #54/#61), puis
+# celle-ci se fermait avant l'ouverture séparée de la fenêtre Jeu — d'où une
+# transition entre deux fenêtres. Depuis l'issue #170, le tirage est affiché
+# « à la place » du plateau dans la fenêtre Jeu elle-même ; la reconstitution de
+# son détail vit donc désormais ici, à côté de l'API qui l'expose au JS.
+
+
+def detail_tirage_ordre(
+    noms_creation: list[str],
+    graine: int | None,
+    noms_humains: "set[str] | list[str] | None" = None,
+) -> dict[str, Any]:
+    """Reconstitue le détail du tirage d'ordre pour affichage côté JS.
+
+    ``creer_partie(tirage_ordre=True)`` réordonne bien les joueurs mais ne
+    renvoie pas le détail du tirage. On le rejoue ici avec **la même graine**
+    (``random.Random(graine)``) : :func:`~scrabble.moteur.ordre.determiner_ordre_jeu`
+    ne dépend que du nombre de joueurs et de la graine, le résultat est donc
+    identique à celui appliqué à la partie (l'ordre reproduit exactement
+    ``partie.joueurs``).
+
+    ``noms_creation`` est la liste des noms dans l'ordre de création (humains
+    puis ordinateurs), qui est l'ordre d'origine sur lequel raisonne
+    :class:`~scrabble.moteur.ordre.ResultatTirageOrdre` (``lettres[i]``
+    correspond au joueur ``i`` de cette liste ; ``ordre`` en donne les indices
+    rangés dans l'ordre de jeu).
+
+    ``noms_humains`` (optionnel) est l'ensemble des noms de joueurs humains :
+    chaque tirage porte alors un booléen ``humain`` pour que le JS remplace,
+    côté joueur humain, la révélation automatique par une interaction « tirer sa
+    lettre » (issue #61). Absent, tous les tirages sont considérés non humains.
+
+    Retourne
+    ``{"tirages": [{"nom", "lettre", "humain"}, ...], "ordre": [nom, ...]}``.
+    """
+    humains = set(noms_humains or ())
+    resultat = determiner_ordre_jeu(noms_creation, random.Random(graine))
+    tirages = [
+        {
+            "nom": noms_creation[i],
+            "lettre": resultat.lettres[i],
+            "humain": noms_creation[i] in humains,
+        }
+        for i in range(len(noms_creation))
+    ]
+    ordre = [noms_creation[i] for i in resultat.ordre]
+    return {"tirages": tirages, "ordre": ordre}
+
+
+# --------------------------------------------------------------------------- #
 # API Python exposée au JavaScript
 # --------------------------------------------------------------------------- #
 
@@ -1008,12 +1063,26 @@ class ApiJeu:
         partie: Partie,
         id_partie: int | None,
         chemin_persistance: Any = CHEMIN_DEFAUT,
+        infos_tirage: dict[str, Any] | None = None,
     ) -> None:
         self._partie = partie
         self._id_partie = id_partie
         # Base où sont persistées les actions (issue #81). Par défaut la base de
         # l'application ; injectable pour les tests (base temporaire).
         self._chemin_persistance = chemin_persistance
+        # Tirage de l'ordre de jeu affiché « à la place » du plateau au tout
+        # début d'une NOUVELLE partie (issue #170, ex-modale de l'accueil). Quand
+        # ``infos_tirage`` est fourni — un dict ``{noms_creation, graine,
+        # noms_humains}`` transmis par l'accueil (« Lancer la partie ») ou par
+        # « Recommencer » (issue #142) — l'écran de jeu s'ouvre en état « pré-
+        # partie » : plateau, fiches joueurs et barre globale masqués, écran de
+        # tirage affiché, fenêtre chevalet créée masquée. ``None`` (reprise d'une
+        # partie existante) : pas de tirage, l'écran s'ouvre directement jouable.
+        # ``_tirage_termine`` passe à True dès qu'il n'y a plus de tirage à mener
+        # (aucun tirage demandé, ou « Continuer » cliqué) : il garde
+        # :meth:`terminer_tirage` idempotente.
+        self._infos_tirage: dict[str, Any] | None = infos_tirage
+        self._tirage_termine: bool = infos_tirage is None
         # Deux fenêtres distinctes (issue #90) au lieu du ``_window`` unique.
         self._window_plateau: webview.Window | None = None
         self._window_chevalet: webview.Window | None = None
@@ -1064,6 +1133,11 @@ class ApiJeu:
         self._recommencer = False
         self._nouvelle_partie: Partie | None = None
         self._nouvel_id_partie: int | None = None
+        # Détail à transmettre à l'écran de jeu relancé après « Recommencer »
+        # (issue #170) : la nouvelle partie a, elle aussi, un tirage d'ordre à
+        # afficher. On mémorise ici les infos (``noms_creation``/``graine``/
+        # ``noms_humains``) que :func:`lancer_jeu` passera à la nouvelle ``ApiJeu``.
+        self._nouvelles_infos_tirage: dict[str, Any] | None = None
         # Garde-fou anti-boucle de la fermeture croisée par la croix (issue #94) :
         # fermer une fenêtre par sa croix détruit l'autre, dont la destruction
         # re-déclenche l'événement ``closing`` (sous GTK, ``destroy()`` passe aussi
@@ -1183,6 +1257,113 @@ class ApiJeu:
         chargement initial de cette fenêtre. Voir :meth:`_etat_chevalet`.
         """
         return self._etat_chevalet()
+
+    # ------------------------------------------------------------------ #
+    # Tirage de l'ordre de jeu affiché dans la fenêtre Jeu (issue #170)
+    # ------------------------------------------------------------------ #
+
+    def obtenir_tirage_ordre(self) -> dict[str, Any] | None:
+        """Détail du tirage d'ordre à afficher au démarrage, ou ``None``.
+
+        Appelée par le JS de la fenêtre Jeu à l'initialisation : si une nouvelle
+        partie vient d'être lancée (« Lancer la partie » ou « Recommencer »), on
+        renvoie le détail reconstitué par :func:`detail_tirage_ordre`
+        (``{"tirages": [...], "ordre": [...]}``) pour que le JS affiche l'écran de
+        tirage à la place du plateau et des fiches ; le reste de l'interface (barre
+        globale comprise, issue #168) reste masqué tant que « Continuer » n'a pas
+        été cliqué. Renvoie ``None`` lors d'une reprise de partie (aucun tirage à
+        rejouer) : l'écran de jeu s'ouvre alors directement jouable.
+        """
+        if self._infos_tirage is None:
+            return None
+        return detail_tirage_ordre(
+            self._infos_tirage.get("noms_creation", []),
+            self._infos_tirage.get("graine"),
+            self._infos_tirage.get("noms_humains"),
+        )
+
+    def terminer_tirage(self) -> dict[str, Any]:
+        """Fin du tirage d'ordre : révèle la fenêtre chevalet (issue #170).
+
+        Appelée quand l'utilisateur clique « Continuer » sur l'écran de tirage.
+        Le JS, de son côté, réaffiche le plateau, les fiches joueurs ET la barre
+        globale. Ici, on révèle la fenêtre **chevalet** (créée masquée le temps du
+        tirage) et on la finalise comme lors d'une ouverture normale : on la
+        repositionne en bas-centre (:func:`_repositionner_chevalet`) et on la lie
+        au plateau (:func:`_lier_chevalet_au_plateau`, issue #105) — étapes
+        volontairement différées jusqu'ici pour ne pas faire apparaître le chevalet
+        pendant le tirage.
+
+        Idempotente (garde ``_tirage_termine``) : un second appel — reprise, ou
+        double-clic — est sans effet. Tolère l'absence de fenêtre chevalet (tests).
+        """
+        if self._tirage_termine:
+            return {"succes": True}
+        self._tirage_termine = True
+        journal.info(
+            f"Jeu : tirage d'ordre terminé — ouverture du chevalet "
+            f"(partie #{self._id_partie})."
+        )
+        chevalet = self._window_chevalet
+        if chevalet is not None:
+            try:
+                chevalet.show()
+            except Exception as e:  # noqa: BLE001 - une révélation ratée ne bloque pas le jeu
+                journal.erreur("Jeu : affichage de la fenêtre chevalet impossible.", e)
+            _repositionner_chevalet(chevalet)
+            if self._window_plateau is not None:
+                _lier_chevalet_au_plateau(self._window_plateau, chevalet)
+        return {"succes": True}
+
+    def annuler_tirage(self) -> dict[str, Any]:
+        """Annule le tirage : supprime la partie créée et revient à l'accueil.
+
+        Point d'entrée du bouton « Annuler » de l'écran de tirage (issue #170,
+        reprise de l'annulation de la modale d'accueil, issue #67). À ce stade la
+        partie a été créée et suivie en base mais **aucun coup n'a été joué** : on
+        la supprime donc de la persistance (:func:`supprimer_partie`) pour qu'elle
+        n'apparaisse pas comme partie fantôme dans « Reprendre une partie », puis
+        on ferme les deux fenêtres de jeu et on rouvre l'accueil — en réutilisant
+        le mécanisme « Retour au menu » (drapeau ``_retour_menu`` lu par
+        :func:`lancer_jeu`, qui rappelle alors :func:`~scrabble.ui.accueil.
+        lancer_accueil`). L'écran de jeu ne s'étant pas encore ouvert visuellement
+        (le tirage est affiché à sa place), l'utilisateur perçoit un simple retour
+        à la configuration.
+
+        Retourne ``{"succes": True}`` si la fermeture a été demandée, sinon
+        ``{"succes": False, "erreur": ...}`` (le JS réactive alors le bouton).
+        """
+        if self._window_plateau is None and self._window_chevalet is None:
+            return {"succes": False, "erreur": "Aucune fenêtre associée."}
+        if self._id_partie is not None:
+            try:
+                supprimee = supprimer_partie(
+                    self._id_partie, self._chemin_persistance
+                )
+                journal.info(
+                    f"Jeu : tirage annulé — partie #{self._id_partie} supprimée "
+                    f"(supprimee={supprimee})."
+                )
+            except Exception as e:  # noqa: BLE001 - on trace, sans planter la fermeture
+                journal.erreur(
+                    f"Jeu : suppression de la partie #{self._id_partie} annulée "
+                    "impossible.",
+                    e,
+                )
+        try:
+            # Retour à l'accueil via le même chemin que « Retour au menu ».
+            self._retour_menu = True
+            # On détruit soi-même les deux fenêtres : on neutralise la fermeture
+            # croisée native (issue #94) pour éviter la double destruction.
+            self._fermeture_en_cours = True
+            if self._window_chevalet is not None:
+                self._window_chevalet.destroy()
+            if self._window_plateau is not None:
+                self._window_plateau.destroy()
+            return {"succes": True}
+        except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
+            self._retour_menu = False
+            return {"succes": False, "erreur": f"Fermeture impossible : {e}"}
 
     def obtenir_theme_plateau(self) -> str:
         """Retourne le thème visuel du plateau choisi dans les réglages.
@@ -2231,8 +2412,20 @@ class ApiJeu:
         La partie terminée courante n'est pas touchée : elle reste finalisée en
         base (voir :meth:`_finaliser_si_terminee`) et consultable dans
         l'historique. Méthode isolée pour rester testable sans fenêtre.
+
+        Effet de bord (issue #170) : mémorise dans ``_nouvelles_infos_tirage`` le
+        détail nécessaire au tirage d'ordre de la nouvelle partie (mêmes noms dans
+        l'ordre de création — humains puis ordinateurs — et la graine tirée), afin
+        que l'écran de jeu relancé affiche à son tour l'écran de tirage.
         """
         graine = random.randint(0, 2**31 - 1)
+        noms_humains = [j.nom for j in self._partie.joueurs if j.humain]
+        noms_ia = [j.nom for j in self._partie.joueurs if not j.humain]
+        self._nouvelles_infos_tirage = {
+            "noms_creation": noms_humains + noms_ia,
+            "graine": graine,
+            "noms_humains": noms_humains,
+        }
         return recreer_partie_meme_joueurs(
             self._partie,
             self._partie.dictionnaire,
@@ -2292,12 +2485,24 @@ class ApiJeu:
 # --------------------------------------------------------------------------- #
 
 
-def lancer_jeu(partie: Partie, id_partie: int | None) -> None:
+def lancer_jeu(
+    partie: Partie,
+    id_partie: int | None,
+    infos_tirage: dict[str, Any] | None = None,
+) -> None:
     """Lance l'écran de jeu pour la ``partie`` donnée (bloquant).
 
     ``partie`` est typiquement celle créée par l'écran d'accueil (issue #27) ;
     ``id_partie`` est son identifiant de persistance (peut être ``None`` en
     mode démonstration autonome).
+
+    ``infos_tirage`` (issue #170) : quand l'accueil vient de créer une partie
+    (« Lancer la partie »), il passe ici le détail nécessaire au tirage d'ordre
+    (``{noms_creation, graine, noms_humains}``). L'écran de jeu s'ouvre alors en
+    état « pré-partie » — plateau, fiches joueurs et barre globale masqués, écran
+    de tirage affiché à leur place, fenêtre chevalet créée masquée — jusqu'à ce
+    que l'utilisateur clique « Continuer ». ``None`` (reprise de partie) : l'écran
+    s'ouvre directement jouable, sans tirage.
 
     Session de journalisation (issue #66) : si une session est déjà ouverte
     (lancement normal depuis l'accueil), on la **réutilise** ; sinon (lancement
@@ -2324,17 +2529,19 @@ def lancer_jeu(partie: Partie, id_partie: int | None) -> None:
     if journal.session_courante() is None:
         journal.demarrer_session()
     journal.info(f"Jeu : écran ouvert (partie #{id_partie}).")
-    api = ApiJeu(partie, id_partie)
+    api = ApiJeu(partie, id_partie, infos_tirage=infos_tirage)
     retour_menu = False
     recommencer = False
     nouvelle_partie: Partie | None = None
     nouvel_id_partie: int | None = None
+    nouvelles_infos_tirage: dict[str, Any] | None = None
     try:
         _lancer_fenetre_jeu(api)
         retour_menu = api._retour_menu
         recommencer = api._recommencer
         nouvelle_partie = api._nouvelle_partie
         nouvel_id_partie = api._nouvel_id_partie
+        nouvelles_infos_tirage = api._nouvelles_infos_tirage
     finally:
         # Cas « retour au menu » ou « recommencer » : la session reste ouverte
         # pour être réutilisée (par l'accueil rouvert, ou par la nouvelle partie
@@ -2348,8 +2555,9 @@ def lancer_jeu(partie: Partie, id_partie: int | None) -> None:
         # Recommencer (issue #142) : on enchaîne directement une nouvelle partie
         # avec les mêmes joueurs, en réutilisant la session de journalisation
         # courante (symétrique du « Retour au menu »). L'écran de jeu s'ouvre à
-        # nouveau, directement sur le nouveau tirage.
-        lancer_jeu(nouvelle_partie, nouvel_id_partie)
+        # nouveau sur le nouveau tirage d'ordre (issue #170) : on transmet les
+        # infos de tirage préparées par ``creer_partie_recommencee``.
+        lancer_jeu(nouvelle_partie, nouvel_id_partie, nouvelles_infos_tirage)
 
 
 def _rouvrir_accueil(id_partie: int | None) -> None:
@@ -2581,6 +2789,11 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
         background_color=TAPIS_VERT,
     )
     x_chev, y_chev = _position_chevalet()
+    # Tirage d'ordre en cours (issue #170) : tant que l'ordre n'est pas déterminé,
+    # l'écran de tirage occupe la fenêtre plateau et la fenêtre chevalet ne doit
+    # pas apparaître. On la crée donc **masquée** (``hidden=True``) ; elle sera
+    # révélée et finalisée par :meth:`ApiJeu.terminer_tirage` au clic « Continuer ».
+    tirage_en_cours = api._infos_tirage is not None
     window_chevalet = webview.create_window(
         "Scrabble - Chevalet",
         str(DOSSIER_WEB / "chevalet.html"),
@@ -2589,6 +2802,7 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
         height=CHEVALET_HAUTEUR,
         x=x_chev,
         y=y_chev,
+        hidden=tirage_en_cours,  # masquée le temps du tirage (issue #170)
         frameless=True,     # fenêtre sans cadre ni barre de titre
         # Plus d'``on_top`` global (issue #105) : le chevalet est lié au plateau
         # par une relation transiente (:func:`_lier_chevalet_au_plateau`), posée
@@ -2622,11 +2836,15 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
     # (accueil → :func:`lancer_jeu`) — puisque tous deux passent par cette fonction et
     # basculent XWayland avant le premier ``webview.start()`` : le chemin normal est
     # affecté à l'identique, et corrigé à l'identique.
-    webview.start(_finaliser_fenetres, (window_plateau, window_chevalet))
+    webview.start(
+        _finaliser_fenetres, (window_plateau, window_chevalet, tirage_en_cours)
+    )
 
 
 def _finaliser_fenetres(
-    window_plateau: "webview.Window", window_chevalet: "webview.Window"
+    window_plateau: "webview.Window",
+    window_chevalet: "webview.Window",
+    tirage_en_cours: bool = False,
 ) -> None:
     """Finalise l'état des deux fenêtres une fois la boucle GUI démarrée (issue #95).
 
@@ -2642,8 +2860,19 @@ def _finaliser_fenetres(
     3. **Liaison chevalet↔plateau** (:func:`_lier_chevalet_au_plateau`) : le
        chevalet est déclaré fenêtre transiente du plateau (``set_transient_for``,
        issue #105), ce qui remplace l'ancien « always-on-top » global.
+
+    ``tirage_en_cours`` (issue #170) : lors d'une nouvelle partie, la fenêtre
+    chevalet est créée masquée le temps du tirage d'ordre. On se contente alors de
+    maximiser le plateau ; le repositionnement et la liaison du chevalet (qui
+    exigent une fenêtre affichée) sont différés jusqu'à :meth:`ApiJeu.terminer_
+    tirage`, appelée au clic « Continuer ». Sans tirage (reprise de partie), le
+    chevalet est visible d'emblée et finalisé ici comme auparavant.
     """
     _maximiser_plateau(window_plateau)
+    if tirage_en_cours:
+        # Chevalet encore masqué : ne pas tenter de le repositionner/lier (il
+        # sera finalisé par ApiJeu.terminer_tirage une fois révélé).
+        return
     _repositionner_chevalet(window_chevalet)
     _lier_chevalet_au_plateau(window_plateau, window_chevalet)
 

@@ -1576,6 +1576,145 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ------------------------------------------------------------------ //
+    // Tirage de l'ordre de jeu (issue #170)
+    // ------------------------------------------------------------------ //
+    // Au tout début d'une NOUVELLE partie, Python expose le détail du tirage via
+    // api.obtenir_tirage_ordre(). Tant que l'ordre n'est pas déterminé, l'écran
+    // de tirage occupe la fenêtre à la place du plateau, des fiches ET de la
+    // barre globale (masqués par body.tirage-en-cours, voir jeu.css) ; la fenêtre
+    // chevalet a été créée masquée côté Python. Le flux est repris de l'ex-modale
+    // de l'accueil (issues #54/#61/#166). En reprise de partie, obtenir_tirage_
+    // ordre() renvoie null : on saute directement à l'affichage du plateau.
+    const ecranTirage = document.getElementById('ecran-tirage');
+    const tirageLettres = document.getElementById('tirage-lettres');
+    const tirageOrdreResultat = document.getElementById('tirage-ordre-resultat');
+    const tirageSacZone = document.getElementById('tirage-sac-zone');
+    const tirageSacAction = document.getElementById('tirage-sac-action');
+    const btnContinuerTirage = document.getElementById('btn-continuer-tirage');
+    const btnAnnulerTirage = document.getElementById('btn-annuler-tirage');
+
+    const DELAI_LIGNE = 450;  // ms entre deux révélations de lettre
+    const attendreTirage = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    // Tour d'un joueur HUMAIN : au lieu de révéler automatiquement sa lettre, on
+    // affiche une image statique du sac + le bouton « Tirer une lettre » qui la
+    // dévoile (issue #61, simplifié #166 ; sac corrigé #170).
+    function tourHumainTirage(li, t) {
+        return new Promise((resolve) => {
+            li.classList.add('visible', 'en-attente-tirage');
+            tirageSacZone.hidden = false;
+            tirageSacZone.innerHTML = `
+                <p class="tirage-sac-consigne">À toi, ${C.escapeHtml(t.nom)} ! Tire ta lettre.</p>
+                <div class="tirage-sac" role="img" aria-label="Sac de lettres">
+                    <svg viewBox="0 0 120 140" width="120" height="140" aria-hidden="true">
+                        <path class="tirage-sac-corps" d="M32 48 C18 62 14 92 26 112 C34 126 50 132 60 132 C70 132 86 126 94 112 C106 92 102 62 88 48 C74 40 46 40 32 48 Z"/>
+                        <path class="tirage-sac-col" d="M38 46 Q60 30 82 46 Q72 55 60 55 Q48 55 38 46 Z"/>
+                        <path class="tirage-sac-cordon" d="M40 44 Q60 36 80 44"/>
+                        <text class="tirage-sac-glyphe" x="60" y="98" text-anchor="middle">?</text>
+                    </svg>
+                </div>
+            `;
+            tirageSacAction.hidden = false;
+            tirageSacAction.innerHTML =
+                '<button type="button" class="btn btn-primaire tirage-sac-bouton">Tirer une lettre</button>';
+            const bouton = tirageSacAction.querySelector('.tirage-sac-bouton');
+            bouton.addEventListener('click', () => {
+                li.classList.remove('en-attente-tirage');  // dévoile la lettre
+                tirageSacZone.hidden = true;
+                tirageSacZone.innerHTML = '';
+                tirageSacAction.hidden = true;
+                tirageSacAction.innerHTML = '';
+                resolve();
+            }, { once: true });
+        });
+    }
+
+    // Affiche le résultat du tirage puis attend « Continuer » (true) ou
+    // « Annuler » (false). « Continuer » ne s'active qu'une fois TOUTES les
+    // lettres révélées (garde issue #67).
+    async function afficherTirageOrdre(tirage) {
+        tirageLettres.innerHTML = '';
+        tirageOrdreResultat.textContent = '';
+        tirageOrdreResultat.classList.remove('visible');
+        tirageSacZone.hidden = true;
+        tirageSacZone.innerHTML = '';
+        tirageSacAction.hidden = true;
+        tirageSacAction.innerHTML = '';
+        btnContinuerTirage.disabled = true;
+
+        const lignes = tirage.tirages.map((t) => {
+            const li = document.createElement('li');
+            li.innerHTML = `<span class="tirage-nom">${C.escapeHtml(t.nom)}</span> a tiré <span class="tirage-lettre">${C.escapeHtml(t.lettre)}</span>`;
+            tirageLettres.appendChild(li);
+            return li;
+        });
+
+        // « Annuler » peut résoudre à tout instant, même pendant un tour humain.
+        const annulation = new Promise((resolve) => {
+            btnAnnulerTirage.onclick = () => resolve(true);
+        });
+
+        const sequence = (async () => {
+            for (let i = 0; i < lignes.length; i++) {
+                const t = tirage.tirages[i];
+                if (t.humain) {
+                    await tourHumainTirage(lignes[i], t);
+                } else {
+                    await attendreTirage(DELAI_LIGNE);
+                    lignes[i].classList.add('visible');
+                }
+            }
+            await attendreTirage(DELAI_LIGNE);
+            tirageOrdreResultat.textContent =
+                'Ordre de jeu : ' + tirage.ordre.map(String).join(', ');
+            tirageOrdreResultat.classList.add('visible');
+            btnContinuerTirage.disabled = false;
+            await new Promise((resolve) => {
+                btnContinuerTirage.onclick = () => resolve();
+            });
+            return false;  // validation normale
+        })();
+
+        const annule = await Promise.race([annulation, sequence]);
+        btnContinuerTirage.onclick = null;
+        btnAnnulerTirage.onclick = null;
+        tirageSacZone.hidden = true;
+        tirageSacZone.innerHTML = '';
+        tirageSacAction.hidden = true;
+        tirageSacAction.innerHTML = '';
+        return !annule;
+    }
+
+    let tirage = null;
+    try {
+        tirage = await api.obtenir_tirage_ordre();
+    } catch (err) {
+        tirage = null;  // en cas d'échec, on ouvre directement le plateau
+    }
+    if (tirage) {
+        document.body.classList.add('tirage-en-cours');
+        ecranTirage.hidden = false;
+        const continuer = await afficherTirageOrdre(tirage);
+        if (!continuer) {
+            // Annulation : Python supprime la partie et rouvre l'accueil ; les
+            // fenêtres se ferment, plus rien à initialiser côté plateau.
+            btnAnnulerTirage.disabled = true;
+            btnContinuerTirage.disabled = true;
+            await api.annuler_tirage();
+            return;
+        }
+        // Continuer : Python révèle et positionne la fenêtre chevalet ; on
+        // réaffiche le plateau, les fiches et la barre globale.
+        try {
+            await api.terminer_tirage();
+        } catch (err) {
+            /* une erreur de révélation du chevalet ne doit pas bloquer le jeu */
+        }
+        ecranTirage.hidden = true;
+        document.body.classList.remove('tirage-en-cours');
+    }
+
+    // ------------------------------------------------------------------ //
     // Initialisation : thème puis premier état public
     // ------------------------------------------------------------------ //
     await appliquerTheme();

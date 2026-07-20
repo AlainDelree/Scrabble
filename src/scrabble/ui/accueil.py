@@ -61,7 +61,6 @@ from scrabble.dictionnaire.dictionnaire import (
     rechercher_statut,
 )
 from scrabble.moteur.ia import Niveau
-from scrabble.moteur.ordre import determiner_ordre_jeu
 from scrabble.moteur.partie import MAX_JOUEURS, Partie, creer_partie
 from scrabble.persistance.stockage import (
     CHEMIN_DEFAUT,
@@ -69,7 +68,6 @@ from scrabble.persistance.stockage import (
     demarrer_suivi,
     lister_parties,
     reprendre_partie,
-    supprimer_partie,
 )
 from scrabble.reglages import lire_reglage, modifier_reglage
 from scrabble.ui import TAPIS_VERT
@@ -183,6 +181,11 @@ class ApiAccueil:
         self._partie: Partie | None = None
         self._id_partie: int | None = None
         self._window: webview.Window | None = None
+        # Détail nécessaire au tirage d'ordre, désormais affiché DANS la fenêtre
+        # Jeu et non plus en modale de l'accueil (issue #170). ``lancer_partie``
+        # le renseigne (``{noms_creation, graine, noms_humains}``) et
+        # :func:`lancer_accueil` le transmet à :func:`~scrabble.ui.jeu.lancer_jeu`.
+        self._infos_tirage: dict[str, Any] | None = None
 
     def set_window(self, window: webview.Window) -> None:
         """Associe la fenêtre pywebview pour les callbacks."""
@@ -373,13 +376,19 @@ class ApiAccueil:
 
         L'ordre de jeu est décidé par un **tirage d'ordre** (``creer_partie(...,
         tirage_ordre=True)``, issue #33) : chaque joueur tire une lettre et
-        l'ordre de jeu suit l'ordre alphabétique des lettres tirées. Le détail
-        du tirage est exposé dans la réponse (clé ``tirage_ordre``) pour que le
-        JS l'affiche avant de fermer l'accueil (issue #54).
+        l'ordre de jeu suit l'ordre alphabétique des lettres tirées.
+
+        Depuis l'issue #170, ce tirage n'est plus affiché en modale de l'accueil :
+        il l'est dans la fenêtre Jeu, « à la place » du plateau. On mémorise donc
+        ici, dans ``_infos_tirage``, ce qu'il faut pour le rejouer côté Jeu
+        (``noms_creation`` dans l'ordre de création — humains puis ordinateurs —,
+        ``graine`` et ``noms_humains``) ; :func:`lancer_accueil` le transmet à
+        :func:`~scrabble.ui.jeu.lancer_jeu`. L'accueil n'affiche donc plus rien du
+        tirage et se ferme directement.
 
         En cas de succès, le champ ``pret`` vaut ``True`` : le JS doit alors
         fermer la fenêtre d'accueil (``api.fermer_fenetre()``) pour que l'écran
-        de jeu puisse s'ouvrir avec la partie créée.
+        de jeu puisse s'ouvrir directement dans l'état « pré-partie » (tirage).
         """
         if not self.config_partie.peut_lancer():
             return {
@@ -410,6 +419,14 @@ class ApiAccueil:
                 bonus_fin_partie=bonus_fin_partie,
             )
             self._id_partie = demarrer_suivi(self._partie)
+            # Détail à rejouer côté Jeu pour l'écran de tirage (issue #170) :
+            # l'ordre de création (humains puis ordinateurs) et la graine suffisent
+            # à ``detail_tirage_ordre`` pour reproduire exactement le tirage.
+            self._infos_tirage = {
+                "noms_creation": noms_humains + noms_ia,
+                "graine": graine,
+                "noms_humains": noms_humains,
+            }
             journal.info(
                 f"Accueil : partie #{self._id_partie} lancée "
                 f"({len(self._partie.joueurs)} joueurs)."
@@ -418,56 +435,15 @@ class ApiAccueil:
                 "succes": True,
                 "pret": True,
                 "id_partie": self._id_partie,
-                "tirage_ordre": self._detail_tirage_ordre(
-                    noms_humains + noms_ia, graine, set(noms_humains)
-                ),
                 "message": f"Partie #{self._id_partie} créée avec {len(self._partie.joueurs)} joueurs.",
             }
         except Exception as e:
             journal.erreur("Accueil : échec du lancement de la partie.", e)
             return {"succes": False, "erreur": str(e)}
 
-    @staticmethod
-    def _detail_tirage_ordre(
-        noms_creation: list[str],
-        graine: int,
-        noms_humains: set[str] | None = None,
-    ) -> dict[str, Any]:
-        """Reconstitue le détail du tirage d'ordre pour affichage côté JS.
-
-        ``creer_partie(tirage_ordre=True)`` réordonne bien les joueurs mais ne
-        renvoie pas le détail du tirage. On le rejoue ici avec **la même graine**
-        (``random.Random(graine)``) : ``determiner_ordre_jeu`` ne dépend que du
-        nombre de joueurs et de la graine, le résultat est donc identique à celui
-        appliqué à la partie (l'ordre reproduit exactement ``partie.joueurs``).
-
-        ``noms_creation`` est la liste des noms dans l'ordre de création (humains
-        puis ordinateurs), qui est l'ordre d'origine sur lequel raisonne
-        :class:`~scrabble.moteur.ordre.ResultatTirageOrdre` (``lettres[i]``
-        correspond au joueur ``i`` de cette liste ; ``ordre`` en donne les
-        indices rangés dans l'ordre de jeu).
-
-        ``noms_humains`` (optionnel) est l'ensemble des noms de joueurs humains :
-        chaque tirage porte alors un booléen ``humain`` pour que le JS remplace,
-        côté joueur humain, la révélation automatique par une interaction
-        « secouer le sac puis tirer » (issue #61). Absent, tous les tirages sont
-        considérés non humains (rétrocompatibilité).
-
-        Retourne
-        ``{"tirages": [{"nom", "lettre", "humain"}, ...], "ordre": [nom, ...]}``.
-        """
-        humains = noms_humains or set()
-        resultat = determiner_ordre_jeu(noms_creation, random.Random(graine))
-        tirages = [
-            {
-                "nom": noms_creation[i],
-                "lettre": resultat.lettres[i],
-                "humain": noms_creation[i] in humains,
-            }
-            for i in range(len(noms_creation))
-        ]
-        ordre = [noms_creation[i] for i in resultat.ordre]
-        return {"tirages": tirages, "ordre": ordre}
+    # Le détail du tirage d'ordre (``_detail_tirage_ordre``) et son annulation
+    # (``annuler_partie_creee``) ont migré vers ``scrabble.ui.jeu`` (issue #170) :
+    # le tirage est désormais affiché et piloté dans la fenêtre Jeu.
 
     def lister_parties_en_cours(self) -> list[dict[str, Any]]:
         """Renvoie les parties proposées à l'accueil (issues #54, #150).
@@ -549,63 +525,14 @@ class ApiAccueil:
             journal.erreur(f"Accueil : échec de la reprise de la partie #{id_partie}.", e)
             return {"succes": False, "erreur": str(e)}
 
-    def annuler_partie_creee(self) -> dict[str, Any]:
-        """Annule la partie tout juste créée et la retire de la persistance (issue #67).
-
-        Appelée quand l'utilisateur clique « Annuler » dans la modale de tirage
-        d'ordre : à ce stade la partie a déjà été créée (:func:`creer_partie`) et
-        suivie (:func:`demarrer_suivi`), mais aucun coup n'a encore été joué. On
-        la supprime donc de la base (:func:`supprimer_partie`) pour qu'elle
-        n'apparaisse pas comme partie fantôme dans « Reprendre une partie »
-        (rien à perdre). L'écran d'accueil reste ouvert : le JS ferme la modale
-        et ramène l'utilisateur à la configuration des joueurs.
-
-        Retourne ``{"succes": True, "supprimee": bool}`` (``supprimee`` faux s'il
-        n'y avait rien à supprimer) ou ``{"succes": False, "erreur": ...}``.
-        """
-        id_partie = self._id_partie
-        if id_partie is None:
-            # Rien à annuler : aucune partie n'a été créée/suivie.
-            return {"succes": True, "supprimee": False}
-        try:
-            supprimee = supprimer_partie(id_partie)
-        except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
-            journal.erreur(
-                f"Accueil : échec de l'annulation de la partie #{id_partie}.", e
-            )
-            return {"succes": False, "erreur": str(e)}
-        self._partie = None
-        self._id_partie = None
-        journal.info(
-            f"Accueil : partie #{id_partie} annulée et supprimée "
-            "(aucun coup joué)."
-        )
-        return {"succes": True, "supprimee": supprimee}
-
     def obtenir_niveaux(self) -> list[str]:
         """Retourne la liste des niveaux de difficulté (labels français)."""
         return list(NIVEAUX_LABELS.keys())
 
-    def journaliser_mesure_fenetre(self, mesures: dict[str, Any]) -> dict[str, Any]:
-        """Journalise les dimensions réelles de la fenêtre de tirage (issue #116).
-
-        Après deux correctifs de taille (issues #83, #115) restés inopérants en
-        conditions réelles, on objective la géométrie effective sous WebKitGTK au
-        lieu de la déduire d'un harnais headless Chromium. Le JS mesure, à
-        l'ouverture de la modale de tirage, la hauteur/largeur réellement
-        disponibles (``innerHeight`` après soustraction du chrome/barre de titre)
-        ainsi que la taille rendue de l'aire du sac, et transmet le tout ici pour
-        trace — même discipline que celle appliquée au chevalet (issues #92-97)
-        une fois une mesure headless jugée insuffisante.
-
-        Purement informatif : n'altère aucun état, retourne toujours un succès.
-        """
-        try:
-            details = ", ".join(f"{cle}={valeur}" for cle, valeur in mesures.items())
-            journal.info(f"Accueil : géométrie réelle modale de tirage — {details}.")
-        except Exception as e:  # noqa: BLE001 - une trace ne doit jamais bloquer
-            journal.erreur("Accueil : échec de journalisation de la géométrie.", e)
-        return {"succes": True}
+    # ``annuler_partie_creee`` et ``journaliser_mesure_fenetre`` (diagnostic de la
+    # géométrie de l'ex-modale de tirage) ont été retirées avec le déplacement du
+    # tirage vers la fenêtre Jeu (issue #170). L'annulation du tirage est désormais
+    # gérée par :meth:`~scrabble.ui.jeu.ApiJeu.annuler_tirage`.
 
     # ------------------------------------------------------------------ #
     # Panneau Réglages intégré (issue #169)
@@ -864,7 +791,11 @@ def lancer_accueil(
         partie, id_partie = api._partie, api._id_partie
         if ouvrir_jeu and partie is not None:
             journal.info(f"Accueil : enchaînement vers l'écran de jeu (partie #{id_partie}).")
-            lancer_jeu(partie, id_partie)
+            # ``_infos_tirage`` est renseigné uniquement après un « Lancer la
+            # partie » (nouvelle partie) : l'écran de jeu affiche alors le tirage
+            # d'ordre à la place du plateau (issue #170). Après une « Reprise », il
+            # reste ``None`` : l'écran de jeu s'ouvre directement jouable.
+            lancer_jeu(partie, id_partie, api._infos_tirage)
         return partie, id_partie
     finally:
         journal.cloturer_session()

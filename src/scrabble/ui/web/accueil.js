@@ -37,16 +37,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnAjouterOrdinateur = document.getElementById('btn-ajouter-ordinateur');
     const btnLancer = document.getElementById('btn-lancer');
 
-    // Modales
+    // Modales (le tirage d'ordre a migré vers la fenêtre Jeu — issue #170).
     const modaleHumain = document.getElementById('modale-humain');
     const modaleOrdinateur = document.getElementById('modale-ordinateur');
-    const modaleTirage = document.getElementById('modale-tirage');
-    const tirageLettres = document.getElementById('tirage-lettres');
-    const tirageOrdreResultat = document.getElementById('tirage-ordre-resultat');
-    const tirageSacZone = document.getElementById('tirage-sac-zone');
-    const tirageSacAction = document.getElementById('tirage-sac-action');
-    const btnContinuerTirage = document.getElementById('btn-continuer-tirage');
-    const btnAnnulerTirage = document.getElementById('btn-annuler-tirage');
 
     // Formulaires
     const formHumain = document.getElementById('form-humain');
@@ -273,195 +266,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    const DELAI_LIGNE = 450;  // ms entre deux révélations de lettre
-
-    /** Petite promesse d'attente (ms). */
-    function attendre(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    /**
-     * Tour d'un joueur HUMAIN dans le tirage d'ordre (issue #61, simplifié
-     * issue #166) : au lieu de révéler automatiquement sa lettre, on affiche
-     * une simple image STATIQUE du sac de lettres avec, juste en dessous, le
-     * bouton « Tirer une lettre » qui dévoile sa lettre.
-     *
-     * La mécanique de « secouage » du sac (suivi du curseur + son, issues
-     * #61/#68/#71) a été retirée : elle n'affichait plus correctement le sac
-     * pendant l'animation et n'apportait rien au flux. Le reste (révélation de
-     * la lettre au clic, suite de la séquence) est inchangé.
-     *
-     * @param {HTMLElement} li Ligne de résultat correspondante (nom + lettre).
-     * @param {{nom: string, lettre: string}} t Tirage du joueur humain.
-     * @returns {Promise<void>} résolue une fois la lettre tirée.
-     */
-    function tourHumain(li, t) {
-        return new Promise((resolve) => {
-            // La ligne apparaît, mais la lettre reste masquée jusqu'au tirage.
-            li.classList.add('visible', 'en-attente-tirage');
-
-            // Corps scrollable : consigne + image statique du sac de lettres.
-            tirageSacZone.hidden = false;
-            tirageSacZone.innerHTML = `
-                <p class="tirage-sac-consigne">À toi, ${escapeHtml(t.nom)} ! Tire ta lettre.</p>
-                <div class="tirage-sac" role="img" aria-label="Sac de lettres">
-                    <svg viewBox="0 0 100 110" width="120" height="132" aria-hidden="true">
-                        <path class="tirage-sac-corps" d="M22 42 Q50 28 78 42 L88 96 Q50 112 12 96 Z"/>
-                        <path class="tirage-sac-col" d="M34 40 Q50 22 66 40 Q50 34 34 40 Z"/>
-                        <line class="tirage-sac-cordon" x1="34" y1="40" x2="66" y2="40"/>
-                        <text class="tirage-sac-glyphe" x="50" y="80" text-anchor="middle">?</text>
-                    </svg>
-                </div>
-            `;
-
-            // Zone épinglée (issue #116), hors du corps scrollable : le bouton
-            // « Tirer une lettre » reste visible par construction, comme
-            // Annuler / Continuer, quelle que soit la taille de fenêtre.
-            tirageSacAction.hidden = false;
-            tirageSacAction.innerHTML =
-                '<button type="button" class="btn btn-primaire tirage-sac-bouton">Tirer une lettre</button>';
-
-            const bouton = tirageSacAction.querySelector('.tirage-sac-bouton');
-
-            bouton.addEventListener('click', () => {
-                li.classList.remove('en-attente-tirage');  // dévoile la lettre
-                tirageSacZone.hidden = true;
-                tirageSacZone.innerHTML = '';
-                tirageSacAction.hidden = true;
-                tirageSacAction.innerHTML = '';
-                resolve();
-            }, { once: true });
-        });
-    }
-
-    /**
-     * Affiche le résultat du tirage d'ordre (issue #54) et attend que
-     * l'utilisateur clique « Continuer » avant de résoudre.
-     *
-     * Les joueurs ordinateurs sont révélés séquentiellement en fondu (issue
-     * #58). Pour chaque joueur HUMAIN, la révélation automatique est remplacée
-     * par une image statique du sac + un bouton « Tirer une lettre » (issue
-     * #61, simplifié #166) : la séquence se met en pause jusqu'au clic sur
-     * « Tirer une lettre », puis reprend. Le résultat « Ordre de jeu : … »
-     * n'apparaît qu'une fois TOUTES les lettres révélées.
-     *
-     * Deux garde-fous (issue #67) :
-     * - « Continuer » reste désactivé tant que TOUS les tirages ne sont pas
-     *   terminés (y compris le tirage du/des joueurs humains) ; il ne devient
-     *   actif qu'une fois l'ordre de jeu final affiché.
-     * - « Annuler » est actif à tout moment : un clic supprime la partie
-     *   fraîchement créée (``api.annuler_partie_creee()``) et interrompt la
-     *   séquence, même en plein tour humain, pour revenir à la configuration.
-     *
-     * @param {{tirages: Array<{nom: string, lettre: string, humain: boolean}>, ordre: string[]}} tirage
-     * @returns {Promise<boolean>} ``true`` si l'utilisateur valide (« Continuer »),
-     *   ``false`` s'il annule (« Annuler ») — la partie créée est alors supprimée.
-     */
-    /**
-     * Mesure la géométrie réelle de la modale de tirage et la transmet au
-     * journal Python (issue #116). Sert à objectiver, en conditions réelles
-     * WebKitGTK, la hauteur réellement disponible dans la fenêtre — là où les
-     * mesures headless Chromium des issues #83/#115 ont échoué deux fois.
-     * Best-effort : toute erreur (API absente en test, DOM incomplet) est
-     * silencieusement ignorée, la trace ne doit jamais gêner le tirage.
-     */
-    function journaliserGeometrieTirage() {
-        try {
-            if (!api || typeof api.journaliser_mesure_fenetre !== 'function') return;
-            const contenu = modaleTirage.querySelector('.modale-contenu');
-            const corps = modaleTirage.querySelector('.modale-corps');
-            const arrondi = (v) => Math.round(v);
-            api.journaliser_mesure_fenetre({
-                fenetre_innerHeight: window.innerHeight,
-                fenetre_innerWidth: window.innerWidth,
-                vh40_px: arrondi(window.innerHeight * 0.40),
-                contenu_hauteur: contenu ? arrondi(contenu.getBoundingClientRect().height) : null,
-                corps_client: corps ? corps.clientHeight : null,
-                corps_scroll: corps ? corps.scrollHeight : null,
-            });
-        } catch (_e) {
-            /* trace best-effort : on ignore toute erreur */
-        }
-    }
-
-    async function afficherTirageOrdre(tirage) {
-        tirageLettres.innerHTML = '';
-        tirageOrdreResultat.textContent = '';
-        tirageOrdreResultat.classList.remove('visible');
-        tirageSacZone.hidden = true;
-        tirageSacZone.innerHTML = '';
-        tirageSacAction.hidden = true;
-        tirageSacAction.innerHTML = '';
-
-        // La modale est réutilisée d'un lancement à l'autre : on force « Continuer »
-        // à l'état désactivé tant que le tirage n'est pas mené à son terme.
-        btnContinuerTirage.disabled = true;
-
-        const lignes = tirage.tirages.map(t => {
-            const li = document.createElement('li');
-            li.innerHTML = `<span class="tirage-nom">${escapeHtml(t.nom)}</span> a tiré <span class="tirage-lettre">${escapeHtml(t.lettre)}</span>`;
-            tirageLettres.appendChild(li);
-            return li;
-        });
-
-        afficherModale(modaleTirage);
-
-        // Diagnostic (issue #116) : après deux correctifs de taille inopérants en
-        // conditions réelles, on objective la géométrie effective sous WebKitGTK
-        // en la transmettant au journal Python — plus fiable qu'une mesure
-        // headless Chromium. Purement informatif, tolérant à l'échec.
-        journaliserGeometrieTirage();
-
-        // Promesse d'annulation : « Annuler » peut résoudre à tout instant, même
-        // pendant que la séquence de révélation attend un tour humain.
-        const annulation = new Promise((resolve) => {
-            btnAnnulerTirage.onclick = () => resolve(true);
-        });
-
-        // Séquence de révélation, puis attente du clic « Continuer ».
-        const sequence = (async () => {
-            for (let i = 0; i < lignes.length; i++) {
-                const t = tirage.tirages[i];
-                if (t.humain) {
-                    await tourHumain(lignes[i], t);
-                } else {
-                    await attendre(DELAI_LIGNE);
-                    lignes[i].classList.add('visible');
-                }
-            }
-
-            await attendre(DELAI_LIGNE);
-            tirageOrdreResultat.textContent =
-                'Ordre de jeu : ' + tirage.ordre.map(String).join(', ');
-            tirageOrdreResultat.classList.add('visible');
-
-            // Tirage terminé : « Continuer » devient enfin actif.
-            btnContinuerTirage.disabled = false;
-            await new Promise((resolve) => {
-                btnContinuerTirage.onclick = () => resolve();
-            });
-            return false;  // validation normale
-        })();
-
-        const annule = await Promise.race([annulation, sequence]);
-
-        // Nettoyage des gestionnaires (la séquence peut rester orpheline si
-        // l'annulation l'emporte pendant un tour humain — la modale est cachée).
-        btnContinuerTirage.onclick = null;
-        btnAnnulerTirage.onclick = null;
-        tirageSacZone.hidden = true;
-        tirageSacZone.innerHTML = '';
-        tirageSacAction.hidden = true;
-        tirageSacAction.innerHTML = '';
-
-        if (annule) {
-            // Supprime la partie créée entre-temps de la persistance (issue #67).
-            await api.annuler_partie_creee();
-        }
-        cacherModale(modaleTirage);
-        return !annule;
-    }
-
     /**
      * Affiche une modale
      */
@@ -575,23 +379,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const result = await api.lancer_partie();
 
         if (result.succes && result.pret) {
-            // Montrer le résultat du tirage d'ordre avant de fermer l'accueil
-            // (issue #54) : l'utilisateur voit la lettre tirée par chaque
-            // joueur et l'ordre de jeu qui en résulte, puis clique « Continuer ».
-            if (result.tirage_ordre) {
-                const continuer = await afficherTirageOrdre(result.tirage_ordre);
-                if (!continuer) {
-                    // Annulation (issue #67) : la partie créée a été supprimée de
-                    // la persistance. On revient à la configuration des joueurs
-                    // sans fermer l'accueil ni ouvrir l'écran de jeu. Le bouton
-                    // est réactivé et la liste de reprise rafraîchie (la partie
-                    // fantôme ne doit plus y figurer).
-                    btnLancer.disabled = false;
-                    btnLancer.textContent = 'Lancer la partie';
-                    await chargerPartiesEnCours();
-                    return;
-                }
-            }
+            // Le tirage d'ordre n'est plus affiché ici (issue #170) : on ferme
+            // directement l'accueil, et la fenêtre Jeu s'ouvre en état
+            // « pré-partie » (écran de tirage affiché à la place du plateau).
             // Fermer la fenêtre d'accueil depuis Python — l'écran de jeu
             // s'ouvrira automatiquement après la fermeture. En cas d'échec,
             // on réactive le bouton plutôt que de rester bloqué.

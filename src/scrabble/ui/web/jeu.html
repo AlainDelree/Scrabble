@@ -291,6 +291,46 @@
         </main>
     </div>
 
+    <!-- Écran de tirage de l'ordre de jeu (issue #170) : affiché « à la place »
+         du plateau, des fiches joueurs ET de la barre globale (masqués via la
+         classe body.tirage-en-cours, voir jeu.css) au tout début d'une nouvelle
+         partie. Repris de l'ex-modale de l'accueil (issues #54/#61/#166) : chaque
+         joueur a tiré une lettre ; les ordinateurs sont révélés en fondu, le
+         joueur humain tire sa lettre au clic. « Continuer » révèle le plateau et
+         ouvre le chevalet ; « Annuler » supprime la partie et revient à l'accueil.
+         Masqué par défaut (hidden) : jeu.js le montre si Python signale un tirage
+         via api.obtenir_tirage_ordre(). -->
+    <div id="ecran-tirage" class="ecran-tirage" hidden>
+        <div class="ecran-tirage-contenu">
+            <h2>Tirage de l'ordre de jeu</h2>
+            <div class="ecran-tirage-corps">
+                <p class="tirage-intro">
+                    Chaque joueur a tiré une lettre. L'ordre de jeu suit l'ordre
+                    alphabétique des lettres tirées.
+                </p>
+                <ul id="tirage-lettres" class="tirage-lettres"></ul>
+                <!-- Zone de tirage du joueur humain (consigne + image statique du
+                     sac), remplie par le JS le temps de son tour. -->
+                <div id="tirage-sac-zone" class="tirage-sac-zone" hidden></div>
+                <p id="tirage-ordre-resultat" class="tirage-ordre-resultat"></p>
+            </div>
+            <!-- Bouton « Tirer une lettre » épinglé hors du corps scrollable
+                 (issue #116) : toujours visible. Rempli par le JS pendant le tour
+                 d'un joueur humain, masqué le reste du temps. -->
+            <div id="tirage-sac-action" class="tirage-sac-action" hidden></div>
+            <div class="ecran-tirage-actions">
+                <button type="button" class="btn btn-secondaire" id="btn-annuler-tirage">
+                    Annuler
+                </button>
+                <!-- Désactivé jusqu'à la fin complète du tirage (issue #67) :
+                     réactivé par le JS une fois l'ordre de jeu affiché. -->
+                <button type="button" class="btn btn-primaire" id="btn-continuer-tirage" disabled>
+                    Continuer
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modale de détail du score après un coup posé (issue #35). Présente
          chaque mot formé avec son score, les cases bonus utilisées, le bonus
          « scrabble » éventuel et le total. Fermeture par bouton ou clic dehors. -->
