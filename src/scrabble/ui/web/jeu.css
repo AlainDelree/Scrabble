@@ -1630,9 +1630,15 @@ body.tirage-en-cours #message-plateau {
 }
 
 .ecran-tirage-corps {
-    /* Prend la place restante entre le titre et les actions, et défile au
-       besoin. min-height: 0 permet à cet enfant flex de rétrécir et de scroller. */
-    flex: 1 1 auto;
+    /* Ne grandit PAS pour occuper l'espace restant (flex-grow: 0) : avec peu de
+       joueurs le corps garde sa hauteur naturelle et ne déclenche donc aucune
+       scrollbar (le fait de forcer le remplissage laissait un résidu sub-pixel
+       qui affichait une barre inutile, issue #173). Il reste rétrécissable
+       (flex-shrink: 1 + min-height: 0) : avec beaucoup de joueurs, quand la carte
+       atteint sa max-height, le corps se comprime et défile via overflow-y (déjà
+       validé en #172). La barre n'apparaît donc QUE lorsqu'il y a un vrai
+       dépassement. */
+    flex: 0 1 auto;
     min-height: 0;
     overflow-y: auto;
 }
