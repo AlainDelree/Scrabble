@@ -18,7 +18,7 @@ l'usage (``config.json``, ``logs/``, ``data/parties.db``,
 ``mots_ajoutes_*.txt``/``mots_retires_*.txt``) persistent d'un lancement à
 l'autre au même endroit.
 
-Les fenêtres accueil/jeu/chevalet/réglages résolvent leurs assets web via
+Les fenêtres accueil (réglages intégrés, issue #169)/jeu/chevalet résolvent leurs assets web via
 ``Path(__file__).parent / "web"`` (voir ``src/scrabble/ui/*.py``) : PyInstaller
 préserve un ``__file__`` synthétique sous ``scrabble/ui/...`` pour les modules
 gelés, donc placer le dossier ``web`` à la destination ``scrabble/ui/web``
@@ -64,7 +64,7 @@ def collect_tree(src_relatif, dest_relatif):
 
 
 datas = []
-# Assets web (HTML/CSS/JS/avatars SVG) des fenêtres accueil/jeu/chevalet/réglages.
+# Assets web (HTML/CSS/JS/avatars SVG) des fenêtres accueil (réglages intégrés)/jeu/chevalet.
 datas += collect_tree(os.path.join("src", "scrabble", "ui", "web"), os.path.join("scrabble", "ui", "web"))
 # Dictionnaire(s), personnalisations (issue #110), définitions, cache Trie —
 # tout ce qui se trouve dans data/dictionnaire au moment du build.
