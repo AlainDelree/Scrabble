@@ -310,11 +310,14 @@
                     alphabétique des lettres tirées.
                 </p>
                 <ul id="tirage-lettres" class="tirage-lettres"></ul>
-                <!-- Zone de tirage du joueur humain (consigne + image statique du
-                     sac), remplie par le JS le temps de son tour. -->
-                <div id="tirage-sac-zone" class="tirage-sac-zone" hidden></div>
                 <p id="tirage-ordre-resultat" class="tirage-ordre-resultat"></p>
             </div>
+            <!-- Zone de tirage du joueur humain (consigne + image statique du sac)
+                 épinglée hors du corps scrollable (issue #172, même logique que le
+                 bouton ci-dessous issue #116) : le sac reste entièrement visible
+                 quel que soit le nombre de joueurs. Remplie par le JS le temps de
+                 son tour, masquée le reste du temps. -->
+            <div id="tirage-sac-zone" class="tirage-sac-zone" hidden></div>
             <!-- Bouton « Tirer une lettre » épinglé hors du corps scrollable
                  (issue #116) : toujours visible. Rempli par le JS pendant le tour
                  d'un joueur humain, masqué le reste du temps. -->
