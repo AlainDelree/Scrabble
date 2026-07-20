@@ -1263,6 +1263,20 @@ class ApiJeu:
 
         Tolère les fenêtres factices des tests (pas d'attribut ``events`` ou pas
         d'événement ``closing``) : dans ce cas on n'abonne rien.
+
+        Coquille unifiée (issue #182) — vérifié : le même câblage sécurise la
+        fermeture par la croix dans la coquille mono-fenêtre (issue #180), où le
+        chevalet compagnon est **persistant** et **masqué la plupart du temps**
+        (vue Accueil, tirage d'ordre en cours). :meth:`_sur_fermeture_native`
+        détruit **inconditionnellement** la fenêtre jumelle, qu'elle soit visible
+        ou masquée : un ✕ natif sur la fenêtre principale — quelle que soit la vue
+        active au moment du clic — détruit donc aussi le chevalet masqué, et
+        réciproquement un ✕ sur le chevalet détruit la fenêtre principale. Aucune
+        fenêtre masquée ne subsiste pour maintenir ``webview.start()`` vivant
+        (risque n°1 des rapports #177/#178), et aucun abonné ne renvoyant jamais
+        ``False``, aucune confirmation implicite ne bloque la fermeture (la
+        confirmation d'un coup en attente reste, elle, portée côté JS par le
+        bouton applicatif « Retour au menu », pas par la croix).
         """
         for fenetre in (self._window_plateau, self._window_chevalet):
             evenements = getattr(fenetre, "events", None)

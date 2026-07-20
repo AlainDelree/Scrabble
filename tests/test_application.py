@@ -23,6 +23,7 @@ from scrabble.ui.application import (
     VUE_ACCUEIL,
     VUE_JEU,
     ApiRouteur,
+    lancer_application_unifiee,
 )
 from scrabble.ui.jeu import ApiJeu
 
@@ -443,6 +444,275 @@ class TestTransitionsJeuAccueil:
             assert nom in ApiRouteur._CONTROLE
             assert inspect.ismethod(getattr(routeur, nom))
             assert getattr(routeur, nom).__func__ is getattr(ApiRouteur, nom)
+
+
+class _FenetreUnifiee:
+    """Fenêtre pywebview factice **complète** pour un parcours de bout en bout (issue #182).
+
+    Combine le suivi ``load_url``/``show``/``hide`` de :class:`_FenetreFactice`
+    avec un vrai ``events.closing`` (``webview.event.Event``, comme
+    ``_FenetreFermable`` dans ``test_jeu.py``). Son ``destroy`` **re-émet**
+    ``closing`` comme le backend GTK (où ``destroy()`` repasse par
+    ``close_window``) : c'est exactement le scénario que le garde-fou anti-boucle
+    de la fermeture croisée doit neutraliser.
+    """
+
+    def __init__(self, nom: str) -> None:
+        from webview.event import Event
+
+        self.nom = nom
+        self.urls: list[str] = []
+        self.masquee = False
+        self.montree = False
+        self.detruite = False
+        self.events = type("_Ev", (), {})()
+        self.events.closing = Event(self, True)
+
+    def load_url(self, url: str) -> None:
+        self.urls.append(url)
+
+    def show(self) -> None:
+        self.montree = True
+        self.masquee = False
+
+    def hide(self) -> None:
+        self.masquee = True
+        self.montree = False
+
+    def destroy(self) -> None:
+        self.detruite = True
+        # Comme GTK : la destruction programmatique repasse par ``closing``.
+        self.events.closing.set()
+
+
+def _routeur_avec_fenetres_fermables():
+    """Routeur unifié câblé à deux fenêtres factices fermables (plateau + chevalet).
+
+    Reproduit le câblage posé par :func:`lancer_application_unifiee` sans ouvrir
+    de vraie fenêtre : ``set_windows`` + ``installer_fermeture_croisee`` sur la
+    sous-API Jeu, la fenêtre plateau étant AUSSI la fenêtre unique du routeur.
+    """
+    routeur = ApiRouteur()
+    plateau = _FenetreUnifiee("plateau")
+    chevalet = _FenetreUnifiee("chevalet")
+    routeur.set_window(plateau)
+    routeur._api_jeu.set_windows(plateau, chevalet)
+    routeur._api_jeu.installer_fermeture_croisee()
+    return routeur, plateau, chevalet
+
+
+class TestFermetureCroiseeUnifiee:
+    """Fermeture par la croix ✕ dans la coquille mono-fenêtre unifiée (issue #182).
+
+    Risque n°1 des rapports #177/#178 : une fenêtre masquée maintient
+    ``webview.start()`` vivant. Le chevalet compagnon (issue #180) est persistant
+    et masqué la plupart du temps (vue Accueil, tirage). Un ✕ natif doit détruire
+    **les deux** fenêtres physiques, quelle que soit la vue active, pour que la
+    boucle rende la main et que le processus se termine.
+    """
+
+    def test_croix_principale_en_vue_accueil_detruit_le_chevalet_masque(self):
+        """✕ sur la fenêtre principale en vue Accueil : le chevalet masqué est détruit."""
+        routeur, plateau, chevalet = _routeur_avec_fenetres_fermables()
+        # Vue Accueil active + chevalet masqué (état le plus fréquent du chevalet).
+        routeur.activer_vue(VUE_ACCUEIL)
+        routeur._api_jeu.masquer_chevalet()
+        assert chevalet.masquee is True
+
+        # Croix native sur la fenêtre principale (GTK émet ``closing``).
+        plateau.events.closing.set()
+
+        # Le chevalet — pourtant masqué — est bien détruit : plus aucune fenêtre
+        # ne peut maintenir ``webview.start()`` vivant.
+        assert chevalet.detruite is True
+        assert routeur._api_jeu._fermeture_en_cours is True
+
+    def test_croix_principale_en_vue_jeu_detruit_le_chevalet(self):
+        """✕ sur la fenêtre principale en vue Jeu : le chevalet est détruit."""
+        routeur, plateau, chevalet = _routeur_avec_fenetres_fermables()
+        routeur.activer_vue(VUE_JEU)
+
+        plateau.events.closing.set()
+
+        assert chevalet.detruite is True
+
+    def test_croix_du_chevalet_detruit_la_fenetre_principale(self):
+        """✕ sur le chevalet lui-même : la fenêtre principale est détruite."""
+        routeur, plateau, chevalet = _routeur_avec_fenetres_fermables()
+
+        chevalet.events.closing.set()
+
+        # Le chevalet se ferme de lui-même (backend) ; le handler détruit l'AUTRE
+        # fenêtre (la principale), donc aucune orpheline ne subsiste.
+        assert plateau.detruite is True
+
+    def test_aucune_confirmation_implicite_ne_bloque_la_croix(self):
+        """Le handler ne renvoie jamais ``False`` (aucune confirmation ne bloque la ✕).
+
+        pywebview n'annule une fermeture que si un abonné à ``closing`` renvoie
+        ``False``. La confirmation d'un coup en attente est portée côté JS par le
+        bouton « Retour au menu », jamais par la croix : le handler natif doit
+        laisser la fermeture se poursuivre.
+        """
+        routeur, plateau, chevalet = _routeur_avec_fenetres_fermables()
+        # Appel direct du handler : il retourne None (poursuite de la fermeture).
+        assert routeur._api_jeu._sur_fermeture_native(plateau) is None
+
+    def test_croix_ne_declenche_pas_de_retour_menu(self):
+        """La croix quitte l'application (elle ne repositionne pas ``_retour_menu``)."""
+        routeur, plateau, chevalet = _routeur_avec_fenetres_fermables()
+        plateau.events.closing.set()
+        # Contrairement à « Retour au menu », une croix ne rouvre pas l'accueil.
+        assert routeur._api_jeu._retour_menu is False
+
+
+class TestParcoursCompletUnifie:
+    """Parcours de bout en bout dans la coquille unifiée (issue #182).
+
+    Un seul ``webview.start()``, une seule session de journalisation, aucune
+    ``AttributeError`` de routage, et une fermeture par la croix qui détruit tout.
+    Les vraies fenêtres et la vraie boucle pywebview sont neutralisées (headless).
+    """
+
+    def test_parcours_complet_une_seule_session_et_fermeture(self, monkeypatch):
+        """lancement→accueil→partie→tirage→jeu→menu→reprise→recommencer→✕.
+
+        Le parcours entier est joué **à l'intérieur** de l'unique
+        ``webview.start()`` (stubé) ouvert par :func:`lancer_application_unifiee`,
+        prouvant qu'une seule session couvre tout et qu'aucun appel ne tombe sur
+        la mauvaise sous-API.
+        """
+        from scrabble import journal
+        from scrabble.ui import jeu as mod_jeu
+
+        # --- Neutralisation de tout ce qui exige un vrai backend graphique ---
+        monkeypatch.setattr(
+            "scrabble.ui.backend_graphique.configurer_backend_graphique",
+            lambda *a, **k: None,
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.backend_graphique.deployer_fenetre_maximisee",
+            lambda *a, **k: None,
+        )
+        # Positionnement/liaison réels du chevalet (WebKitGTK) → no-op.
+        monkeypatch.setattr(mod_jeu, "_repositionner_chevalet", lambda *a, **k: None)
+        monkeypatch.setattr(mod_jeu, "_lier_chevalet_au_plateau", lambda *a, **k: None)
+        # Persistance de « Recommencer » (nouvelle partie suivie en base) → id factice.
+        monkeypatch.setattr(mod_jeu, "demarrer_suivi", lambda *a, **k: 123)
+
+        # --- Comptage strict des sessions de journalisation ---
+        demarrees: list = []
+        cloturees: list = []
+        monkeypatch.setattr(journal, "session_courante", lambda: None)
+        monkeypatch.setattr(
+            journal, "demarrer_session", lambda *a, **k: demarrees.append(1)
+        )
+        monkeypatch.setattr(
+            journal, "cloturer_session", lambda *a, **k: cloturees.append(1)
+        )
+
+        # --- Fenêtres factices injectées à la place des vraies ---
+        plateau = _FenetreUnifiee("plateau")
+        chevalet = _FenetreUnifiee("chevalet")
+        monkeypatch.setattr(
+            "scrabble.ui.application.webview.create_window",
+            lambda *a, **k: plateau,
+        )
+        monkeypatch.setattr(mod_jeu, "_creer_fenetre_chevalet", lambda *a, **k: chevalet)
+
+        # Routeur injecté : finalisation (fil + fenêtres réelles) neutralisée mais tracée.
+        routeur = ApiRouteur()
+        finaliser: list = []
+        monkeypatch.setattr(
+            routeur._api_jeu, "finaliser_entree_vue_jeu", lambda: finaliser.append(1)
+        )
+
+        # Le driver JOUE tout le parcours à l'intérieur de l'unique webview.start.
+        def _parcours(*_a, **_k):
+            # 0. Au lancement : vue Accueil, fenêtres câblées, session ouverte.
+            assert routeur._vue_active == VUE_ACCUEIL
+            assert demarrees == [1] and cloturees == []
+            # Routage Accueil : collision ``obtenir_etat`` + méthode accueil-only.
+            assert "joueurs" in routeur.obtenir_etat()
+            assert isinstance(routeur.obtenir_niveaux(), list)
+            # Une méthode jeu-only en vue Accueil DOIT lever (routage correct).
+            with pytest.raises(AttributeError):
+                routeur.obtenir_theme_plateau()
+
+            # 1. Nouvelle partie (infos_tirage) déposée par l'accueil, puis démarrage.
+            partie1, id1 = _partie_deux_joueurs()
+            routeur._api_accueil._partie = partie1
+            routeur._api_accueil._id_partie = id1
+            routeur._api_accueil._infos_tirage = {
+                "noms_creation": ["Alice", "Robot"],
+                "graine": 1,
+                "noms_humains": ["Alice"],
+            }
+            assert routeur.demarrer_jeu()["succes"] is True
+            assert routeur._vue_active == VUE_JEU
+            assert plateau.urls[-1].endswith("jeu.html")
+            # Nouvelle partie : tirage d'ordre à mener (chevalet encore masqué).
+            assert routeur._api_jeu._tirage_termine is False
+
+            # 2. Routage Jeu : collision ``obtenir_etat`` (→ etat_public) + jeu-only.
+            assert "joueurs" in routeur.obtenir_etat()
+            assert routeur.obtenir_theme_plateau() == "classique"
+            # Une méthode accueil-only en vue Jeu DOIT lever (routage correct).
+            with pytest.raises(AttributeError):
+                routeur.obtenir_niveaux()
+
+            # 3. Fin du tirage : le chevalet compagnon est révélé (jamais recréé).
+            assert routeur.terminer_tirage()["succes"] is True
+            assert routeur._api_jeu._tirage_termine is True
+            assert chevalet.montree is True
+
+            # 4. Retour au menu : chevalet masqué, navigation vers l'accueil.
+            assert routeur.retourner_accueil()["succes"] is True
+            assert routeur._vue_active == VUE_ACCUEIL
+            assert chevalet.masquee is True
+            assert plateau.urls[-1].endswith("accueil.html")
+            # Re-routage Accueil effectif après la navigation.
+            assert "joueurs" in routeur.obtenir_etat()
+
+            # 5. Reprise d'une AUTRE partie (pas de tirage → jouable directement).
+            partie2, _id2 = _partie_deux_joueurs()
+            routeur._api_accueil._partie = partie2
+            routeur._api_accueil._id_partie = 77
+            routeur._api_accueil._infos_tirage = None
+            assert routeur.demarrer_jeu()["succes"] is True
+            assert routeur._vue_active == VUE_JEU
+            assert routeur._api_jeu._tirage_termine is True
+
+            # 6. Recommencer : nouvelle partie (mêmes joueurs), DOM rechargé.
+            assert routeur.recommencer_jeu()["succes"] is True
+            assert routeur._vue_active == VUE_JEU
+            assert plateau.urls[-1].endswith("jeu.html")
+            assert routeur._api_jeu._tirage_termine is False  # nouveau tirage
+            # Aucun drapeau inter-boucles positionné dans le chemin unifié.
+            assert routeur._api_jeu._recommencer is False
+
+            # 7. Fermeture par la croix ✕ sur la fenêtre principale.
+            plateau.events.closing.set()
+            # Le chevalet compagnon est détruit (plus de fenêtre masquée orpheline
+            # qui maintiendrait la boucle vivante). La fenêtre principale, elle, est
+            # fermée par le backend lui-même (l'émettrice de ``closing``).
+            assert chevalet.detruite is True
+
+            # Toujours une seule session, jamais ré-ouverte/re-fermée en cours de route.
+            assert demarrees == [1] and cloturees == []
+
+        monkeypatch.setattr("scrabble.ui.application.webview.start", _parcours)
+
+        # Lance la coquille : ouvre la session, câble les fenêtres, joue le parcours.
+        resultat = lancer_application_unifiee(routeur=routeur)
+
+        assert resultat is routeur
+        # La finalisation a été rejouée à chaque entrée en vue Jeu (3 fois :
+        # nouvelle partie, reprise, recommencer).
+        assert finaliser == [1, 1, 1]
+        # Exactement UNE session ouverte et UNE fermée pour tout le parcours.
+        assert demarrees == [1]
+        assert cloturees == [1]
 
 
 class _DicoFactice:

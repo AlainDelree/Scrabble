@@ -144,4 +144,66 @@
 
 ---
 
+## 5. Coquille unifiée (mono-fenêtre) — vérification AVANT bascule de `main.py` (issue #182)
+
+> **Statut.** La coquille unifiée (`lancer_application_unifiee`, une seule fenêtre
+> physique + un chevalet compagnon persistant, une seule boucle `webview.start()`)
+> **n'est PAS branchée par défaut** : `main.py` utilise toujours
+> `lancer_accueil`/`lancer_jeu`. Cette section liste ce qu'Alain doit vérifier
+> **visuellement, sur son poste (WebKitGTK réel)**, avant toute décision de
+> basculer `main.py`. Les tests automatisés sont headless et **ne peuvent pas**
+> garantir l'absence de flash de fenêtre, le bon repositionnement du chevalet, ni
+> — point le plus sensible — qu'aucun processus ne reste actif après fermeture.
+
+### Comment lancer la coquille unifiée pour ce test (sans toucher à la production)
+
+Depuis la racine du dépôt (`src` sur le `PYTHONPATH`, comme en test) :
+
+```bash
+PYTHONPATH=src python -m scrabble.ui.application
+```
+
+C'est le **seul** moyen d'activer la coquille unifiée à ce stade ; `main.py`
+reste inchangé.
+
+### Transitions (aucun flash de fenêtre, une seule fenêtre physique)
+
+- [ ] **Accueil → Jeu (nouvelle partie)** : « Lancer la partie » → l'écran de jeu apparaît **dans la même fenêtre** (pas de fermeture/réouverture, pas de flash blanc/vert).
+- [ ] **Accueil → Jeu (reprise)** : « Reprendre une partie » → même fenêtre, plateau directement jouable (pas d'écran de tirage).
+- [ ] **Tirage d'ordre** : pour une nouvelle partie, l'écran de tirage s'affiche, puis « Continuer » **révèle le chevalet** et bascule sur le plateau, sans clignotement.
+- [ ] **Jeu → Accueil (Retour au menu)** : « 🏠 Retour au menu » → l'accueil réapparaît dans la même fenêtre, le **chevalet disparaît** (masqué, pas détruit).
+- [ ] **Jeu → Jeu (Recommencer)** : « Recommencer » (modale de fin) → nouvelle partie, nouvel écran de tirage, chevalet remis en place ensuite.
+- [ ] **Annuler le tirage** : bouton « Annuler » de l'écran de tirage → retour à l'accueil, la partie annulée **n'apparaît pas** dans « Reprendre une partie ».
+- [ ] Enchaîner **plusieurs allers-retours** (accueil → jeu → menu → jeu → recommencer → menu…) : aucune latence croissante, aucune fenêtre fantôme.
+
+### Chevalet compagnon (positionnement après CHAQUE transition)
+
+- [ ] Après **chaque** entrée en jeu, le chevalet est **bien positionné** (bas-centre) et **lié au plateau** (au-dessus de lui, suit le plateau).
+- [ ] Le chevalet reste **masqué** en vue Accueil et **pendant un tirage d'ordre** (jamais visible hors du jeu jouable).
+- [ ] Le chevalet **réapparaît correctement** (bonnes lettres, bon endroit) à la reprise/au recommencement, sans rester coincé à un ancien emplacement.
+
+### ⚠️ Fermeture par la croix ✕ — POINT CRITIQUE (risque de processus fantôme)
+
+> Mal câblé, ce point pourrait laisser un **processus tourner indéfiniment en
+> arrière-plan**. À vérifier avec un terminal ouvert en parallèle.
+
+- [ ] Fermer par le **✕ de la fenêtre principale pendant que le JEU est actif** : les **deux** fenêtres (principale + chevalet) disparaissent, l'application quitte.
+- [ ] Fermer par le **✕ de la fenêtre principale pendant que l'ACCUEIL est actif** (chevalet masqué) : l'application quitte quand même **entièrement** (le chevalet masqué ne doit pas survivre).
+- [ ] Si la barre/croix du **chevalet** est atteignable : la fermer détruit **aussi** la fenêtre principale et quitte.
+- [ ] **VÉRIFICATION PROCESSUS** — après CHACUNE des fermetures ci-dessus, contrôler dans un terminal qu'**aucun** processus ne reste :
+
+  ```bash
+  ps aux | grep -i "scrabble\|python -m scrabble.ui.application" | grep -v grep
+  ```
+
+  La commande ne doit **rien** afficher. Si un processus subsiste → **ne pas basculer `main.py`** et le signaler.
+
+- [ ] Fermer par ✕ **avec un coup en attente** (lettres posées non validées) : la croix ferme **sans** blocage ni boîte de confirmation implicite (la confirmation ne concerne QUE le bouton applicatif « Retour au menu »).
+
+### Décision de bascule
+
+- [ ] Toutes les cases ci-dessus cochées **ET** aucun processus résiduel constaté sur plusieurs fermetures consécutives → la bascule de `main.py` vers `lancer_application_unifiee` peut être envisagée dans une issue dédiée.
+
+---
+
 _Dernière mise à jour : voir l'historique git de ce fichier. Complétez cette checklist à chaque nouvelle fonctionnalité significative._

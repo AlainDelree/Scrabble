@@ -23,6 +23,12 @@ B) : ce module se développe en parallèle du chemin historique
 (``lancer_accueil``/``lancer_jeu``), qui reste intact et fonctionnel. La coquille
 n'est donc branchée par aucun point d'entrée par défaut ; elle est testable en
 isolation.
+
+Issue #182 : la fermeture par la croix est sécurisée dans ce modèle mono-boucle
+(le chevalet compagnon masqué est bien détruit, cf. ``ApiJeu.installer_fermeture_croisee``),
+un parcours de bout en bout est couvert par les tests, et un point d'entrée de
+**test manuel volontaire** est exposé (:func:`main` — ``python -m
+scrabble.ui.application``) **sans** modifier le chemin de production par défaut.
 """
 
 from __future__ import annotations
@@ -476,3 +482,30 @@ def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
         return routeur
     finally:
         journal.cloturer_session()
+
+
+def main() -> int:
+    """Point d'entrée de **test manuel** de la coquille unifiée (issue #182).
+
+    Permet à Alain de lancer **volontairement** la coquille mono-fenêtre unifiée
+    en conditions réelles, **sans toucher au chemin de production par défaut** :
+    ``main.py`` continue d'utiliser ``lancer_accueil``/``lancer_jeu`` tant qu'une
+    décision de basculement n'a pas été prise (cf. checklist ``SMOKE_TEST.md``,
+    § « Coquille unifiée »).
+
+    Usage, depuis la racine du dépôt (``src`` devant être sur le ``PYTHONPATH``,
+    exactement comme en test — cf. ``pytest.ini`` : ``pythonpath = src``) ::
+
+        PYTHONPATH=src python -m scrabble.ui.application
+
+    Ce point d'entrée dédié est le **seul** moyen d'activer la coquille unifiée à
+    ce stade : aucune variable d'environnement ni bascule implicite n'a été posée
+    dans ``main.py``, pour qu'un lancement de production ne puisse jamais tomber
+    par accident sur ce chemin non encore validé visuellement.
+    """
+    lancer_application_unifiee()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
