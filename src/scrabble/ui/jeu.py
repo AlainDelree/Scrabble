@@ -1719,27 +1719,40 @@ class ApiJeu:
         }
 
     def _diffuser(self) -> None:
-        """Pousse l'état pertinent à chaque fenêtre après toute mutation (issue #90).
+        """Pousse l'état pertinent à la fenêtre Jeu après toute mutation (issue #90).
 
-        Vers la fenêtre **plateau** : l'état **public** (:meth:`_etat_plateau`),
-        jamais de lettre du chevalet. Vers la fenêtre **chevalet** : l'état
-        **complet** (:meth:`_etat_chevalet`), lettres privées comprises. Chaque
-        fenêtre expose un point d'entrée JS (``window.appliquerEtatPlateau`` /
-        ``window.appliquerEtatChevalet``) que l'on appelle via ``evaluate_js``.
-        L'appel est encadré d'un ``try/except`` : une fenêtre fermée ou un JS pas
-        encore prêt ne doit jamais faire planter une action de jeu.
+        Depuis l'issue #187 (Issue B), le chevalet a migré de sa fenêtre flottante
+        séparée vers la zone C de ``jeu.html`` : les DEUX charges sont donc poussées
+        à la **même** fenêtre (``self._window_plateau``, l'unique fenêtre Jeu), qui
+        expose désormais les deux points d'entrée JS :
+
+        * ``window.appliquerEtatPlateau`` reçoit l'état **public**
+          (:meth:`_etat_plateau`), jamais de lettre du chevalet ;
+        * ``window.appliquerEtatChevalet`` reçoit l'état **complet**
+          (:meth:`_etat_chevalet`), lettres privées du seul joueur humain de
+          référence comprises.
+
+        Confidentialité (issues #33/#35, #99) — À NOTER : les lettres privées et
+        l'état public co-résident maintenant dans le même document, mais aucune
+        fuite n'est introduite : :meth:`_etat_chevalet` ne sérialise toujours que
+        le chevalet du joueur humain de référence (jamais un ordinateur ni un autre
+        humain), exactement comme lorsqu'il alimentait une fenêtre séparée. La
+        garantie de l'issue #99 est inchangée ; seule la fenêtre cible a changé.
+
+        Chaque appel est encadré d'un ``try/except`` (:meth:`_pousser`) : une
+        fenêtre fermée ou un JS pas encore prêt ne doit jamais faire planter une
+        action de jeu.
+
+        La fenêtre chevalet flottante (``self._window_chevalet``) n'est plus
+        alimentée ici : elle subsiste temporairement comme fenêtre Python vide en
+        attendant sa suppression (nettoyage du modèle de fenêtres — Issue C).
         """
         self._pousser(
             self._window_plateau, "appliquerEtatPlateau", self._etat_plateau()
         )
         self._pousser(
-            self._window_chevalet, "appliquerEtatChevalet", self._etat_chevalet()
+            self._window_plateau, "appliquerEtatChevalet", self._etat_chevalet()
         )
-        # Z-order : plus de ré-affirmation applicative d'``on_top`` ici (issue #105).
-        # Le chevalet est désormais lié au plateau par une relation transiente
-        # (``set_transient_for``, cf. :func:`_lier_chevalet_au_plateau`), honorée
-        # une fois pour toutes par le gestionnaire de fenêtres — inutile de la
-        # re-poser après chaque interaction.
 
     @staticmethod
     def _pousser(

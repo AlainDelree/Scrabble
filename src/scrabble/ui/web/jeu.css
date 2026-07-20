@@ -1,8 +1,10 @@
-/* Écran de jeu — fenêtre PLATEAU (issue #90) : plateau 15×15, panneaux joueurs,
-   barre du sac/historique et pose « clic-clic ». Le chevalet et le brouillon
-   vivent dans leur propre fenêtre (chevalet.html / chevalet.css) ; les composants
-   partagés (tuiles, boutons, modales, cases de chevalet/brouillon…) sont définis
-   une seule fois dans commun.css, chargé avant cette feuille. */
+/* Écran de jeu unique (issue #90, refonte #186/#187) : plateau 15×15, panneaux
+   joueurs, barre du sac/historique, pose « clic-clic » ET, depuis l'issue #187
+   (Issue B), le chevalet du joueur (zone C de la marge gauche, styles plus bas).
+   L'ancienne fenêtre chevalet flottante (chevalet.html / chevalet.css) a été
+   vidée : son panneau et ses styles ont migré ici. Les composants partagés
+   (tuiles, boutons, modales, cases de chevalet/brouillon…) restent définis une
+   seule fois dans commun.css, chargé avant cette feuille. */
 
 :root {
     --couleur-fond: #f5f5f0;
@@ -145,16 +147,165 @@ body {
     justify-content: flex-start;
 }
 
-/* Zone C : emplacement chevalet réservé (vide à ce stade, issue #186 Issue A).
-   Cadre en pointillés discret matérialisant la place que le chevalet occupera à
-   l'Issue B, sans rien afficher pour l'instant. Prend le reste de la hauteur
-   libre pour maintenir la zone D en bas de la marge. */
+/* Zone C : chevalet du joueur humain de référence (issue #187, Issue B).
+   Contient le panneau des 9 cases migré depuis l'ex-fenêtre flottante. Prend le
+   reste de la hauteur libre pour maintenir la zone D en bas de la marge ;
+   ``justify-content: center`` centre verticalement le bloc dans cet espace. */
 .zone-chevalet {
     flex: 1 1 auto;
     min-height: 90px;
-    border: 2px dashed rgba(255, 255, 255, 0.35);
-    border-radius: var(--rayon-bordure);
-    background: rgba(255, 255, 255, 0.06);
+    justify-content: center;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Panneau unifié des lettres du chevalet (issue #100, migré en zone C #187)    */
+/* --------------------------------------------------------------------------- */
+/* Migré depuis chevalet.css et adapté à la marge gauche étroite (~300-340px) :
+   les 9 cases (7 lettres + 2 vides) passent d'une rangée horizontale unique à une
+   grille compacte 3×3 (rapport d'investigation #187), et les tuiles sont réduites
+   (~36px) pour tenir dans la largeur de la marge sans défilement. La logique JS
+   (sélection, réarrangement, échange) est indépendante de cette disposition : elle
+   travaille sur les index d'un tableau plat, inchangé. */
+.bloc-panneau {
+    padding: 8px 10px 10px;
+    background: #f3eee4;
+    border: 1px dashed #c9a961;
+    border-radius: 8px;
+}
+
+.zone-chevalet .panneau-entete {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+/* Titre du panneau forcé sur une seule ligne (repris de chevalet.css #158) :
+   ``nowrap`` + ellipsis évitent que la note d'aide ne replie le titre sur
+   plusieurs lignes dans la marge étroite. */
+.zone-chevalet .panneau-titre {
+    display: block;
+    margin-bottom: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.zone-chevalet .panneau-titre-groupe {
+    position: relative;
+    display: block;
+    min-width: 0;
+}
+
+/* Grille 3×3 (rapport #187) : 9 emplacements (7 lettres + 2 vides) répartis sur
+   trois colonnes de largeur égale. Remplace le flex horizontal ``nowrap`` de
+   l'ancienne fenêtre large (480px) qui ne tiendrait pas dans la marge. */
+.zone-chevalet .panneau {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    justify-items: center;
+}
+
+.panneau-case {
+    width: 36px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 1.25rem;
+    text-transform: uppercase;
+    position: relative;
+    cursor: pointer;
+    background: var(--tuile-fond);
+    border: 1px solid var(--tuile-bordure);
+    color: var(--tuile-texte);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.panneau-case:hover {
+    transform: translateY(-2px);
+}
+
+.panneau-case.joker {
+    border: 2px dashed var(--tuile-joker-bordure);
+    color: var(--tuile-joker-bordure);
+}
+
+.panneau-case.selectionnee {
+    outline: 3px solid var(--couleur-primaire);
+    outline-offset: 1px;
+    transform: translateY(-4px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Lettre marquée pour l'échange partiel (issue #138) : surbrillance orange,
+   volontairement distincte du liseré bleu de la sélection de pose. */
+.panneau-case.a-echanger {
+    outline: 3px solid #e67e22;
+    outline-offset: 1px;
+    transform: translateY(-4px);
+    box-shadow: 0 4px 8px rgba(230, 126, 34, 0.45);
+}
+
+.panneau-case.a-echanger::after {
+    content: "♻";
+    position: absolute;
+    top: 1px;
+    left: 3px;
+    font-size: 0.6rem;
+    color: #e67e22;
+}
+
+/* Lettre déjà posée en attente sur le plateau (issue #100) : grisée, inerte. */
+.panneau-case.utilisee {
+    opacity: 0.35;
+    cursor: default;
+    filter: grayscale(0.6);
+}
+
+.panneau-case.utilisee:hover {
+    transform: none;
+}
+
+.panneau-case .val {
+    position: absolute;
+    right: 3px;
+    bottom: 1px;
+    font-size: 0.5rem;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+/* Emplacements vides : servent au réarrangement local (réflexion). Toujours 2. */
+.panneau-case-vide {
+    width: 36px;
+    height: 40px;
+    border-radius: 4px;
+    border: 2px dashed #c9a961;
+    background: rgba(201, 169, 97, 0.10);
+    opacity: 0.7;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.1s, background 0.1s;
+}
+
+.panneau-case-vide:hover {
+    transform: translateY(-2px);
+    opacity: 0.95;
+    background: rgba(201, 169, 97, 0.20);
+}
+
+.panneau-vide {
+    grid-column: 1 / -1;
+    color: #8a7a63;
+    font-style: italic;
+    font-size: 0.9rem;
 }
 
 /* Zone D : actions du joueur humain, les deux groupes empilés (issue #186). */

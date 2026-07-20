@@ -1,29 +1,32 @@
 /**
- * jeu.js — fenêtre PLATEAU (issue #90).
+ * jeu.js — écran de jeu unique (issue #90, refonte #186/#187).
  *
- * Depuis la séparation en deux fenêtres pywebview (issue #90), cette vue ne porte
- * plus QUE la partie « publique » de l'écran de jeu : le plateau 15×15, les
- * panneaux d'information des joueurs, la barre du sac/historique, le bouton
- * « ▶ Jouer » de la fiche d'un ordinateur courant (issue #149, ex-« Faire jouer
- * l'ordinateur » ; un tour IA relève du plateau, l'humain n'a rien à jouer),
- * la vérification dictionnaire (saisie libre, sans lien avec le chevalet), le
- * « Retour au menu » et une copie de la modale de détail du score (ouverte depuis
- * l'historique) ainsi que le sélecteur de lettre du joker (menu déroulant, même
- * patron que « Derniers coups », issue #168). Le chevalet, le brouillon et la
- * sélection des lettres vivent dans la fenêtre chevalet flottante (chevalet.html
- * / chevalet.js).
+ * Après la refonte en deux colonnes (issue #186) puis la migration du chevalet
+ * (issue #187, Issue B), cette vue unique porte TOUT l'écran de jeu : le plateau
+ * 15×15, les panneaux d'information des joueurs, la barre du sac/historique, le
+ * bouton « ▶ Jouer » de la fiche d'un ordinateur courant (issue #149), la
+ * vérification dictionnaire, le « Retour au menu », la modale de détail du score,
+ * le sélecteur de lettre du joker (issue #168) ET, désormais, le CHEVALET du
+ * joueur humain de référence (panneau des 9 cases, zone C de la marge gauche —
+ * bloc « Chevalet du joueur… » plus bas). L'ex-fenêtre chevalet flottante
+ * (chevalet.html / chevalet.js, supprimés) n'existe plus ; seule sa mécanique de
+ * drag de fenêtre n'a pas été migrée (sans objet sans fenêtre à déplacer).
  *
  * Source de vérité de l'état de pose : Python (``ApiJeu``, issue #90). Cette
  * fenêtre est une simple vue :
- *   - elle REÇOIT l'état public via ``window.appliquerEtatPlateau`` (poussé par
- *     Python après toute mutation) — jamais aucune lettre du chevalet ;
- *   - au clic sur une case, elle DEMANDE la mutation à Python
- *     (``poser_lettre_en_attente`` / ``retirer_lettre_en_attente``), qui rediffuse
- *     ensuite l'état aux deux fenêtres.
+ *   - elle REÇOIT l'état public via ``window.appliquerEtatPlateau`` ET l'état
+ *     privé du chevalet via ``window.appliquerEtatChevalet`` (tous deux poussés
+ *     par Python — ``_diffuser`` — vers cette même fenêtre depuis l'issue #187) ;
+ *   - au clic sur une case (plateau ou chevalet), elle DEMANDE la mutation à
+ *     Python (``poser_lettre_en_attente`` / ``selectionner_lettre`` / …), qui
+ *     rediffuse ensuite l'état.
  *
- * Confidentialité (issues #33/#35) : le payload reçu ici est strictement public
- * (aucune identité de lettre de chevalet) ; seules les lettres déjà posées sur le
- * plateau (``en_attente``, déjà destinées à être visibles) y figurent.
+ * Confidentialité (issues #33/#35, #99) : le payload PLATEAU reçu ici est
+ * strictement public (aucune identité de lettre de chevalet) ; le payload
+ * CHEVALET porte les lettres du SEUL joueur humain de référence (jamais un
+ * ordinateur ni un autre humain). Les deux co-résident maintenant dans ce
+ * document, mais sans fuite : Python ne sérialise que les lettres du joueur de
+ * référence, exactement comme quand le chevalet avait sa propre fenêtre.
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -713,6 +716,263 @@ document.addEventListener('DOMContentLoaded', async () => {
         animerDernierCoupSiNouveau();
     }
     window.appliquerEtatPlateau = appliquerEtatPlateau;
+
+    // ================================================================== //
+    // Chevalet du joueur humain de référence (migré en zone C, issue #187)
+    // ================================================================== //
+    // Le panneau des 9 cases (7 lettres + 2 vides) et toute sa logique vivaient
+    // jusqu'ici dans une fenêtre pywebview flottante séparée (chevalet.js,
+    // supprimée). Ils sont désormais RELOCALISÉS dans ce document, en zone C de la
+    // marge gauche. Les appels API (``api.selectionner_lettre`` /
+    // ``basculer_echange`` / ``obtenir_etat_chevalet``) sont ceux de la MÊME
+    // instance ``ApiJeu`` que le reste de jeu.js utilise déjà : aucune nouvelle
+    // méthode API n'est requise. La logique de sélection/réarrangement travaille
+    // sur des index d'un tableau plat (``panneauLettres``), indépendante de la
+    // disposition visuelle — le passage d'un flex horizontal à une grille 3×3
+    // (voir jeu.css) n'y change rien. La seule mécanique NON migrée est le drag de
+    // la fenêtre flottante (``.barre-drag`` / ``deplacer_chevalet``) : sans fenêtre
+    // à déplacer, elle est sans objet.
+    //
+    // Confidentialité (issues #33/#35, #99) — À NOTER : les lettres PRIVÉES du
+    // chevalet (``etatChevalet.lettres``) et l'état PUBLIC du plateau (``etat``)
+    // co-résident maintenant dans le même document JS. Ce n'est PAS une fuite :
+    // Python (``ApiJeu._etat_chevalet``) ne sérialise toujours que les lettres du
+    // seul joueur humain de référence, jamais celles d'un ordinateur ni d'un autre
+    // humain — exactement comme quand le chevalet avait sa propre fenêtre. La
+    // garantie de l'issue #99 est donc inchangée ; seule la localisation du DOM
+    // change.
+    const panneauEl = document.getElementById('panneau');
+
+    // Dernier payload chevalet reçu de Python (état privé du joueur de référence).
+    // Distinct de ``etat`` (état public du plateau) : ne jamais les confondre.
+    let etatChevalet = null;
+    let dernierMonTour = null;       // pour détecter un changement de tour (issue #100)
+    let panneauSignature = null;     // signature des lettres pour (re)bâtir le panneau
+    let panneauLettres = [];         // {lettre, valeur, joker, indexOrigine} + 2 vides (null)
+    let panneauSelection = null;     // index (dans panneauLettres) de la case sélectionnée
+
+    /** Ensemble des index d'origine déjà posés en attente (cases « utilisées »). */
+    function indexUtilises() {
+        return new Set(
+            (etatChevalet && etatChevalet.en_attente ? etatChevalet.en_attente : [])
+                .map((p) => p.index));
+    }
+
+    /** Vrai si le mode de marquage pour l'échange partiel est actif (issue #138). */
+    function enModeEchange() {
+        return Boolean(etatChevalet && etatChevalet.mode_echange);
+    }
+
+    /** Ensemble des index d'origine marqués pour l'échange partiel (issue #138). */
+    function indexEchange() {
+        return new Set(
+            (etatChevalet && Array.isArray(etatChevalet.selection_echange))
+                ? etatChevalet.selection_echange : []);
+    }
+
+    function rendrePanneau() {
+        if (!panneauEl) {
+            return;
+        }
+        panneauEl.innerHTML = '';
+        if (panneauLettres.length === 0) {
+            panneauEl.innerHTML = '<span class="panneau-vide">Chevalet vide.</span>';
+            return;
+        }
+        const utilises = indexUtilises();
+        const echange = indexEchange();
+        const modeEchange = enModeEchange();
+        panneauLettres.forEach((l, index) => {
+            if (l === null) {
+                const vide = document.createElement('div');
+                vide.className = 'panneau-case-vide';
+                vide.dataset.index = index;
+                vide.title = 'Emplacement libre : cliquez d\'abord une lettre, '
+                    + 'puis ici pour l\'y déplacer (réflexion, sans effet sur la partie).';
+                panneauEl.appendChild(vide);
+                return;
+            }
+            const c = document.createElement('div');
+            c.className = 'panneau-case' + (l.joker ? ' joker' : '');
+            if (modeEchange) {
+                // Marquage d'échange partiel (issue #138) : surbrillance distincte
+                // de la sélection de pose ; les lettres déjà posées ne comptent pas.
+                if (!utilises.has(l.indexOrigine) && echange.has(l.indexOrigine)) {
+                    c.classList.add('a-echanger');
+                }
+            } else if (utilises.has(l.indexOrigine)) {
+                c.classList.add('utilisee');
+            } else if (index === panneauSelection) {
+                c.classList.add('selectionnee');
+            }
+            const lettreAffichee = l.joker ? '★' : C.escapeHtml(l.lettre);
+            c.innerHTML = `${lettreAffichee}<span class="val">${l.valeur}</span>`;
+            c.dataset.index = index;
+            panneauEl.appendChild(c);
+        });
+    }
+
+    /** Signature des lettres du chevalet (pour ne rebâtir le panneau qu'utile). */
+    function signatureLettres(lettres) {
+        return (lettres || []).map((l) => (l.joker ? '*' : l.lettre) + l.valeur).join(',');
+    }
+
+    /** (Re)construit le panneau à partir des lettres du chevalet. Chaque lettre
+     *  garde son ``indexOrigine`` (position dans ``etatChevalet.lettres``) pour que
+     *  la sélection Python vise la bonne lettre même après un réarrangement local
+     *  (point critique du rapport #98). Deux emplacements vides sont ajoutés pour
+     *  la réflexion. */
+    function reconstruirePanneau() {
+        const lettres = etatChevalet.lettres || [];
+        panneauLettres = lettres.map((l, i) => ({ ...l, indexOrigine: i }));
+        if (panneauLettres.length > 0) {
+            panneauLettres.push(null, null);
+        }
+        panneauSelection = null;
+    }
+
+    /**
+     * Applique un état PRIVÉ du chevalet (lettres du joueur de référence). Poussé
+     * par Python via ``window.appliquerEtatChevalet`` après toute mutation, ou
+     * obtenu au premier chargement via ``obtenir_etat_chevalet`` (issue #90,
+     * contrat #99/#100). Le choix de la lettre d'un joker reste piloté par le menu
+     * déroulant du plateau (issue #168) : rien à faire ici.
+     */
+    function appliquerEtatChevalet(payload) {
+        etatChevalet = payload || {};
+
+        // Changement de tour (issue #100) : ``index_reference`` étant constant pour
+        // toute la partie, on détecte le changement via ``mon_tour`` (bascule). Un
+        // nouveau tour repart d'un panneau neuf (réarrangement local abandonné).
+        const nouveauTour = etatChevalet.mon_tour !== dernierMonTour;
+        dernierMonTour = etatChevalet.mon_tour;
+        if (nouveauTour) {
+            panneauSignature = null;
+        }
+
+        // Le panneau n'est reconstruit qu'au changement de tour ou de contenu du
+        // chevalet (échange / nouveau tirage), pas à chaque pose (les lettres ne
+        // changent pas en posant).
+        const sig = signatureLettres(etatChevalet.lettres);
+        if (sig !== panneauSignature) {
+            reconstruirePanneau();
+            panneauSignature = sig;
+        }
+
+        // Toute pose/annulation remet la sélection Python à null : on aligne la
+        // sélection visuelle locale du panneau dessus.
+        if (etatChevalet.selection === null || etatChevalet.selection === undefined) {
+            panneauSelection = null;
+        }
+
+        rendrePanneau();
+    }
+    window.appliquerEtatChevalet = appliquerEtatChevalet;
+
+    // Clic sur une case du panneau : sémantique unifiée (issue #100).
+    //  - 1er clic sur une lettre : sélection côté Python (api.selectionner_lettre)
+    //    en visant son index d'origine (robuste au réarrangement local).
+    //  - clic suivant sur une case du PLATEAU : pose (gérée plus haut dans jeu.js).
+    //  - clic suivant sur une autre case du panneau : réarrangement local
+    //    (déplacement vers un vide ou échange), et annulation de la sélection Python.
+    if (panneauEl) {
+        panneauEl.addEventListener('click', async (evt) => {
+            const caseEl = evt.target.closest('.panneau-case, .panneau-case-vide');
+            if (!caseEl) {
+                return;
+            }
+            const index = Number(caseEl.dataset.index);
+            const lettre = panneauLettres[index];
+            const estVide = lettre === null;
+            // Une lettre déjà posée n'est ni sélectionnable ni cible d'échange.
+            const estUtilisee = !estVide && indexUtilises().has(lettre.indexOrigine);
+
+            // Mode échange partiel (issue #138) : le clic marque/démarque la lettre
+            // pour l'échange (sélection multiple), sans toucher à la pose. Aucun
+            // réarrangement local dans ce mode : l'unique action est le marquage.
+            if (enModeEchange()) {
+                if (estVide) {
+                    return;
+                }
+                await api.basculer_echange(lettre.indexOrigine);
+                return;
+            }
+
+            if (panneauSelection === null) {
+                if (estVide || estUtilisee) {
+                    return;
+                }
+                panneauSelection = index;
+                rendrePanneau();
+                await api.selectionner_lettre(lettre.indexOrigine);
+                return;
+            }
+
+            if (panneauSelection === index) {
+                // Reclic sur la même lettre : désélection (locale + Python).
+                panneauSelection = null;
+                rendrePanneau();
+                await api.selectionner_lettre(null);
+                return;
+            }
+
+            if (estUtilisee) {
+                return; // on n'échange pas avec une lettre déjà posée
+            }
+
+            // Réarrangement local (réflexion) : déplacement vers un vide ou échange.
+            if (estVide) {
+                panneauLettres[index] = panneauLettres[panneauSelection];
+                panneauLettres[panneauSelection] = null;
+            } else {
+                const tmp = panneauLettres[panneauSelection];
+                panneauLettres[panneauSelection] = panneauLettres[index];
+                panneauLettres[index] = tmp;
+            }
+            panneauSelection = null;
+            rendrePanneau();
+            // Le réarrangement local invalide la sélection Python en cours.
+            await api.selectionner_lettre(null);
+        });
+
+        // Clic droit : renvoie la lettre vers le vide le plus proche de la fin.
+        panneauEl.addEventListener('contextmenu', async (evt) => {
+            const caseEl = evt.target.closest('.panneau-case');
+            if (!caseEl) {
+                return;
+            }
+            evt.preventDefault();
+            // En mode échange partiel (issue #138), le panneau ne sert qu'au
+            // marquage : pas de réarrangement local par clic droit.
+            if (enModeEchange()) {
+                return;
+            }
+            const origine = Number(caseEl.dataset.index);
+            const lettre = panneauLettres[origine];
+            // On ne déplace pas une lettre déjà posée.
+            if (lettre === null || indexUtilises().has(lettre.indexOrigine)) {
+                return;
+            }
+            const vides = [];
+            panneauLettres.forEach((l, i) => {
+                if (l === null) {
+                    vides.push(i);
+                }
+            });
+            if (vides.length === 0) {
+                return;
+            }
+            const cible = Math.max(...vides);
+            panneauLettres[cible] = panneauLettres[origine];
+            panneauLettres[origine] = null;
+            const avaitSelection = panneauSelection !== null;
+            panneauSelection = null;
+            rendrePanneau();
+            if (avaitSelection) {
+                await api.selectionner_lettre(null);
+            }
+        });
+    }
 
     /**
      * Anime le dernier coup s'il vient d'apparaître en tête d'historique
@@ -1752,6 +2012,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         appliquerEtatPlateau(initial);
     } catch (err) {
         // Le premier push de Python prendra le relais si l'appel initial échoue.
+    }
+    // Premier tirage de l'état PRIVÉ du chevalet (issue #187, ex-chevalet.js) :
+    // amorce le panneau des 9 cases dès le chargement, avant toute mutation. Le
+    // premier push de Python (_diffuser) prendra le relais si l'appel échoue.
+    try {
+        const initialChevalet = await api.obtenir_etat_chevalet();
+        appliquerEtatChevalet(initialChevalet);
+    } catch (err) {
+        /* le premier push de Python amorcera le chevalet si cet appel échoue */
     }
 
     // Diagnostic géométrie (issue #152) : deux rAF pour lire la mise en page réelle

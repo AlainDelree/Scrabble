@@ -2805,11 +2805,13 @@ class TestApiJeuSelection:
         res = api.selectionner_lettre(2)
         assert res["succes"] is True
         assert api._selection == 2
-        # Chaque fenêtre a reçu exactement une diffusion, vers la bonne fonction.
-        assert len(plateau.scripts) == 1
-        assert len(chevalet.scripts) == 1
-        assert "appliquerEtatPlateau" in plateau.scripts[-1]
-        assert "appliquerEtatChevalet" in chevalet.scripts[-1]
+        # Depuis l'issue #187 (chevalet migré en zone C de jeu.html), les DEUX
+        # charges sont poussées à la MÊME fenêtre Jeu : la fenêtre plateau reçoit
+        # deux diffusions, la fenêtre chevalet (désormais vide) n'en reçoit aucune.
+        assert len(plateau.scripts) == 2
+        assert len(chevalet.scripts) == 0
+        assert any("appliquerEtatPlateau" in s for s in plateau.scripts)
+        assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
     def test_reclic_meme_index_deselectionne(self):
         api, _plateau, _chevalet = _api_pose()
@@ -2838,10 +2840,11 @@ class TestApiJeuPoseEnAttente:
         assert place["lettre"] == "C"
         assert place["joker"] is False
         assert place["index"] == 0
-        # La sélection est consommée et l'état rediffusé aux deux fenêtres.
+        # La sélection est consommée et l'état rediffusé (les deux charges vers la
+        # fenêtre Jeu unique depuis l'issue #187).
         assert api._selection is None
-        assert "appliquerEtatPlateau" in plateau.scripts[-1]
-        assert "appliquerEtatChevalet" in chevalet.scripts[-1]
+        assert any("appliquerEtatPlateau" in s for s in plateau.scripts)
+        assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
     def test_pose_sans_selection_refusee(self):
         api, _plateau, _chevalet = _api_pose()
@@ -2880,8 +2883,10 @@ class TestApiJeuPoseEnAttente:
         res = api.retirer_lettre_en_attente(7, 7)
         assert res["succes"] is True
         assert api._en_attente == []
-        # Le retrait effectif rediffuse l'état.
-        assert len(plateau.scripts) == avant_plateau + 1
+        # Le retrait effectif rediffuse l'état : depuis l'issue #187, un _diffuser
+        # pousse les DEUX charges (plateau + chevalet) à la fenêtre Jeu unique,
+        # d'où +2 scripts sur la fenêtre plateau.
+        assert len(plateau.scripts) == avant_plateau + 2
 
     def test_retrait_sans_placement_ne_diffuse_pas(self):
         api, plateau, _chevalet = _api_pose()
@@ -2899,8 +2904,9 @@ class TestApiJeuPoseEnAttente:
         assert res["succes"] is True
         assert api._en_attente == []
         assert api._selection is None
-        assert "appliquerEtatPlateau" in plateau.scripts[-1]
-        assert "appliquerEtatChevalet" in chevalet.scripts[-1]
+        # Les deux charges vers la fenêtre Jeu unique depuis l'issue #187.
+        assert any("appliquerEtatPlateau" in s for s in plateau.scripts)
+        assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
 
 class TestApiJeuPoseJoker:
@@ -2958,10 +2964,11 @@ class TestApiJeuRemplacementEnAttente:
         assert place["joker"] is False
         # L'ancienne lettre (index 0) n'est plus consommée : de nouveau disponible.
         assert all(p["index"] != 0 for p in api._en_attente)
-        # La sélection est consommée et l'état rediffusé aux deux fenêtres.
+        # La sélection est consommée et l'état rediffusé (les deux charges vers la
+        # fenêtre Jeu unique depuis l'issue #187).
         assert api._selection is None
-        assert "appliquerEtatPlateau" in plateau.scripts[-1]
-        assert "appliquerEtatChevalet" in chevalet.scripts[-1]
+        assert any("appliquerEtatPlateau" in s for s in plateau.scripts)
+        assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
     def test_remplacement_ne_casse_pas_le_compteur(self):
         api, _plateau, _chevalet = _api_pose("CHATSER")
@@ -3108,7 +3115,15 @@ class TestApiJeuGardeDeTour:
 
 
 class TestApiJeuDiffusionConfidentialite:
-    """``_diffuser`` : payload public au plateau, payload privé au chevalet (#90)."""
+    """``_diffuser`` : payload public + payload privé, tous deux à la fenêtre Jeu.
+
+    Depuis l'issue #187 (chevalet migré en zone C de ``jeu.html``), les deux
+    charges sont poussées à la MÊME fenêtre (``_window_plateau``) : la charge
+    publique (``appliquerEtatPlateau``, sans lettre de chevalet) et la charge
+    privée (``appliquerEtatChevalet``, lettres du seul joueur de référence). La
+    garantie de confidentialité (#99) est inchangée — voir les tests de
+    ``_etat_chevalet`` ci-dessus.
+    """
 
     def test_payload_plateau_public_sans_lettres_de_chevalet(self):
         api, _plateau, _chevalet = _api_pose("CHATSER")
@@ -3165,17 +3180,21 @@ class TestApiJeuDiffusionConfidentialite:
         assert "Z" not in lettres  # jamais le chevalet de l'IA
         assert etat["mon_tour"] is False
 
-    def test_diffusion_route_le_bon_payload_vers_la_bonne_fenetre(self):
+    def test_diffusion_route_les_deux_charges_vers_la_fenetre_jeu(self):
         api, plateau, chevalet = _api_pose("CHATSER")
         api._diffuser()
-        script_plateau = plateau.scripts[-1]
-        script_chevalet = chevalet.scripts[-1]
-        assert "appliquerEtatPlateau" in script_plateau
-        assert "appliquerEtatChevalet" in script_chevalet
-        # Le script du plateau ne transporte AUCUNE liste de lettres de chevalet ;
-        # celui du chevalet, si (clé JSON "lettres").
-        assert '"lettres"' not in script_plateau
-        assert '"lettres"' in script_chevalet
+        # Les deux charges partent à la fenêtre Jeu unique (issue #187) : la
+        # fenêtre chevalet séparée (désormais vide) n'en reçoit plus aucune.
+        assert len(chevalet.scripts) == 0
+        assert len(plateau.scripts) == 2
+        script_public = next(
+            s for s in plateau.scripts if "appliquerEtatPlateau" in s)
+        script_prive = next(
+            s for s in plateau.scripts if "appliquerEtatChevalet" in s)
+        # La charge publique ne transporte AUCUNE liste de lettres de chevalet ;
+        # la charge privée, si (clé JSON "lettres") — confidentialité inchangée.
+        assert '"lettres"' not in script_public
+        assert '"lettres"' in script_prive
 
     def test_fenetre_absente_ne_bloque_pas_la_diffusion(self):
         api, _plateau, _chevalet = _api_pose()
@@ -3221,28 +3240,31 @@ class TestFinaliserEntreeVueJeu:
 
     def test_reprise_revele_et_amorce_le_chevalet(self, monkeypatch):
         """Sans tirage : plateau maximisé, chevalet montré/lié et amorcé (_diffuser)."""
-        api, _plateau, chevalet, appels = self._api(monkeypatch)  # reprise
+        api, plateau, chevalet, appels = self._api(monkeypatch)  # reprise
 
         api._finaliser_entree_vue_jeu()
 
         assert appels == ["maximiser", "repositionner", "lier"]
         assert chevalet.montree is True
-        # Chevalet pré-chargé amorcé : un appliquerEtatChevalet lui a été poussé.
-        assert any("appliquerEtatChevalet" in s for s in chevalet.scripts)
+        # Le chevalet ayant migré dans jeu.html (issue #187), l'amorçage
+        # (appliquerEtatChevalet via _diffuser) part désormais vers la fenêtre
+        # plateau/Jeu, non plus vers la fenêtre chevalet séparée.
+        assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
     def test_tirage_en_cours_laisse_le_chevalet_masque(self, monkeypatch):
         """Avec tirage : plateau maximisé, mais chevalet ni montré ni lié."""
         infos = {"noms_creation": ["Alice", "Robot"], "graine": 1,
                  "noms_humains": ["Alice"]}
-        api, _plateau, chevalet, appels = self._api(monkeypatch, infos_tirage=infos)
+        api, plateau, chevalet, appels = self._api(monkeypatch, infos_tirage=infos)
 
         api._finaliser_entree_vue_jeu()
 
         # Seule la maximisation du plateau est rejouée ; pas de show/reposition/lier.
         assert appels == ["maximiser"]
         assert chevalet.montree is False
-        # Le chevalet est tout de même amorcé (masqué) pour terminer_tirage.
-        assert any("appliquerEtatChevalet" in s for s in chevalet.scripts)
+        # Le chevalet (zone C de jeu.html) est tout de même amorcé via la fenêtre
+        # plateau/Jeu, même tirage en cours, prêt pour terminer_tirage (issue #187).
+        assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
     def test_thread_lance_le_corps(self, monkeypatch):
         """``finaliser_entree_vue_jeu`` exécute bien le corps (via un fil)."""
@@ -3299,9 +3321,10 @@ class TestApiJeuPoseViaEtatInterne:
         avant = len(plateau.scripts)
         res = api.poser_mot()
         assert res["succes"] is True
-        # Le coup joué rediffuse aux deux fenêtres.
+        # Le coup joué rediffuse les deux charges vers la fenêtre Jeu unique
+        # (issue #187) : la fenêtre plateau reçoit et l'état public et l'état privé.
         assert len(plateau.scripts) > avant
-        assert "appliquerEtatChevalet" in chevalet.scripts[-1]
+        assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
 
 class TestApiJeuRetourMenuDeuxFenetres:

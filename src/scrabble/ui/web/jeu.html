@@ -163,15 +163,43 @@
             </section>
 
             <!-- ============================================================ -->
-            <!-- Zone C : chevalet (emplacement réservé)                      -->
+            <!-- Zone C : chevalet (issue #187, Issue B)                      -->
             <!-- ============================================================ -->
-            <!-- Placeholder VIDE pour l'instant (issue #186, Issue A). La fenêtre
-                 chevalet flottante reste fonctionnelle et inchangée en attendant
-                 l'Issue B, qui migrera son contenu ICI et supprimera la fenêtre
-                 séparée. Ne rien ajouter d'autre à ce stade : cette zone n'est
-                 qu'un conteneur prêt à être rempli. -->
+            <!-- Le contenu du chevalet — panneau unifié de 9 cases (issue #100) —
+                 a été migré ICI depuis l'ex-fenêtre flottante (chevalet.html,
+                 supprimée). Toute la logique (sélection, réarrangement clic/clic-
+                 droit, échange partiel, surlignage joker) vit désormais dans
+                 jeu.js. Seule la mécanique de DRAG de fenêtre (.barre-drag) n'a
+                 PAS été migrée : sans fenêtre flottante, il n'y a plus rien à
+                 déplacer.
+
+                 Confidentialité (issues #33/#35, #99) — À NOTER : les lettres
+                 PRIVÉES du chevalet (ci-dessous) et l'état PUBLIC du plateau
+                 co-résident désormais dans le MÊME document HTML. Ce n'est PAS une
+                 fuite : Python ne sérialise toujours que les lettres du seul
+                 joueur humain de référence (:meth:`ApiJeu._etat_chevalet`), jamais
+                 celles d'un ordinateur ni d'un autre humain — exactement comme
+                 lorsque le chevalet vivait dans sa propre fenêtre. La garantie de
+                 l'issue #99 est donc inchangée ; seule la localisation du DOM a
+                 changé. -->
             <section class="zone-gauche zone-chevalet" aria-label="Chevalet"
-                     id="zone-chevalet"></section>
+                     id="zone-chevalet">
+                <!-- Panneau unifié (issue #100) : une seule structure de 9 cases,
+                     toujours visible et réarrangeable, y compris hors tour. Plus de
+                     boîte « attente », plus de bascule « voir/cacher » : le chevalet
+                     du joueur de référence est toujours exposé (confidentialité
+                     assurée côté API, issue #99). -->
+                <div class="bloc-panneau">
+                    <div class="panneau-entete">
+                        <span class="panneau-titre-groupe">
+                            <span class="panneau-titre bloc-titre">
+                                🎴 Mes lettres <span class="bloc-titre-note">— cliquez, réarrangez</span>
+                            </span>
+                        </span>
+                    </div>
+                    <div id="panneau" class="panneau" aria-label="Chevalet du joueur (réarrangeable)"></div>
+                </div>
+            </section>
 
             <!-- ============================================================ -->
             <!-- Zone D : actions du joueur humain                            -->
