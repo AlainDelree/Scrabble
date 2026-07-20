@@ -860,7 +860,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnRetourMenu.disabled = true;
         let res;
         try {
-            res = await api.retour_menu();
+            // Ce fichier est PARTAGÉ par deux coquilles ; on choisit le retour
+            // dynamiquement, sans dupliquer le fichier ni casser la production :
+            //  - Coquille UNIFIÉE (issues #179/#181) : `api.retourner_accueil()`,
+            //    méthode de contrôle du routeur (ABSENTE de l'ApiJeu de
+            //    production) qui masque le chevalet, réinitialise l'accueil et
+            //    navigue par `load_url` dans la MÊME fenêtre.
+            //  - PRODUCTION (`lancer_jeu`) : `api.retour_menu()` détruit les deux
+            //    fenêtres ; la boucle rend la main et l'accueil se rouvre.
+            res = (typeof api.retourner_accueil === 'function')
+                ? await api.retourner_accueil()
+                : await api.retour_menu();
         } catch (err) {
             btnRetourMenu.disabled = false;
             afficherMessagePlateau('Retour au menu impossible : ' + err, 'erreur');
@@ -871,7 +881,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             afficherMessagePlateau(
                 'Retour au menu impossible : ' + (res.erreur || 'erreur inconnue'), 'erreur');
         }
-        // Succès : les DEUX fenêtres se ferment, l'accueil se rouvre (Python).
+        // Succès : coquille unifiée → navigation vers accueil.html ; production →
+        // les DEUX fenêtres se ferment et l'accueil se rouvre.
     }
 
     // Si un coup est en attente (lettres posées non validées), on demande
@@ -928,7 +939,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnFinRecommencer.disabled = true;
         let res;
         try {
-            res = await api.recommencer();
+            // Détection dynamique de la coquille (cf. `retournerAuMenu`) :
+            //  - UNIFIÉE : `api.recommencer_jeu()` (routeur) crée la nouvelle
+            //    partie et recharge `jeu.html` dans la MÊME fenêtre.
+            //  - PRODUCTION : `api.recommencer()` détruit les fenêtres et la
+            //    récursion `lancer_jeu` rouvre l'écran de jeu.
+            res = (typeof api.recommencer_jeu === 'function')
+                ? await api.recommencer_jeu()
+                : await api.recommencer();
         } catch (err) {
             btnFinRecommencer.disabled = false;
             afficherMessagePlateau('Recommencer impossible : ' + err, 'erreur');
@@ -1698,11 +1716,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         ecranTirage.hidden = false;
         const continuer = await afficherTirageOrdre(tirage);
         if (!continuer) {
-            // Annulation : Python supprime la partie et rouvre l'accueil ; les
-            // fenêtres se ferment, plus rien à initialiser côté plateau.
+            // Annulation : Python supprime la partie et rouvre l'accueil ; plus
+            // rien à initialiser côté plateau. Détection dynamique de la coquille
+            // (cf. `retournerAuMenu`) :
+            //  - UNIFIÉE : `api.annuler_tirage_accueil()` (routeur) supprime la
+            //    partie puis navigue vers `accueil.html` dans la MÊME fenêtre.
+            //  - PRODUCTION : `api.annuler_tirage()` supprime la partie et détruit
+            //    les fenêtres ; l'accueil se rouvre.
             btnAnnulerTirage.disabled = true;
             btnContinuerTirage.disabled = true;
-            await api.annuler_tirage();
+            if (typeof api.annuler_tirage_accueil === 'function') {
+                await api.annuler_tirage_accueil();
+            } else {
+                await api.annuler_tirage();
+            }
             return;
         }
         // Continuer : Python révèle et positionne la fenêtre chevalet ; on

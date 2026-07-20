@@ -35,6 +35,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -1056,20 +1057,75 @@ class ApiJeu:
     fenêtres ne sont que des vues : elles lisent/écrivent cet état via les
     méthodes exposées, et toute mutation est rediffusée aux deux fenêtres par
     :meth:`_diffuser`.
+
+    Instanciation différée et réutilisation (issue #179) : dans le modèle
+    mono-fenêtre, une **même** instance d'``ApiJeu`` sert plusieurs parties
+    successives (la fenêtre physique est réutilisée via ``load_url`` au lieu
+    d'être recréée). ``partie``/``id_partie``/``infos_tirage`` sont donc
+    **optionnels** au constructeur : on peut créer une instance « vide » puis y
+    charger une partie après coup via :meth:`charger_partie`, qui remet à zéro
+    la totalité de l'état interne. **Contrat** : tant qu'aucune partie n'est
+    chargée (``self._partie is None``), aucune méthode de jeu ne doit être
+    appelée. Le routeur d'API (``ApiRouteur``, issue #179) garantit ce contrat
+    en ne routant vers cette sous-API que lorsque la vue « jeu » est active,
+    c'est-à-dire après un :meth:`charger_partie`. Par prudence, les getters
+    d'état exposés au JS (``obtenir_etat``, ``obtenir_etat_plateau``,
+    ``obtenir_etat_chevalet``, ``obtenir_chevalet``) renvoient une charge d'erreur
+    plutôt que de déréférencer un ``self._partie`` à ``None`` ; les autres
+    méthodes de jeu (pose, échange, tour…) ne sont, elles, pas gardées et
+    présupposent une partie chargée.
     """
 
     def __init__(
         self,
-        partie: Partie,
-        id_partie: int | None,
+        partie: Partie | None = None,
+        id_partie: int | None = None,
         chemin_persistance: Any = CHEMIN_DEFAUT,
         infos_tirage: dict[str, Any] | None = None,
     ) -> None:
-        self._partie = partie
-        self._id_partie = id_partie
         # Base où sont persistées les actions (issue #81). Par défaut la base de
-        # l'application ; injectable pour les tests (base temporaire).
+        # l'application ; injectable pour les tests (base temporaire). Réglage
+        # d'infrastructure indépendant d'une partie : posé une seule fois ici,
+        # jamais remis à zéro par :meth:`charger_partie`.
         self._chemin_persistance = chemin_persistance
+        # Deux fenêtres distinctes (issue #90) au lieu du ``_window`` unique.
+        # Dans le modèle mono-fenêtre (issue #179), la fenêtre physique PERSISTE
+        # d'une partie à l'autre : :meth:`charger_partie` ne les touche donc pas
+        # (elles ne font pas partie de l'état « par partie » remis à zéro).
+        self._window_plateau: webview.Window | None = None
+        self._window_chevalet: webview.Window | None = None
+        # Tout l'état interne lié à UNE partie est posé par un point unique de
+        # remise à zéro (issue #179) : une même instance servant plusieurs parties
+        # successives dans le modèle mono-fenêtre, ce point garantit qu'aucun
+        # résidu (sélection, placements, drapeaux de fin…) d'une partie précédente
+        # ne fuite dans la suivante. Voir :meth:`_reinitialiser_etat` pour le
+        # détail de chaque champ.
+        self._reinitialiser_etat()
+        # Chargement immédiat si une partie est fournie (chemin historique
+        # accueil → jeu, tests). Sinon l'instance reste « vide » jusqu'à un appel
+        # différé à :meth:`charger_partie` (nouveau modèle mono-fenêtre) : aucune
+        # méthode de jeu ne doit être appelée avant ce chargement.
+        if partie is not None:
+            self.charger_partie(partie, id_partie, infos_tirage)
+        else:
+            self._id_partie = id_partie
+            self._infos_tirage = infos_tirage
+            self._tirage_termine = infos_tirage is None
+
+    def _reinitialiser_etat(self) -> None:
+        """Remet à zéro **tout** l'état interne lié à une partie (issue #179).
+
+        Point unique de remise à zéro partagé par :meth:`__init__` et
+        :meth:`charger_partie`. Ne touche ni aux fenêtres ni au chemin de
+        persistance (indépendants d'une partie donnée) : uniquement l'état de
+        pose, d'échange, de tirage et les drapeaux de fin/retour/recommencer, de
+        sorte qu'une instance réutilisée reparte d'un état parfaitement neuf.
+        """
+        # Partie courante et son identifiant de persistance : ``None`` tant
+        # qu'aucune partie n'a été chargée (voir contrat dans le docstring de
+        # classe).
+        self._partie: Partie | None = None
+        self._id_partie: int | None = None
         # Tirage de l'ordre de jeu affiché « à la place » du plateau au tout
         # début d'une NOUVELLE partie (issue #170, ex-modale de l'accueil). Quand
         # ``infos_tirage`` est fourni — un dict ``{noms_creation, graine,
@@ -1081,11 +1137,8 @@ class ApiJeu:
         # ``_tirage_termine`` passe à True dès qu'il n'y a plus de tirage à mener
         # (aucun tirage demandé, ou « Continuer » cliqué) : il garde
         # :meth:`terminer_tirage` idempotente.
-        self._infos_tirage: dict[str, Any] | None = infos_tirage
-        self._tirage_termine: bool = infos_tirage is None
-        # Deux fenêtres distinctes (issue #90) au lieu du ``_window`` unique.
-        self._window_plateau: webview.Window | None = None
-        self._window_chevalet: webview.Window | None = None
+        self._infos_tirage: dict[str, Any] | None = None
+        self._tirage_termine: bool = True
         # État de pose centralisé côté Python (issue #90, option 1 du rapport
         # #89). ``_selection`` : index de la lettre sélectionnée dans le chevalet
         # du joueur courant, ou ``None``. ``_en_attente`` : placements en cours,
@@ -1094,13 +1147,15 @@ class ApiJeu:
         # même pour un joker dont la lettre a été choisie).
         self._selection: int | None = None
         self._en_attente: list[dict[str, Any]] = []
-        # Échange partiel (issue #138). ``_type_echange`` fige, à la construction
-        # de l'API (donc au démarrage de la partie), le mode choisi dans les
-        # réglages : "complet" (bouton « Remettre toutes ses lettres ») ou
-        # "partiel" (sélection libre de 1 à 7 lettres). ``_mode_echange`` indique
-        # que le joueur est en train de marquer des lettres à échanger, et
-        # ``_selection_echange`` porte les index de chevalet ainsi marqués (une
-        # information neutre — de simples index — ne dévoilant aucune lettre).
+        # Échange partiel (issue #138). ``_type_echange`` fige, au chargement de
+        # la partie (donc à son démarrage), le mode choisi dans les réglages :
+        # "complet" (bouton « Remettre toutes ses lettres ») ou "partiel"
+        # (sélection libre de 1 à 7 lettres). Relu à chaque chargement pour
+        # refléter un éventuel changement de réglage entre deux parties.
+        # ``_mode_echange`` indique que le joueur est en train de marquer des
+        # lettres à échanger, et ``_selection_echange`` porte les index de
+        # chevalet ainsi marqués (une information neutre — de simples index — ne
+        # dévoilant aucune lettre).
         self._type_echange: str = charger_config().get("type_echange", "complet")
         self._mode_echange: bool = False
         self._selection_echange: list[int] = []
@@ -1145,6 +1200,32 @@ class ApiJeu:
         # court-circuiter les déclenchements suivants pour éviter une récursion.
         self._fermeture_en_cours = False
 
+    def charger_partie(
+        self,
+        partie: Partie,
+        id_partie: int | None,
+        infos_tirage: dict[str, Any] | None = None,
+    ) -> None:
+        """Charge une partie dans cette instance et remet tout l'état à zéro.
+
+        Dans le modèle mono-fenêtre (issue #179), une **même** instance
+        d'``ApiJeu`` sert plusieurs parties successives (la fenêtre physique est
+        réutilisée via ``load_url`` plutôt que recréée). Cette méthode
+        réinitialise donc **intégralement** l'état interne
+        (:meth:`_reinitialiser_etat`) avant d'installer la nouvelle partie,
+        garantissant qu'aucun résidu (sélection, placements en attente, drapeaux
+        de fin, mode d'échange…) d'une partie précédente ne subsiste.
+
+        ``infos_tirage`` suit la même sémantique qu'au constructeur : non ``None``
+        pour une nouvelle partie (écran de tirage d'ordre affiché à la place du
+        plateau), ``None`` pour une reprise (partie directement jouable).
+        """
+        self._reinitialiser_etat()
+        self._partie = partie
+        self._id_partie = id_partie
+        self._infos_tirage = infos_tirage
+        self._tirage_termine = infos_tirage is None
+
     def set_windows(
         self,
         plateau: webview.Window,
@@ -1182,6 +1263,20 @@ class ApiJeu:
 
         Tolère les fenêtres factices des tests (pas d'attribut ``events`` ou pas
         d'événement ``closing``) : dans ce cas on n'abonne rien.
+
+        Coquille unifiée (issue #182) — vérifié : le même câblage sécurise la
+        fermeture par la croix dans la coquille mono-fenêtre (issue #180), où le
+        chevalet compagnon est **persistant** et **masqué la plupart du temps**
+        (vue Accueil, tirage d'ordre en cours). :meth:`_sur_fermeture_native`
+        détruit **inconditionnellement** la fenêtre jumelle, qu'elle soit visible
+        ou masquée : un ✕ natif sur la fenêtre principale — quelle que soit la vue
+        active au moment du clic — détruit donc aussi le chevalet masqué, et
+        réciproquement un ✕ sur le chevalet détruit la fenêtre principale. Aucune
+        fenêtre masquée ne subsiste pour maintenir ``webview.start()`` vivant
+        (risque n°1 des rapports #177/#178), et aucun abonné ne renvoyant jamais
+        ``False``, aucune confirmation implicite ne bloque la fermeture (la
+        confirmation d'un coup en attente reste, elle, portée côté JS par le
+        bouton applicatif « Retour au menu », pas par la croix).
         """
         for fenetre in (self._window_plateau, self._window_chevalet):
             evenements = getattr(fenetre, "events", None)
@@ -1236,8 +1331,25 @@ class ApiJeu:
                 e,
             )
 
+    @staticmethod
+    def _erreur_aucune_partie() -> dict[str, Any]:
+        """Charge d'erreur standard quand aucune partie n'est chargée (issue #179).
+
+        Renvoyée par les getters d'état exposés au JS lorsqu'ils sont appelés
+        alors que ``self._partie is None`` (instance créée en différé, pas encore
+        chargée via :meth:`charger_partie`). Évite un ``AttributeError`` sur
+        ``None`` : en fonctionnement normal, le routeur ne route jamais vers cette
+        sous-API avant chargement, donc ce cas ne survient pas — c'est un filet.
+        """
+        return {
+            "succes": False,
+            "erreur": "Aucune partie chargée (charger_partie non appelée).",
+        }
+
     def obtenir_etat(self) -> dict[str, Any]:
         """Retourne l'état public de la partie (sans lettres de chevalet)."""
+        if self._partie is None:
+            return self._erreur_aucune_partie()
         return etat_public(self._partie, self._id_partie)
 
     def obtenir_etat_plateau(self) -> dict[str, Any]:
@@ -1247,6 +1359,8 @@ class ApiJeu:
         plateau, exposé comme point d'entrée pour le chargement initial de cette
         fenêtre (avant toute mutation). Voir :meth:`_etat_plateau`.
         """
+        if self._partie is None:
+            return self._erreur_aucune_partie()
         return self._etat_plateau()
 
     def obtenir_etat_chevalet(self) -> dict[str, Any]:
@@ -1256,6 +1370,8 @@ class ApiJeu:
         chevalet (lettres du seul joueur humain courant comprises), exposé pour le
         chargement initial de cette fenêtre. Voir :meth:`_etat_chevalet`.
         """
+        if self._partie is None:
+            return self._erreur_aucune_partie()
         return self._etat_chevalet()
 
     # ------------------------------------------------------------------ #
@@ -1315,6 +1431,119 @@ class ApiJeu:
                 _lier_chevalet_au_plateau(self._window_plateau, chevalet)
         return {"succes": True}
 
+    def masquer_chevalet(self) -> None:
+        """Masque la fenêtre chevalet compagnon sans la détruire (issue #181).
+
+        Dans la coquille unifiée (issue #180), le chevalet est une fenêtre
+        physique **persistante** créée une seule fois au lancement : lors d'une
+        transition Jeu→Accueil (« Retour au menu », « Annuler le tirage ») ou du
+        redémarrage d'une partie (« Recommencer », nouveau tirage à mener), on le
+        remet simplement **masqué** (``hide()``) au lieu de le ``destroy()`` comme
+        le fait le chemin de production. :meth:`finaliser_entree_vue_jeu` /
+        :meth:`terminer_tirage` le ré-révéleront (``show()``) à la bonne étape.
+
+        Tolère l'absence de fenêtre chevalet (tests, lancement autonome) et une
+        erreur de backend (une révélation/masquage raté ne doit rien bloquer).
+        """
+        chevalet = self._window_chevalet
+        if chevalet is None:
+            return
+        try:
+            chevalet.hide()
+        except Exception as e:  # noqa: BLE001 - un masquage raté ne bloque rien
+            journal.erreur("Jeu : masquage de la fenêtre chevalet impossible.", e)
+
+    def finaliser_entree_vue_jeu(self) -> None:
+        """Rejoue la finalisation des fenêtres à chaque entrée en vue Jeu (issue #180).
+
+        Appelée par le routeur de la coquille mono-fenêtre unifiée
+        (:meth:`~scrabble.ui.application.ApiRouteur.demarrer_jeu`) juste après un
+        ``load_url('jeu.html')`` dans la fenêtre unique. Elle **rejoue à la
+        demande** ce que le chemin historique ne faisait qu'une fois, dans le
+        callback de ``webview.start`` (:func:`_finaliser_fenetres`) — car la
+        coquille unifiée n'a qu'**une seule** boucle ``webview.start`` pour toute
+        la session (rapport #178, risque 3) :
+
+        * **maximisation du plateau** (:func:`_maximiser_plateau`) — la fenêtre
+          unique, déjà affichée, est (ré)affirmée maximisée à chaque entrée ;
+        * **révélation + liaison du chevalet** si aucun tirage n'est en cours
+          (reprise) : le chevalet, créé **une seule fois** masqué au démarrage
+          (issue #180), est montré (``show()``), repositionné
+          (:func:`_repositionner_chevalet`) et re-lié au plateau
+          (:func:`_lier_chevalet_au_plateau`, risque 4 du rapport #178 : la
+          liaison transiente/owned est re-posée à chaque entrée). Si un tirage est
+          en cours, le chevalet reste masqué : :meth:`terminer_tirage` le révélera
+          au clic « Continuer », comme dans le chemin historique ;
+        * **amorçage du chevalet** (:meth:`_diffuser`) : sa fenêtre ayant été
+          chargée une seule fois au démarrage — **avant** qu'une partie n'existe —
+          son ``obtenir_etat_chevalet`` initial n'a rien reçu. On lui pousse donc
+          l'état frais (même masqué, l'``evaluate_js`` traverse le pont), pour que
+          les bonnes lettres soient prêtes dès sa révélation.
+
+        Exécutée dans un **fil dédié** (comme le callback de ``webview.start``) :
+        elle enchaîne des attentes ``shown`` et des déplacements de fenêtre qui ne
+        doivent pas bloquer le pont JS (l'appel ``api.demarrer_jeu()`` rend la main
+        immédiatement).
+        """
+        threading.Thread(
+            target=self._finaliser_entree_vue_jeu,
+            name="finaliser-entree-vue-jeu",
+            daemon=True,
+        ).start()
+
+    def _finaliser_entree_vue_jeu(self) -> None:
+        """Corps (hors fil) de :meth:`finaliser_entree_vue_jeu` — voir sa docstring."""
+        plateau = self._window_plateau
+        chevalet = self._window_chevalet
+        if plateau is not None:
+            _maximiser_plateau(plateau)
+        # ``_tirage_termine`` est faux tant qu'un tirage d'ordre doit s'afficher :
+        # dans ce cas on laisse le chevalet masqué (terminer_tirage s'en chargera).
+        tirage_en_cours = not self._tirage_termine
+        if not tirage_en_cours and chevalet is not None:
+            try:
+                chevalet.show()
+            except Exception as e:  # noqa: BLE001 - une révélation ratée ne bloque pas le jeu
+                journal.erreur("Jeu : affichage de la fenêtre chevalet impossible.", e)
+            _repositionner_chevalet(chevalet)
+            if plateau is not None:
+                _lier_chevalet_au_plateau(plateau, chevalet)
+        # Amorce le chevalet pré-chargé (créé une fois au démarrage, avant toute
+        # partie) avec l'état frais, même s'il est encore masqué.
+        if self._partie is not None:
+            self._diffuser()
+
+    def supprimer_partie_annulee(self) -> None:
+        """Supprime de la persistance la partie créée puis annulée au tirage (issue #170).
+
+        Cœur « persistance » de l'annulation du tirage, isolé pour être partagé
+        entre le chemin de production (:meth:`annuler_tirage`, qui enchaîne ensuite
+        un ``destroy()`` des fenêtres) et la coquille unifiée
+        (:meth:`~scrabble.ui.application.ApiRouteur.annuler_tirage_accueil`, qui
+        enchaîne un retour à l'accueil par ``load_url``). À ce stade la partie a
+        été créée et suivie en base mais **aucun coup n'a été joué** : on la
+        supprime pour qu'elle n'apparaisse pas comme partie fantôme dans
+        « Reprendre une partie ».
+
+        Sans identifiant de persistance (``_id_partie`` à ``None``, mode
+        démonstration) il n'y a rien à supprimer. Une erreur de suppression est
+        seulement tracée : elle ne doit pas empêcher le retour à l'accueil.
+        """
+        if self._id_partie is None:
+            return
+        try:
+            supprimee = supprimer_partie(self._id_partie, self._chemin_persistance)
+            journal.info(
+                f"Jeu : tirage annulé — partie #{self._id_partie} supprimée "
+                f"(supprimee={supprimee})."
+            )
+        except Exception as e:  # noqa: BLE001 - on trace, sans planter la fermeture
+            journal.erreur(
+                f"Jeu : suppression de la partie #{self._id_partie} annulée "
+                "impossible.",
+                e,
+            )
+
     def annuler_tirage(self) -> dict[str, Any]:
         """Annule le tirage : supprime la partie créée et revient à l'accueil.
 
@@ -1335,21 +1564,7 @@ class ApiJeu:
         """
         if self._window_plateau is None and self._window_chevalet is None:
             return {"succes": False, "erreur": "Aucune fenêtre associée."}
-        if self._id_partie is not None:
-            try:
-                supprimee = supprimer_partie(
-                    self._id_partie, self._chemin_persistance
-                )
-                journal.info(
-                    f"Jeu : tirage annulé — partie #{self._id_partie} supprimée "
-                    f"(supprimee={supprimee})."
-                )
-            except Exception as e:  # noqa: BLE001 - on trace, sans planter la fermeture
-                journal.erreur(
-                    f"Jeu : suppression de la partie #{self._id_partie} annulée "
-                    "impossible.",
-                    e,
-                )
+        self.supprimer_partie_annulee()
         try:
             # Retour à l'accueil via le même chemin que « Retour au menu ».
             self._retour_menu = True
@@ -1405,6 +1620,8 @@ class ApiJeu:
         jamais le chevalet d'un autre joueur ni la totalité des chevalets : le
         joueur qui révèle ses lettres ne dévoile rien de celles des autres.
         """
+        if self._partie is None:
+            return self._erreur_aucune_partie()
         if not isinstance(index_joueur, int) or not (
             0 <= index_joueur < len(self._partie.joueurs)
         ):
@@ -2433,15 +2650,45 @@ class ApiJeu:
             tirage_ordre=True,
         )
 
+    def preparer_partie_recommencee(
+        self,
+    ) -> tuple[Partie, int | None, dict[str, Any] | None]:
+        """Crée et suit en base la nouvelle partie de « Recommencer » (issue #181).
+
+        Cœur « moteur + persistance » de l'action « Recommencer », isolé pour être
+        partagé entre le chemin de production (:meth:`recommencer`, qui enchaîne
+        ensuite un ``destroy()`` des fenêtres et positionne les drapeaux inter-
+        boucles) et la coquille unifiée
+        (:meth:`~scrabble.ui.application.ApiRouteur.recommencer_jeu`, qui enchaîne
+        un ``load_url('jeu.html')``). Fabrique la nouvelle partie
+        (:meth:`creer_partie_recommencee`, mêmes joueurs, nouveau tirage) et, hors
+        mode démonstration (``_id_partie`` non ``None``), la déclare en base
+        (:func:`~scrabble.persistance.demarrer_suivi`) sans toucher à l'ancienne.
+
+        Retourne ``(nouvelle_partie, nouvel_id, infos_tirage)`` — ``infos_tirage``
+        étant le détail préparé par :meth:`creer_partie_recommencee`
+        (``_nouvelles_infos_tirage``) pour rejouer l'écran de tirage d'ordre. Ne
+        positionne **aucun** drapeau inter-boucles (``_recommencer`` &co.) : ceux-ci
+        n'existent que pour le pont entre boucles séparées du chemin de production.
+        """
+        nouvelle = self.creer_partie_recommencee()
+        nouvel_id: int | None = None
+        if self._id_partie is not None:
+            nouvel_id = demarrer_suivi(nouvelle, self._chemin_persistance)
+        journal.info(
+            f"Jeu : recommencer une partie avec les mêmes joueurs "
+            f"(ancienne #{self._id_partie} → nouvelle #{nouvel_id})."
+        )
+        return nouvelle, nouvel_id, self._nouvelles_infos_tirage
+
     def recommencer(self) -> dict[str, Any]:
         """Rejoue une nouvelle partie avec les mêmes joueurs (issue #142).
 
         Troisième action de la modale de fin de partie. Crée une partie neuve
-        (:meth:`creer_partie_recommencee`), la déclare en base
-        (:func:`~scrabble.persistance.demarrer_suivi`) puis ferme **les deux**
-        fenêtres de jeu à la manière de :meth:`retour_menu`. Une fois la boucle
-        rendue, :func:`lancer_jeu` relance l'écran de jeu sur cette nouvelle
-        partie (drapeau ``_recommencer``).
+        (:meth:`preparer_partie_recommencee`) puis ferme **les deux** fenêtres de
+        jeu à la manière de :meth:`retour_menu`. Une fois la boucle rendue,
+        :func:`lancer_jeu` relance l'écran de jeu sur cette nouvelle partie
+        (drapeau ``_recommencer``).
 
         En mode démonstration (``_id_partie`` à ``None``), aucune persistance
         n'est déclenchée : la nouvelle partie n'est simplement pas suivie.
@@ -2452,14 +2699,7 @@ class ApiJeu:
         if self._window_plateau is None and self._window_chevalet is None:
             return {"succes": False, "erreur": "Aucune fenêtre associée."}
         try:
-            nouvelle = self.creer_partie_recommencee()
-            nouvel_id: int | None = None
-            if self._id_partie is not None:
-                nouvel_id = demarrer_suivi(nouvelle, self._chemin_persistance)
-            journal.info(
-                f"Jeu : recommencer une partie avec les mêmes joueurs "
-                f"(ancienne #{self._id_partie} → nouvelle #{nouvel_id})."
-            )
+            nouvelle, nouvel_id, _ = self.preparer_partie_recommencee()
             self._nouvelle_partie = nouvelle
             self._nouvel_id_partie = nouvel_id
             self._recommencer = True
@@ -2746,6 +2986,54 @@ def _position_chevalet_memorisee(
     return x, y
 
 
+def _creer_fenetre_chevalet(
+    js_api: Any, hidden: bool
+) -> "webview.Window":
+    """Crée la fenêtre flottante du chevalet (issue #90, factorisée #180).
+
+    Extrait de :func:`_lancer_fenetre_jeu` afin d'être réutilisé à l'identique par
+    la coquille mono-fenêtre unifiée (issue #180), qui crée la fenêtre chevalet
+    **une seule fois** au démarrage de l'application (masquée) au lieu de la
+    créer/détruire à chaque partie. La logique de création — dimensions resserrées
+    au panneau, position bas-centre, ``frameless``, drag applicatif — est donc
+    posée ici une fois pour les deux chemins de lancement.
+
+    * ``js_api`` : objet exposé au JS du chevalet (``chevalet.js``). Dans le chemin
+      historique c'est l'instance :class:`ApiJeu` (partagée avec la fenêtre
+      plateau) ; dans la coquille unifiée c'est **aussi** l':class:`ApiJeu` — le
+      chevalet parle toujours directement au jeu, jamais au routeur (aucune de ses
+      méthodes n'est en collision, cf. :class:`~scrabble.ui.application.ApiRouteur`).
+    * ``hidden`` : fenêtre créée masquée (``True``) le temps d'un tirage d'ordre
+      (issue #170) ou, dans la coquille unifiée, tant que la vue Jeu n'est pas
+      activée ; révélée ensuite par ``show()`` (:meth:`ApiJeu.terminer_tirage` ou
+      :meth:`ApiJeu.finaliser_entree_vue_jeu`).
+
+    Comme dans le code d'origine, la position bas-centre calculée ici est
+    approximative (``webview.screens`` n'est fiable qu'une fois la boucle démarrée,
+    issue #91) : elle est corrigée après coup par :func:`_repositionner_chevalet`.
+    """
+    x_chev, y_chev = _position_chevalet()
+    return webview.create_window(
+        "Scrabble - Chevalet",
+        str(DOSSIER_WEB / "chevalet.html"),
+        js_api=js_api,
+        width=CHEVALET_LARGEUR,
+        height=CHEVALET_HAUTEUR,
+        x=x_chev,
+        y=y_chev,
+        hidden=hidden,
+        frameless=True,     # fenêtre sans cadre ni barre de titre
+        # Plus d'``on_top`` global (issue #105) : le chevalet est lié au plateau
+        # par une relation transiente (:func:`_lier_chevalet_au_plateau`), posée
+        # une fois les deux fenêtres affichées — il reste au-dessus du plateau
+        # sans être forcé au-dessus de toutes les applications du système.
+        resizable=False,    # non redimensionnable par erreur
+        easy_drag=False,    # pas de drag « corps entier » : drag applicatif ciblé
+        # Fond vert dès le mappage de la fenêtre (issue #113), comme le plateau.
+        background_color=TAPIS_VERT,
+    )
+
+
 def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
     """Crée les **deux** fenêtres de jeu (plateau + chevalet) et démarre la boucle.
 
@@ -2788,31 +3076,12 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
         # par défaut de pywebview pendant le chargement HTML/CSS.
         background_color=TAPIS_VERT,
     )
-    x_chev, y_chev = _position_chevalet()
     # Tirage d'ordre en cours (issue #170) : tant que l'ordre n'est pas déterminé,
     # l'écran de tirage occupe la fenêtre plateau et la fenêtre chevalet ne doit
     # pas apparaître. On la crée donc **masquée** (``hidden=True``) ; elle sera
     # révélée et finalisée par :meth:`ApiJeu.terminer_tirage` au clic « Continuer ».
     tirage_en_cours = api._infos_tirage is not None
-    window_chevalet = webview.create_window(
-        "Scrabble - Chevalet",
-        str(DOSSIER_WEB / "chevalet.html"),
-        js_api=api,
-        width=CHEVALET_LARGEUR,
-        height=CHEVALET_HAUTEUR,
-        x=x_chev,
-        y=y_chev,
-        hidden=tirage_en_cours,  # masquée le temps du tirage (issue #170)
-        frameless=True,     # fenêtre sans cadre ni barre de titre
-        # Plus d'``on_top`` global (issue #105) : le chevalet est lié au plateau
-        # par une relation transiente (:func:`_lier_chevalet_au_plateau`), posée
-        # une fois les deux fenêtres affichées — il reste au-dessus du plateau
-        # sans être forcé au-dessus de toutes les applications du système.
-        resizable=False,    # non redimensionnable par erreur
-        easy_drag=False,    # pas de drag « corps entier » : drag applicatif ciblé
-        # Fond vert dès le mappage de la fenêtre (issue #113), comme le plateau.
-        background_color=TAPIS_VERT,
-    )
+    window_chevalet = _creer_fenetre_chevalet(api, hidden=tirage_en_cours)
     api.set_windows(window_plateau, window_chevalet)
     # Fermeture croisée par la croix (issue #94) : fermer nativement l'une des deux
     # fenêtres détruit l'autre et quitte l'application (plus de fenêtre orpheline).

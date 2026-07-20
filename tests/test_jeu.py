@@ -359,6 +359,117 @@ class TestPartieDemo:
         assert etat["taille"] == TAILLE
 
 
+class TestApiJeuChargementDiffere:
+    """Instanciation sans partie puis chargement différé (issue #179).
+
+    Dans le modèle mono-fenêtre, une même instance d'``ApiJeu`` sert plusieurs
+    parties successives : le constructeur accepte donc une absence de partie, et
+    ``charger_partie`` installe une partie en remettant **tout** l'état à zéro.
+    """
+
+    def test_instanciation_sans_partie(self):
+        """``ApiJeu()`` sans argument crée une instance « vide » cohérente."""
+        api = ApiJeu()
+        assert api._partie is None
+        assert api._id_partie is None
+        assert api._infos_tirage is None
+        # Aucun tirage à mener tant qu'aucune partie n'est chargée.
+        assert api._tirage_termine is True
+        assert api._selection is None
+        assert api._en_attente == []
+
+    def test_getters_etat_gardes_contre_absence_de_partie(self):
+        """Les getters exposés au JS renvoient une erreur plutôt que de planter."""
+        api = ApiJeu()
+        for charge in (
+            api.obtenir_etat(),
+            api.obtenir_etat_plateau(),
+            api.obtenir_etat_chevalet(),
+            api.obtenir_chevalet(0),
+        ):
+            assert charge["succes"] is False
+            assert "Aucune partie" in charge["erreur"]
+
+    def test_charger_partie_installe_la_partie(self):
+        """``charger_partie`` renseigne partie, id et infos de tirage."""
+        api = ApiJeu()
+        partie = _partie_simple()
+        infos = {
+            "noms_creation": ["Alice", "Robot"],
+            "graine": 42,
+            "noms_humains": ["Alice"],
+        }
+        api.charger_partie(partie, 7, infos_tirage=infos)
+        assert api._partie is partie
+        assert api._id_partie == 7
+        assert api._infos_tirage == infos
+        # Nouvelle partie (infos fournies) : tirage à mener.
+        assert api._tirage_termine is False
+        # L'état est désormais servi normalement.
+        assert "joueurs" in api.obtenir_etat()
+
+    def test_charger_partie_remet_tout_l_etat_a_zero(self):
+        """Un état « sali » est intégralement réinitialisé au chargement suivant.
+
+        Vérifie explicitement chaque champ listé par l'issue #179 : sélection,
+        placements en attente, mode/sélection d'échange, joker en attente, et les
+        drapeaux de fin/retour/recommencer.
+        """
+        api = ApiJeu(_partie_simple(), id_partie=1)
+        # Salir l'ensemble de l'état interne.
+        api._selection = 3
+        api._en_attente = [{"ligne": 7, "colonne": 7, "lettre": "A"}]
+        api._mode_echange = True
+        api._selection_echange = [1, 2]
+        api._joker_demande = {"ligne": 0, "colonne": 0, "index": 0}
+        api._tirage_termine = False
+        api._fin_journalisee = True
+        api._fin_persistee = True
+        api._retour_menu = True
+        api._recommencer = True
+        api._nouvelle_partie = _partie_simple()
+        api._nouvel_id_partie = 123
+        api._nouvelles_infos_tirage = {"x": 1}
+        api._fermeture_en_cours = True
+
+        # Recharger une AUTRE partie (reprise : pas d'infos de tirage).
+        nouvelle = _partie_simple(graine=99)
+        api.charger_partie(nouvelle, 2, infos_tirage=None)
+
+        assert api._partie is nouvelle
+        assert api._id_partie == 2
+        assert api._selection is None
+        assert api._en_attente == []
+        assert api._mode_echange is False
+        assert api._selection_echange == []
+        assert api._joker_demande is None
+        # Reprise (infos None) : plus de tirage à mener.
+        assert api._tirage_termine is True
+        assert api._infos_tirage is None
+        assert api._fin_journalisee is False
+        assert api._fin_persistee is False
+        assert api._retour_menu is False
+        assert api._recommencer is False
+        assert api._nouvelle_partie is None
+        assert api._nouvel_id_partie is None
+        assert api._nouvelles_infos_tirage is None
+        assert api._fermeture_en_cours is False
+
+    def test_charger_partie_preserve_les_fenetres(self):
+        """La fenêtre physique (partagée) n'est PAS remise à zéro par un chargement.
+
+        C'est l'invariant central du modèle mono-fenêtre : la même fenêtre sert
+        plusieurs parties successives.
+        """
+        api = ApiJeu()
+        fenetre_plateau = object()
+        fenetre_chevalet = object()
+        api.set_windows(fenetre_plateau, fenetre_chevalet)
+        api.charger_partie(_partie_simple(), 5)
+        assert api._window_plateau is fenetre_plateau
+        assert api._window_chevalet is fenetre_chevalet
+
+
 # --------------------------------------------------------------------------- #
 # Construction d'un Coup depuis des placements « clic-clic » (logique non-UI)
 # --------------------------------------------------------------------------- #
@@ -2482,6 +2593,113 @@ class TestApiJeuTirageOrdre:
         assert api._retour_menu is False
 
 
+class TestApiJeuHelpersCoquilleUnifiee:
+    """Méthodes ApiJeu extraites/ajoutées pour la coquille unifiée (issue #181).
+
+    ``masquer_chevalet``, ``preparer_partie_recommencee`` et
+    ``supprimer_partie_annulee`` sont réutilisées par le routeur unifié
+    (``ApiRouteur``) sans détruire de fenêtre ni positionner de drapeau inter-
+    boucles. Elles sont aussi le cœur partagé du chemin de production.
+    """
+
+    _INFOS = {
+        "noms_creation": ["Alice", "Robot"],
+        "graine": 1,
+        "noms_humains": ["Alice"],
+    }
+
+    def _partie_mixte(self, graine: int = 3) -> Partie:
+        joueurs = [
+            Joueur(nom="Alice", humain=True),
+            Joueur(nom="Ordi", humain=False, niveau=Niveau.EXPERT),
+        ]
+        return Partie(joueurs, _DicoFactice(), graine=graine)
+
+    def test_masquer_chevalet_appelle_hide(self):
+        class _Fen:
+            def __init__(self) -> None:
+                self.masquee = False
+
+            def hide(self) -> None:
+                self.masquee = True
+
+        api = ApiJeu(_partie_simple(), id_partie=1)
+        plateau, chevalet = _Fen(), _Fen()
+        api.set_windows(plateau, chevalet)
+
+        api.masquer_chevalet()
+
+        assert chevalet.masquee is True
+        # La fenêtre plateau n'est jamais masquée par cette méthode.
+        assert plateau.masquee is False
+
+    def test_masquer_chevalet_tolere_absence_de_chevalet(self):
+        # Aucune fenêtre chevalet associée (set_window seule) : ne doit pas planter.
+        api = ApiJeu(_partie_simple(), id_partie=1)
+        api.set_window(object())
+        api.masquer_chevalet()  # ne lève pas
+
+    def test_preparer_partie_recommencee_persiste_sans_toucher_les_drapeaux(
+        self, tmp_path
+    ):
+        chemin = tmp_path / "parties.db"
+        origine = self._partie_mixte()
+        id_origine = demarrer_suivi(origine, chemin)
+        api = ApiJeu(origine, id_partie=id_origine, chemin_persistance=chemin)
+
+        nouvelle, nouvel_id, infos = api.preparer_partie_recommencee()
+
+        # Nouvelle partie distincte, mêmes joueurs, suivie sous un nouvel id.
+        assert nouvelle is not origine
+        cle = lambda p: {(j.nom, j.humain, j.niveau) for j in p.joueurs}
+        assert cle(nouvelle) == cle(origine)
+        assert nouvel_id is not None and nouvel_id != id_origine
+        ids = {p.id for p in lister_parties(chemin)}
+        assert ids == {id_origine, nouvel_id}
+        # Infos de tirage d'ordre transmises pour rejouer l'écran de tirage.
+        assert set(infos.keys()) == {"noms_creation", "graine", "noms_humains"}
+        # Aucun drapeau inter-boucles positionné (chemin unifié : pas de pont).
+        assert api._recommencer is False
+        assert api._nouvelle_partie is None
+        assert api._nouvel_id_partie is None
+
+    def test_preparer_partie_recommencee_mode_demo_ne_persiste_pas(self):
+        api = ApiJeu(self._partie_mixte(), id_partie=None)
+        nouvelle, nouvel_id, infos = api.preparer_partie_recommencee()
+        assert nouvelle is not None
+        assert nouvel_id is None
+        assert infos is not None
+
+    def test_supprimer_partie_annulee_supprime_via_persistance(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        supprimees: list = []
+        monkeypatch.setattr(
+            mod, "supprimer_partie",
+            lambda id_p, chemin: supprimees.append(id_p) or True,
+        )
+        api = ApiJeu(_partie_simple(), id_partie=42, infos_tirage=dict(self._INFOS))
+
+        api.supprimer_partie_annulee()
+
+        assert supprimees == [42]
+
+    def test_supprimer_partie_annulee_mode_demo_ne_supprime_rien(self, monkeypatch):
+        from scrabble.ui import jeu as mod
+
+        supprimees: list = []
+        monkeypatch.setattr(
+            mod, "supprimer_partie",
+            lambda id_p, chemin: supprimees.append(id_p) or True,
+        )
+        # id_partie None (démonstration) : rien à supprimer.
+        api = ApiJeu(_partie_simple(), id_partie=None, infos_tirage=dict(self._INFOS))
+
+        api.supprimer_partie_annulee()
+
+        assert supprimees == []
+
+
 class TestFermetureCroisee:
     """Fermeture native (croix ✕) de l'une des deux fenêtres — issue #94.
 
@@ -2964,6 +3182,83 @@ class TestApiJeuDiffusionConfidentialite:
         api.set_windows(None, None)  # plus aucune fenêtre
         # Ne doit pas lever, même sans fenêtre à qui pousser l'état.
         api._diffuser()
+
+
+class _FenetreChevaletFactice(_FenetreEspionne):
+    """Fenêtre espionne qui trace en plus ``show()`` (chevalet, issue #180)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.montree = False
+
+    def show(self) -> None:
+        self.montree = True
+
+
+class TestFinaliserEntreeVueJeu:
+    """``_finaliser_entree_vue_jeu`` rejoue la finalisation à chaque entrée (#180)."""
+
+    def _api(self, monkeypatch, infos_tirage=None):
+        """API prête + fenêtres espionnes ; neutralise les fonctions plein écran."""
+        from scrabble.ui import jeu as mod
+
+        api, plateau, _chev = _api_pose("CHATSER")
+        chevalet = _FenetreChevaletFactice()
+        api.set_windows(plateau, chevalet)
+        if infos_tirage is not None:
+            # Rejoue le contrat de charger_partie : tirage encore à mener.
+            api._infos_tirage = infos_tirage
+            api._tirage_termine = False
+        # Neutralise les opérations fenêtre réelles (attente shown, WM, GDK).
+        appels = []
+        monkeypatch.setattr(mod, "_maximiser_plateau",
+                            lambda w: appels.append("maximiser"))
+        monkeypatch.setattr(mod, "_repositionner_chevalet",
+                            lambda w: appels.append("repositionner"))
+        monkeypatch.setattr(mod, "_lier_chevalet_au_plateau",
+                            lambda p, c: appels.append("lier"))
+        return api, plateau, chevalet, appels
+
+    def test_reprise_revele_et_amorce_le_chevalet(self, monkeypatch):
+        """Sans tirage : plateau maximisé, chevalet montré/lié et amorcé (_diffuser)."""
+        api, _plateau, chevalet, appels = self._api(monkeypatch)  # reprise
+
+        api._finaliser_entree_vue_jeu()
+
+        assert appels == ["maximiser", "repositionner", "lier"]
+        assert chevalet.montree is True
+        # Chevalet pré-chargé amorcé : un appliquerEtatChevalet lui a été poussé.
+        assert any("appliquerEtatChevalet" in s for s in chevalet.scripts)
+
+    def test_tirage_en_cours_laisse_le_chevalet_masque(self, monkeypatch):
+        """Avec tirage : plateau maximisé, mais chevalet ni montré ni lié."""
+        infos = {"noms_creation": ["Alice", "Robot"], "graine": 1,
+                 "noms_humains": ["Alice"]}
+        api, _plateau, chevalet, appels = self._api(monkeypatch, infos_tirage=infos)
+
+        api._finaliser_entree_vue_jeu()
+
+        # Seule la maximisation du plateau est rejouée ; pas de show/reposition/lier.
+        assert appels == ["maximiser"]
+        assert chevalet.montree is False
+        # Le chevalet est tout de même amorcé (masqué) pour terminer_tirage.
+        assert any("appliquerEtatChevalet" in s for s in chevalet.scripts)
+
+    def test_thread_lance_le_corps(self, monkeypatch):
+        """``finaliser_entree_vue_jeu`` exécute bien le corps (via un fil)."""
+        api, _plateau, _chevalet, _appels = self._api(monkeypatch)
+        marqueur = []
+        monkeypatch.setattr(api, "_finaliser_entree_vue_jeu",
+                            lambda: marqueur.append("fait"))
+
+        api.finaliser_entree_vue_jeu()
+        # Le fil est daemon : on lui laisse le temps de tourner.
+        import time
+        for _ in range(50):
+            if marqueur:
+                break
+            time.sleep(0.01)
+        assert marqueur == ["fait"]
 
 
 class TestApiJeuPoseViaEtatInterne:

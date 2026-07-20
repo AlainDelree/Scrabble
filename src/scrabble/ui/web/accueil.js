@@ -274,6 +274,52 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
+     * Transition Accueil→Jeu adaptée au contexte d'exécution (issue #180).
+     *
+     * Ce fichier est PARTAGÉ par deux coquilles ; on choisit le comportement de
+     * transition dynamiquement, sans dupliquer le fichier ni casser la production :
+     *
+     *  - Chemin de PRODUCTION (`lancer_accueil`/`lancer_jeu`) : l'accueil est une
+     *    fenêtre pywebview distincte, détruite après le lancement. On ferme donc la
+     *    fenêtre (`api.fermer_fenetre()` → `window.destroy()` côté Python) ; la
+     *    boucle rend la main et `lancer_jeu(...)` ouvre l'écran de jeu dans une
+     *    nouvelle fenêtre. Comportement historique, INCHANGÉ.
+     *
+     *  - Coquille UNIFIÉE mono-fenêtre (`lancer_application_unifiee`, issues
+     *    #179/#180) : une seule fenêtre physique navigue de `accueil.html` à
+     *    `jeu.html` via `load_url`, sans destruction ni recréation. On appelle
+     *    alors `api.demarrer_jeu()`, méthode de contrôle du routeur (`ApiRouteur`)
+     *    qui charge la partie, bascule la vue et navigue.
+     *
+     * Détection : la présence de `api.demarrer_jeu` (méthode propre au routeur
+     * unifié, ABSENTE de l'`ApiAccueil` de production) distingue les deux
+     * contextes. En son absence, on retombe sur `fermerFenetre` — le chemin de
+     * production reste strictement intact.
+     *
+     * @param {function(string): void} onEchec Rappel en cas d'échec réel.
+     */
+    async function transiterVersJeu(onEchec) {
+        if (typeof api.demarrer_jeu === 'function') {
+            // Coquille unifiée : navigation load_url dans la même fenêtre.
+            try {
+                const result = await api.demarrer_jeu();
+                if (!result || !result.succes) {
+                    const msg = (result && result.erreur)
+                        ? result.erreur
+                        : "Impossible de démarrer le jeu.";
+                    onEchec(msg);
+                }
+                // En cas de succès : la fenêtre a navigué vers jeu.html.
+            } catch (err) {
+                onEchec("Erreur au démarrage du jeu : " + err);
+            }
+        } else {
+            // Chemin de production : fermeture de la fenêtre d'accueil.
+            await fermerFenetre(onEchec);
+        }
+    }
+
+    /**
      * Affiche une modale
      */
     function afficherModale(modale) {
@@ -386,13 +432,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const result = await api.lancer_partie();
 
         if (result.succes && result.pret) {
-            // Le tirage d'ordre n'est plus affiché ici (issue #170) : on ferme
-            // directement l'accueil, et la fenêtre Jeu s'ouvre en état
-            // « pré-partie » (écran de tirage affiché à la place du plateau).
-            // Fermer la fenêtre d'accueil depuis Python — l'écran de jeu
-            // s'ouvrira automatiquement après la fermeture. En cas d'échec,
-            // on réactive le bouton plutôt que de rester bloqué.
-            await fermerFenetre((msg) => {
+            // Le tirage d'ordre n'est plus affiché ici (issue #170) : la fenêtre
+            // Jeu s'ouvre en état « pré-partie » (écran de tirage affiché à la
+            // place du plateau). Transition adaptée au contexte (issue #180) :
+            // fermeture de la fenêtre (production) ou navigation load_url (coquille
+            // unifiée). En cas d'échec, on réactive le bouton plutôt que de bloquer.
+            await transiterVersJeu((msg) => {
                 alert(msg);
                 btnLancer.disabled = false;
                 btnLancer.textContent = 'Lancer la partie';
@@ -417,10 +462,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const result = await api.reprendre(id);
             if (result.succes && result.pret) {
-                // Fermer la fenêtre d'accueil depuis Python — l'écran de jeu
-                // s'ouvrira automatiquement après la fermeture. En cas
-                // d'échec, on réactive le bouton plutôt que de rester bloqué.
-                await fermerFenetre((msg) => {
+                // Transition adaptée au contexte (issue #180) : fermeture de la
+                // fenêtre (production) ou navigation load_url dans la même fenêtre
+                // (coquille unifiée). En cas d'échec, on réactive le bouton plutôt
+                // que de rester bloqué.
+                await transiterVersJeu((msg) => {
                     alert(msg);
                     btnReprendre.disabled = false;
                     btnReprendre.textContent = libelleInitial;

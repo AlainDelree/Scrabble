@@ -374,6 +374,39 @@ class TestApiAccueilLancement:
         assert api._partie is partie_reprise
         assert api._id_partie == 99
 
+    def test_reprendre_efface_infos_tirage_residuel(self, tmp_path, monkeypatch):
+        """reprendre() remet ``_infos_tirage`` à None (coquille unifiée, issue #180).
+
+        Dans la coquille mono-fenêtre unifiée, l'``ApiAccueil`` persiste toute la
+        session : un « Lancer la partie » antérieur a pu renseigner
+        ``_infos_tirage``. Une reprise ne doit PAS afficher de tirage : le champ
+        doit être effacé, sinon l'écran de jeu s'ouvrirait à tort sur le tirage.
+        """
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.moteur.partie import Partie, Joueur
+
+        partie_reprise = Partie(
+            joueurs=[Joueur(nom="Bob", humain=True)],
+            dictionnaire=Trie.depuis_iterable(["TEST"]),
+            graine=123,
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda: Trie.depuis_iterable(["TEST"]),
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.reprendre_partie",
+            lambda id_partie, trie: partie_reprise,
+        )
+
+        api = ApiAccueil()
+        # Résidu d'un « Lancer la partie » précédent dans la même session.
+        api._infos_tirage = {"noms_creation": ["X"], "graine": 1, "noms_humains": ["X"]}
+        api.reprendre(99)
+
+        assert api._infos_tirage is None
+
     def test_lancer_partie_echec_sans_humain(self):
         """lancer_partie() échoue sans joueur humain (pas de pret)."""
         from scrabble.ui.accueil import ApiAccueil
@@ -871,3 +904,65 @@ class TestApiAccueilFermeture:
         assert result["succes"] is False
         assert "erreur" in result
         assert "backend HS" in result["erreur"]
+
+
+class TestReinitialiserPourRetourAccueil:
+    """Réinitialisation de l'``ApiAccueil`` persistante au retour Jeu→Accueil (issue #181).
+
+    Dans la coquille unifiée, la même instance d'``ApiAccueil`` sert plusieurs
+    visites de l'accueil : elle doit repartir d'un état vierge (config remise à
+    zéro, humain re-seedé, partie préparée purgée) à chaque retour.
+    """
+
+    def test_reinitialise_config_et_partie(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        # Résidu d'une partie précédente : joueurs configurés + partie préparée.
+        api.config_partie.ajouter_ordinateur("Robot", Niveau.FACILE)
+        api._partie = object()
+        api._id_partie = 7
+        api._infos_tirage = {"graine": 1}
+
+        api.reinitialiser_pour_retour_accueil()
+
+        # Configuration remise à neuf (aucun ordinateur résiduel).
+        assert api.config_partie.nb_ordinateurs == 0
+        # Partie préparée purgée : rien ne doit fuiter dans un futur démarrage.
+        assert api._partie is None
+        assert api._id_partie is None
+        assert api._infos_tirage is None
+
+    def test_reseed_du_joueur_humain(self, monkeypatch):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        # Simule un prénom principal configuré : le seeding doit rajouter l'humain.
+        monkeypatch.setattr(api, "obtenir_prenom_principal", lambda: "Alice")
+
+        api.reinitialiser_pour_retour_accueil()
+
+        assert api.config_partie.nb_humains == 1
+        assert api.config_partie.joueurs[0].nom == "Alice"
+        assert api.config_partie.joueurs[0].humain is True
+
+    def test_ne_touche_ni_fenetre_ni_session(self, monkeypatch):
+        from scrabble import journal
+        from scrabble.ui.accueil import ApiAccueil
+
+        appels_session = []
+        monkeypatch.setattr(
+            journal, "demarrer_session", lambda *a, **k: appels_session.append("d")
+        )
+        monkeypatch.setattr(
+            journal, "cloturer_session", lambda *a, **k: appels_session.append("c")
+        )
+        api = ApiAccueil()
+        sentinelle = object()
+        api.set_window(sentinelle)
+
+        api.reinitialiser_pour_retour_accueil()
+
+        # La fenêtre partagée n'est pas touchée ; aucune session ouverte/fermée.
+        assert api._window is sentinelle
+        assert appels_session == []
