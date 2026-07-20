@@ -1274,8 +1274,12 @@ header {
     margin-left: auto;
 }
 
+/* Petite image du sac dans la barre globale (issue #171), alignée avec le
+   nombre de lettres restantes et son libellé. Remplace l'ancien emoji 🎒. */
 .sac-icone {
-    font-size: 1.3rem;
+    width: 22px;
+    height: auto;
+    display: block;
 }
 
 .sac-nombre {
@@ -1737,39 +1741,15 @@ body.tirage-en-cours #message-plateau {
     text-align: center;
 }
 
-/* Image statique complète du sac de lettres (issue #170, correction UI #8).
-   L'ancien SVG (viewBox 0 0 100 110) débordait de son cadre et ne s'affichait
-   qu'en fragment ; on le remplace par un tracé entièrement contenu dans son
-   viewBox, avec une ombre portée douce pour le détacher du fond vert. */
+/* Image statique complète du sac de lettres (issue #171). Les tentatives
+   précédentes en SVG (#8, #170) ne s'affichaient qu'en fragment ; on utilise
+   désormais l'illustration fournie (images/sac.png), grande et nette au-dessus
+   du bouton « Tirer une lettre », avec une ombre portée douce pour la détacher
+   du fond vert. */
 .tirage-sac {
+    width: 150px;
+    height: auto;
     filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
-}
-
-.tirage-sac-corps {
-    fill: #b5793e;
-    stroke: #7c4e21;
-    stroke-width: 2.5;
-    stroke-linejoin: round;
-}
-
-.tirage-sac-col {
-    fill: #cd9256;
-    stroke: #7c4e21;
-    stroke-width: 2.5;
-    stroke-linejoin: round;
-}
-
-.tirage-sac-cordon {
-    fill: none;
-    stroke: #5b3512;
-    stroke-width: 3;
-    stroke-linecap: round;
-}
-
-.tirage-sac-glyphe {
-    fill: #fff7e6;
-    font-size: 40px;
-    font-weight: 700;
 }
 
 .tirage-sac-bouton {

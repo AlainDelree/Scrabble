@@ -64,7 +64,9 @@ def collect_tree(src_relatif, dest_relatif):
 
 
 datas = []
-# Assets web (HTML/CSS/JS/avatars SVG) des fenêtres accueil (réglages intégrés)/jeu/chevalet.
+# Assets web (HTML/CSS/JS/avatars SVG + images PNG comme web/images/sac.png)
+# des fenêtres accueil (réglages intégrés)/jeu/chevalet. ``collect_tree`` marche
+# via ``os.walk`` sans filtre d'extension : tout fichier de ``web/`` est embarqué.
 datas += collect_tree(os.path.join("src", "scrabble", "ui", "web"), os.path.join("scrabble", "ui", "web"))
 # Dictionnaire(s), personnalisations (issue #110), définitions, cache Trie —
 # tout ce qui se trouve dans data/dictionnaire au moment du build.
