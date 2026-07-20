@@ -1645,6 +1645,21 @@ body.tirage-en-cours #message-plateau {
     margin-top: 18px;
 }
 
+/* Désactivation visible du bouton « Continuer » (issue #172). Sur le fond vert de
+   l'écran de tirage, l'opacité seule héritée de commun.css (.btn:disabled) ne se
+   lit pas : un bouton vert à 50 % d'opacité reste « vert plein ». On force donc,
+   tant que le tirage n'est pas terminé, un gris franc clairement différencié de
+   l'état actif, avec un curseur neutre. Le sélecteur descendant l'emporte sur le
+   doublon .btn-primaire / .btn-primaire:hover de jeu.css. */
+.ecran-tirage-actions .btn-primaire:disabled,
+.ecran-tirage-actions .btn-primaire:disabled:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.55);
+    opacity: 1;
+    cursor: default;
+    transform: none;
+}
+
 .tirage-intro {
     margin: 0 0 10px;
     color: rgba(255, 255, 255, 0.92);
@@ -1720,13 +1735,16 @@ body.tirage-en-cours #message-plateau {
     text-align: center;
 }
 
-/* Zone de tirage du joueur humain : consigne + image statique du sac. */
+/* Zone de tirage du joueur humain : consigne + image statique du sac.
+   Épinglée hors du corps scrollable (issue #172) : flex: 0 0 auto pour ne jamais
+   rétrécir ni se faire clipper quel que soit le nombre de joueurs. */
 .tirage-sac-zone {
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 10px;
-    margin: 0 0 12px;
+    margin: 12px 0 0;
 }
 
 .tirage-sac-zone[hidden] {
