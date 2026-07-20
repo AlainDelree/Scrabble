@@ -1596,15 +1596,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const DELAI_LIGNE = 450;  // ms entre deux révélations de lettre
     const attendreTirage = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    // Tour d'un joueur HUMAIN : au lieu de révéler automatiquement sa lettre, on
-    // affiche une image statique du sac + le bouton « Tirer une lettre » qui la
-    // dévoile (issue #61, simplifié #166 ; image sac.png depuis #171).
-    function tourHumainTirage(li, t) {
+    // Tour d'un joueur HUMAIN : sa ligne ne figure PAS dans la liste #tirage-lettres
+    // (réservée aux tirages déjà terminés des ordinateurs, issue #176). On affiche
+    // seulement un libellé simple « À toi de piocher une lettre » au-dessus de
+    // l'image du sac + le bouton « Tirer une lettre » (issue #61, simplifié #166 ;
+    // image sac.png depuis #171). Au clic, la ligne masquée rejoint la liste.
+    function tourHumainTirage(li) {
         return new Promise((resolve) => {
-            li.classList.add('visible', 'en-attente-tirage');
             tirageSacZone.hidden = false;
             tirageSacZone.innerHTML = `
-                <p class="tirage-sac-consigne">À toi, ${C.escapeHtml(t.nom)} ! Tire ta lettre.</p>
+                <p class="tirage-sac-consigne">À toi de piocher une lettre</p>
                 <img class="tirage-sac" src="images/sac.png" alt="Sac de lettres">
             `;
             tirageSacAction.hidden = false;
@@ -1612,7 +1613,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 '<button type="button" class="btn btn-primaire tirage-sac-bouton">Tirer une lettre</button>';
             const bouton = tirageSacAction.querySelector('.tirage-sac-bouton');
             bouton.addEventListener('click', () => {
-                li.classList.remove('en-attente-tirage');  // dévoile la lettre
+                // La ligne du joueur humain rejoint la liste, révélée en fondu.
+                li.classList.remove('tirage-humain-attente');
+                li.classList.add('visible');
                 tirageSacZone.hidden = true;
                 tirageSacZone.innerHTML = '';
                 tirageSacAction.hidden = true;
@@ -1638,6 +1641,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const lignes = tirage.tirages.map((t) => {
             const li = document.createElement('li');
             li.innerHTML = `<span class="tirage-nom">${C.escapeHtml(t.nom)}</span> a tiré <span class="tirage-lettre">${C.escapeHtml(t.lettre)}</span>`;
+            // La ligne du joueur humain reste hors de la liste tant qu'il n'a pas
+            // tiré : masquée (display:none) plutôt qu'affichée avec un « ? »
+            // (issue #176). Elle rejoint la liste au clic sur « Tirer une lettre ».
+            if (t.humain) {
+                li.classList.add('tirage-humain-attente');
+            }
             tirageLettres.appendChild(li);
             return li;
         });
@@ -1651,7 +1660,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             for (let i = 0; i < lignes.length; i++) {
                 const t = tirage.tirages[i];
                 if (t.humain) {
-                    await tourHumainTirage(lignes[i], t);
+                    await tourHumainTirage(lignes[i]);
                 } else {
                     await attendreTirage(DELAI_LIGNE);
                     lignes[i].classList.add('visible');

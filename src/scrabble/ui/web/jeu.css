@@ -1725,20 +1725,13 @@ body.tirage-en-cours #message-plateau {
     opacity: 1;
 }
 
-/* Tour du joueur humain : la lettre reste cachée (« ? ») tant que le sac n'a pas
-   été tiré (issue #61). */
-.tirage-lettres li.en-attente-tirage .tirage-lettre {
-    color: transparent;
-    position: relative;
-}
-
-.tirage-lettres li.en-attente-tirage .tirage-lettre::after {
-    content: '?';
-    color: #2a4f3c;
-    position: absolute;
-    left: 0;
-    right: 0;
-    text-align: center;
+/* Tour du joueur humain : sa ligne ne figure PAS dans la liste #tirage-lettres
+   (réservée aux tirages terminés des ordinateurs) tant qu'il n'a pas tiré sa
+   lettre (issue #176). Elle est simplement masquée ; un libellé « À toi de
+   piocher une lettre » s'affiche au-dessus du sac. Au clic sur « Tirer une
+   lettre », la classe est retirée et la ligne rejoint la liste normalement. */
+.tirage-lettres li.tirage-humain-attente {
+    display: none;
 }
 
 /* Zone de tirage du joueur humain : consigne + image statique du sac.
