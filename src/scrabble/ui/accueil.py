@@ -591,9 +591,21 @@ class ApiAccueil:
         signale un éventuel échec plutôt que de rester silencieux.
         """
         try:
+            import threading
+
+            from scrabble.ui.backend_graphique import deployer_fenetre_maximisee
             from scrabble.ui.reglages import creer_fenetre_reglages
 
-            creer_fenetre_reglages()
+            window = creer_fenetre_reglages()
+            # La boucle pywebview de l'accueil tourne déjà : on ne repasse pas par
+            # ``webview.start``. Le déploiement plein écran (issue #159) attend
+            # l'affichage de la fenêtre (jusqu'à ~5 s) — on le lance donc dans un fil
+            # dédié pour ne pas bloquer le pont JS de l'accueil pendant ce temps.
+            threading.Thread(
+                target=deployer_fenetre_maximisee,
+                args=(window, "réglages"),
+                daemon=True,
+            ).start()
             journal.info("Accueil : ouverture de la fenêtre de réglages.")
             return {"succes": True}
         except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
@@ -677,6 +689,13 @@ def lancer_accueil(
             "Scrabble - Nouvelle partie",
             str(chemin_html),
             js_api=api,
+            # Fenêtre maximisée par défaut (issue #159) : l'accueil et sa modale de
+            # tirage d'ordre restent lisibles au lieu de s'ouvrir en petit format
+            # flottant. ``maximized=True`` étant un no-op sous XWayland (cf. #95),
+            # le déploiement effectif est forcé après démarrage de la boucle par le
+            # callback ``deployer_fenetre_maximisee`` passé à ``webview.start`` plus
+            # bas. ``width``/``height`` restent la taille de restauration/repli.
+            maximized=True,
             width=700,
             # Hauteur relevée (issues #82 puis #115) : la modale de tirage
             # d'ordre affiche AUTANT de lignes que de joueurs (toutes présentes
@@ -696,7 +715,12 @@ def lancer_accueil(
             background_color=TAPIS_VERT,
         )
         api.set_window(window)
-        webview.start()
+        # Déploiement plein écran une fois la boucle GUI démarrée (issue #159) :
+        # contournement du no-op de ``maximized=True`` sous XWayland (cf. #95), de
+        # la même façon que le plateau (jeu.py). Le callback reçoit ``(window, nom)``.
+        from scrabble.ui.backend_graphique import deployer_fenetre_maximisee
+
+        webview.start(deployer_fenetre_maximisee, (window, "accueil"))
 
         partie, id_partie = api._partie, api._id_partie
         if ouvrir_jeu and partie is not None:

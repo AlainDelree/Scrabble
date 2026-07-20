@@ -252,6 +252,13 @@ def creer_fenetre_reglages(api: ApiReglages | None = None) -> webview.Window:
         "Scrabble - Réglages",
         str(chemin_html),
         js_api=api,
+        # Fenêtre maximisée par défaut (issue #159), comme l'accueil et le plateau :
+        # la fiche joueur / les onglets de réglages restent lisibles sans format
+        # flottant réduit. ``maximized=True`` étant un no-op sous XWayland (cf. #95),
+        # le déploiement effectif est forcé par ``deployer_fenetre_maximisee`` après
+        # démarrage de la boucle (voir :func:`lancer_reglages` et l'ouverture depuis
+        # l'accueil). ``width``/``height`` restent la taille de restauration/repli.
+        maximized=True,
         width=760,
         height=720,
         resizable=True,
@@ -272,11 +279,16 @@ def lancer_reglages() -> None:
     Quand la fenêtre est ouverte **depuis l'accueil**, on passe au contraire par
     :func:`creer_fenetre_reglages` sans redémarrer la boucle.
     """
-    from scrabble.ui.backend_graphique import configurer_backend_graphique
+    from scrabble.ui.backend_graphique import (
+        configurer_backend_graphique,
+        deployer_fenetre_maximisee,
+    )
 
     configurer_backend_graphique()
-    creer_fenetre_reglages()
-    webview.start()
+    window = creer_fenetre_reglages()
+    # Déploiement plein écran une fois la boucle démarrée (issue #159), comme
+    # l'accueil et le plateau (contournement du no-op XWayland de maximized=True).
+    webview.start(deployer_fenetre_maximisee, (window, "réglages"))
 
 
 def main() -> int:
