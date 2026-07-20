@@ -22,6 +22,10 @@
                     id="onglet-dictionnaire" data-panneau="panneau-dictionnaire">
                 Dictionnaire
             </button>
+            <button class="onglet" role="tab" aria-selected="false"
+                    id="onglet-regles" data-panneau="panneau-regles">
+                Règles du jeu
+            </button>
         </div>
 
         <main>
@@ -116,6 +120,137 @@
                         <h3>Définition</h3>
                         <div id="definition-contenu"></div>
                     </div>
+                </div>
+            </section>
+
+            <!-- ======================== Onglet Règles ========================== -->
+            <section class="panneau" id="panneau-regles"
+                     role="tabpanel" aria-labelledby="onglet-regles">
+                <div class="regles">
+                    <article class="regle-carte">
+                        <h2>But du jeu</h2>
+                        <p>
+                            Le Scrabble se joue à plusieurs, chacun avec un
+                            chevalet de 7 lettres. À tour de rôle, on forme des
+                            mots sur le plateau pour marquer un maximum de points.
+                            À la fin de la partie, le joueur au plus grand total
+                            l'emporte.
+                        </p>
+                    </article>
+
+                    <article class="regle-carte">
+                        <h2>Déroulement d'un tour</h2>
+                        <p>À votre tour, vous choisissez l'une de ces trois actions :</p>
+                        <ul>
+                            <li>
+                                <strong>Poser un mot</strong> : placez une ou
+                                plusieurs lettres pour former un mot valide.
+                                Le premier mot de la partie doit passer par la
+                                case centrale ; ensuite, chaque nouveau mot doit
+                                s'appuyer sur au moins une lettre déjà présente.
+                                Les mots se lisent de gauche à droite ou de haut
+                                en bas.
+                            </li>
+                            <li>
+                                <strong>Échanger des lettres</strong> : reposez
+                                des lettres dans le sac et retirez-en autant
+                                (possible tant que le sac contient assez de
+                                jetons). Vous passez alors votre tour.
+                            </li>
+                            <li>
+                                <strong>Passer</strong> : ne rien jouer et laisser
+                                la main au joueur suivant.
+                            </li>
+                        </ul>
+                        <p>
+                            Après avoir posé un mot, vous complétez votre chevalet
+                            à 7 lettres en piochant dans le sac (s'il en reste).
+                        </p>
+                    </article>
+
+                    <article class="regle-carte">
+                        <h2>Valeur des lettres</h2>
+                        <p>Chaque lettre vaut un nombre de points fixe :</p>
+                        <table class="table-lettres">
+                            <tbody>
+                                <tr><th>1 point</th><td>A, E, I, L, N, O, R, S, T, U</td></tr>
+                                <tr><th>2 points</th><td>D, G, M</td></tr>
+                                <tr><th>3 points</th><td>B, C, P</td></tr>
+                                <tr><th>4 points</th><td>F, H, V</td></tr>
+                                <tr><th>8 points</th><td>J, Q</td></tr>
+                                <tr><th>10 points</th><td>K, W, X, Y, Z</td></tr>
+                                <tr><th>0 point</th><td>Lettre blanche (joker)</td></tr>
+                            </tbody>
+                        </table>
+                    </article>
+
+                    <article class="regle-carte">
+                        <h2>Cases bonus</h2>
+                        <p>
+                            Certaines cases du plateau multiplient les points.
+                            Le bonus ne s'applique qu'au tour où la lettre est
+                            posée sur la case (aux tours suivants, la case compte
+                            à sa valeur simple).
+                        </p>
+                        <ul>
+                            <li>
+                                <strong>Lettre compte double / triple</strong> :
+                                multiplie par 2 ou par 3 la valeur de la seule
+                                lettre posée sur cette case.
+                            </li>
+                            <li>
+                                <strong>Mot compte double / triple</strong> :
+                                multiplie par 2 ou par 3 la valeur de tout le mot,
+                                <em>après</em> avoir compté les bonus de lettre.
+                                Si le mot couvre plusieurs cases « mot », les
+                                multiplicateurs se cumulent.
+                            </li>
+                        </ul>
+                    </article>
+
+                    <article class="regle-carte">
+                        <h2>Le « Scrabble » (+50 points)</h2>
+                        <p>
+                            Si vous placez vos 7 lettres d'un seul coup, vous
+                            réalisez un <strong>Scrabble</strong> et gagnez une
+                            prime de <strong>50 points</strong>, en plus de la
+                            valeur du mot et des cases bonus.
+                        </p>
+                    </article>
+
+                    <article class="regle-carte">
+                        <h2>La lettre blanche (joker)</h2>
+                        <p>
+                            Le sac contient 2 lettres blanches. Une lettre blanche
+                            remplace n'importe quelle lettre de votre choix, mais
+                            vaut <strong>0 point</strong>. Une fois posée, la
+                            lettre qu'elle représente est fixée pour le reste de
+                            la partie.
+                        </p>
+                    </article>
+
+                    <article class="regle-carte">
+                        <h2>Fin de partie et décompte</h2>
+                        <p>La partie s'arrête lorsque :</p>
+                        <ul>
+                            <li>
+                                un joueur a posé toutes ses lettres et le sac est
+                                vide, ou
+                            </li>
+                            <li>
+                                plus aucun coup n'est possible (tous les joueurs
+                                passent ou échangent à la suite).
+                            </li>
+                        </ul>
+                        <p>
+                            Chaque joueur retranche de son score la valeur des
+                            lettres qui lui restent sur le chevalet. Le joueur qui
+                            a terminé en vidant son chevalet peut recevoir, en
+                            bonus, la somme des lettres restantes chez les autres
+                            (option « Bonus officiel au finisseur », onglet
+                            Général). Le plus grand total gagne.
+                        </p>
+                    </article>
                 </div>
             </section>
         </main>
