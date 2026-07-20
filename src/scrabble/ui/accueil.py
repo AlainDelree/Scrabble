@@ -75,7 +75,12 @@ from scrabble.ui.noms_ordinateur import tirer_prenoms
 
 DOSSIER_WEB = Path(__file__).parent / "web"
 
-MAX_HUMAINS = 4
+# Un seul joueur humain est autorisé par partie (issue #175). Le support
+# historique de plusieurs humains simultanés a été abandonné : le jeu n'est
+# utilisé qu'avec UN humain face à des ordinateurs. Cette limite est appliquée
+# côté configuration/création uniquement — la reprise d'une partie sauvegardée
+# reste possible même si elle comportait plusieurs humains (voir stockage.py).
+MAX_HUMAINS = 1
 MAX_ORDINATEURS = 3
 
 NIVEAUX_LABELS: dict[str, Niveau] = {
@@ -148,8 +153,16 @@ class ConfigPartie:
         return self.nb_ordinateurs < MAX_ORDINATEURS and self.nb_total < MAX_JOUEURS
 
     def peut_lancer(self) -> bool:
-        """Vrai si la configuration permet de lancer une partie."""
-        return self.nb_humains >= 1
+        """Vrai si la configuration permet de lancer une partie.
+
+        Il faut **exactement un** joueur humain (issue #175) : au moins un
+        (contrat historique du moteur) et au plus un (le multi-humains n'est
+        plus supporté). ``ajouter_humain``/``peut_ajouter_humain`` empêchent
+        déjà d'en configurer plusieurs via l'UI ; cette égalité stricte est le
+        garde-fou backend non contournable, doublé du message explicite de
+        :meth:`ApiAccueil.lancer_partie`.
+        """
+        return self.nb_humains == 1
 
     def ajouter_humain(self, nom: str) -> bool:
         """Ajoute un joueur humain si possible. Retourne le succès."""
@@ -335,7 +348,7 @@ class ApiAccueil:
         if not self.config_partie.peut_ajouter_humain():
             return {
                 "succes": False,
-                "erreur": f"Maximum {MAX_HUMAINS} joueurs humains (total {MAX_JOUEURS}).",
+                "erreur": "Un seul joueur humain est autorisé par partie.",
             }
         if sauvegarder:
             self.sauvegarder_prenom_principal(nom)
@@ -390,6 +403,18 @@ class ApiAccueil:
         fermer la fenêtre d'accueil (``api.fermer_fenetre()``) pour que l'écran
         de jeu puisse s'ouvrir directement dans l'état « pré-partie » (tirage).
         """
+        # Garde-fou backend (issue #175) : refuse explicitement plus d'un
+        # joueur humain, avec un message dédié — indépendamment de toute
+        # contrainte UI (potentiellement contournable). Le cas « aucun humain »
+        # garde son propre message ci-dessous.
+        if self.config_partie.nb_humains > 1:
+            return {
+                "succes": False,
+                "erreur": (
+                    "Une partie ne peut comporter qu'un seul joueur humain "
+                    f"(configuré : {self.config_partie.nb_humains})."
+                ),
+            }
         if not self.config_partie.peut_lancer():
             return {
                 "succes": False,

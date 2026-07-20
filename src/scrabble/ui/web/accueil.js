@@ -106,19 +106,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         nbHumains.textContent = etat.nb_humains;
         nbOrdinateurs.textContent = etat.nb_ordinateurs;
 
-        // Boutons
-        btnAjouterHumain.disabled = !etat.peut_ajouter_humain;
+        // Boutons.
+        //
+        // Un seul joueur humain est autorisé (issue #175) : le bouton « Ajouter
+        // un joueur » DISPARAÎT complètement dès qu'un humain est présent (pas de
+        // désactivation grisée ni de tooltip) et réapparaît si l'humain est
+        // retiré. On pilote donc sa visibilité (``hidden``) et non son état
+        // ``disabled``. Le bouton « Ajouter un ordinateur » garde, lui, son
+        // comportement historique (désactivé quand la table est pleine).
+        btnAjouterHumain.hidden = !etat.peut_ajouter_humain;
         btnAjouterOrdinateur.disabled = !etat.peut_ajouter_ordinateur;
         btnLancer.disabled = !etat.peut_lancer;
 
-        // Messages de limite
+        // Messages de limite. La saturation du quota d'humains n'est plus un
+        // message affiché (le bouton disparaît silencieusement, issue #175) : ne
+        // subsiste que l'information relative aux ordinateurs / à la table pleine.
         let messageLimite = '';
-        if (!etat.peut_ajouter_humain && !etat.peut_ajouter_ordinateur) {
-            messageLimite = 'Table complète (4 joueurs maximum)';
-        } else if (!etat.peut_ajouter_humain) {
-            messageLimite = 'Maximum 4 joueurs humains atteint';
-        } else if (!etat.peut_ajouter_ordinateur) {
-            messageLimite = 'Maximum 3 ordinateurs atteint';
+        if (!etat.peut_ajouter_ordinateur) {
+            messageLimite = etat.nb_total >= 4
+                ? 'Table complète (4 joueurs maximum)'
+                : 'Maximum 3 ordinateurs atteint';
         }
 
         // Supprimer l'ancien message s'il existe
