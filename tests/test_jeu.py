@@ -3660,3 +3660,164 @@ class TestEvaluerScoreTotal:
         assert ev["total"] == total
         assert ev["nb_joueurs"] == nb_joueurs
         assert ev["qualificatif"] == qualificatif
+
+
+class TestSourceDictionnaireValidationCoup:
+    """La source du dictionnaire s'applique jusqu'à la validation d'un coup réel (issue #211).
+
+    Suite de l'issue #210 : celui-ci ne corrigeait que la CRÉATION de la partie
+    (``ApiAccueil.lancer_partie``/``reprendre`` transmettant enfin
+    ``source_dictionnaire`` à ``obtenir_trie``). Le rapport #211 soupçonnait un
+    SECOND point — côté ``ui/jeu.py`` (``ApiJeu.verifier_coup``/``poser_mot``) ou
+    ``ui/application.py`` — qui reconstruirait un Trie sur l'ODS par défaut au
+    lieu de réutiliser ``partie.dictionnaire`` déjà corrigé.
+
+    Vérification exhaustive : aucun tel point n'existe. ``verifier_coup`` délègue
+    à :func:`simuler_coup` (→ ``valider_coup(..., partie.dictionnaire)``),
+    ``poser_mot`` à :func:`jouer_placements` (→ ``partie.jouer_coup`` →
+    ``self.dictionnaire``). Ces tests l'ancrent de bout en bout : on crée la
+    partie via l'accueil avec une source donnée (Trie **spécifique à la source**,
+    monkeypatché), puis on valide/joue un coup via la vraie ``ApiJeu`` et on
+    exige que le verdict suive la source choisie.
+
+    Note factuelle (données réelles vérifiées) : « COVID » est présent dans la
+    source Hunspell et **absent** de l'ODS8 ; « AERA » est présent dans l'ODS8 et
+    **absent** de Hunspell. Le rapport #211 avait inversé ces appartenances : le
+    « COVID accepté sous Hunspell » qu'il décrivait est en réalité le
+    comportement CORRECT. Ces mots servent ici de témoins croisés.
+    """
+
+    _TRIES = {
+        # COVID : Hunspell uniquement ; AERA : ODS uniquement (données réelles).
+        "hunspell": _DicoMots("COVID"),
+        "ods": _DicoMots("AERA"),
+    }
+
+    def _creer_partie_via_accueil(self, monkeypatch, source):
+        """Crée une partie via ``ApiAccueil.lancer_partie`` avec la source donnée.
+
+        On monkeypatch ``obtenir_trie`` pour renvoyer un Trie **propre à la
+        source** (sans dépendre des fichiers de dictionnaire réels, gitignorés),
+        exactement comme le fait le chemin de production après #210.
+        """
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.charger_config",
+            lambda: {
+                "source_dictionnaire": source,
+                "vocabulaire_humain": False,
+                "bonus_fin_partie": False,
+            },
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda s="ods": self._TRIES[s],
+        )
+        # Pas de persistance en base pendant le test : id_partie reste None,
+        # ce qui neutralise aussi ``_persister_entrees`` côté ApiJeu.
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: None)
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Facile")
+        resultat = api.lancer_partie()
+        assert resultat["succes"] is True
+        return api._partie, api._id_partie
+
+    @staticmethod
+    def _preparer_api_jeu(partie, id_partie, lettres):
+        """Installe la partie dans une ``ApiJeu`` et arme le chevalet du joueur courant."""
+        # Le tirage d'ordre a pu réordonner les joueurs : on place la main sur le
+        # joueur humain et on lui donne les tuiles nécessaires au coup.
+        partie.index_courant = next(
+            i for i, j in enumerate(partie.joueurs) if j.humain
+        )
+        partie.joueurs[partie.index_courant].chevalet = list(lettres)
+        # Chemin historique accueil → jeu : ``ApiJeu(partie, id_partie)`` (voir
+        # ``lancer_jeu``). id_partie None → aucune écriture en base.
+        return ApiJeu(partie, id_partie)
+
+    @staticmethod
+    def _placements(mot):
+        """Placements « clic-clic » d'un mot horizontal couvrant le centre (7,7)."""
+        return [_placement(7, 7 + i, lettre) for i, lettre in enumerate(mot)]
+
+    def test_verifier_coup_refuse_mot_absent_de_la_source_active(self, monkeypatch):
+        """Sous Hunspell, un mot ODS-only (« AERA ») est refusé par « Vérifier et calculer »."""
+        partie, id_partie = self._creer_partie_via_accueil(monkeypatch, "hunspell")
+        api = self._preparer_api_jeu(partie, id_partie, "AERASXY")
+
+        resultat = api.verifier_coup(self._placements("AERA"))
+
+        assert resultat["succes"] is False
+        assert resultat.get("erreur")
+        # Aucun score annoncé pour un coup refusé (pas de « +N points » trompeur).
+        assert "points" not in resultat
+
+    def test_poser_mot_refuse_mot_absent_de_la_source_active(self, monkeypatch):
+        """Sous Hunspell, « Jouer » refuse aussi le mot ODS-only et n'avance pas la partie."""
+        partie, id_partie = self._creer_partie_via_accueil(monkeypatch, "hunspell")
+        api = self._preparer_api_jeu(partie, id_partie, "AERASXY")
+        index_avant = partie.index_courant
+        historique_avant = len(partie.historique)
+
+        resultat = api.poser_mot(self._placements("AERA"))
+
+        assert resultat["succes"] is False
+        assert resultat.get("erreur")
+        # La partie n'a pas avancé : correction possible sans rien perdre.
+        assert partie.index_courant == index_avant
+        assert len(partie.historique) == historique_avant
+        assert partie.plateau.case_vide(7, 7)
+
+    def test_verifier_coup_accepte_mot_propre_a_la_source_active(self, monkeypatch):
+        """Sous Hunspell, un mot Hunspell-only (« COVID ») est bien accepté et scoré.
+
+        Témoin positif : prouve que le Trie effectivement consulté est celui de
+        Hunspell (et non un ODS reconstruit, qui refuserait COVID).
+        """
+        partie, id_partie = self._creer_partie_via_accueil(monkeypatch, "hunspell")
+        api = self._preparer_api_jeu(partie, id_partie, "COVIDSX")
+
+        resultat = api.verifier_coup(self._placements("COVID"))
+
+        assert resultat["succes"] is True
+        assert resultat["points"] > 0
+        assert resultat["detail"]["mots"][0]["texte"] == "COVID"
+
+    def test_source_ods_par_defaut_aucune_regression(self, monkeypatch):
+        """Sous ODS (défaut), le verdict s'inverse : AERA accepté, COVID refusé.
+
+        Garde-fou anti-régression sur le comportement par défaut demandé par #211.
+        """
+        partie, id_partie = self._creer_partie_via_accueil(monkeypatch, "ods")
+        api = self._preparer_api_jeu(partie, id_partie, "AERACOV")
+
+        accepte = api.verifier_coup(self._placements("AERA"))
+        assert accepte["succes"] is True
+        assert accepte["detail"]["mots"][0]["texte"] == "AERA"
+
+        refuse = api.verifier_coup(self._placements("COVID"))
+        assert refuse["succes"] is False
+        assert refuse.get("erreur")
+
+    def test_routeur_unifie_conserve_le_dictionnaire_de_la_partie(self, monkeypatch):
+        """La coquille unifiée (``ApiRouteur.charger_jeu``) ne reconstruit aucun Trie.
+
+        Point 3 du rapport #211 : ``application.py`` transmet la partie créée par
+        l'accueil à la sous-API Jeu SANS toucher au dictionnaire. On vérifie
+        l'identité de l'objet ``dictionnaire`` de bout en bout, ce qui exclut
+        toute reconstruction silencieuse sur la source par défaut.
+        """
+        from scrabble.ui.application import ApiRouteur
+
+        partie, id_partie = self._creer_partie_via_accueil(monkeypatch, "hunspell")
+        dico_attendu = partie.dictionnaire
+
+        routeur = ApiRouteur()
+        routeur.charger_jeu(partie, id_partie)
+
+        # La sous-API Jeu tient exactement la même partie, avec le même Trie.
+        assert routeur._api_jeu._partie is partie
+        assert routeur._api_jeu._partie.dictionnaire is dico_attendu

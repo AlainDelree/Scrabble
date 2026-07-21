@@ -115,7 +115,7 @@ class TestJournalAccueil:
     def test_lancer_partie_journalise_avec_nb_joueurs(self, espion, monkeypatch):
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda: Trie.depuis_iterable(["MAISON", "TEST"]),
+            lambda source="ods": Trie.depuis_iterable(["MAISON", "TEST"]),
         )
         monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: 42)
 
@@ -133,7 +133,7 @@ class TestJournalAccueil:
         boum = RuntimeError("dictionnaire cassé")
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda: (_ for _ in ()).throw(boum),
+            lambda source="ods": (_ for _ in ()).throw(boum),
         )
         api = ApiAccueil()
         api.ajouter_humain("Alice")
@@ -154,7 +154,7 @@ class TestJournalAccueil:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda: Trie.depuis_iterable(["TEST"]),
+            lambda source="ods": Trie.depuis_iterable(["TEST"]),
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.reprendre_partie",
@@ -169,7 +169,7 @@ class TestJournalAccueil:
     def test_reprendre_introuvable_journalise_erreur(self, espion, monkeypatch):
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda: Trie.depuis_iterable(["TEST"]),
+            lambda source="ods": Trie.depuis_iterable(["TEST"]),
         )
 
         def _absente(id_partie, trie, dictionnaire_ia=None):

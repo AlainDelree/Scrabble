@@ -52,6 +52,11 @@
 - [ ] **Onglet Général** — changer le **prénom principal** (le changement est sauvegardé automatiquement à la perte de focus).
 - [ ] **Onglet Général** — changer le **thème du plateau** (menu déroulant) : message « Changement sauvé automatiquement ».
 - [ ] **Onglet Général** — changer la **source du dictionnaire** (prend effet à la prochaine partie).
+- [ ] **Source du dictionnaire réellement appliquée** (issue #210) — nécessite que les deux sources soient installées dans `data/dictionnaire/` :
+  1. Repérer au préalable un **mot présent dans Hunspell mais absent de l'ODS8** (`H`) et un **mot présent dans l'ODS8 mais absent de Hunspell** (`O`) — l'onglet Dictionnaire, qui affiche le statut par source, permet de les identifier.
+  2. Réglages → Général → **source = Hunspell**, puis **lancer une nouvelle partie**. Poser (ou vérifier via la loupe 🔎) le mot `H` : il doit être **accepté** ; poser/vérifier le mot `O` : il doit être **refusé**.
+  3. Revenir à l'accueil, Réglages → Général → **source = ODS 8**, relancer une partie : cette fois `O` doit être **accepté** et `H` **refusé**.
+  4. Vérifier enfin qu'une **partie reprise** (« Reprendre ») respecte elle aussi la source active (même test sur `H`/`O`).
 - [ ] **Onglet Dictionnaire** — rechercher un **mot existant** : affichage du statut par source + définition si disponible.
 - [ ] **Onglet Dictionnaire** — rechercher un **mot inexistant** : statut « Absent » sur les sources.
 - [ ] **Onglet Dictionnaire** — **ajouter** un mot à une source (bouton « Ajouter ») puis vérifier son statut « Présent (ajouté manuellement) ».
@@ -144,65 +149,73 @@
 
 ---
 
-## 5. Coquille unifiée (mono-fenêtre) — vérification AVANT bascule de `main.py` (issue #182)
+## 5. Coquille unifiée (mono-fenêtre) — chemin de PRODUCTION par défaut (issue #212)
 
-> **Statut.** La coquille unifiée (`lancer_application_unifiee`, une seule fenêtre
-> physique + un chevalet compagnon persistant, une seule boucle `webview.start()`)
-> **n'est PAS branchée par défaut** : `main.py` utilise toujours
-> `lancer_accueil`/`lancer_jeu`. Cette section liste ce qu'Alain doit vérifier
-> **visuellement, sur son poste (WebKitGTK réel)**, avant toute décision de
-> basculer `main.py`. Les tests automatisés sont headless et **ne peuvent pas**
-> garantir l'absence de flash de fenêtre, le bon repositionnement du chevalet, ni
-> — point le plus sensible — qu'aucun processus ne reste actif après fermeture.
+> **Statut.** Depuis l'issue #212, la coquille unifiée (`lancer_application_unifiee`,
+> une seule fenêtre physique, une seule boucle `webview.start()`) **EST le chemin
+> de production par défaut** : `main.py` l'appelle directement (via
+> `scrabble.ui.application.main`). Elle remplace l'ancien chemin
+> `lancer_accueil`/`lancer_jeu` qui détruisait/recréait une fenêtre à chaque
+> transition (flash visible). Depuis le nettoyage du modèle de fenêtres (issue
+> #193), le chevalet n'est plus une fenêtre compagnon mais une **zone HTML
+> intégrée** à `jeu.html` (zone C) : il n'y a donc plus **aucune** seconde fenêtre.
+>
+> Cette section liste ce qu'Alain doit vérifier **visuellement, sur son poste
+> (WebKitGTK réel)**, **avant chaque livraison**. Les tests automatisés sont
+> headless et **ne peuvent pas** garantir l'absence de flash de fenêtre ni —
+> point le plus sensible — qu'aucun processus ne reste actif après fermeture.
 
-### Comment lancer la coquille unifiée pour ce test (sans toucher à la production)
+### Comment lancer l'application
 
-Depuis la racine du dépôt (`src` sur le `PYTHONPATH`, comme en test) :
+Le lancement normal (`main.py`, ou l'exécutable packagé) emprunte désormais ce
+chemin. Pour un lancement direct du module depuis la racine du dépôt (`src` sur
+le `PYTHONPATH`, comme en test) :
 
 ```bash
+python main.py
+# ou, équivalent pour tester le module directement :
 PYTHONPATH=src python -m scrabble.ui.application
 ```
 
-C'est le **seul** moyen d'activer la coquille unifiée à ce stade ; `main.py`
-reste inchangé.
+> **Filet de sécurité (rollback).** L'ancien chemin historique
+> (`lancer_accueil`/`lancer_jeu`, `scrabble.ui.accueil.main`) reste présent dans
+> le code, simplement plus invoqué. En cas de régression bloquante constatée
+> ici, on peut y revenir en faisant réappeler `scrabble.ui.accueil.main` par
+> `main.py`.
 
 ### Transitions (aucun flash de fenêtre, une seule fenêtre physique)
 
 - [ ] **Accueil → Jeu (nouvelle partie)** : « Lancer la partie » → l'écran de jeu apparaît **dans la même fenêtre** (pas de fermeture/réouverture, pas de flash blanc/vert).
 - [ ] **Accueil → Jeu (reprise)** : « Reprendre une partie » → même fenêtre, plateau directement jouable (pas d'écran de tirage).
-- [ ] **Tirage d'ordre** : pour une nouvelle partie, l'écran de tirage s'affiche, puis « Continuer » **révèle le chevalet** et bascule sur le plateau, sans clignotement.
-- [ ] **Jeu → Accueil (Retour au menu)** : « 🏠 Retour au menu » → l'accueil réapparaît dans la même fenêtre, le **chevalet disparaît** (masqué, pas détruit).
+- [ ] **Tirage d'ordre** : pour une nouvelle partie, l'écran de tirage s'affiche, puis « Continuer » **révèle la zone chevalet** et bascule sur le plateau, sans clignotement.
+- [ ] **Jeu → Accueil (Retour au menu)** : « 🏠 Retour au menu » → l'accueil réapparaît dans la même fenêtre, sans flash.
 - [ ] **Jeu → Jeu (Recommencer)** : « Recommencer » (modale de fin) → nouvelle partie, nouvel écran de tirage, chevalet remis en place ensuite.
 - [ ] **Annuler le tirage** : bouton « Annuler » de l'écran de tirage → retour à l'accueil, la partie annulée **n'apparaît pas** dans « Reprendre une partie ».
 - [ ] Enchaîner **plusieurs allers-retours** (accueil → jeu → menu → jeu → recommencer → menu…) : aucune latence croissante, aucune fenêtre fantôme.
 
-### Chevalet compagnon (positionnement après CHAQUE transition)
+### Zone chevalet intégrée (après CHAQUE transition)
 
-- [ ] Après **chaque** entrée en jeu, le chevalet est **bien positionné** (bas-centre) et **lié au plateau** (au-dessus de lui, suit le plateau).
-- [ ] Le chevalet reste **masqué** en vue Accueil et **pendant un tirage d'ordre** (jamais visible hors du jeu jouable).
-- [ ] Le chevalet **réapparaît correctement** (bonnes lettres, bon endroit) à la reprise/au recommencement, sans rester coincé à un ancien emplacement.
+- [ ] Après **chaque** entrée en jeu, la **zone chevalet** (zone C de `jeu.html`) s'affiche correctement (7 lettres, bon endroit), sans rester coincée sur un ancien état.
+- [ ] La zone chevalet reste **masquée** en vue Accueil et **pendant un tirage d'ordre** (jamais visible hors du jeu jouable).
+- [ ] La zone chevalet **réapparaît correctement** (bonnes lettres) à la reprise/au recommencement.
 
 ### ⚠️ Fermeture par la croix ✕ — POINT CRITIQUE (risque de processus fantôme)
 
 > Mal câblé, ce point pourrait laisser un **processus tourner indéfiniment en
-> arrière-plan**. À vérifier avec un terminal ouvert en parallèle.
+> arrière-plan**. À vérifier avec un terminal ouvert en parallèle (ou, sous
+> Windows, via le Gestionnaire des tâches : aucun `Scrabble.exe` résiduel).
 
-- [ ] Fermer par le **✕ de la fenêtre principale pendant que le JEU est actif** : les **deux** fenêtres (principale + chevalet) disparaissent, l'application quitte.
-- [ ] Fermer par le **✕ de la fenêtre principale pendant que l'ACCUEIL est actif** (chevalet masqué) : l'application quitte quand même **entièrement** (le chevalet masqué ne doit pas survivre).
-- [ ] Si la barre/croix du **chevalet** est atteignable : la fermer détruit **aussi** la fenêtre principale et quitte.
+- [ ] Fermer par le **✕ pendant que le JEU est actif** : la fenêtre disparaît, l'application quitte.
+- [ ] Fermer par le **✕ pendant que l'ACCUEIL est actif** : l'application quitte **entièrement**.
 - [ ] **VÉRIFICATION PROCESSUS** — après CHACUNE des fermetures ci-dessus, contrôler dans un terminal qu'**aucun** processus ne reste :
 
   ```bash
   ps aux | grep -i "scrabble\|python -m scrabble.ui.application" | grep -v grep
   ```
 
-  La commande ne doit **rien** afficher. Si un processus subsiste → **ne pas basculer `main.py`** et le signaler.
+  La commande ne doit **rien** afficher (sous Windows : aucun `Scrabble.exe` dans le Gestionnaire des tâches). Si un processus subsiste → **régression bloquante**, envisager le rollback (voir plus haut) et le signaler.
 
 - [ ] Fermer par ✕ **avec un coup en attente** (lettres posées non validées) : la croix ferme **sans** blocage ni boîte de confirmation implicite (la confirmation ne concerne QUE le bouton applicatif « Retour au menu »).
-
-### Décision de bascule
-
-- [ ] Toutes les cases ci-dessus cochées **ET** aucun processus résiduel constaté sur plusieurs fermetures consécutives → la bascule de `main.py` vers `lancer_application_unifiee` peut être envisagée dans une issue dédiée.
 
 ---
 

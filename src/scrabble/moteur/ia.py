@@ -15,14 +15,33 @@ Niveaux de difficulté
   #202).
 * **INTERMEDIAIRE** : choix aléatoire uniforme parmi le meilleur tiers des
   coups (top 33 %). Favorise les bons coups sans être optimal.
-* **FACILE** : choix aléatoire uniforme parmi la moitié inférieure des coups.
-  Délibérément sous-optimal mais pas absurde.
+* **FACILE** : choix aléatoire uniforme parmi les 60 % meilleurs coups (top
+  60 %), c'est-à-dire en écartant les 40 % de coups les plus faibles. Reste
+  délibérément sous-optimal, mais réellement plus fort que DEBUTANT en score
+  moyen (issue #208, voir la note ci-dessous).
 * **DEBUTANT** : choix aléatoire uniforme parmi TOUS les coups, sans
   considération de score. Peut occasionnellement jouer un bon coup par chance.
 
+Ordre réel de force (score moyen)
+---------------------------------
+Les stratégies ci-dessus produisent, en moyenne, l'ordre croissant
+``DEBUTANT < FACILE < INTERMEDIAIRE < AVANCE < EXPERT`` — cohérent avec l'ordre
+de la classe :class:`Niveau` et avec ce que suggèrent les noms des niveaux.
+
+Pourquoi « top 60 % » plutôt qu'une moitié/tranche centrale ? La distribution
+des scores est fortement asymétrique : quelques coups à très fort score (un
+« scrabble » vaut ~70 pts) tirent la MOYENNE de DEBUTANT (qui échantillonne
+tous les coups) bien au-dessus de la médiane. Une tranche centrée sur la
+médiane resterait donc, en moyenne, SOUS DEBUTANT. Écarter les 40 % les plus
+faibles garantit au contraire ``FACILE > DEBUTANT`` (on ne retient que la
+partie haute), tout en gardant ``FACILE < INTERMEDIAIRE`` puisque le top 33 %
+d'INTERMEDIAIRE est un sous-ensemble strictement meilleur du top 60 %. Cette
+monotonie est donc structurelle, indépendante du dictionnaire employé (elle
+vaut avec ou sans le filtre de « vocabulaire humain », issue #206/#207).
+
 Comportement de repli (listes courtes)
 --------------------------------------
-Si la tranche calculée (top 15 %, tiers, moitié) est vide, on retombe sur la liste
+Si la tranche calculée (top 15 %, tiers, top 60 %) est vide, on retombe sur la liste
 complète. Cela évite tout crash sur des positions avec peu de coups jouables.
 Exemple : 2 coups disponibles, tiers = 0 → on choisit parmi les 2.
 
@@ -117,11 +136,17 @@ def _choisir_intermediaire(coups: list[CoupNote], rng: random.Random) -> Coup:
 
 
 def _choisir_facile(coups: list[CoupNote], rng: random.Random) -> Coup:
-    """FACILE : aléatoire parmi la moitié inférieure des coups."""
-    taille_moitie = len(coups) // 2
-    if taille_moitie == 0:
-        return rng.choice(coups).coup
-    return rng.choice(coups[taille_moitie:]).coup
+    """FACILE : aléatoire parmi les 60 % meilleurs coups (top 60 %).
+
+    Écarte les 40 % de coups les plus faibles, ce qui remonte le score moyen
+    au-dessus de DEBUTANT (qui tire parmi TOUS les coups) tout en restant
+    nettement sous INTERMEDIAIRE (top 33 %, sous-ensemble strictement meilleur).
+    ``max(1, ...)`` garantit un sous-ensemble non vide (repli sur le seul
+    meilleur coup pour les listes très courtes), comme les autres niveaux
+    (issue #208).
+    """
+    taille_haut = max(1, len(coups) * 60 // 100)
+    return rng.choice(coups[:taille_haut]).coup
 
 
 def _choisir_debutant(coups: list[CoupNote], rng: random.Random) -> Coup:
