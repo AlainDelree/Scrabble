@@ -1,29 +1,32 @@
 /**
- * jeu.js — fenêtre PLATEAU (issue #90).
+ * jeu.js — écran de jeu unique (issue #90, refonte #186/#187).
  *
- * Depuis la séparation en deux fenêtres pywebview (issue #90), cette vue ne porte
- * plus QUE la partie « publique » de l'écran de jeu : le plateau 15×15, les
- * panneaux d'information des joueurs, la barre du sac/historique, le bouton
- * « ▶ Jouer » de la fiche d'un ordinateur courant (issue #149, ex-« Faire jouer
- * l'ordinateur » ; un tour IA relève du plateau, l'humain n'a rien à jouer),
- * la vérification dictionnaire (saisie libre, sans lien avec le chevalet), le
- * « Retour au menu » et une copie de la modale de détail du score (ouverte depuis
- * l'historique) ainsi que le sélecteur de lettre du joker (menu déroulant, même
- * patron que « Derniers coups », issue #168). Le chevalet, le brouillon et la
- * sélection des lettres vivent dans la fenêtre chevalet flottante (chevalet.html
- * / chevalet.js).
+ * Après la refonte en deux colonnes (issue #186) puis la migration du chevalet
+ * (issue #187, Issue B), cette vue unique porte TOUT l'écran de jeu : le plateau
+ * 15×15, les panneaux d'information des joueurs, la barre du sac/historique, le
+ * bouton « ▶ Jouer » de la fiche d'un ordinateur courant (issue #149), la
+ * vérification dictionnaire, le « Retour au menu », la modale de détail du score,
+ * le sélecteur de lettre du joker (issue #168) ET, désormais, le CHEVALET du
+ * joueur humain de référence (panneau des 9 cases, zone C de la marge gauche —
+ * bloc « Chevalet du joueur… » plus bas). L'ex-fenêtre chevalet flottante
+ * (chevalet.html / chevalet.js, supprimés) n'existe plus ; seule sa mécanique de
+ * drag de fenêtre n'a pas été migrée (sans objet sans fenêtre à déplacer).
  *
  * Source de vérité de l'état de pose : Python (``ApiJeu``, issue #90). Cette
  * fenêtre est une simple vue :
- *   - elle REÇOIT l'état public via ``window.appliquerEtatPlateau`` (poussé par
- *     Python après toute mutation) — jamais aucune lettre du chevalet ;
- *   - au clic sur une case, elle DEMANDE la mutation à Python
- *     (``poser_lettre_en_attente`` / ``retirer_lettre_en_attente``), qui rediffuse
- *     ensuite l'état aux deux fenêtres.
+ *   - elle REÇOIT l'état public via ``window.appliquerEtatPlateau`` ET l'état
+ *     privé du chevalet via ``window.appliquerEtatChevalet`` (tous deux poussés
+ *     par Python — ``_diffuser`` — vers cette même fenêtre depuis l'issue #187) ;
+ *   - au clic sur une case (plateau ou chevalet), elle DEMANDE la mutation à
+ *     Python (``poser_lettre_en_attente`` / ``selectionner_lettre`` / …), qui
+ *     rediffuse ensuite l'état.
  *
- * Confidentialité (issues #33/#35) : le payload reçu ici est strictement public
- * (aucune identité de lettre de chevalet) ; seules les lettres déjà posées sur le
- * plateau (``en_attente``, déjà destinées à être visibles) y figurent.
+ * Confidentialité (issues #33/#35, #99) : le payload PLATEAU reçu ici est
+ * strictement public (aucune identité de lettre de chevalet) ; le payload
+ * CHEVALET porte les lettres du SEUL joueur humain de référence (jamais un
+ * ordinateur ni un autre humain). Les deux co-résident maintenant dans ce
+ * document, mais sans fuite : Python ne sérialise que les lettres du joueur de
+ * référence, exactement comme quand le chevalet avait sa propre fenêtre.
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -34,9 +37,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Éléments du DOM ---
     const plateauEl = document.getElementById('plateau');
-    // Slots des panneaux joueurs, un par côté du plateau (issue #33). Le JS y
-    // insère le panneau du joueur dont la position (calculée côté Python) vaut
-    // le côté correspondant.
+    // Slots des fiches joueurs, empilés verticalement dans la zone B de la marge
+    // gauche (issues #33, #186 puis #195). De haut en bas : haut → gauche →
+    // droite → bas (ordre DOM). Le JS insère chaque fiche dans le slot désigné
+    // par sa position (calculée côté Python), de sorte que la lecture de haut en
+    // bas suive l'ordre de jeu, l'humain de référence restant en bas.
     const slots = {
         haut: document.getElementById('slot-haut'),
         gauche: document.getElementById('slot-gauche'),
@@ -58,11 +63,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const historiqueListe = document.getElementById('historique-liste');
     const historiqueCompte = document.getElementById('historique-compte');
     const btnRafraichir = document.getElementById('btn-rafraichir');
-    // Sélecteur de lettre du joker (issue #168) : menu déroulant ancré dans la
-    // barre globale, même patron que « Derniers coups ». Remplace la modale de la
-    // fenêtre chevalet (issue #90/#157). Bouton d'ancrage + popover masqués tant
-    // qu'aucun joker n'est en cours de pose ; révélés par ouvrirSelecteurJoker().
-    const jokerBouton = document.getElementById('btn-joker');
+    // Sélecteur de lettre du joker (issues #168/#201). Popover en position fixe,
+    // masqué tant qu'aucun joker n'est en cours de pose ; ouvrirSelecteurJoker() le
+    // révèle et le place DIRECTEMENT sur la case du plateau où le joker est posé
+    // (issue #201), au lieu de l'ancrer à un bouton de la marge gauche étroite où
+    // la grille des 26 lettres était tronquée. Plus de bouton d'ancrage.
     const jokerPopover = document.getElementById('joker-popover');
     const jokerGrille = document.getElementById('joker-grille');
     const jokerAnnuler = document.getElementById('joker-annuler');
@@ -285,7 +290,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return item;
     }
 
-    /** Dispose les panneaux joueurs dans le slot du côté assigné (issue #33). */
+    /** Empile les fiches joueurs dans le slot assigné (ordre de jeu, issue #195). */
     function rendrePanneaux(joueurs) {
         Object.values(slots).forEach((slot) => { slot.innerHTML = ''; });
         joueurs.forEach((joueur) => {
@@ -637,20 +642,64 @@ document.addEventListener('DOMContentLoaded', async () => {
     let jokerSelecteurOuvert = false;
 
     /**
-     * Ouvre le sélecteur de lettre du joker (issue #168) : menu déroulant ancré
-     * dans la barre globale de CETTE fenêtre plateau, même famille visuelle que
-     * « Derniers coups », en remplacement de l'ancienne modale de la fenêtre
-     * chevalet (qui imposait de l'agrandir, issue #157).
+     * Place le popover du sélecteur de joker directement sur/à côté de la case du
+     * plateau ``caseEl`` (issue #201). Le popover est en ``position: fixed`` : on
+     * lui pose des coordonnées viewport (centré sous la case, remonté au-dessus
+     * si la place manque en bas), puis on le recadre dans la fenêtre — même
+     * technique que les toasts de score (issue #198) — pour qu'il ne déborde
+     * jamais du plateau ni de l'écran, quelle que soit la position de la case
+     * (coin, bord). La grille des 26 lettres étant déjà rendue au moment de
+     * l'appel, ``getBoundingClientRect`` renvoie ses dimensions réelles.
+     */
+    function positionnerPopoverJoker(caseEl) {
+        const marge = 8;
+        const popRect = jokerPopover.getBoundingClientRect();
+        // Case introuvable (ne devrait pas arriver) : repli centré à l'écran.
+        if (!caseEl) {
+            jokerPopover.style.left =
+                `${Math.max(marge, (window.innerWidth - popRect.width) / 2)}px`;
+            jokerPopover.style.top =
+                `${Math.max(marge, (window.innerHeight - popRect.height) / 2)}px`;
+            return;
+        }
+        const caseRect = caseEl.getBoundingClientRect();
+        // Idéal : popover centré horizontalement sur la case, juste en dessous.
+        let left = caseRect.left + caseRect.width / 2 - popRect.width / 2;
+        let top = caseRect.bottom + marge;
+        // Pas la place en dessous : on tente au-dessus de la case (sinon on
+        // laissera le recadrage viewport ci-après le maintenir visible).
+        if (top + popRect.height > window.innerHeight - marge) {
+            const dessus = caseRect.top - marge - popRect.height;
+            if (dessus >= marge) {
+                top = dessus;
+            }
+        }
+        // Recadrage final dans le viewport (issue #198) : jamais hors des bords.
+        left = Math.min(left, window.innerWidth - marge - popRect.width);
+        left = Math.max(left, marge);
+        top = Math.min(top, window.innerHeight - marge - popRect.height);
+        top = Math.max(top, marge);
+        jokerPopover.style.left = `${left}px`;
+        jokerPopover.style.top = `${top}px`;
+    }
+
+    /**
+     * Ouvre le sélecteur de lettre du joker : popover en surimpression posé
+     * DIRECTEMENT sur la case du plateau où le joker vient d'être posé (issue
+     * #201), au lieu d'un menu déroulant ancré dans la marge gauche étroite où la
+     * grille des 26 lettres était tronquée (issue #168). Ce nouvel emplacement,
+     * sur le plateau bien plus large que la marge, affiche l'alphabet complet sans
+     * troncature et évite les allers-retours de souris marge ⇄ plateau.
      *
      * ``demande`` = {ligne, colonne, index} renvoyé par Python dans la réponse
      * ``joker_requis`` (au clic sur une case avec un joker sélectionné). La
      * confidentialité est préservée : ``index`` est une simple position de
      * chevalet — déjà connue de cette fenêtre puisque Python la lui renvoie — et
-     * jamais la lettre. À la sélection, on finalise la pose par le MÊME appel API
-     * qu'auparavant depuis le chevalet
+     * jamais la lettre ; ``ligne``/``colonne`` désignent la case déjà cliquée. À
+     * la sélection, on finalise la pose par le MÊME appel API qu'auparavant
      * (``poser_lettre_en_attente(l, c, lettre, true, 0, index)``) ; à l'abandon,
      * on relâche la sélection (``selectionner_lettre(null)``), le joker
-     * redevenant disponible au chevalet.
+     * redevenant disponible au chevalet — contrat métier inchangé (issue #201).
      */
     async function ouvrirSelecteurJoker(demande) {
         if (jokerSelecteurOuvert) {
@@ -658,20 +707,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         jokerSelecteurOuvert = true;
         // Referme d'abord les autres popovers de la barre (« Derniers coups » /
-        // « Vérification dictionnaire ») pour ne pas empiler deux surimpressions,
-        // puis révèle le bouton d'ancrage du menu joker.
+        // « Vérification dictionnaire ») pour ne pas empiler deux surimpressions.
         C.fermerTousPopovers();
-        jokerBouton.hidden = false;
+        // Case du plateau visée : le popover s'ouvre dessus (issue #201).
+        const caseEl = plateauEl.querySelector(
+            `.case[data-ligne="${demande.ligne}"][data-colonne="${demande.colonne}"]`);
         let choix = null;
         try {
-            choix = await C.choisirLettreJoker({
+            // La grille des 26 lettres est construite de façon SYNCHRONE par
+            // choisirLettreJoker (rendu immédiat, popover visible) : on peut le
+            // placer sur la case dès le retour de l'appel, avant peinture, sans
+            // aucun flash à sa position par défaut.
+            const promesse = C.choisirLettreJoker({
                 modale: jokerPopover, grille: jokerGrille, annuler: jokerAnnuler,
-                bouton: jokerBouton, popover: true,
+                popover: true,
             });
+            positionnerPopoverJoker(caseEl);
+            choix = await promesse;
         } finally {
             jokerSelecteurOuvert = false;
             jokerPopover.hidden = true;
-            jokerBouton.hidden = true;
         }
         if (choix) {
             try {
@@ -713,6 +768,263 @@ document.addEventListener('DOMContentLoaded', async () => {
         animerDernierCoupSiNouveau();
     }
     window.appliquerEtatPlateau = appliquerEtatPlateau;
+
+    // ================================================================== //
+    // Chevalet du joueur humain de référence (migré en zone C, issue #187)
+    // ================================================================== //
+    // Le panneau des 9 cases (7 lettres + 2 vides) et toute sa logique vivaient
+    // jusqu'ici dans une fenêtre pywebview flottante séparée (chevalet.js,
+    // supprimée). Ils sont désormais RELOCALISÉS dans ce document, en zone C de la
+    // marge gauche. Les appels API (``api.selectionner_lettre`` /
+    // ``basculer_echange`` / ``obtenir_etat_chevalet``) sont ceux de la MÊME
+    // instance ``ApiJeu`` que le reste de jeu.js utilise déjà : aucune nouvelle
+    // méthode API n'est requise. La logique de sélection/réarrangement travaille
+    // sur des index d'un tableau plat (``panneauLettres``), indépendante de la
+    // disposition visuelle — le passage d'un flex horizontal à une grille 3×3
+    // (voir jeu.css) n'y change rien. La seule mécanique NON migrée est le drag de
+    // la fenêtre flottante (``.barre-drag`` / ``deplacer_chevalet``) : sans fenêtre
+    // à déplacer, elle est sans objet.
+    //
+    // Confidentialité (issues #33/#35, #99) — À NOTER : les lettres PRIVÉES du
+    // chevalet (``etatChevalet.lettres``) et l'état PUBLIC du plateau (``etat``)
+    // co-résident maintenant dans le même document JS. Ce n'est PAS une fuite :
+    // Python (``ApiJeu._etat_chevalet``) ne sérialise toujours que les lettres du
+    // seul joueur humain de référence, jamais celles d'un ordinateur ni d'un autre
+    // humain — exactement comme quand le chevalet avait sa propre fenêtre. La
+    // garantie de l'issue #99 est donc inchangée ; seule la localisation du DOM
+    // change.
+    const panneauEl = document.getElementById('panneau');
+
+    // Dernier payload chevalet reçu de Python (état privé du joueur de référence).
+    // Distinct de ``etat`` (état public du plateau) : ne jamais les confondre.
+    let etatChevalet = null;
+    let dernierMonTour = null;       // pour détecter un changement de tour (issue #100)
+    let panneauSignature = null;     // signature des lettres pour (re)bâtir le panneau
+    let panneauLettres = [];         // {lettre, valeur, joker, indexOrigine} + 2 vides (null)
+    let panneauSelection = null;     // index (dans panneauLettres) de la case sélectionnée
+
+    /** Ensemble des index d'origine déjà posés en attente (cases « utilisées »). */
+    function indexUtilises() {
+        return new Set(
+            (etatChevalet && etatChevalet.en_attente ? etatChevalet.en_attente : [])
+                .map((p) => p.index));
+    }
+
+    /** Vrai si le mode de marquage pour l'échange partiel est actif (issue #138). */
+    function enModeEchange() {
+        return Boolean(etatChevalet && etatChevalet.mode_echange);
+    }
+
+    /** Ensemble des index d'origine marqués pour l'échange partiel (issue #138). */
+    function indexEchange() {
+        return new Set(
+            (etatChevalet && Array.isArray(etatChevalet.selection_echange))
+                ? etatChevalet.selection_echange : []);
+    }
+
+    function rendrePanneau() {
+        if (!panneauEl) {
+            return;
+        }
+        panneauEl.innerHTML = '';
+        if (panneauLettres.length === 0) {
+            panneauEl.innerHTML = '<span class="panneau-vide">Chevalet vide.</span>';
+            return;
+        }
+        const utilises = indexUtilises();
+        const echange = indexEchange();
+        const modeEchange = enModeEchange();
+        panneauLettres.forEach((l, index) => {
+            if (l === null) {
+                const vide = document.createElement('div');
+                vide.className = 'panneau-case-vide';
+                vide.dataset.index = index;
+                vide.title = 'Emplacement libre : cliquez d\'abord une lettre, '
+                    + 'puis ici pour l\'y déplacer (réflexion, sans effet sur la partie).';
+                panneauEl.appendChild(vide);
+                return;
+            }
+            const c = document.createElement('div');
+            c.className = 'panneau-case' + (l.joker ? ' joker' : '');
+            if (modeEchange) {
+                // Marquage d'échange partiel (issue #138) : surbrillance distincte
+                // de la sélection de pose ; les lettres déjà posées ne comptent pas.
+                if (!utilises.has(l.indexOrigine) && echange.has(l.indexOrigine)) {
+                    c.classList.add('a-echanger');
+                }
+            } else if (utilises.has(l.indexOrigine)) {
+                c.classList.add('utilisee');
+            } else if (index === panneauSelection) {
+                c.classList.add('selectionnee');
+            }
+            const lettreAffichee = l.joker ? '★' : C.escapeHtml(l.lettre);
+            c.innerHTML = `${lettreAffichee}<span class="val">${l.valeur}</span>`;
+            c.dataset.index = index;
+            panneauEl.appendChild(c);
+        });
+    }
+
+    /** Signature des lettres du chevalet (pour ne rebâtir le panneau qu'utile). */
+    function signatureLettres(lettres) {
+        return (lettres || []).map((l) => (l.joker ? '*' : l.lettre) + l.valeur).join(',');
+    }
+
+    /** (Re)construit le panneau à partir des lettres du chevalet. Chaque lettre
+     *  garde son ``indexOrigine`` (position dans ``etatChevalet.lettres``) pour que
+     *  la sélection Python vise la bonne lettre même après un réarrangement local
+     *  (point critique du rapport #98). Deux emplacements vides sont ajoutés pour
+     *  la réflexion. */
+    function reconstruirePanneau() {
+        const lettres = etatChevalet.lettres || [];
+        panneauLettres = lettres.map((l, i) => ({ ...l, indexOrigine: i }));
+        if (panneauLettres.length > 0) {
+            panneauLettres.push(null, null);
+        }
+        panneauSelection = null;
+    }
+
+    /**
+     * Applique un état PRIVÉ du chevalet (lettres du joueur de référence). Poussé
+     * par Python via ``window.appliquerEtatChevalet`` après toute mutation, ou
+     * obtenu au premier chargement via ``obtenir_etat_chevalet`` (issue #90,
+     * contrat #99/#100). Le choix de la lettre d'un joker reste piloté par le menu
+     * déroulant du plateau (issue #168) : rien à faire ici.
+     */
+    function appliquerEtatChevalet(payload) {
+        etatChevalet = payload || {};
+
+        // Changement de tour (issue #100) : ``index_reference`` étant constant pour
+        // toute la partie, on détecte le changement via ``mon_tour`` (bascule). Un
+        // nouveau tour repart d'un panneau neuf (réarrangement local abandonné).
+        const nouveauTour = etatChevalet.mon_tour !== dernierMonTour;
+        dernierMonTour = etatChevalet.mon_tour;
+        if (nouveauTour) {
+            panneauSignature = null;
+        }
+
+        // Le panneau n'est reconstruit qu'au changement de tour ou de contenu du
+        // chevalet (échange / nouveau tirage), pas à chaque pose (les lettres ne
+        // changent pas en posant).
+        const sig = signatureLettres(etatChevalet.lettres);
+        if (sig !== panneauSignature) {
+            reconstruirePanneau();
+            panneauSignature = sig;
+        }
+
+        // Toute pose/annulation remet la sélection Python à null : on aligne la
+        // sélection visuelle locale du panneau dessus.
+        if (etatChevalet.selection === null || etatChevalet.selection === undefined) {
+            panneauSelection = null;
+        }
+
+        rendrePanneau();
+    }
+    window.appliquerEtatChevalet = appliquerEtatChevalet;
+
+    // Clic sur une case du panneau : sémantique unifiée (issue #100).
+    //  - 1er clic sur une lettre : sélection côté Python (api.selectionner_lettre)
+    //    en visant son index d'origine (robuste au réarrangement local).
+    //  - clic suivant sur une case du PLATEAU : pose (gérée plus haut dans jeu.js).
+    //  - clic suivant sur une autre case du panneau : réarrangement local
+    //    (déplacement vers un vide ou échange), et annulation de la sélection Python.
+    if (panneauEl) {
+        panneauEl.addEventListener('click', async (evt) => {
+            const caseEl = evt.target.closest('.panneau-case, .panneau-case-vide');
+            if (!caseEl) {
+                return;
+            }
+            const index = Number(caseEl.dataset.index);
+            const lettre = panneauLettres[index];
+            const estVide = lettre === null;
+            // Une lettre déjà posée n'est ni sélectionnable ni cible d'échange.
+            const estUtilisee = !estVide && indexUtilises().has(lettre.indexOrigine);
+
+            // Mode échange partiel (issue #138) : le clic marque/démarque la lettre
+            // pour l'échange (sélection multiple), sans toucher à la pose. Aucun
+            // réarrangement local dans ce mode : l'unique action est le marquage.
+            if (enModeEchange()) {
+                if (estVide) {
+                    return;
+                }
+                await api.basculer_echange(lettre.indexOrigine);
+                return;
+            }
+
+            if (panneauSelection === null) {
+                if (estVide || estUtilisee) {
+                    return;
+                }
+                panneauSelection = index;
+                rendrePanneau();
+                await api.selectionner_lettre(lettre.indexOrigine);
+                return;
+            }
+
+            if (panneauSelection === index) {
+                // Reclic sur la même lettre : désélection (locale + Python).
+                panneauSelection = null;
+                rendrePanneau();
+                await api.selectionner_lettre(null);
+                return;
+            }
+
+            if (estUtilisee) {
+                return; // on n'échange pas avec une lettre déjà posée
+            }
+
+            // Réarrangement local (réflexion) : déplacement vers un vide ou échange.
+            if (estVide) {
+                panneauLettres[index] = panneauLettres[panneauSelection];
+                panneauLettres[panneauSelection] = null;
+            } else {
+                const tmp = panneauLettres[panneauSelection];
+                panneauLettres[panneauSelection] = panneauLettres[index];
+                panneauLettres[index] = tmp;
+            }
+            panneauSelection = null;
+            rendrePanneau();
+            // Le réarrangement local invalide la sélection Python en cours.
+            await api.selectionner_lettre(null);
+        });
+
+        // Clic droit : renvoie la lettre vers le vide le plus proche de la fin.
+        panneauEl.addEventListener('contextmenu', async (evt) => {
+            const caseEl = evt.target.closest('.panneau-case');
+            if (!caseEl) {
+                return;
+            }
+            evt.preventDefault();
+            // En mode échange partiel (issue #138), le panneau ne sert qu'au
+            // marquage : pas de réarrangement local par clic droit.
+            if (enModeEchange()) {
+                return;
+            }
+            const origine = Number(caseEl.dataset.index);
+            const lettre = panneauLettres[origine];
+            // On ne déplace pas une lettre déjà posée.
+            if (lettre === null || indexUtilises().has(lettre.indexOrigine)) {
+                return;
+            }
+            const vides = [];
+            panneauLettres.forEach((l, i) => {
+                if (l === null) {
+                    vides.push(i);
+                }
+            });
+            if (vides.length === 0) {
+                return;
+            }
+            const cible = Math.max(...vides);
+            panneauLettres[cible] = panneauLettres[origine];
+            panneauLettres[origine] = null;
+            const avaitSelection = panneauSelection !== null;
+            panneauSelection = null;
+            rendrePanneau();
+            if (avaitSelection) {
+                await api.selectionner_lettre(null);
+            }
+        });
+    }
 
     /**
      * Anime le dernier coup s'il vient d'apparaître en tête d'historique
@@ -1270,8 +1582,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             verifierMotDictionnaire();
         }
     });
-    // Popover replié (issue #86) : au clic, focus sur le champ.
-    C.configurerPopover(btnOuvrirVerif, verifPopover, () => { champVerif.focus(); });
+    // Remet le popover de vérification à zéro (issue #196) : champ vidé, verdict
+    // et définition effacés, pour qu'une réouverture démarre sur un champ vierge
+    // prêt à recevoir une nouvelle recherche (plus besoin d'effacer à la main).
+    function reinitialiserVerifDictionnaire() {
+        champVerif.value = '';
+        afficherMessageBrouillon('');
+        masquerDefinitionBrouillon();
+    }
+
+    // Popover replié (issue #86) : au clic, focus sur le champ ; à la fermeture,
+    // on efface la recherche précédente (issue #196).
+    C.configurerPopover(
+        btnOuvrirVerif, verifPopover,
+        () => { champVerif.focus(); },
+        reinitialiserVerifDictionnaire,
+    );
 
     // ------------------------------------------------------------------ //
     // Encart d'historique glissant : ouverture/fermeture + clic sur une ligne
@@ -1397,6 +1723,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                         () => caseEl.classList.remove('case-pose-revele'),
                         { once: true }
                     );
+                    // Surbrillance bleue temporaire (issue #197) : teinte bleue à
+                    // l'instant de la pose, estompée vers la couleur d'origine sur
+                    // ~5 s par l'animation CSS ``pose-fraiche-fondu`` (fond de tuile).
+                    // On retire la classe à la fin du fondu pour laisser la case dans
+                    // son état normal. Indépendant du nombre de lettres du coup : même
+                    // une pose d'une seule lettre reste nettement repérable.
+                    caseEl.classList.add('case-pose-fraiche');
+                    setTimeout(
+                        () => caseEl.classList.remove('case-pose-fraiche'),
+                        5000
+                    );
                     jouerTac();
                     if (i === cases.length - 1) {
                         setTimeout(resolve, delai);
@@ -1450,15 +1787,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Toast éphémère « +X points » (issue #136) affiché ~3 s près du panneau du
+     * Toast éphémère « +X points » (issue #136) affiché ~3 s près de la fiche du
      * joueur qui vient de jouer, pour tout coup rapportant des points (humain ou
      * ordinateur, quel que soit le nombre de mots formés : X est le score TOTAL
-     * du coup). Réutilise le calque plein écran ``#scrabble-fete`` (toujours
-     * ``pointer-events: none``) mais, contrairement au toast Scrabble centré, se
-     * positionne dynamiquement face au bon panneau selon son côté (bas/haut/
-     * gauche/droite, cf. issue #120) pour être clairement associé au bon joueur.
-     * Il est indépendant du toast Scrabble : les deux peuvent coexister sans
-     * fusion ni logique d'articulation, chacun suivant son propre cycle.
+     * du coup). Injecté dans le calque plein écran ``#points-toasts`` (toujours
+     * ``pointer-events: none``), indépendant du toast Scrabble centré : les deux
+     * peuvent coexister sans fusion, chacun suivant son propre cycle.
+     *
+     * Positionnement (issue #198) : depuis la refonte en 4 zones (#186), les
+     * fiches ne sont plus disposées en croix autour du plateau mais empilées
+     * verticalement dans la marge gauche (zone B) ; l'ancien calcul, qui poussait
+     * le toast vers l'« intérieur du plateau » selon la position logique du
+     * panneau (haut/bas/gauche/droite), envoyait donc les toasts hors écran
+     * (notamment vers la gauche pour un panneau « droite »). On ancre désormais le
+     * toast juste à droite de la fiche réelle, pointant vers le plateau (qui
+     * domine la colonne droite), avec un recadrage final dans le viewport pour
+     * qu'il reste toujours visible quelle que soit la géométrie.
      */
     function afficherToastPoints(indexJoueur, score) {
         const points = Number(score);
@@ -1474,17 +1818,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const joueur = (etat.joueurs || []).find((j) => j.index === indexJoueur);
         const cote = (joueur && joueur.position) || 'bas';
         const slot = slots[cote] || slots.bas;
-        const panneau = slot ? slot.querySelector('.panneau-joueur') : null;
-        // On ancre le toast sur l'avatar/l'icône du joueur (« près de l'image de
-        // profil ») ; à défaut, sur le panneau entier.
-        const ancre = panneau
-            ? (panneau.querySelector('.panneau-avatar')
-                || panneau.querySelector('.panneau-icone')
-                || panneau)
-            : null;
+        // On ancre le toast sur la fiche entière (bord droit) plutôt que sur le
+        // seul avatar : dans la marge gauche étroite, cela place le bandeau juste
+        // à côté de la fiche, dans la zone du plateau, sans recouvrir le nom ni le
+        // score du joueur.
+        const ancre = slot ? slot.querySelector('.panneau-joueur') : null;
 
         // Placement (wrapper) et animation (toast interne) sont séparés : le
-        // wrapper porte la transformation de recentrage face au panneau, le toast
+        // wrapper porte la transformation de recentrage face à la fiche, le toast
         // porte le fondu d'apparition/disparition — aucune des deux ne se marche
         // dessus.
         const wrapper = document.createElement('div');
@@ -1497,28 +1838,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const gap = 10;
         if (ancre) {
             const r = ancre.getBoundingClientRect();
-            const cx = r.left + r.width / 2;
             const cy = r.top + r.height / 2;
-            // Le toast pointe vers l'intérieur du plateau selon le côté du panneau.
-            if (cote === 'haut') {
-                wrapper.style.left = `${cx}px`;
-                wrapper.style.top = `${r.bottom + gap}px`;
-                wrapper.style.transform = 'translate(-50%, 0)';
-            } else if (cote === 'gauche') {
-                wrapper.style.left = `${r.right + gap}px`;
-                wrapper.style.top = `${cy}px`;
-                wrapper.style.transform = 'translate(0, -50%)';
-            } else if (cote === 'droite') {
-                wrapper.style.left = `${r.left - gap}px`;
-                wrapper.style.top = `${cy}px`;
-                wrapper.style.transform = 'translate(-100%, -50%)';
-            } else { // 'bas' (et repli)
-                wrapper.style.left = `${cx}px`;
-                wrapper.style.top = `${r.top - gap}px`;
-                wrapper.style.transform = 'translate(-50%, -100%)';
-            }
+            // Les fiches sont toutes empilées dans la marge gauche : le toast
+            // pointe vers la droite, dans la zone du plateau, quel que soit le
+            // « côté » logique du panneau.
+            wrapper.style.left = `${r.right + gap}px`;
+            wrapper.style.top = `${cy}px`;
+            wrapper.style.transform = 'translate(0, -50%)';
         } else {
-            // Aucun panneau trouvé : repli discret en bas-centre du calque.
+            // Aucune fiche trouvée : repli discret en bas-centre du calque.
             const c = calque.getBoundingClientRect();
             wrapper.style.left = `${c.left + c.width / 2}px`;
             wrapper.style.top = `${c.top + c.height * 0.82}px`;
@@ -1526,6 +1854,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         calque.appendChild(wrapper);
+        // Recadrage final dans le viewport : après ajout, on mesure le toast rendu
+        // (le wrapper a une transformation de recentrage) et on translate le
+        // wrapper pour que le bandeau ne dépasse jamais d'un bord, garantissant
+        // qu'il reste toujours visible (issue #198).
+        const marge = 8;
+        const rect = toast.getBoundingClientRect();
+        let dx = 0;
+        let dy = 0;
+        if (rect.right > window.innerWidth - marge) {
+            dx = (window.innerWidth - marge) - rect.right;
+        }
+        if (rect.left + dx < marge) {
+            dx = marge - rect.left;
+        }
+        if (rect.bottom > window.innerHeight - marge) {
+            dy = (window.innerHeight - marge) - rect.bottom;
+        }
+        if (rect.top + dy < marge) {
+            dy = marge - rect.top;
+        }
+        if (dx || dy) {
+            wrapper.style.left = `${parseFloat(wrapper.style.left) + dx}px`;
+            wrapper.style.top = `${parseFloat(wrapper.style.top) + dy}px`;
+        }
         // 3 s d'affichage puis disparition automatique (le fondu de sortie est géré
         // par l'animation CSS, dont la durée totale vaut aussi 3 s).
         setTimeout(() => { wrapper.remove(); }, 3000);
@@ -1732,12 +2084,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             return;
         }
-        // Continuer : Python révèle et positionne la fenêtre chevalet ; on
-        // réaffiche le plateau, les fiches et la barre globale.
+        // Continuer : Python marque le tirage terminé ; on réaffiche le plateau,
+        // les fiches, la barre globale et le panneau chevalet intégré (zone C).
         try {
             await api.terminer_tirage();
         } catch (err) {
-            /* une erreur de révélation du chevalet ne doit pas bloquer le jeu */
+            /* une erreur de fin de tirage ne doit pas bloquer le jeu */
         }
         ecranTirage.hidden = true;
         document.body.classList.remove('tirage-en-cours');
@@ -1753,6 +2105,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
         // Le premier push de Python prendra le relais si l'appel initial échoue.
     }
+    // Premier tirage de l'état PRIVÉ du chevalet (issue #187, ex-chevalet.js) :
+    // amorce le panneau des 9 cases dès le chargement, avant toute mutation. Le
+    // premier push de Python (_diffuser) prendra le relais si l'appel échoue.
+    try {
+        const initialChevalet = await api.obtenir_etat_chevalet();
+        appliquerEtatChevalet(initialChevalet);
+    } catch (err) {
+        /* le premier push de Python amorcera le chevalet si cet appel échoue */
+    }
+
+    // Révélation du plateau (issue #191). Jusqu'ici ``body.jeu-en-init`` (posée
+    // en dur dans jeu.html) maintenait le plateau, les fiches et le décor cachés
+    // pour éviter tout flash au lancement. Maintenant que la décision est prise
+    // (écran de tirage affiché, ou plateau à afficher directement en reprise) et
+    // que l'état initial est appliqué, on peut révéler l'interface. Si l'écran de
+    // tirage est encore actif, ``body.tirage-en-cours`` continue seul de masquer
+    // le plateau ; il ne sera visible qu'après « Continuer » (terminer_tirage).
+    document.body.classList.remove('jeu-en-init');
 
     // Diagnostic géométrie (issue #152) : deux rAF pour lire la mise en page réelle
     // une fois le plateau rendu et posé par WebKitGTK.

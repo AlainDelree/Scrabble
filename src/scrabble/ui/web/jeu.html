@@ -7,94 +7,126 @@
     <link rel="stylesheet" href="commun.css">
     <link rel="stylesheet" href="jeu.css">
 </head>
-<body>
-    <!-- Décor issue #70 (suite #66) : « SCRABBLE » en grand, blanc, orienté
-         verticalement (rotation 90°), plaqué sur le bord GAUCHE de l'écran, à
-         hauteur de la zone du sac de lettres (sur le tapis vert, issue #59).
-         Purement esthétique : aria-hidden (ignoré des lecteurs d'écran),
-         pointer-events:none + user-select:none (voir .decor-scrabble) → il
-         n'intercepte JAMAIS un clic et ne gêne aucune interaction. Placé dans
-         la gouttière verte à gauche du contenu centré ; masqué en dessous d'une
-         certaine largeur de fenêtre (media query) pour ne jamais chevaucher le
-         sac, l'historique, les panneaux ou le plateau. -->
+<!-- ``jeu-en-init`` masque le plateau/les fiches/le décor DÈS le premier rendu,
+     avant même l'exécution de jeu.js : évite le flash du plateau au lancement
+     d'une partie tant que la décision tirage-en-cours / plateau n'est pas prise
+     (issue #191). jeu.js retire cette classe une fois l'état initial appliqué. -->
+<body class="jeu-en-init">
+    <!-- Refonte de l'écran de jeu en 2 colonnes (issue #186, Issue A). L'ancienne
+         disposition « en croix » (grille 3×3 : plateau central, une fiche joueur
+         par côté) est remplacée par :
+           - une MARGE GAUCHE étroite (.colonne-gauche) qui empile verticalement
+             les 4 zones autrefois dispersées : boutons système (A), fiches
+             joueurs (B), emplacement chevalet réservé (C, vide pour l'instant) et
+             actions du joueur humain (D) ;
+           - une COLONNE DROITE (.colonne-plateau) où le plateau, agrandi, occupe
+             toute la hauteur disponible en restant carré.
+         Aucune fonctionnalité n'est ajoutée ni retirée : tout le contenu
+         (boutons, fiches, actions) est simplement RELOCALISÉ, en conservant ses
+         id / classes / écouteurs JS. Le décor vertical « SCRABBLE » (issue #70)
+         et l'ancienne loupe fixe en gouttière (issue #86) n'ont plus de gouttière
+         où vivre : le décor est neutralisé (voir jeu.css) et la loupe rejoint la
+         zone A. Le chevalet reste, à ce stade, la fenêtre flottante actuelle
+         (inchangée) ; sa migration dans la zone C est l'objet de l'Issue B. -->
+
+    <!-- Décor « SCRABBLE » vertical (issue #70) : conservé dans le DOM par
+         cohérence historique mais neutralisé (display:none, voir jeu.css) depuis
+         la refonte #186 — la gouttière gauche où il vivait n'existe plus, la marge
+         gauche est désormais occupée par les 4 zones fonctionnelles. -->
     <div class="decor-scrabble" aria-hidden="true">SCRABBLE</div>
 
-    <!-- Vérification dictionnaire (issue #86) : sortie de la zone chevalet, où
-         elle n'avait rien à voir avec le tour de jeu en cours. Elle est logée
-         ici, dans l'espace vertical libre à gauche de l'écran (entre le décor
-         « SCRABBLE » et la barre du sac), derrière un bouton discret. Un clic
-         ouvre un petit popover contenant le champ + le bouton de vérification :
-         MÊME comportement qu'avant (même logique JS, mêmes id #champ-verif /
-         #btn-verifier / #message-brouillon), seul l'emplacement change.
-         Repli responsive (voir jeu.css) : quand la gouttière gauche est trop
-         étroite (fenêtre non maximisée), le bouton se réduit à sa seule icône
-         🔎 plutôt que de disparaître ou de casser la mise en page. -->
-    <div class="verif-dico-ancre">
-        <button id="btn-ouvrir-verif" class="btn btn-verif-dico"
-                aria-haspopup="dialog" aria-expanded="false"
-                title="Vérifier si un mot existe dans le dictionnaire">
-            <span class="verif-dico-icone" aria-hidden="true">🔎</span>
-            <span class="verif-dico-libelle">Vérification dictionnaire</span>
-        </button>
-        <div id="verif-dico-popover" class="verif-dico-popover" role="dialog"
-             aria-label="Vérification d'un mot dans le dictionnaire" hidden>
-            <!-- Champ + bouton IDENTIQUES à l'existant, simplement déplacés
-                 depuis la zone chevalet (issue #86, ex-issue #50). Le joueur tape
-                 LIBREMENT le mot à tester (n'importe quelles lettres, même
-                 absentes du chevalet) : outil de réflexion sans effet sur la
-                 partie. -->
-            <div class="zone-verif-dico">
-                <input type="text" id="champ-verif" class="champ-verif"
-                       placeholder="Tapez un mot à tester…"
-                       aria-label="Mot à vérifier dans le dictionnaire"
-                       autocomplete="off" spellcheck="false">
-                <button id="btn-verifier" class="btn btn-secondaire btn-petit">
-                    🔎 Vérifier le mot dans le dictionnaire
-                </button>
-            </div>
-            <p id="message-brouillon" class="message-brouillon" role="status" aria-live="polite"></p>
-            <!-- Définition affichée sous le verdict quand le mot est valide
-                 (issue #124). Vide/masqué si mot invalide ou brouillon vide. -->
-            <div id="definition-brouillon" class="definition-brouillon" aria-live="polite" hidden></div>
-        </div>
-    </div>
-
     <div class="container">
-        <!-- Barre globale unique (issue #47, point 2) : le sac, l'accès à
-             l'historique « Derniers coups » et le lien « Resynchroniser » sont
-             fusionnés sur UNE seule ligne horizontale en haut de l'écran.
-             L'ancienne colonne d'historique verticale (issue #45, point 4) qui
-             prenait toute la hauteur de la table à gauche a disparu : la hauteur
-             est rendue au plateau et au chevalet/brouillon. L'historique est ici
-             un menu déroulant (<details>) qui, replié, ne consomme presque aucune
-             hauteur ; déplié, sa liste s'affiche en surimpression sous la barre
-             (position absolue) sans repousser la table vers le bas. -->
-        <header>
-            <!-- Disposition de la barre (issue #125) : « Derniers coups » à
-                 GAUCHE (juste après la loupe de vérification, en gouttière), et
-                 le sac REGROUPÉ à droite avec « Resynchroniser » / « Retour au
-                 menu ». Ordre visuel, de gauche à droite : loupe | Derniers
-                 coups … Sac, Resynchroniser, Retour au menu. Bénéfice : à gauche,
-                 le menu déroulant « Derniers coups » s'ouvre dans l'espace libre
-                 de la gouttière sans recouvrir le plateau (voir jeu.css, le
-                 groupe de droite est poussé par ``margin-left:auto`` sur .sac). -->
-            <div class="barre-globale">
-                <!-- Accès à l'historique glissant (issue #37) fusionné dans la
-                     barre (issue #47, point 2). Déplacé À GAUCHE (issue #125).
-                     <details> natif : replié par défaut (aucune hauteur), la
-                     liste s'ouvre au clic en surimpression. La plus RÉCENTE EN
-                     HAUT ; chaque ligne cliquable rouvre le détail du score de CE
-                     coup (modale). -->
-                <!-- Bouton + popover (issue #144) : on abandonne le <details>
-                     natif au profit du MÊME mécanisme que « Vérification
-                     dictionnaire » (C.configurerPopover, voir commun.js) :
-                     ouverture/fermeture au clic sur le bouton, fermeture au clic
-                     EXTÉRIEUR ou à la touche Échap. Ce mécanisme unique remplace
-                     l'ancienne logique séparée qui devait ruser avec la bascule
-                     native du <details> sous WebKitGTK (issues #49/#56/#60) et ne
-                     se fermait pas à la perte de focus. La mise en page en ligne
-                     (titre + compteur + chevron) reste portée par un wrapper
-                     interne. -->
+        <!-- MARGE GAUCHE : 4 zones empilées verticalement (issue #186). -->
+        <aside class="colonne-gauche">
+
+            <!-- ============================================================ -->
+            <!-- Zone A : boutons système                                     -->
+            <!-- ============================================================ -->
+            <!-- Regroupe ce qui était dispersé dans l'ancienne « barre globale »
+                 horizontale du haut (issue #47/#125) : retour au menu,
+                 resynchroniser, sac de lettres restantes, loupe de vérification
+                 dictionnaire (ex-gouttière, issue #86) et menu « Derniers coups »
+                 (issue #37/#144). Le menu joker (issue #168) reste ici : masqué
+                 tant qu'aucun joker n'est en cours de pose. Contenu et id
+                 strictement inchangés — simple relocalisation. -->
+            <!-- Zone A répartie sur 2 lignes explicites (issue #189, croquis d'Alain) :
+                 la marge élargie (voir .container) dégage assez de place pour
+                 regrouper les pastilles côte à côte au lieu de les empiler. Deux
+                 conteneurs ``.zone-systeme-ligne`` (rangées flex) portent le
+                 découpage :
+                   - Ligne 1 : Retour au menu · Resynchroniser (icône seule) · Sac ;
+                   - Ligne 2 : loupe (vérification dictionnaire) · Derniers coups.
+                 Contenu et id strictement inchangés — seul le regroupement change. -->
+            <section class="zone-gauche zone-systeme" aria-label="Actions système">
+                <!-- Ligne 1 : retour au menu, resynchroniser (icône seule), sac. -->
+                <div class="zone-systeme-ligne">
+                    <!-- Bouton « Retour au menu » (issue #74 ; issue #78). Ferme
+                         l'écran de jeu et rouvre l'accueil ; la partie reste persistée
+                         et reprenable. Avertissement (modale) si des lettres sont
+                         posées mais non validées. -->
+                    <button id="btn-retour-menu" class="btn btn-secondaire btn-utilitaire"
+                            title="Fermer la partie et revenir au menu d'accueil (la partie reste reprenable)">
+                        🏠 Retour au menu
+                    </button>
+
+                    <!-- Bouton « Resynchroniser » (issue #41 point 3 ; issue #78).
+                         Force un rechargement de la vue depuis le moteur en cas de
+                         doute sur la synchronisation. Réduit à sa seule icône (issue
+                         #189) : Alain n'en a jamais eu besoin, il doit rester discret.
+                         Le libellé texte est retiré de l'affichage mais reste porté
+                         par ``title`` + ``aria-label`` pour l'accessibilité. -->
+                    <button id="btn-rafraichir" class="btn btn-secondaire btn-utilitaire btn-icone-seule"
+                            aria-label="Resynchroniser"
+                            title="Recharger l'affichage depuis le moteur (en cas de doute sur la synchronisation)">
+                        ↻
+                    </button>
+
+                    <!-- Sac de lettres restantes (image + nombre). L'emoji 🎒 est
+                         remplacé par l'image fournie (issue #171). -->
+                    <div class="sac">
+                        <img class="sac-icone" src="images/sac.png" alt="Sac de lettres">
+                        <span class="sac-nombre" id="sac-nombre">—</span>
+                        <span class="sac-label">lettres</span>
+                    </div>
+                </div>
+
+                <!-- Ligne 2 : loupe de vérification dictionnaire + Derniers coups
+                     (et le menu joker, masqué tant qu'aucun joker n'est en pose). -->
+                <div class="zone-systeme-ligne">
+                <!-- Vérification dictionnaire (issue #86) : le champ + le bouton
+                     de vérification vivent dans un popover ouvert au clic sur une
+                     loupe discrète. MÊME comportement / mêmes id (#champ-verif,
+                     #btn-verifier, #message-brouillon) qu'avant : seul
+                     l'emplacement change (ex-gouttière fixe → zone A, issue #186). -->
+                <div class="verif-dico-ancre">
+                    <button id="btn-ouvrir-verif" class="btn btn-verif-dico"
+                            aria-haspopup="dialog" aria-expanded="false"
+                            title="Vérifier si un mot existe dans le dictionnaire">
+                        <span class="verif-dico-icone" aria-hidden="true">🔎</span>
+                        <span class="verif-dico-libelle">Vérification dictionnaire</span>
+                    </button>
+                    <div id="verif-dico-popover" class="verif-dico-popover" role="dialog"
+                         aria-label="Vérification d'un mot dans le dictionnaire" hidden>
+                        <div class="zone-verif-dico">
+                            <input type="text" id="champ-verif" class="champ-verif"
+                                   placeholder="Tapez un mot à tester…"
+                                   aria-label="Mot à vérifier dans le dictionnaire"
+                                   autocomplete="off" spellcheck="false">
+                            <button id="btn-verifier" class="btn btn-secondaire btn-petit">
+                                🔎 Vérifier le mot dans le dictionnaire
+                            </button>
+                        </div>
+                        <p id="message-brouillon" class="message-brouillon" role="status" aria-live="polite"></p>
+                        <!-- Définition affichée sous le verdict quand le mot est
+                             valide (issue #124). -->
+                        <div id="definition-brouillon" class="definition-brouillon" aria-live="polite" hidden></div>
+                    </div>
+                </div>
+
+                <!-- Accès à l'historique glissant (issue #37/#144). Bouton +
+                     popover (C.configurerPopover) : ouverture/fermeture au clic,
+                     fermeture au clic extérieur ou à Échap. La plus RÉCENTE en
+                     haut ; chaque ligne rouvre le détail du score de CE coup. -->
                 <div class="historique-menu" id="historique-menu">
                     <button id="btn-historique" class="historique-resume"
                             aria-haspopup="dialog" aria-expanded="false">
@@ -108,187 +140,144 @@
                         aria-live="polite" hidden></ol>
                 </div>
 
-                <!-- Sélecteur de lettre du joker (issue #168) : déplacé de la
-                     fenêtre chevalet (qu'il obligeait à agrandir temporairement,
-                     issue #157) vers ici, sur le plateau. MÊME famille visuelle que
-                     « Derniers coups » — un bouton ancré dans la barre globale dont
-                     la liste s'ouvre en surimpression dessous (position absolue),
-                     sans redimensionner AUCUNE fenêtre. Le plateau étant maximisé,
-                     la place ne manque pas (contrairement au chevalet compact). Le
-                     bouton et son popover restent masqués tant qu'aucun joker n'est
-                     en cours de pose ; jeu.js les révèle quand Python signale
-                     ``joker_requis`` (clic sur une case avec un joker sélectionné),
-                     puis les re-masque une fois la lettre choisie ou le choix
-                     abandonné. Le popover s'ouvrant dans la gouttière gauche (haut
-                     de l'écran), il ne tombe jamais sous la fenêtre chevalet
-                     flottante (posée en bas) : aucun réglage de z-order nécessaire
-                     (point #1 de l'issue). -->
-                <div class="joker-menu" id="joker-menu">
-                    <button id="btn-joker" class="historique-resume joker-resume"
-                            aria-haspopup="dialog" aria-expanded="false" hidden>
-                        <span class="historique-resume-inner">
-                            <span class="historique-resume-titre">🃏 Lettre du joker</span>
+                <!-- Le sélecteur de lettre du joker n'est plus ancré ici (issue
+                     #201) : la marge gauche étroite (refonte #186) tronquait sa
+                     grille. Il vit désormais en popover fixe posé sur la case du
+                     plateau — voir #joker-popover en fin de <body>. -->
+                </div><!-- /zone-systeme-ligne (ligne 2) -->
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Zone B : joueurs                                             -->
+            <!-- ============================================================ -->
+            <!-- Les 4 fiches joueurs, autrefois réparties AUTOUR du plateau dans
+                 les slots haut/gauche/droite/bas (issue #33), sont désormais
+                 EMPILÉES verticalement ici (issue #186). Les id des slots sont
+                 conservés mais leur sémantique n'est plus spatiale : ils ne sont
+                 qu'un RANG dans la pile, l'ordre du DOM fixant l'empilement du
+                 haut vers le bas (haut, gauche, droite, bas). jeu.js
+                 (rendrePanneaux) place chaque fiche dans le slot que Python lui a
+                 assigné ; depuis l'issue #195, Python répartit les slots pour que
+                 la lecture de haut en bas suive l'ORDRE DE JEU (le joueur suivant
+                 l'humain en haut, …), l'humain de référence restant en bas. Le
+                 bouton « ▶ Jouer » reste actif sur la fiche de l'ordinateur dont
+                 c'est le tour (issue #149, porté par creerPanneauJoueur). -->
+            <section class="zone-gauche zone-joueurs" aria-label="Joueurs">
+                <div id="slot-haut" class="slot" aria-label="Fiche joueur (1re)"></div>
+                <div id="slot-gauche" class="slot" aria-label="Fiche joueur (2e)"></div>
+                <div id="slot-droite" class="slot" aria-label="Fiche joueur (3e)"></div>
+                <!-- slot-bas : fiche du joueur humain de référence (mêmes id /
+                     contenu qu'avant), toujours en bas de la pile (issue #195).
+                     Ses actions de tour vivent dans la zone D ci-dessous. -->
+                <div id="slot-bas" class="slot slot-bas" aria-label="Votre panneau"></div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Zone C : chevalet (issue #187, Issue B)                      -->
+            <!-- ============================================================ -->
+            <!-- Le contenu du chevalet — panneau unifié de 9 cases (issue #100) —
+                 a été migré ICI depuis l'ex-fenêtre flottante (chevalet.html,
+                 supprimée). Toute la logique (sélection, réarrangement clic/clic-
+                 droit, échange partiel, surlignage joker) vit désormais dans
+                 jeu.js. Seule la mécanique de DRAG de fenêtre (.barre-drag) n'a
+                 PAS été migrée : sans fenêtre flottante, il n'y a plus rien à
+                 déplacer.
+
+                 Confidentialité (issues #33/#35, #99) — À NOTER : les lettres
+                 PRIVÉES du chevalet (ci-dessous) et l'état PUBLIC du plateau
+                 co-résident désormais dans le MÊME document HTML. Ce n'est PAS une
+                 fuite : Python ne sérialise toujours que les lettres du seul
+                 joueur humain de référence (:meth:`ApiJeu._etat_chevalet`), jamais
+                 celles d'un ordinateur ni d'un autre humain — exactement comme
+                 lorsque le chevalet vivait dans sa propre fenêtre. La garantie de
+                 l'issue #99 est donc inchangée ; seule la localisation du DOM a
+                 changé. -->
+            <section class="zone-gauche zone-chevalet" aria-label="Chevalet"
+                     id="zone-chevalet">
+                <!-- Panneau unifié (issue #100) : une seule structure de 9 cases,
+                     toujours visible et réarrangeable, y compris hors tour. Plus de
+                     boîte « attente », plus de bascule « voir/cacher » : le chevalet
+                     du joueur de référence est toujours exposé (confidentialité
+                     assurée côté API, issue #99). -->
+                <div class="bloc-panneau">
+                    <div class="panneau-entete">
+                        <span class="panneau-titre-groupe">
+                            <span class="panneau-titre bloc-titre">
+                                🎴 Mes lettres <span class="bloc-titre-note">— cliquez, réarrangez</span>
+                            </span>
                         </span>
-                    </button>
-                    <div id="joker-popover" class="historique-liste joker-popover"
-                         role="dialog"
-                         aria-label="Choisir la lettre représentée par le joker" hidden>
-                        <h3 class="joker-popover-titre">Quelle lettre représente le joker ?</h3>
-                        <div id="joker-grille" class="joker-grille"></div>
-                        <button id="joker-annuler" class="btn btn-secondaire btn-petit">
-                            Annuler
-                        </button>
                     </div>
+                    <div id="panneau" class="panneau" aria-label="Chevalet du joueur (réarrangeable)"></div>
+                </div>
+            </section>
+
+            <!-- ============================================================ -->
+            <!-- Zone D : actions du joueur humain                            -->
+            <!-- ============================================================ -->
+            <!-- Les deux groupes d'actions de tour, autrefois de part et d'autre
+                 de la fiche humaine (issue #160), sont empilés ici (issue #186).
+                 Mêmes id / mêmes appels API qu'avant : jeu.js (majActionsTour)
+                 bascule leur attribut [hidden] pendant le seul tour humain. -->
+            <section class="zone-gauche zone-actions-humain" aria-label="Vos actions">
+                <!-- Groupe « pose » (ex-zone de droite, issue #160) : Annuler /
+                     Vérifier et calculer / Jouer. Le message de retour dédié
+                     (#message-coup) reste ancré à cette zone (voir jeu.css). -->
+                <div id="zone-actions-droite" class="zone-actions zone-actions-droite" hidden>
+                    <button id="btn-annuler" class="btn btn-secondaire" disabled>
+                        ✗ Annuler
+                    </button>
+                    <button id="btn-verifier-coup" class="btn btn-secondaire" disabled
+                            title="Calcule les points du coup en attente sans le jouer (rien n'est perdu)">
+                        🔎 Vérifier et calculer
+                    </button>
+                    <button id="btn-valider" class="btn btn-primaire" disabled>
+                        ✓ Jouer
+                    </button>
+                    <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
                 </div>
 
-                <!-- Sac de lettres restantes (image + nombre). Déplacé À DROITE
-                     (issue #125), en tête du groupe droit : ``margin-left:auto``
-                     sur .sac (voir jeu.css) le pousse, lui et les deux boutons
-                     utilitaires qui suivent, tout à droite de la barre.
-                     L'emoji 🎒 est remplacé par l'image fournie (issue #171). -->
-                <div class="sac">
-                    <img class="sac-icone" src="images/sac.png" alt="Sac de lettres">
-                    <span class="sac-nombre" id="sac-nombre">—</span>
-                    <span class="sac-label">lettres</span>
+                <!-- Groupe « échange / passe » (ex-zone de gauche, issue #160) :
+                     remise complète (ou flux d'échange partiel selon le réglage
+                     « type_echange ») + « Passer son tour ». -->
+                <div id="zone-actions-gauche" class="zone-actions zone-actions-gauche" hidden>
+                    <button id="btn-echanger-tout" class="btn btn-secondaire" disabled
+                            title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
+                        ♻️ Échanger les lettres
+                    </button>
+                    <button id="btn-commencer-echange" class="btn btn-secondaire" hidden
+                            title="Choisissez librement les lettres à échanger sur votre chevalet, puis validez">
+                        ♻️ Échanger des lettres…
+                    </button>
+                    <span id="zone-echange-partiel" class="zone-echange-partiel" hidden>
+                        <button id="btn-echanger-selection" class="btn btn-primaire" disabled
+                                title="Remet les lettres marquées dans le sac, en tire autant, et passe votre tour">
+                            ♻️ Échanger la sélection et passer
+                        </button>
+                        <button id="btn-annuler-echange" class="btn btn-secondaire"
+                                title="Quitte le mode d'échange sans rien échanger">
+                            ✗ Annuler la sélection
+                        </button>
+                    </span>
+                    <button id="btn-passer" class="btn btn-secondaire"
+                            title="Passe votre tour sans poser ni échanger de lettres">
+                        ⏭ Passer son tour
+                    </button>
                 </div>
+            </section>
 
-                <!-- Bouton « Resynchroniser » (issue #41, point 3 ; issue #78).
-                     CONSERVÉ. L'affichage se met déjà à jour tout seul après
-                     chaque action (pose, passe, échange, tour d'ordinateur) ; son
-                     seul rôle légitime est de forcer un rechargement depuis le
-                     moteur en cas de doute sur la synchronisation de la vue.
-                     Autrefois un lien discret : jugé trop peu visible pour un
-                     public senior (issue #78). Rendu ici en vrai bouton
-                     secondaire (fond neutre gris, padding confortable) —
-                     clairement repérable et cliquable, mais visuellement en
-                     retrait des boutons d'action de jeu (vert primaire) pour ne
-                     pas suggérer une action aussi fréquente que poser un mot. -->
-                <button id="btn-rafraichir" class="btn btn-secondaire btn-utilitaire"
-                        title="Recharger l'affichage depuis le moteur (en cas de doute sur la synchronisation)">
-                    ↻ Resynchroniser
-                </button>
+        </aside>
 
-                <!-- Bouton « Retour au menu » (issue #74 ; issue #78). Même style
-                     de bouton secondaire que « Resynchroniser », disponible à tout
-                     moment. Ferme l'écran de jeu et rouvre l'accueil ; la partie
-                     reste persistée et reprenable. Si des lettres sont posées mais
-                     non validées, un avertissement (modale légère ci-dessous)
-                     évite de perdre une réflexion en cours par erreur de clic ;
-                     sans lettre en attente, le retour est immédiat. -->
-                <button id="btn-retour-menu" class="btn btn-secondaire btn-utilitaire"
-                        title="Fermer la partie et revenir au menu d'accueil (la partie reste reprenable)">
-                    🏠 Retour au menu
-                </button>
-            </div>
-        </header>
-
-        <!-- Message éphémère de pose (issue #90) : la pose clic-clic se pilote
-             depuis la fenêtre chevalet (sélection) + la fenêtre plateau (case
-             cliquée). Comme la zone de message de tour vit désormais côté
-             chevalet, ce court retour (« sélectionnez d'abord une lettre »,
-             « case occupée »…) s'affiche ici, en surimpression discrète, sans
-             repousser la table. Le choix de la lettre d'un joker, lui, se fait
-             désormais dans le menu déroulant « Lettre du joker » de cette même
-             fenêtre (issue #168), et non plus par un renvoi vers le chevalet. -->
-        <div id="message-plateau" class="message-plateau" role="status" aria-live="polite" hidden></div>
-
-        <!-- Table de jeu : plateau central entouré des panneaux joueurs, chacun
-             positionné sur le côté qui lui est assigné côté Python (issue #33).
-             Le panneau du bas est celui du joueur humain de référence : il porte,
-             en plus de ses infos publiques, le chevalet + le brouillon + les
-             actions de tour. Les panneaux haut/gauche/droite sont publics.
-             L'historique « Derniers coups » n'occupe plus de colonne à gauche
-             (issue #47, point 2) : il est fusionné dans la barre globale en haut,
-             ce qui rend la hauteur au plateau et au chevalet/brouillon. -->
-        <main class="table">
-            <div id="slot-haut" class="slot slot-haut" aria-label="Joueur du haut"></div>
-            <div id="slot-gauche" class="slot slot-gauche" aria-label="Joueur de gauche"></div>
+        <!-- COLONNE DROITE : le plateau agrandi (issue #186). Occupe toute la
+             hauteur disponible en restant carré, centré dans l'espace restant. -->
+        <main class="colonne-plateau">
+            <!-- Message éphémère de pose (issue #90) : court retour affiché en
+                 surimpression (position: fixed, voir jeu.css) au clic sur une
+                 case ; ne repousse jamais le plateau. -->
+            <div id="message-plateau" class="message-plateau" role="status" aria-live="polite" hidden></div>
 
             <section class="zone-plateau">
                 <div id="plateau" class="plateau" aria-label="Plateau de jeu 15 par 15"></div>
             </section>
-
-            <div id="slot-droite" class="slot slot-droite" aria-label="Joueur de droite"></div>
-
-            <!-- Panneau du bas : joueur humain de référence, encadré par ses
-                 actions de tour (issue #160). Pour gagner de la hauteur (et donc
-                 agrandir le plateau), les boutons d'action ne forment plus une
-                 barre séparée EN DESSOUS de la fiche : ils sont répartis SUR LA
-                 MÊME LIGNE, de part et d'autre de la fiche du joueur humain —
-                 « Remettre / Passer » à gauche, « Annuler / Vérifier / Jouer » à
-                 droite. Le cadre « En attente du coup de… » d'un tour d'ordinateur
-                 (ancien #zone-attente-ia) est supprimé : le tour d'un ordinateur se
-                 déclenche déjà via le bouton « ▶ Jouer » de sa propre fiche
-                 (issue #149), ce bandeau n'apportait plus rien. -->
-            <footer class="panneau-bas" id="panneau-bas">
-            <!-- Actions de tour À GAUCHE de la fiche (issue #160) : échange complet
-                 (ou flux d'échange partiel selon le réglage « type_echange ») +
-                 « Passer son tour ». Affichées UNIQUEMENT pendant le tour du joueur
-                 humain (masquées pendant l'attente d'un tour d'ordinateur et une
-                 fois la partie terminée). La sélection d'une lettre se fait toujours
-                 côté chevalet ; ces boutons pilotent le coup en attente via les
-                 mêmes méthodes API qu'avant (echanger_tout / passer_tour…). Le garde
-                 de tour côté API (issue #99) reste la protection de fond : masquer
-                 ces boutons n'est qu'une aide visuelle. -->
-            <div id="zone-actions-gauche" class="zone-actions zone-actions-gauche" hidden>
-                <!-- Échange COMPLET (réglage « type_echange » = complet, défaut) :
-                     un seul bouton qui remet tout le chevalet et passe. Bouton
-                     à part entière (issue #139) — même style que les autres
-                     actions de tour (secondaire), moins proéminent que « Jouer ». -->
-                <button id="btn-echanger-tout" class="btn btn-secondaire" disabled
-                        title="Remet tout votre chevalet dans le sac et passe votre tour (action rare)">
-                    ♻️ Remettre toutes ses lettres et passer
-                </button>
-                <!-- Échange PARTIEL (réglage « type_echange » = partiel, issue #138) :
-                     on entre dans un mode de sélection multiple côté chevalet, puis
-                     on valide. Ces boutons ne sont visibles qu'en mode partiel.
-                     Bouton à part entière (issue #147) — même famille visuelle que
-                     « Remettre toutes ses lettres et passer » du mode complet
-                     (« btn btn-secondaire »), pour une apparence de bouton cohérente
-                     dès l'état initial, avant même d'engager la sélection. -->
-                <button id="btn-commencer-echange" class="btn btn-secondaire" hidden
-                        title="Choisissez librement les lettres à échanger sur votre chevalet, puis validez">
-                    ♻️ Échanger des lettres…
-                </button>
-                <span id="zone-echange-partiel" class="zone-echange-partiel" hidden>
-                    <button id="btn-echanger-selection" class="btn btn-primaire" disabled
-                            title="Remet les lettres marquées dans le sac, en tire autant, et passe votre tour">
-                        ♻️ Échanger la sélection et passer
-                    </button>
-                    <button id="btn-annuler-echange" class="btn btn-secondaire"
-                            title="Quitte le mode d'échange sans rien échanger">
-                        ✗ Annuler la sélection
-                    </button>
-                </span>
-                <button id="btn-passer" class="btn btn-secondaire"
-                        title="Passe votre tour sans poser ni échanger de lettres">
-                    ⏭ Passer son tour
-                </button>
-            </div>
-
-            <!-- Fiche du joueur humain de référence : centrée, encadrée par ses
-                 actions de tour (issue #160). -->
-            <div id="slot-bas" class="slot slot-bas" aria-label="Votre panneau"></div>
-
-            <!-- Actions de tour À DROITE de la fiche (issue #160) : « Annuler »,
-                 « Vérifier et calculer » et « Jouer ». Mêmes id / mêmes appels API
-                 qu'avant le regroupement (annuler_pose / verifier_coup / poser_mot).
-                 Le message de retour dédié (#message-coup) reste ancré à cette zone,
-                 en surimpression au-dessus des boutons (voir jeu.css). -->
-            <div id="zone-actions-droite" class="zone-actions zone-actions-droite" hidden>
-                <button id="btn-annuler" class="btn btn-secondaire" disabled>
-                    ✗ Annuler
-                </button>
-                <button id="btn-verifier-coup" class="btn btn-secondaire" disabled
-                        title="Calcule les points du coup en attente sans le jouer (rien n'est perdu)">
-                    🔎 Vérifier et calculer
-                </button>
-                <button id="btn-valider" class="btn btn-primaire" disabled>
-                    ✓ Jouer
-                </button>
-                <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
-            </div>
-            </footer>
         </main>
     </div>
 
@@ -423,11 +412,22 @@
         </div>
     </div>
 
-    <!-- Le sélecteur de lettre d'un joker vit désormais dans la barre globale de
-         CETTE fenêtre plateau (menu déroulant « Lettre du joker », plus haut),
-         même patron que « Derniers coups » (issue #168). Il a quitté la fenêtre
-         chevalet (issue #90), dont il imposait d'agrandir la fenêtre compacte le
-         temps du choix (issue #157). -->
+    <!-- Sélecteur de lettre du joker (issues #168/#201). Popover en position fixe
+         (masqué par défaut) : jeu.js le révèle et le place DIRECTEMENT sur la case
+         du plateau où le joker vient d'être posé (issue #201), avec recadrage dans
+         le viewport pour ne jamais déborder (comme les toasts de score, issue
+         #198). Fermeture façon « Derniers coups » : clic extérieur, Échap ou choix
+         d'une lettre. Auparavant ancré à un bouton « Lettre du joker » de la marge
+         gauche étroite, où la grille des 26 lettres était tronquée (issue #201). Il
+         avait quitté la fenêtre chevalet à l'issue #90. -->
+    <div id="joker-popover" class="historique-liste joker-popover" role="dialog"
+         aria-label="Choisir la lettre représentée par le joker" hidden>
+        <h3 class="joker-popover-titre">Quelle lettre représente le joker ?</h3>
+        <div id="joker-grille" class="joker-grille"></div>
+        <button id="joker-annuler" class="btn btn-secondaire btn-petit">
+            Annuler
+        </button>
+    </div>
 
     <!-- Calque de célébration festive quand un Scrabble (7 lettres, +50 pts) est
          posé (issue #64, suite de #58). Superposé plein écran mais totalement

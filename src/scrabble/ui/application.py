@@ -25,7 +25,8 @@ n'est donc branchée par aucun point d'entrée par défaut ; elle est testable e
 isolation.
 
 Issue #182 : la fermeture par la croix est sécurisée dans ce modèle mono-boucle
-(le chevalet compagnon masqué est bien détruit, cf. ``ApiJeu.installer_fermeture_croisee``),
+(une seule fenêtre physique depuis le nettoyage du modèle de fenêtres, issue
+#193 : la fermer par sa croix termine proprement l'unique ``webview.start()``),
 un parcours de bout en bout est couvert par les tests, et un point d'entrée de
 **test manuel volontaire** est exposé (:func:`main` — ``python -m
 scrabble.ui.application``) **sans** modifier le chemin de production par défaut.
@@ -33,8 +34,10 @@ scrabble.ui.application``) **sans** modifier le chemin de production par défaut
 
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import webview
 
@@ -50,6 +53,36 @@ DOSSIER_WEB = Path(__file__).parent / "web"
 VUE_ACCUEIL = "accueil"
 VUE_JEU = "jeu"
 VUES = (VUE_ACCUEIL, VUE_JEU)
+
+# Délai (secondes) avant une navigation ``load_url`` déclenchée EN RÉPONSE à un
+# appel JS (issue #183). Mécanique pywebview (cf. ``webview.util.js_bridge_call``)
+# : chaque appel ``api.xxx()`` du JS est exécuté côté Python dans un fil, puis sa
+# valeur de retour est livrée au JS via un ``window.evaluate_js(...)`` qui résout
+# le ``Promise`` — SUR LE DOCUMENT ENCORE AFFICHÉ — juste APRÈS le retour de la
+# méthode Python. Si cette méthode a, entre-temps, remplacé le document par un
+# ``load_url`` synchrone, la nouvelle page ne possède plus le callback attendu
+# (``window.pywebview._returnValuesCallbacks[func][id]`` est ``undefined``) : le
+# JS lève alors un « callback de retour orphelin », visible (non bloquant) au
+# terminal. On repousse donc la navigation d'un court instant, le temps que la
+# résolution soit livrée sur la page d'origine. Imperceptible à l'œil.
+DELAI_NAVIGATION_DIFFEREE_S = 0.05
+
+
+def _differer(action: Callable[[], None]) -> None:
+    """Exécute ``action`` après un court délai, dans un fil démon (issue #183).
+
+    Sert à repousser une navigation ``load_url`` juste après le retour de l'appel
+    JS courant, pour éviter le « callback de retour orphelin » décrit sur
+    :data:`DELAI_NAVIGATION_DIFFEREE_S`. Isolé au niveau module pour être
+    remplaçable en test (exécution synchrone via ``monkeypatch``), sans fil ni
+    délai réels.
+    """
+
+    def _corps() -> None:
+        time.sleep(DELAI_NAVIGATION_DIFFEREE_S)
+        action()
+
+    threading.Thread(target=_corps, name="navigation-differee", daemon=True).start()
 
 
 class ApiRouteur:
@@ -184,10 +217,10 @@ class ApiRouteur:
         """Porte le handle de la fenêtre physique unique et le propage.
 
         Les deux sous-API ont besoin de la même fenêtre (l'accueil pour
-        ``fermer_fenetre``, le jeu pour ses diffusions/positionnements). On la
-        pose ici et on la relaie à chacune via leur propre ``set_window``
-        (``ApiJeu.set_window`` renseigne sa fenêtre « plateau », le chevalet
-        restant hors périmètre de cette issue — issue B).
+        ``fermer_fenetre``, le jeu pour ses diffusions/maximisation). On la pose
+        ici et on la relaie à chacune via leur propre ``set_window``. Depuis le
+        nettoyage du modèle de fenêtres (issue #193), ``ApiJeu`` n'a plus qu'une
+        seule fenêtre (``jeu.html`` : plateau + chevalet intégré en zone C).
         """
         self._window = window
         self._api_accueil.set_window(window)
@@ -252,8 +285,8 @@ class ApiRouteur:
            déjà sur la sous-API Jeu ;
         3. ``window.load_url('jeu.html')`` — même fenêtre physique, pas de
            destruction/recréation ;
-        4. :meth:`ApiJeu.finaliser_entree_vue_jeu` — maximise le plateau, révèle le
-           chevalet (si pas de tirage en cours) et l'amorce, en tâche de fond.
+        4. :meth:`ApiJeu.finaliser_entree_vue_jeu` — maximise le plateau et amorce
+           le panneau chevalet intégré (zone C), en tâche de fond.
 
         Retourne ``{"succes": True}`` ou une charge d'erreur (le JS réactive alors
         le bouton) si aucune partie n'est prête.
@@ -272,16 +305,31 @@ class ApiRouteur:
         self.charger_jeu(partie, id_partie, infos_tirage)
         # 2. Basculer le routage AVANT la navigation (course #178, point 3).
         self.activer_vue(VUE_JEU)
-        # 3. Naviguer vers jeu.html dans la MÊME fenêtre (load_url, décision #178).
+        # 3. Naviguer vers jeu.html dans la MÊME fenêtre (load_url, décision #178),
+        #    mais en DIFFÉRÉ : la navigation doit survenir APRÈS que pywebview a
+        #    livré la valeur de retour de cet appel ``demarrer_jeu()`` sur
+        #    ``accueil.html`` (page encore affichée), sinon le JS lève un
+        #    « callback de retour orphelin » (issue #183, cf. :func:`_differer`).
+        #    La finalisation (étape 4) suit la navigation, dans le même différé.
         if self._window is not None:
-            self._window.load_url(str(DOSSIER_WEB / "jeu.html"))
-            journal.info(
-                f"Routeur : navigation Accueil→Jeu (load_url jeu.html, "
-                f"partie #{id_partie})."
-            )
-        # 4. Rejouer la finalisation (maximisation, chevalet) à chaque entrée en
-        #    vue Jeu — la coquille unifiée n'a qu'une seule boucle webview.start.
-        self._api_jeu.finaliser_entree_vue_jeu()
+            window = self._window
+            cible = str(DOSSIER_WEB / "jeu.html")
+
+            def _entrer_en_jeu() -> None:
+                window.load_url(cible)
+                journal.info(
+                    f"Routeur : navigation Accueil→Jeu (load_url jeu.html, "
+                    f"partie #{id_partie})."
+                )
+                # 4. Rejouer la finalisation (maximisation, amorçage chevalet) à chaque
+                #    entrée en vue Jeu — une seule boucle webview.start.
+                self._api_jeu.finaliser_entree_vue_jeu()
+
+            _differer(_entrer_en_jeu)
+        else:
+            # Sans fenêtre (tests unitaires, lancement autonome) : aucune
+            # navigation à différer, on rejoue directement la finalisation.
+            self._api_jeu.finaliser_entree_vue_jeu()
         return {"succes": True}
 
     def retourner_accueil(self) -> dict[str, Any]:
@@ -295,32 +343,40 @@ class ApiRouteur:
         détection dans ``jeu.js``.
 
         Contrairement au chemin de production, on ne détruit **rien** : la fenêtre
-        physique unique navigue de ``jeu.html`` vers ``accueil.html`` et le chevalet
-        compagnon (persistant depuis #180) est simplement masqué. Aucune session de
-        journalisation n'est ouverte ou fermée ici : la coquille unifiée n'en a
-        qu'une, ouverte/fermée par :func:`lancer_application_unifiee` autour de
-        l'unique ``webview.start()`` (issue #179).
+        physique unique navigue de ``jeu.html`` vers ``accueil.html``. Depuis le
+        nettoyage du modèle de fenêtres (issue #193), il n'y a plus de chevalet
+        compagnon à masquer. Aucune session de journalisation n'est ouverte ou
+        fermée ici : la coquille unifiée n'en a qu'une, ouverte/fermée par
+        :func:`lancer_application_unifiee` autour de l'unique ``webview.start()``
+        (issue #179).
 
         Séquence, dans l'ordre exigé par le rapport #178 (course de routage) :
 
-        1. :meth:`ApiJeu.masquer_chevalet` — le chevalet compagnon repasse masqué ;
-        2. :meth:`ApiAccueil.reinitialiser_pour_retour_accueil` — l'``ApiAccueil``
+        1. :meth:`ApiAccueil.reinitialiser_pour_retour_accueil` — l'``ApiAccueil``
            persistante est remise dans son état d'ouverture (config vierge, humain
            re-seedé, ``_partie``/``_id_partie`` purgés ; la liste « parties en
            cours » sera relue par le JS au chargement) ;
-        3. :meth:`activer_vue` ``(VUE_ACCUEIL)`` — **avant** la navigation, pour que
+        2. :meth:`activer_vue` ``(VUE_ACCUEIL)`` — **avant** la navigation, pour que
            le premier ``obtenir_etat()`` de l'``accueil.js`` fraîchement chargé
            tombe déjà sur la sous-API Accueil ;
-        4. ``window.load_url('accueil.html')`` — même fenêtre physique.
+        3. ``window.load_url('accueil.html')`` — même fenêtre physique.
         """
-        self._api_jeu.masquer_chevalet()
         self._api_accueil.reinitialiser_pour_retour_accueil()
         self.activer_vue(VUE_ACCUEIL)
+        # Navigation DIFFÉRÉE : elle doit survenir APRÈS la livraison de la valeur
+        # de retour de l'appel JS courant sur ``jeu.html`` (encore affiché), sinon
+        # « callback de retour orphelin » (issue #183, cf. :func:`_differer`).
         if self._window is not None:
-            self._window.load_url(str(DOSSIER_WEB / "accueil.html"))
-            journal.info(
-                "Routeur : navigation Jeu→Accueil (load_url accueil.html)."
-            )
+            window = self._window
+            cible = str(DOSSIER_WEB / "accueil.html")
+
+            def _entrer_en_accueil() -> None:
+                window.load_url(cible)
+                journal.info(
+                    "Routeur : navigation Jeu→Accueil (load_url accueil.html)."
+                )
+
+            _differer(_entrer_en_accueil)
         return {"succes": True}
 
     def recommencer_jeu(self) -> dict[str, Any]:
@@ -351,26 +407,36 @@ class ApiRouteur:
            avec :meth:`demarrer_jeu` ;
         4. ``window.load_url('jeu.html')`` — recharge le document dans la MÊME
            fenêtre ;
-        5. :meth:`ApiJeu.masquer_chevalet` — chevalet remis masqué le temps du
-           nouveau tirage (:meth:`ApiJeu.terminer_tirage` le révélera au
-           « Continuer ») ;
-        6. :meth:`ApiJeu.finaliser_entree_vue_jeu` — maximise le plateau et amorce
-           le chevalet (masqué), en tâche de fond.
+        5. :meth:`ApiJeu.finaliser_entree_vue_jeu` — maximise le plateau et amorce
+           le panneau chevalet (zone C, masqué par le JS le temps du tirage), en
+           tâche de fond. Depuis le nettoyage du modèle de fenêtres (issue #193),
+           il n'y a plus de fenêtre chevalet compagnon à remasquer.
         """
         nouvelle, nouvel_id, infos_tirage = (
             self._api_jeu.preparer_partie_recommencee()
         )
         self.charger_jeu(nouvelle, nouvel_id, infos_tirage)
         self.activer_vue(VUE_JEU)
+        # Navigation DIFFÉRÉE (issue #183) : APRÈS la livraison de la valeur de
+        # retour de l'appel JS courant sur ``jeu.html``. La finalisation (étape 5)
+        # suit la navigation, dans le différé.
         if self._window is not None:
-            self._window.load_url(str(DOSSIER_WEB / "jeu.html"))
-            journal.info(
-                f"Routeur : recommencer (load_url jeu.html, nouvelle "
-                f"#{nouvel_id})."
-            )
-        # Nouveau tirage à mener : le chevalet compagnon repart masqué.
-        self._api_jeu.masquer_chevalet()
-        self._api_jeu.finaliser_entree_vue_jeu()
+            window = self._window
+            cible = str(DOSSIER_WEB / "jeu.html")
+
+            def _recharger_jeu() -> None:
+                window.load_url(cible)
+                journal.info(
+                    f"Routeur : recommencer (load_url jeu.html, nouvelle "
+                    f"#{nouvel_id})."
+                )
+                self._api_jeu.finaliser_entree_vue_jeu()
+
+            _differer(_recharger_jeu)
+        else:
+            # Sans fenêtre (tests, lancement autonome) : pas de navigation à
+            # différer, on rejoue directement la finalisation.
+            self._api_jeu.finaliser_entree_vue_jeu()
         return {"succes": True}
 
     def annuler_tirage_accueil(self) -> dict[str, Any]:
@@ -387,8 +453,7 @@ class ApiRouteur:
         été joué** : on la supprime (:meth:`ApiJeu.supprimer_partie_annulee`) pour
         qu'elle n'apparaisse pas comme partie fantôme dans « Reprendre une partie »,
         puis on emprunte exactement le même chemin de retour que « Retour au menu »
-        (:meth:`retourner_accueil`) — chevalet masqué, accueil réinitialisé,
-        navigation ``load_url``.
+        (:meth:`retourner_accueil`) — accueil réinitialisé, navigation ``load_url``.
         """
         self._api_jeu.supprimer_partie_annulee()
         return self.retourner_accueil()
@@ -418,7 +483,6 @@ def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
         configurer_backend_graphique,
         deployer_fenetre_maximisee,
     )
-    from scrabble.ui.jeu import _creer_fenetre_chevalet
 
     # Bascule XWayland AVANT le premier (et unique) ``webview.start()`` du
     # processus (issue #93) : sous GNOME/Wayland, GTK ignore ``move()``/
@@ -454,28 +518,14 @@ def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
             background_color=TAPIS_VERT,
         )
         routeur.set_window(window)
-
-        # Chevalet compagnon (issue #180) : il reste une fenêtre physique séparée
-        # (raison légitime déjà actée par #178), mais il est créé **une seule fois**
-        # ici, au lancement — masqué (``hidden=True``) — au lieu d'être créé/détruit
-        # à chaque partie. La logique de création est factorisée avec le chemin
-        # historique (:func:`~scrabble.ui.jeu._creer_fenetre_chevalet`). Son
-        # ``js_api`` est directement la sous-API Jeu : ``chevalet.js`` parle toujours
-        # au jeu, jamais au routeur (aucune de ses méthodes n'est en collision).
-        # Toutes les fenêtres doivent être déclarées avant l'unique ``webview.start``.
-        window_chevalet = _creer_fenetre_chevalet(routeur._api_jeu, hidden=True)
-        # Rattache les DEUX fenêtres à ``ApiJeu`` via ``set_windows`` (plateau =
-        # fenêtre unique partagée avec l'accueil ; chevalet = compagnon masqué).
-        # ``show()``/``hide()`` du chevalet se feront à l'entrée/sortie de la vue Jeu
-        # (:meth:`ApiJeu.finaliser_entree_vue_jeu` / :meth:`ApiJeu.terminer_tirage`).
-        routeur._api_jeu.set_windows(window, window_chevalet)
-        # Fermeture croisée (issue #94) : fermer nativement l'une des deux fenêtres
-        # détruit l'autre et quitte l'application (pas de fenêtre orpheline).
-        routeur._api_jeu.installer_fermeture_croisee()
+        # ``routeur.set_window`` a propagé la fenêtre unique à la sous-API Jeu
+        # (``ApiJeu.set_window``). Depuis le nettoyage du modèle de fenêtres
+        # (issue #193), il n'y a plus de fenêtre chevalet compagnon à créer,
+        # rattacher ou câbler en fermeture croisée : une seule fenêtre physique
+        # porte toute l'application (accueil ↔ jeu via ``load_url``).
 
         journal.info(
-            "Application unifiée : fenêtre unique ouverte sur l'accueil "
-            "(chevalet compagnon créé masqué)."
+            "Application unifiée : fenêtre unique ouverte sur l'accueil."
         )
         # UNE seule boucle pywebview pour toute l'application (issue #179).
         webview.start(deployer_fenetre_maximisee, (window, "application"))

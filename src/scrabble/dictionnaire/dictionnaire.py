@@ -46,6 +46,7 @@ import unicodedata
 from pathlib import Path
 from typing import Any, Iterable
 
+from scrabble import journal
 from scrabble.config import RACINE_PROJET, charger_config
 
 # --------------------------------------------------------------------------- #
@@ -75,7 +76,31 @@ CHEMINS_MODIFS: dict[str, tuple[Path, Path]] = {
         DOSSIER_DICO / "mots_retires_hunspell.txt",
     ),
 }
+# Statut « classique du jeu » (issue #204). Contrairement aux personnalisations
+# par source ci-dessus, cette étiquette porte sur le **mot lui-même**,
+# indépendamment de la source active : elle marque les petits mots à lettre
+# chère (WU, SIX, ZOO…) qu'on autorise l'IA à jouer même s'ils sont rares dans
+# le langage courant. Une paire ajoutés/retirés, sur le modèle exact des
+# fichiers ``mots_ajoutes_*``/``mots_retires_*``, un mot par ligne, même
+# normalisation. La liste candidate initiale (~531 mots) est produite par
+# ``scripts/generer_classiques.py`` et amorce ``classiques_ajoutes.txt``.
+CHEMINS_CLASSIQUES: tuple[Path, Path] = (
+    DOSSIER_DICO / "classiques_ajoutes.txt",
+    DOSSIER_DICO / "classiques_retires.txt",
+)
+
+# Vocabulaire « humain » de l'IA (issue #205) : liste des mots courants produite
+# par le croisement ODS8 × Lexique 3 (``scripts/generer_mots_courants.py``), un
+# mot par ligne, gitignorée. Son absence est tolérée (issue #206) : le filtre de
+# vocabulaire se rabat alors sur les seuls classiques du jeu, avec un
+# avertissement journalisé — voir :func:`construire_ensemble_ia`.
+CHEMIN_MOTS_COURANTS = DOSSIER_DICO / "mots_courants.txt"
+
 CHEMIN_CACHE = DOSSIER_DICO / "trie_cache.pkl"
+# Cache disque du Trie restreint de l'IA (issue #206), distinct du cache du Trie
+# complet. Invalidé par mtime des mêmes sources que le Trie complet, plus
+# ``mots_courants.txt`` et la paire ``classiques_ajoutes/retires.txt``.
+CHEMIN_CACHE_IA = DOSSIER_DICO / "trie_ia_cache.pkl"
 # Index mot → définition(s) restreint aux mots de l'ODS8 (issue #15). Ce fichier
 # est volumineux et gitignoré : construit hors-ligne par
 # ``scripts/construire_definitions.py``. Son absence est tolérée (dict vide).
@@ -482,7 +507,8 @@ def rechercher_statut(
 
     Assemble, pour chaque source de :data:`SOURCES`, le statut renvoyé par
     :func:`statut_source`, plus la définition (:func:`definition_mot`, ODS8
-    uniquement). ``mot`` est le libellé normalisé (accents conservés) ; il est
+    uniquement) et le statut « classique du jeu » (:func:`statut_classique`,
+    issue #204). ``mot`` est le libellé normalisé (accents conservés) ; il est
     aussi renvoyé pour que l'UI affiche la forme réellement interrogée.
     """
     norme = normaliser_mot(mot)
@@ -493,6 +519,7 @@ def rechercher_statut(
             source: statut_source(norme, source, chemin_ods, base_hunspell)
             for source in SOURCES
         },
+        "classique": statut_classique(norme),
         "definition": definition_mot(norme, chemin_definitions),
     }
 
@@ -526,6 +553,103 @@ def modifier_appartenance(
     if source not in CHEMINS_MODIFS:
         raise ValueError(f"Source inconnue : « {source} ».")
     chemin_ajoutes, chemin_retires = chemins_modifs(source)
+    assurer_fichiers_modifs(chemin_ajoutes, chemin_retires)
+    ajoutes = lire_liste_mots(chemin_ajoutes)
+    retires = lire_liste_mots(chemin_retires)
+    if present:
+        ajoutes.add(norme)
+        retires.discard(norme)
+    else:
+        retires.add(norme)
+        ajoutes.discard(norme)
+    _reecrire_liste_mots(chemin_ajoutes, ajoutes)
+    _reecrire_liste_mots(chemin_retires, retires)
+    return norme
+
+
+# --------------------------------------------------------------------------- #
+# Statut « classique du jeu » (issue #204)
+# --------------------------------------------------------------------------- #
+
+def chemins_classiques() -> tuple[Path, Path]:
+    """Retourne le couple ``(classiques_ajoutes, classiques_retires)``.
+
+    Indirection volontaire (plutôt que l'accès direct à
+    :data:`CHEMINS_CLASSIQUES`) pour que les tests puissent réassigner la
+    constante du module via ``monkeypatch.setattr`` et voir l'effet ici.
+    """
+    return CHEMINS_CLASSIQUES
+
+
+def statut_classique(mot_normalise: str) -> dict[str, Any]:
+    """Statut « classique du jeu » d'un mot déjà normalisé (issue #204).
+
+    Contrairement à :func:`statut_source`, il n'y a pas de source « brute » :
+    l'étiquette existe uniquement via les fichiers de personnalisation. Un mot
+    est classique s'il figure dans ``classiques_ajoutes.txt`` sans figurer dans
+    ``classiques_retires.txt`` (même formule ``ajoutés − retirés`` que les
+    sources, avec un ensemble brut vide). Retourne ``{"ajout_manuel",
+    "retrait_manuel", "classique"}``.
+    """
+    chemin_ajoutes, chemin_retires = chemins_classiques()
+    ajout_manuel = mot_normalise in lire_liste_mots(chemin_ajoutes)
+    retrait_manuel = mot_normalise in lire_liste_mots(chemin_retires)
+    return {
+        "ajout_manuel": ajout_manuel,
+        "retrait_manuel": retrait_manuel,
+        "classique": ajout_manuel and not retrait_manuel,
+    }
+
+
+def mot_existe_dans_une_source(
+    mot_normalise: str,
+    chemin_ods: Path = CHEMIN_ODS,
+    base_hunspell: Path = BASE_HUNSPELL,
+) -> bool:
+    """Vrai si le mot appartient (brut) à **au moins une** des deux sources.
+
+    Vérification indépendante de la source active (issue #204) : on teste ODS8
+    puis Hunspell, l'existence dans l'une des deux suffisant. L'ordre est
+    volontaire (ODS8 d'abord) : la plupart des classiques en viennent, ce qui
+    évite d'avoir à déplier Hunspell (plusieurs secondes) dans le cas courant.
+    Une source indisponible (``None``) est simplement ignorée.
+    """
+    for source in SOURCES:
+        brut = charger_source_cache(source, chemin_ods, base_hunspell)
+        if brut is not None and mot_normalise in brut:
+            return True
+    return False
+
+
+def marquer_classique(
+    mot: str,
+    present: bool,
+    chemin_ods: Path = CHEMIN_ODS,
+    base_hunspell: Path = BASE_HUNSPELL,
+) -> str:
+    """Marque (``present=True``) ou démarque un mot comme « classique du jeu ».
+
+    Écrit dans la paire :data:`CHEMINS_CLASSIQUES` sur le modèle exact de
+    :func:`modifier_appartenance` (``classiques_ajoutes`` / ``classiques_retires``,
+    triés/dédoublonnés). Le mot est normalisé au préalable ; ``ValueError`` est
+    levée s'il n'est pas un mot jouable au Scrabble (vide, chiffres, ponctuation…).
+
+    **Refus explicite** (``ValueError``, sans toucher aux fichiers) si l'on tente
+    de marquer classique (``present=True``) un mot qui n'existe dans **aucune**
+    des deux sources ODS8/Hunspell : un mot non jouable ne peut pas être un
+    classique du jeu (issue #204). Le démarquage (``present=False``) ne subit pas
+    cette vérification — on doit toujours pouvoir retirer une étiquette. Retourne
+    le mot normalisé.
+    """
+    norme = normaliser_mot(mot)
+    if not norme or not est_mot_scrabble(norme):
+        raise ValueError(f"« {mot} » n'est pas un mot jouable au Scrabble.")
+    if present and not mot_existe_dans_une_source(norme, chemin_ods, base_hunspell):
+        raise ValueError(
+            f"« {norme} » n'existe dans aucune source (ni ODS8 ni Hunspell) : "
+            "un mot non jouable ne peut pas être un classique du jeu."
+        )
+    chemin_ajoutes, chemin_retires = chemins_classiques()
     assurer_fichiers_modifs(chemin_ajoutes, chemin_retires)
     ajoutes = lire_liste_mots(chemin_ajoutes)
     retires = lire_liste_mots(chemin_retires)
@@ -763,6 +887,153 @@ def obtenir_trie(
     trie = construire_trie(
         source, chemin_ods, base_hunspell, chemin_ajoutes, chemin_retires
     )
+    try:
+        _ecrire_trie_cache(chemin_cache, source, trie)
+    except OSError:
+        pass  # Un cache non écrit n'empêche pas de fonctionner.
+    return trie
+
+
+# --------------------------------------------------------------------------- #
+# Trie restreint « vocabulaire humain » de l'IA (issue #206)
+# --------------------------------------------------------------------------- #
+
+def ensemble_classiques() -> set[str]:
+    """Ensemble des mots « classiques du jeu » (issue #204) : ``ajoutés − retirés``.
+
+    Même formule que :func:`statut_classique`, mais renvoyée en bloc (comme un
+    ensemble) pour la construction du vocabulaire restreint de l'IA. Un mot
+    classique **retiré** ne figure donc pas dans l'ensemble. Passe par
+    :func:`chemins_classiques` pour rester substituable en test.
+    """
+    chemin_ajoutes, chemin_retires = chemins_classiques()
+    return lire_liste_mots(chemin_ajoutes) - lire_liste_mots(chemin_retires)
+
+
+def construire_ensemble_ia(
+    source: str = "ods",
+    chemin_ods: Path = CHEMIN_ODS,
+    base_hunspell: Path = BASE_HUNSPELL,
+    chemin_ajoutes: Path | None = None,
+    chemin_retires: Path | None = None,
+    chemin_mots_courants: Path = CHEMIN_MOTS_COURANTS,
+) -> set[str]:
+    """Construit l'ensemble restreint de vocabulaire de l'IA (issue #206).
+
+    Formule : ``(mots_courants ∪ mots_classiques) ∩ dictionnaire_complet_actif``,
+    où le dictionnaire complet actif est le **résultat final** de la source
+    demandée (``(source ∪ ajoutés) − retirés``), pas la seule source brute :
+    l'intersection avec ce dictionnaire final garantit que l'ensemble restreint
+    en est un sous-ensemble strict. L'IA ne peut donc jamais générer un coup que
+    :func:`~scrabble.moteur.validation.valider_coup` rejetterait ensuite sur le
+    dictionnaire complet ; réciproquement, un mot courant/classique **absent** de
+    la source active (ou retiré manuellement) est exclu.
+
+    L'union est construite comme un vrai ensemble (``set``) : un mot présent à la
+    fois dans les mots courants et dans les classiques (ex. « SIX ») n'apparaît
+    qu'une fois, sans aucun biais statistique — le Trie ne teste qu'une
+    appartenance, sans pondération par fréquence.
+
+    Tolérance à l'absence de ``mots_courants.txt`` (issue #206) : si le fichier
+    n'existe pas (Alain n'a pas encore déposé ``Lexique383.tsv`` ni relancé le
+    script #205), on se rabat sur les seuls mots classiques avec un avertissement
+    journalisé, plutôt que de planter. Un fichier présent mais vide est traité
+    comme « aucun mot courant » sans avertissement (cas légitime).
+    """
+    defaut_ajoutes, defaut_retires = chemins_modifs(source)
+    if chemin_ajoutes is None:
+        chemin_ajoutes = defaut_ajoutes
+    if chemin_retires is None:
+        chemin_retires = defaut_retires
+    complet = construire_ensemble_mots(
+        charger_source(source, chemin_ods, base_hunspell),
+        lire_liste_mots(chemin_ajoutes),
+        lire_liste_mots(chemin_retires),
+    )
+    if not chemin_mots_courants.exists():
+        journal.info(
+            "Vocabulaire IA (issue #206) : fichier des mots courants absent "
+            f"({chemin_mots_courants}) — repli sur les seuls classiques du jeu. "
+            "Déposez « Lexique383.tsv » puis lancez "
+            "« scripts/generer_mots_courants.py » pour l'enrichir."
+        )
+    mots_courants = lire_liste_mots(chemin_mots_courants)
+    restreint = (mots_courants | ensemble_classiques()) & complet
+    return restreint
+
+
+def _sources_pertinentes_ia(
+    source: str,
+    chemin_ods: Path,
+    base_hunspell: Path,
+    chemin_ajoutes: Path,
+    chemin_retires: Path,
+    chemin_mots_courants: Path,
+) -> list[Path]:
+    """Fichiers dont la modification doit invalider le cache du Trie IA.
+
+    Reprend les sources du Trie complet (:func:`_sources_pertinentes`) et y
+    ajoute ``mots_courants.txt`` et la paire des classiques du jeu : toute
+    évolution de l'une de ces listes doit reconstruire le vocabulaire restreint.
+    """
+    fichiers = _sources_pertinentes(
+        source, chemin_ods, base_hunspell, chemin_ajoutes, chemin_retires
+    )
+    chemin_classiques_ajoutes, chemin_classiques_retires = chemins_classiques()
+    fichiers += [
+        chemin_mots_courants,
+        chemin_classiques_ajoutes,
+        chemin_classiques_retires,
+    ]
+    return fichiers
+
+
+def obtenir_trie_ia(
+    source: str = "ods",
+    chemin_ods: Path = CHEMIN_ODS,
+    base_hunspell: Path = BASE_HUNSPELL,
+    chemin_ajoutes: Path | None = None,
+    chemin_retires: Path | None = None,
+    chemin_mots_courants: Path = CHEMIN_MOTS_COURANTS,
+    chemin_cache: Path = CHEMIN_CACHE_IA,
+) -> Trie:
+    """Retourne le Trie restreint de l'IA (issue #206), via le cache disque.
+
+    Construit :func:`construire_ensemble_ia` puis le met en cache sur le modèle
+    exact d':func:`obtenir_trie` (en-tête version + source, invalidation par
+    mtime), dans un fichier distinct (:data:`CHEMIN_CACHE_IA`). Les sources
+    surveillées incluent en plus ``mots_courants.txt`` et la paire des classiques
+    (:func:`_sources_pertinentes_ia`). Les chemins d'ajouts/retraits par défaut
+    sont ceux propres à la source ; des chemins explicites restent prioritaires
+    (utile en test).
+    """
+    defaut_ajoutes, defaut_retires = chemins_modifs(source)
+    if chemin_ajoutes is None:
+        chemin_ajoutes = defaut_ajoutes
+    if chemin_retires is None:
+        chemin_retires = defaut_retires
+    assurer_fichiers_modifs(chemin_ajoutes, chemin_retires)
+    sources = _sources_pertinentes_ia(
+        source,
+        chemin_ods,
+        base_hunspell,
+        chemin_ajoutes,
+        chemin_retires,
+        chemin_mots_courants,
+    )
+    if _cache_valide(chemin_cache, source, sources):
+        trie = _lire_trie_cache(chemin_cache)
+        if trie is not None:
+            return trie
+    ensemble = construire_ensemble_ia(
+        source,
+        chemin_ods,
+        base_hunspell,
+        chemin_ajoutes,
+        chemin_retires,
+        chemin_mots_courants,
+    )
+    trie = Trie.depuis_iterable(ensemble)
     try:
         _ecrire_trie_cache(chemin_cache, source, trie)
     except OSError:

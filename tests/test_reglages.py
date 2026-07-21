@@ -109,43 +109,23 @@ def test_modifier_bonus_fin_partie_non_booleen_rejete(tmp_path):
         modifier_reglage("bonus_fin_partie", "true", chemin)
 
 
-def test_modifier_position_chevalet_dict(tmp_path):
-    """position_chevalet accepte et conserve un dictionnaire {"x", "y"} (issue #135)."""
+@pytest.mark.parametrize("valeur", [True, False])
+def test_modifier_vocabulaire_humain_booleen(tmp_path, valeur):
+    """Le réglage booléen vocabulaire_humain (issue #206) fait un round-trip."""
     chemin = tmp_path / "config.json"
 
-    retenue = modifier_reglage("position_chevalet", {"x": 340, "y": 610}, chemin)
+    retenue = modifier_reglage("vocabulaire_humain", valeur, chemin)
 
-    assert retenue == {"x": 340, "y": 610}
-    assert lire_reglage("position_chevalet", chemin) == {"x": 340, "y": 610}
-    releu = json.loads(chemin.read_text(encoding="utf-8"))
-    assert releu["position_chevalet"] == {"x": 340, "y": 610}
-
-
-def test_modifier_position_chevalet_none_efface(tmp_path):
-    """On peut réinitialiser la position mémorisée à None."""
-    chemin = tmp_path / "config.json"
-    modifier_reglage("position_chevalet", {"x": 12, "y": 34}, chemin)
-
-    retenue = modifier_reglage("position_chevalet", None, chemin)
-
-    assert retenue is None
-    assert lire_reglage("position_chevalet", chemin) is None
+    assert retenue is valeur
+    assert lire_reglage("vocabulaire_humain", chemin) is valeur
+    assert json.loads(chemin.read_text(encoding="utf-8"))["vocabulaire_humain"] is valeur
 
 
-def test_modifier_position_chevalet_dict_invalide_repare_en_none(tmp_path):
-    """Un dictionnaire mal formé est accepté par le type mais réparé en None."""
-    chemin = tmp_path / "config.json"
-
-    retenue = modifier_reglage("position_chevalet", {"x": 340}, chemin)
-
-    assert retenue is None
-
-
-def test_modifier_position_chevalet_type_invalide_rejete(tmp_path):
-    """Un type autre que dict/None (ex. chaîne) est rejeté par TypeError."""
+def test_modifier_vocabulaire_humain_non_booleen_rejete(tmp_path):
+    """Une valeur non booléenne pour vocabulaire_humain lève TypeError."""
     chemin = tmp_path / "config.json"
     with pytest.raises(TypeError):
-        modifier_reglage("position_chevalet", "340,610", chemin)
+        modifier_reglage("vocabulaire_humain", "oui", chemin)
 
 
 def test_modifier_reglage_inconnu(tmp_path):

@@ -491,6 +491,8 @@ def reprendre_partie(
     id_partie: int,
     dictionnaire: DictionnaireMots,
     chemin: _TypeChemin = CHEMIN_DEFAUT,
+    *,
+    dictionnaire_ia: DictionnaireMots | None = None,
 ) -> Partie:
     """Reconstruit la :class:`Partie` ``id_partie`` en rejouant ses actions.
 
@@ -503,6 +505,13 @@ def reprendre_partie(
 
     ``dictionnaire`` doit être le même (ou en contenir les mots) que celui de la
     partie d'origine, sans quoi le rejeu d'un coup échouerait à la validation.
+
+    ``dictionnaire_ia`` (issue #206, réglage « vocabulaire humain ») est
+    transmis tel quel à la :class:`Partie` reconstruite pour que l'IA d'une
+    partie **reprise** continue de jouer dans son vocabulaire restreint. ``None``
+    (défaut) = IA sur le dictionnaire complet. Le rejeu des actions passe
+    toujours par ``valider_coup`` sur ``dictionnaire`` complet : il n'est donc
+    pas affecté par ce paramètre.
 
     :raises KeyError: si aucune partie ne porte cet identifiant.
     """
@@ -519,7 +528,12 @@ def reprendre_partie(
         ).fetchall()
 
     joueurs = _reconstruire_joueurs(_joueurs_depuis_json(ligne["joueurs"]))
-    partie = Partie(joueurs, dictionnaire, graine=ligne["graine"])
+    partie = Partie(
+        joueurs,
+        dictionnaire,
+        graine=ligne["graine"],
+        dictionnaire_ia=dictionnaire_ia,
+    )
 
     for action in actions:
         type_action = action["type_action"]

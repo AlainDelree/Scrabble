@@ -1,7 +1,7 @@
 """Tests des stratégies IA à niveaux de difficulté.
 
-Couvre les 4 niveaux (EXPERT, INTERMEDIAIRE, FACILE, DEBUTANT) sur la base
-du générateur exhaustif, la reproductibilité avec graine fixée, les cas
+Couvre les 5 niveaux (EXPERT, AVANCE, INTERMEDIAIRE, FACILE, DEBUTANT) sur la
+base du générateur exhaustif, la reproductibilité avec graine fixée, les cas
 limites (un seul coup, aucun coup), et l'intégration avec Partie/creer_partie.
 """
 
@@ -125,6 +125,43 @@ class TestScoreMoyenParNiveau:
         moy_debutant = moyenne_scores(Niveau.DEBUTANT)
         assert moy_expert > moy_debutant
 
+    def test_avance_score_moyen_entre_intermediaire_et_expert(self):
+        """AVANCE se situe strictement entre INTERMEDIAIRE et EXPERT.
+
+        Vérification statistique sur de nombreux tirages à graines variées
+        (issue #202) : sur un plateau/chevalet offrant de nombreux coups aux
+        scores étalés, la distribution de scores d'AVANCE (top 15 %) doit être
+        supérieure à celle d'INTERMEDIAIRE (top 33 %) et inférieure ou égale à
+        celle d'EXPERT (meilleur coup).
+        """
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        dico = _trie(
+            "CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES",
+            "SE", "ED", "AR", "RA", "CAR", "ARC", "SAC", "ACRE", "CARDE",
+        )
+        coups_ref = generer_coups(plateau, chevalet, dico)
+        # Le test n'a de sens que si les coups sont assez nombreux et étalés
+        # pour que top 15 % et top 33 % diffèrent réellement.
+        assert len(coups_ref) >= 10
+        assert len({cn.score for cn in coups_ref}) >= 3
+
+        def moyenne_scores(niveau: Niveau, n: int = 300) -> float:
+            scores = []
+            for graine in range(n):
+                coup = choisir_coup(
+                    plateau, chevalet, dico, niveau, random.Random(graine)
+                )
+                if coup is not None:
+                    cn = next(c for c in coups_ref if c.coup == coup)
+                    scores.append(cn.score)
+            return statistics.mean(scores) if scores else 0.0
+
+        moy_inter = moyenne_scores(Niveau.INTERMEDIAIRE)
+        moy_avance = moyenne_scores(Niveau.AVANCE)
+        moy_expert = moyenne_scores(Niveau.EXPERT)
+        assert moy_inter < moy_avance < moy_expert
+
 
 class TestIntermediaire:
     """INTERMEDIAIRE choisit dans le meilleur tiers."""
@@ -146,6 +183,27 @@ class TestIntermediaire:
             if coup is not None:
                 cn = next(c for c in coups if c.coup == coup)
                 assert cn.score in scores_tiers or cn in coups[:taille_tiers]
+
+
+class TestAvance:
+    """AVANCE choisit dans les 15 % meilleurs coups (top 15 %)."""
+
+    def test_choisit_dans_le_top_15_pct(self):
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        dico = _trie("CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES")
+        coups = generer_coups(plateau, chevalet, dico)
+        taille_haut = max(1, len(coups) * 15 // 100)
+        haut = coups[:taille_haut]
+        scores_haut = {cn.score for cn in haut}
+
+        for graine in range(50):
+            coup = choisir_coup(
+                plateau, chevalet, dico, Niveau.AVANCE, random.Random(graine)
+            )
+            if coup is not None:
+                cn = next(c for c in coups if c.coup == coup)
+                assert cn.score in scores_haut or cn in haut
 
 
 class TestFacile:
@@ -308,3 +366,176 @@ class TestIntegrationPartie:
             partie.jouer_coup(_coup_cadre_au_centre())
             partie.jouer_tour_ia()
             assert len(partie.historique) == 2
+
+
+# --------------------------------------------------------------------------- #
+# Cohérence de la progression avec le Trie restreint de l'IA (issue #207)
+# --------------------------------------------------------------------------- #
+#
+# Le réglage « vocabulaire humain » (issue #206) fait jouer l'IA sur un
+# dictionnaire restreint (``dictionnaire_ia``, distinct du dico complet) :
+# (mots courants ∪ classiques du jeu) ∩ dico complet. Ce filtre est GLOBAL —
+# appliqué uniformément à tous les niveaux, pas par niveau. Le rapport
+# d'investigation #203 anticipait donc que la progression RELATIVE entre niveaux
+# resterait cohérente une fois le filtre actif : seuls les scores absolus
+# baisseraient, pour tous les niveaux pareillement.
+#
+# Ces tests le vérifient empiriquement avec la même méthode que les tests
+# existants (score moyen sur de nombreux tirages à graines variées), mais cette
+# fois avec un Trie IA strictement plus petit que le dico complet.
+
+# Vocabulaire complet riche autour du chevalet « CARTONS » (plateau vide, ancrage
+# central unique). Offre 118 coups aux scores étalés, dont un « scrabble »
+# (bingo) CARTONS à 70 points.
+_MOTS_COMPLET = (
+    "CARTON", "CARTONS", "CARTE", "CARTES", "CANOT", "CANOTS", "CARAT",
+    "CARATS", "ARC", "ARCS", "ARCON", "ARCONS", "CAR", "CARS", "CAS", "SAC",
+    "SACRE", "ACRE", "ACRES", "RAT", "RATS", "ART", "ARTS", "TARS", "STAR",
+    "CORS", "CORNS", "CON", "CONS", "COR", "COT", "COTS", "ROC", "ROCS",
+    "ORC", "ORCS", "TON", "TONS", "TROC", "TROCS", "SORT", "SORTA", "TRACS",
+    "TRAC", "NAC", "NACRE", "NACRES", "SCAT", "OCA", "OCAS", "TAO", "TAOS",
+    "ANT", "RATON", "RATONS", "TANCS", "TANC", "CANT", "CANTS", "NOTA",
+    "SONAR", "SONATE", "SCORE", "CROATS", "TARON", "ROTAS", "ROTA", "TROCA",
+    "SANTO", "CATOR",
+)
+
+# Sous-ensemble « vocabulaire humain » : mots courants seulement, sous-ensemble
+# STRICT de _MOTS_COMPLET (invariant de obtenir_trie_ia : l'ensemble IA est
+# toujours intersecté avec le dico complet). On y a retiré les mots rares/peu
+# courants — dont le bingo CARTONS — pour reproduire fidèlement l'effet du
+# filtre : l'IA perd l'accès aux coups à fort score assis sur du vocabulaire
+# rare. Laisse tout de même 44 coups aux scores étalés (6 scores distincts).
+_MOTS_IA_RESTREINT = (
+    "CARTON", "CARTE", "CARTES", "CANOT", "CAR", "CARS", "CAS", "SAC", "ACRE",
+    "RAT", "RATS", "ART", "ARTS", "STAR", "CON", "CONS", "COR", "ROC", "TON",
+    "TONS", "SORT", "TRAC", "OCA", "TAO", "SONAR", "SCORE",
+)
+
+# Ordre des niveaux par score moyen croissant, tel qu'il découle RÉELLEMENT des
+# stratégies de sélection (cf. ia.py) :
+#   * FACILE tire dans la moitié INFÉRIEURE  → moyenne la plus basse ;
+#   * DEBUTANT tire uniformément parmi TOUS les coups → moyenne ~médiane ;
+#   * INTERMEDIAIRE (top 33 %), AVANCE (top 15 %), EXPERT (meilleur) → croissant.
+# NB : l'énoncé de l'issue #207 liste « Débutant < Facile < ... », mais dans le
+# code Facile est délibérément sous-optimal (moitié basse) et se place DONC
+# sous Débutant en score moyen. Cette inversion nom/score est une propriété
+# PRÉ-EXISTANTE des stratégies, indépendante du filtre (elle vaut à l'identique
+# avec et sans filtre) ; ces tests vérifient l'ordre tel qu'il est réellement.
+_ORDRE_CROISSANT_ATTENDU = [
+    Niveau.FACILE,
+    Niveau.DEBUTANT,
+    Niveau.INTERMEDIAIRE,
+    Niveau.AVANCE,
+    Niveau.EXPERT,
+]
+
+
+def _moyennes_par_niveau(
+    plateau: PlateauPartie,
+    chevalet: list[str],
+    dico: Trie,
+    n: int = 400,
+) -> dict[Niveau, float]:
+    """Score moyen de chaque niveau sur ``n`` tirages à graines 0..n-1.
+
+    Même méthode que les tests statistiques existants : on génère la liste de
+    référence des coups une fois (sur ``dico``, donc restreinte si ``dico`` est
+    le Trie IA), puis on relève le score du coup choisi pour chaque graine. Le
+    score d'un coup ne dépend que des tuiles/plateau, pas du dictionnaire.
+    """
+    coups_ref = generer_coups(plateau, chevalet, dico)
+    moyennes: dict[Niveau, float] = {}
+    for niveau in Niveau:
+        scores = []
+        for graine in range(n):
+            coup = choisir_coup(plateau, chevalet, dico, niveau, random.Random(graine))
+            if coup is not None:
+                cn = next(c for c in coups_ref if c.coup == coup)
+                scores.append(cn.score)
+        moyennes[niveau] = statistics.mean(scores) if scores else 0.0
+    return moyennes
+
+
+class TestProgressionTrieIaRestreint:
+    """Progression de difficulté avec le Trie restreint de l'IA (issue #207)."""
+
+    plateau = PlateauPartie()
+    chevalet = list("CARTONS")
+
+    def test_sous_ensemble_strict_et_assez_de_coups(self):
+        """Prérequis : le vocabulaire IA est un sous-ensemble STRICT du complet,
+        et le Trie restreint laisse assez de coups variés pour être significatif.
+        """
+        assert set(_MOTS_IA_RESTREINT) < set(_MOTS_COMPLET)
+        dico_ia = Trie.depuis_iterable(_MOTS_IA_RESTREINT)
+        coups_ia = generer_coups(self.plateau, self.chevalet, dico_ia)
+        # Significatif : nombreux coups et scores étalés (comme les tests #202).
+        assert len(coups_ia) >= 10
+        assert len({cn.score for cn in coups_ia}) >= 3
+
+    def test_progression_monotone_avec_filtre_actif(self):
+        """La progression reste strictement monotone avec le Trie IA restreint.
+
+        Confirme l'hypothèse du rapport #203 : le filtre étant global, la
+        monotonie des scores moyens est préservée une fois le filtre actif.
+        """
+        dico_ia = Trie.depuis_iterable(_MOTS_IA_RESTREINT)
+        moy = _moyennes_par_niveau(self.plateau, self.chevalet, dico_ia)
+        ordre = sorted(Niveau, key=lambda niv: moy[niv])
+        assert ordre == _ORDRE_CROISSANT_ATTENDU
+        # Strictement croissant le long de l'ordre attendu.
+        valeurs = [moy[niv] for niv in _ORDRE_CROISSANT_ATTENDU]
+        assert all(a < b for a, b in zip(valeurs, valeurs[1:]))
+
+    def test_niveaux_restent_perceptiblement_distincts(self):
+        """Aucun niveau ne se confond avec son voisin sous le filtre.
+
+        Point #3 de l'issue : on veut détecter le cas où un niveau ne se
+        distinguerait plus suffisamment d'un autre. On exige un écart d'au moins
+        1 point entre niveaux adjacents dans l'ordre de progression, seuil
+        au-delà duquel la différence reste perceptible en jeu.
+        """
+        dico_ia = Trie.depuis_iterable(_MOTS_IA_RESTREINT)
+        moy = _moyennes_par_niveau(self.plateau, self.chevalet, dico_ia)
+        valeurs = [moy[niv] for niv in _ORDRE_CROISSANT_ATTENDU]
+        ecarts = [b - a for a, b in zip(valeurs, valeurs[1:])]
+        assert min(ecarts) >= 1.0, f"Niveaux trop proches sous filtre : {ecarts}"
+
+    def test_ordre_relatif_identique_avec_et_sans_filtre(self):
+        """L'ordre RELATIF des niveaux est identique avec et sans filtre.
+
+        Cœur de la vérification #207 / hypothèse #203 : le filtre global ne
+        réordonne pas les niveaux ; il n'abaisse que les scores absolus.
+        """
+        moy_complet = _moyennes_par_niveau(
+            self.plateau, self.chevalet, Trie.depuis_iterable(_MOTS_COMPLET)
+        )
+        moy_ia = _moyennes_par_niveau(
+            self.plateau, self.chevalet, Trie.depuis_iterable(_MOTS_IA_RESTREINT)
+        )
+        assert sorted(Niveau, key=lambda niv: moy_complet[niv]) == sorted(
+            Niveau, key=lambda niv: moy_ia[niv]
+        )
+
+    def test_ecart_expert_debutant_se_resserre_sous_filtre(self):
+        """Mesure le resserrement Expert↔Débutant sous filtre (point #4).
+
+        Point de vigilance du rapport #203 : même monotonie préservée, l'écart
+        absolu entre le meilleur et le plus faible niveau peut se resserrer si le
+        filtre retire les coups à très fort score (vocabulaire rare). Dans ce
+        scénario, le bingo CARTONS (70 pts) est retiré du vocabulaire IA, donc
+        Expert perd sa pointe : l'écart Expert↔Débutant chute nettement, tout en
+        restant strictement positif (les niveaux restent ordonnés).
+        """
+        moy_complet = _moyennes_par_niveau(
+            self.plateau, self.chevalet, Trie.depuis_iterable(_MOTS_COMPLET)
+        )
+        moy_ia = _moyennes_par_niveau(
+            self.plateau, self.chevalet, Trie.depuis_iterable(_MOTS_IA_RESTREINT)
+        )
+        ecart_complet = moy_complet[Niveau.EXPERT] - moy_complet[Niveau.DEBUTANT]
+        ecart_ia = moy_ia[Niveau.EXPERT] - moy_ia[Niveau.DEBUTANT]
+        # Reste ordonné (Expert > Débutant) même sous filtre...
+        assert ecart_ia > 0
+        # ... mais se resserre sensiblement quand le vocabulaire rare disparaît.
+        assert ecart_ia < ecart_complet

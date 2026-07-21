@@ -99,7 +99,7 @@ def test_fichier_valide_non_reecrit(tmp_path):
         "prenom_principal": "Marie",
         "theme_plateau": "vert",
         "bonus_fin_partie": True,
-        "position_chevalet": {"x": 340, "y": 610},
+        "vocabulaire_humain": True,
         "type_echange": "partiel",
         "avatar_principal": "avatar-04",
     }
@@ -124,7 +124,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
             "prenom_principal": "Alice",
             "theme_plateau": "abrege",
             "bonus_fin_partie": True,
-            "position_chevalet": {"x": 12, "y": 34},
+            "vocabulaire_humain": True,
             "type_echange": "partiel",
             "avatar_principal": "avatar-11",
         },
@@ -139,7 +139,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
         "prenom_principal": "Alice",
         "theme_plateau": "abrege",
         "bonus_fin_partie": True,
-        "position_chevalet": {"x": 12, "y": 34},
+        "vocabulaire_humain": True,
         "type_echange": "partiel",
         "avatar_principal": "avatar-11",
     }
@@ -155,7 +155,7 @@ def test_prenom_principal_vide_par_defaut_non_reecrit(tmp_path):
         "prenom_principal": "",
         "theme_plateau": "classique",
         "bonus_fin_partie": False,
-        "position_chevalet": None,
+        "vocabulaire_humain": False,
         "type_echange": "complet",
         "avatar_principal": "",
     }
@@ -339,76 +339,46 @@ def test_bonus_fin_partie_valeur_non_booleenne_reparee(tmp_path, invalide):
     assert releu["bonus_fin_partie"] is False
 
 
-def test_position_chevalet_none_par_defaut(tmp_path):
-    """Aucune position mémorisée par défaut (issue #135)."""
+# --------------------------------------------------------------------------- #
+# Vocabulaire humain de l'IA (issue #206)
+# --------------------------------------------------------------------------- #
+
+def test_vocabulaire_humain_desactive_par_defaut(tmp_path):
+    """Le réglage « vocabulaire humain » (issue #206) est désactivé par défaut."""
     chemin = tmp_path / "config.json"
 
     config = charger_config(chemin)
 
-    assert config["position_chevalet"] is None
-    assert CONFIG_DEFAUT["position_chevalet"] is None
+    assert config["vocabulaire_humain"] is False
+    assert CONFIG_DEFAUT["vocabulaire_humain"] is False
 
 
-def test_position_chevalet_valide_conservee(tmp_path):
-    """Un dictionnaire {"x": int, "y": int} bien formé est conservé tel quel."""
+@pytest.mark.parametrize("valeur", [True, False])
+def test_vocabulaire_humain_booleen_conserve(tmp_path, valeur):
+    """Un vrai booléen est conservé tel quel, sans réparation."""
     chemin = tmp_path / "config.json"
     chemin.write_text(
-        json.dumps({"position_chevalet": {"x": 340, "y": 610}}), encoding="utf-8"
+        json.dumps({"vocabulaire_humain": valeur}), encoding="utf-8"
     )
 
     config = charger_config(chemin)
 
-    assert config["position_chevalet"] == {"x": 340, "y": 610}
+    assert config["vocabulaire_humain"] is valeur
 
 
-@pytest.mark.parametrize(
-    "invalide",
-    [
-        "340,610",                    # chaîne
-        [340, 610],                   # liste
-        42,                           # entier
-        {"x": 340},                   # clé manquante
-        {"x": 340, "y": 610, "z": 1},  # clé en trop
-        {"x": 340, "y": "610"},       # coordonnée non entière
-        {"x": 3.5, "y": 6.0},         # coordonnées flottantes
-        {"x": True, "y": False},      # booléens (refusés bien que sous-classe d'int)
-    ],
-)
-def test_position_chevalet_invalide_reparee_en_none(tmp_path, invalide):
-    """Toute forme invalide de position retombe sur ``None`` (auto-réparation)."""
+@pytest.mark.parametrize("invalide", ["true", 1, 0, None, "oui"])
+def test_vocabulaire_humain_valeur_non_booleenne_reparee(tmp_path, invalide):
+    """Toute valeur non booléenne (str, entier, None) retombe sur le défaut."""
     chemin = tmp_path / "config.json"
     chemin.write_text(
-        json.dumps({"position_chevalet": invalide}), encoding="utf-8"
+        json.dumps({"vocabulaire_humain": invalide}), encoding="utf-8"
     )
 
     config = charger_config(chemin)
 
-    assert config["position_chevalet"] is None
+    assert config["vocabulaire_humain"] is False
     releu = json.loads(chemin.read_text(encoding="utf-8"))
-    assert releu["position_chevalet"] is None
-
-
-def test_position_chevalet_valide_non_reecrite(tmp_path):
-    """Une position valide déjà propre ne déclenche aucune réécriture (mtime)."""
-    chemin = tmp_path / "config.json"
-    valeur = {
-        "niveau_ia": "amateur",
-        "mode_saisie": "clic",
-        "source_dictionnaire": "ods",
-        "prenom_principal": "",
-        "theme_plateau": "classique",
-        "bonus_fin_partie": False,
-        "position_chevalet": {"x": 100, "y": 200},
-        "type_echange": "complet",
-        "avatar_principal": "",
-    }
-    chemin.write_text(json.dumps(valeur), encoding="utf-8")
-    mtime_avant = chemin.stat().st_mtime_ns
-
-    config = charger_config(chemin)
-
-    assert config["position_chevalet"] == {"x": 100, "y": 200}
-    assert chemin.stat().st_mtime_ns == mtime_avant
+    assert releu["vocabulaire_humain"] is False
 
 
 # --------------------------------------------------------------------------- #

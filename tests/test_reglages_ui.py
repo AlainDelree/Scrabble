@@ -111,6 +111,18 @@ def test_obtenir_reglages_generaux_expose_bonus_fin_partie(monkeypatch):
     assert data["bonus_fin_partie"] is True
 
 
+def test_obtenir_reglages_generaux_expose_vocabulaire_humain(monkeypatch):
+    """La structure expose vocabulaire_humain sous forme de booléen (issue #206)."""
+    monkeypatch.setattr(
+        r, "lire_reglage",
+        lambda cle: True if cle == "vocabulaire_humain" else "",
+    )
+
+    data = ApiAccueil().obtenir_reglages_generaux()
+
+    assert data["vocabulaire_humain"] is True
+
+
 def test_obtenir_reglages_generaux_expose_type_echange(monkeypatch):
     """La structure expose type_echange + les options complet/partiel (issue #138)."""
     monkeypatch.setattr(
@@ -245,6 +257,44 @@ def test_modifier_mot_invalide_encapsule_valueerror(monkeypatch):
 
     assert res["succes"] is False
     assert "non jouable" in res["erreur"]
+
+
+# --------------------------------------------------------------------------- #
+# Statut « classique du jeu » (issue #204)
+# --------------------------------------------------------------------------- #
+
+def test_marquer_classique_mot_delegue_et_rafraichit(monkeypatch):
+    """Marquer classique délègue à ``marquer_classique`` puis renvoie le statut."""
+    appels = {}
+
+    def faux_marquer(mot, present):
+        appels["args"] = (mot, present)
+        return "WU"
+
+    monkeypatch.setattr(r, "marquer_classique", faux_marquer)
+    monkeypatch.setattr(
+        r, "rechercher_statut",
+        lambda mot: {"mot": mot, "sources": {}, "classique": {"classique": True}},
+    )
+
+    res = ApiAccueil().marquer_classique_mot("wu", True)
+
+    assert res["succes"] is True
+    assert appels["args"] == ("wu", True)
+    assert res["classique"]["classique"] is True
+
+
+def test_marquer_classique_mot_refus_encapsule_valueerror(monkeypatch):
+    """Un marquage refusé (mot absent des deux sources) donne succes False."""
+    def faux_marquer(mot, present):
+        raise ValueError("n'existe dans aucune source")
+
+    monkeypatch.setattr(r, "marquer_classique", faux_marquer)
+
+    res = ApiAccueil().marquer_classique_mot("zorglub", True)
+
+    assert res["succes"] is False
+    assert "aucune source" in res["erreur"]
 
 
 # --------------------------------------------------------------------------- #

@@ -24,16 +24,22 @@ from scrabble.dictionnaire.dictionnaire import (
     charger_definitions,
     charger_ods,
     chemins_modifs,
+    construire_ensemble_ia,
     construire_ensemble_mots,
     construire_trie,
     definition_mot,
     desaccentuer,
+    ensemble_classiques,
     est_mot_scrabble,
     lire_liste_mots,
+    marquer_classique,
     modifier_appartenance,
+    mot_existe_dans_une_source,
     normaliser_mot,
     obtenir_trie,
+    obtenir_trie_ia,
     rechercher_statut,
+    statut_classique,
     statut_source,
 )
 
@@ -597,6 +603,7 @@ def test_rechercher_statut_assemble_sources_et_definition(tmp_path, monkeypatch)
     )
     definitions = tmp_path / "definitions.json"
     definitions.write_text(json.dumps({"CHAT": ["Félin."]}), encoding="utf-8")
+    _preparer_classiques(tmp_path, monkeypatch, ajoutes=["CHAT"])
 
     resultat = rechercher_statut(
         "chat",
@@ -609,4 +616,328 @@ def test_rechercher_statut_assemble_sources_et_definition(tmp_path, monkeypatch)
     assert set(resultat["sources"]) == {"ods", "hunspell"}
     assert resultat["sources"]["ods"]["present"] is True
     assert resultat["sources"]["hunspell"]["indisponible"] is True
+    assert resultat["classique"]["classique"] is True
     assert resultat["definition"] == ["Félin."]
+
+
+# --------------------------------------------------------------------------- #
+# Statut « classique du jeu » (issue #204)
+# --------------------------------------------------------------------------- #
+
+def _preparer_classiques(tmp_path, monkeypatch, ajoutes=(), retires=()):
+    """Prépare la paire classiques_ajoutes/retires dans tmp_path et la branche."""
+    ajoutes_p = tmp_path / "classiques_ajoutes.txt"
+    retires_p = tmp_path / "classiques_retires.txt"
+    ajoutes_p.write_text("\n".join(ajoutes), encoding="utf-8")
+    retires_p.write_text("\n".join(retires), encoding="utf-8")
+    monkeypatch.setattr(d, "CHEMINS_CLASSIQUES", (ajoutes_p, retires_p))
+    return ajoutes_p, retires_p
+
+
+def test_statut_classique_marque(tmp_path, monkeypatch):
+    """Un mot présent dans classiques_ajoutes est signalé classique."""
+    _preparer_classiques(tmp_path, monkeypatch, ajoutes=["WU"])
+    statut = statut_classique("WU")
+    assert statut["ajout_manuel"] is True
+    assert statut["retrait_manuel"] is False
+    assert statut["classique"] is True
+
+
+def test_statut_classique_non_marque(tmp_path, monkeypatch):
+    """Un mot absent de la liste n'est pas classique."""
+    _preparer_classiques(tmp_path, monkeypatch)
+    assert statut_classique("CHAT")["classique"] is False
+
+
+def test_statut_classique_retrait_prioritaire(tmp_path, monkeypatch):
+    """Un retrait l'emporte sur un ajout (comme les sources)."""
+    _preparer_classiques(tmp_path, monkeypatch, ajoutes=["WU"], retires=["WU"])
+    assert statut_classique("WU")["classique"] is False
+
+
+def test_mot_existe_dans_une_source_ods(tmp_path):
+    """Présent dans l'ODS (une seule source suffit) → True."""
+    chemin_ods = tmp_path / "ods.txt"
+    chemin_ods.write_text("WU\nSIX\n", encoding="utf-8")
+    assert mot_existe_dans_une_source(
+        "WU", chemin_ods=chemin_ods, base_hunspell=tmp_path / "inexistant"
+    ) is True
+
+
+def test_mot_existe_dans_une_source_absent_partout(tmp_path):
+    """Absent de l'ODS et Hunspell indisponible → False."""
+    chemin_ods = tmp_path / "ods.txt"
+    chemin_ods.write_text("SIX\n", encoding="utf-8")
+    assert mot_existe_dans_une_source(
+        "ZORGLUB", chemin_ods=chemin_ods, base_hunspell=tmp_path / "inexistant"
+    ) is False
+
+
+def test_marquer_classique_accepte_mot_present(tmp_path, monkeypatch):
+    """Marquer un mot présent dans une source écrit dans ajoutes."""
+    ajoutes_p, retires_p = _preparer_classiques(tmp_path, monkeypatch)
+    chemin_ods = tmp_path / "ods.txt"
+    chemin_ods.write_text("WU\n", encoding="utf-8")
+
+    norme = marquer_classique(
+        "wu", present=True, chemin_ods=chemin_ods, base_hunspell=tmp_path / "no"
+    )
+    assert norme == "WU"
+    assert "WU" in lire_liste_mots(ajoutes_p)
+    assert "WU" not in lire_liste_mots(retires_p)
+
+
+def test_marquer_classique_refuse_mot_absent_des_deux_sources(tmp_path, monkeypatch):
+    """Un mot inexistant dans les deux sources est refusé, sans écrire."""
+    ajoutes_p, retires_p = _preparer_classiques(tmp_path, monkeypatch)
+    chemin_ods = tmp_path / "ods.txt"
+    chemin_ods.write_text("WU\n", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        marquer_classique(
+            "zorglub", present=True,
+            chemin_ods=chemin_ods, base_hunspell=tmp_path / "no",
+        )
+    # Aucune écriture : le fichier reste vide.
+    assert lire_liste_mots(ajoutes_p) == set()
+
+
+def test_marquer_classique_mot_invalide(tmp_path, monkeypatch):
+    """Un mot non jouable (chiffres) est rejeté avant toute vérification."""
+    _preparer_classiques(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        marquer_classique("w1", present=True)
+
+
+def test_marquer_classique_demarquage_sans_verif_source(tmp_path, monkeypatch):
+    """Le démarquage (present=False) ne vérifie pas l'existence en source."""
+    ajoutes_p, retires_p = _preparer_classiques(
+        tmp_path, monkeypatch, ajoutes=["WU"]
+    )
+    chemin_ods = tmp_path / "ods.txt"
+    chemin_ods.write_text("AUTRE\n", encoding="utf-8")
+
+    marquer_classique(
+        "wu", present=False, chemin_ods=chemin_ods, base_hunspell=tmp_path / "no"
+    )
+    assert "WU" not in lire_liste_mots(ajoutes_p)
+    assert "WU" in lire_liste_mots(retires_p)
+
+
+def test_marquer_classique_round_trip(tmp_path, monkeypatch):
+    """Recherche → marquage → nouvelle recherche confirme le statut (issue #204)."""
+    chemin_ods = _preparer_source_modifs(tmp_path, monkeypatch, ["WU"])
+    monkeypatch.setitem(
+        d.CHEMINS_MODIFS, "hunspell", (tmp_path / "ha.txt", tmp_path / "hr.txt")
+    )
+    _preparer_classiques(tmp_path, monkeypatch)
+
+    avant = rechercher_statut(
+        "wu", chemin_ods=chemin_ods, base_hunspell=tmp_path / "no",
+        chemin_definitions=tmp_path / "defs.json",
+    )
+    assert avant["classique"]["classique"] is False
+
+    marquer_classique(
+        "wu", present=True, chemin_ods=chemin_ods, base_hunspell=tmp_path / "no"
+    )
+
+    apres = rechercher_statut(
+        "wu", chemin_ods=chemin_ods, base_hunspell=tmp_path / "no",
+        chemin_definitions=tmp_path / "defs.json",
+    )
+    assert apres["classique"]["classique"] is True
+
+
+# --------------------------------------------------------------------------- #
+# Trie restreint « vocabulaire humain » de l'IA (issue #206)
+# --------------------------------------------------------------------------- #
+
+def _preparer_ia(tmp_path, monkeypatch, *, source_mots, courants=None,
+                 classiques_ajoutes=(), classiques_retires=()):
+    """Prépare source ODS, mots_courants et classiques, tous branchés en tmp_path.
+
+    ``courants=None`` ne crée **pas** le fichier ``mots_courants.txt`` (cas
+    « absence » ), tandis qu'une liste (même vide) l'écrit. Renvoie les chemins
+    (ods, ajoutes, retires, mots_courants).
+    """
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=source_mots
+    )
+    chemin_courants = tmp_path / "mots_courants.txt"
+    if courants is not None:
+        _ecrire_liste(chemin_courants, courants or [""])
+    _preparer_classiques(
+        tmp_path, monkeypatch,
+        ajoutes=classiques_ajoutes, retires=classiques_retires,
+    )
+    return chemin_ods, chemin_ajoutes, chemin_retires, chemin_courants
+
+
+def _kwargs_ia(chemin_ods, chemin_ajoutes, chemin_retires, chemin_courants,
+               chemin_cache):
+    return dict(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+        chemin_mots_courants=chemin_courants,
+        chemin_cache=chemin_cache,
+    )
+
+
+def test_ensemble_classiques_ajoutes_moins_retires(tmp_path, monkeypatch):
+    """ensemble_classiques = classiques_ajoutes − classiques_retires."""
+    _preparer_classiques(
+        tmp_path, monkeypatch, ajoutes=["WU", "SIX", "ZOO"], retires=["ZOO"]
+    )
+    assert ensemble_classiques() == {"WU", "SIX"}
+
+
+def test_construire_ensemble_ia_union_puis_intersection(tmp_path, monkeypatch):
+    """(courants ∪ classiques) ∩ dico complet actif."""
+    ods, aj, re_, co, *_ = _preparer_ia(
+        tmp_path, monkeypatch,
+        source_mots=["chat", "chien", "wu", "six", "poisson"],
+        courants=["chat", "chien"],
+        classiques_ajoutes=["WU", "SIX"],
+    )
+    ensemble = construire_ensemble_ia(
+        chemin_ods=ods, chemin_ajoutes=aj, chemin_retires=re_,
+        chemin_mots_courants=co,
+    )
+    assert ensemble == {"CHAT", "CHIEN", "WU", "SIX"}
+    # « POISSON » est dans la source complète mais ni courant ni classique.
+    assert "POISSON" not in ensemble
+
+
+def test_construire_ensemble_ia_intersection_exclut_hors_source(tmp_path, monkeypatch):
+    """Un mot courant/classique absent de la source active est exclu."""
+    ods, aj, re_, co, *_ = _preparer_ia(
+        tmp_path, monkeypatch,
+        source_mots=["chat"],
+        courants=["chat", "zorglub"],       # ZORGLUB absent de la source
+        classiques_ajoutes=["WU"],          # WU absent de la source
+    )
+    ensemble = construire_ensemble_ia(
+        chemin_ods=ods, chemin_ajoutes=aj, chemin_retires=re_,
+        chemin_mots_courants=co,
+    )
+    assert ensemble == {"CHAT"}
+    assert "ZORGLUB" not in ensemble and "WU" not in ensemble
+
+
+def test_construire_ensemble_ia_pas_de_doublon_ni_biais(tmp_path, monkeypatch):
+    """Un mot présent dans courants ET classiques n'est compté qu'une fois.
+
+    Non-régression sur le point soulevé par Alain : l'union est un ``set`` ;
+    « SIX » figurant dans les deux listes n'apparaît qu'une fois dans le Trie,
+    et le Trie ne pondère jamais par fréquence (test existe/n'existe pas).
+    """
+    ods, aj, re_, co, *_ = _preparer_ia(
+        tmp_path, monkeypatch,
+        source_mots=["six", "chat"],
+        courants=["six"],
+        classiques_ajoutes=["SIX"],
+    )
+    ensemble = construire_ensemble_ia(
+        chemin_ods=ods, chemin_ajoutes=aj, chemin_retires=re_,
+        chemin_mots_courants=co,
+    )
+    # Un set : « SIX » y est une seule fois par construction.
+    assert ensemble == {"SIX"}
+    trie = Trie.depuis_iterable(ensemble)
+    assert len(trie) == 1                    # aucune duplication dans le Trie
+    assert "SIX" in trie
+
+
+def test_construire_ensemble_ia_tolere_absence_mots_courants(tmp_path, monkeypatch):
+    """Sans mots_courants.txt : repli sur les seuls classiques, sans planter."""
+    ods, aj, re_, co, *_ = _preparer_ia(
+        tmp_path, monkeypatch,
+        source_mots=["wu", "chat"],
+        courants=None,                       # fichier absent
+        classiques_ajoutes=["WU"],
+    )
+    assert not co.exists()
+    ensemble = construire_ensemble_ia(
+        chemin_ods=ods, chemin_ajoutes=aj, chemin_retires=re_,
+        chemin_mots_courants=co,
+    )
+    assert ensemble == {"WU"}                 # classiques seuls (∩ source)
+
+
+def test_construire_ensemble_ia_retrait_source_exclut_ia(tmp_path, monkeypatch):
+    """Un mot courant retiré de la source (mots_retires) sort aussi du Trie IA.
+
+    Garantit l'invariant Trie IA ⊆ dictionnaire complet : l'IA ne peut pas
+    générer un coup que valider_coup rejetterait.
+    """
+    ods, aj, re_, co = _preparer_ia(
+        tmp_path, monkeypatch,
+        source_mots=["chat", "chien"],
+        courants=["chat", "chien"],
+    )[:4]
+    _ecrire_liste(re_, ["chien"])            # CHIEN retiré du dico complet
+    ensemble = construire_ensemble_ia(
+        chemin_ods=ods, chemin_ajoutes=aj, chemin_retires=re_,
+        chemin_mots_courants=co,
+    )
+    assert ensemble == {"CHAT"}
+    assert "CHIEN" not in ensemble
+
+
+def test_obtenir_trie_ia_cache_ecrit_et_relu(tmp_path, monkeypatch):
+    """Premier appel écrit le cache IA, le second le relit sans réécrire."""
+    ods, aj, re_, co, *_ = _preparer_ia(
+        tmp_path, monkeypatch, source_mots=["chat"], courants=["chat"]
+    )
+    cache = tmp_path / "trie_ia_cache.pkl"
+    kwargs = _kwargs_ia(ods, aj, re_, co, cache)
+
+    trie1 = obtenir_trie_ia(**kwargs)
+    assert cache.exists() and "CHAT" in trie1
+    mtime = cache.stat().st_mtime_ns
+
+    trie2 = obtenir_trie_ia(**kwargs)
+    assert cache.stat().st_mtime_ns == mtime     # non réécrit
+    assert "CHAT" in trie2
+
+
+def test_obtenir_trie_ia_cache_invalide_si_mots_courants_change(tmp_path, monkeypatch):
+    """Modifier mots_courants.txt après le cache force une reconstruction."""
+    ods, aj, re_, co, *_ = _preparer_ia(
+        tmp_path, monkeypatch, source_mots=["chat", "chien"], courants=["chat"]
+    )
+    cache = tmp_path / "trie_ia_cache.pkl"
+    kwargs = _kwargs_ia(ods, aj, re_, co, cache)
+
+    trie1 = obtenir_trie_ia(**kwargs)
+    assert "CHIEN" not in trie1
+
+    _ecrire_liste(co, ["chat", "chien"])
+    futur = cache.stat().st_mtime + 10
+    os.utime(co, (futur, futur))
+
+    trie2 = obtenir_trie_ia(**kwargs)
+    assert "CHIEN" in trie2                       # cache invalidé
+
+
+def test_obtenir_trie_ia_cache_invalide_si_classiques_change(tmp_path, monkeypatch):
+    """Modifier classiques_ajoutes.txt après le cache force une reconstruction."""
+    ods, aj, re_, co, *_ = _preparer_ia(
+        tmp_path, monkeypatch, source_mots=["chat", "wu"], courants=["chat"]
+    )
+    cache = tmp_path / "trie_ia_cache.pkl"
+    kwargs = _kwargs_ia(ods, aj, re_, co, cache)
+
+    trie1 = obtenir_trie_ia(**kwargs)
+    assert "WU" not in trie1
+
+    classiques_ajoutes = d.chemins_classiques()[0]
+    _ecrire_liste(classiques_ajoutes, ["WU"])
+    futur = cache.stat().st_mtime + 10
+    os.utime(classiques_ajoutes, (futur, futur))
+
+    trie2 = obtenir_trie_ia(**kwargs)
+    assert "WU" in trie2                          # cache invalidé

@@ -156,6 +156,7 @@ def creer_partie(
     graine: int | None = None,
     tirage_ordre: bool = False,
     bonus_fin_partie: bool = False,
+    dictionnaire_ia: DictionnaireMots | None = None,
 ) -> "Partie":
     """Construit une partie à partir d'une configuration humains/IA.
 
@@ -182,6 +183,13 @@ def creer_partie(
 
     ``bonus_fin_partie`` (défaut ``False``) active le bonus officiel au finisseur
     (issue #134) ; l'appelant UI le renseigne depuis ``config.py``.
+
+    ``dictionnaire_ia`` (défaut ``None``) est le dictionnaire consulté par l'IA
+    pour **générer** ses coups (issue #206, réglage « vocabulaire humain ») :
+    ``None`` signifie « même dictionnaire que le joueur humain » (comportement
+    historique, zéro coût) ; un Trie restreint (mots courants ∪ classiques)
+    limite l'IA à ce vocabulaire. La validation d'un coup (humain **comme** IA)
+    reste toujours sur ``dictionnaire`` complet — voir :class:`Partie`.
 
     :raises ValueError: si aucun humain, si ``nb_ia`` est négatif, ou si le
         total de joueurs sort de l'intervalle 1..:data:`MAX_JOUEURS`.
@@ -210,7 +218,11 @@ def creer_partie(
         resultat = determiner_ordre_jeu(joueurs, random.Random(graine))
         joueurs = [joueurs[indice] for indice in resultat.ordre]
     return Partie(
-        joueurs, dictionnaire, graine=graine, bonus_fin_partie=bonus_fin_partie
+        joueurs,
+        dictionnaire,
+        graine=graine,
+        bonus_fin_partie=bonus_fin_partie,
+        dictionnaire_ia=dictionnaire_ia,
     )
 
 
@@ -227,7 +239,10 @@ def recreer_partie_meme_joueurs(
     (**humain/ordinateur**) et, pour les IA, leur **niveau** de difficulté — et
     reconstruit une partie neuve via :func:`creer_partie`, sans rejouer l'écran
     de configuration. Le réglage ``bonus_fin_partie`` de la partie d'origine est
-    conservé.
+    conservé, ainsi que son **vocabulaire d'IA** (issue #206) : si la partie
+    d'origine restreignait l'IA à un Trie distinct, ce même Trie est réutilisé ;
+    sinon (IA sur le dictionnaire complet) la nouvelle partie reste sur son
+    ``dictionnaire``.
 
     C'est le pivot de l'action « Recommencer » de la modale de fin de partie
     (issue #142) : la partie terminée n'est pas modifiée (elle reste dans
@@ -245,6 +260,15 @@ def recreer_partie_meme_joueurs(
     noms_humains = [j.nom for j in partie.joueurs if j.humain]
     noms_ia = [j.nom for j in partie.joueurs if not j.humain]
     niveaux_ia = [j.niveau for j in partie.joueurs if not j.humain]
+    # Vocabulaire humain (issue #206) : ne repropager que si l'IA d'origine était
+    # bien restreinte à un Trie distinct. Si elle jouait sur le dictionnaire
+    # complet (``dictionnaire_ia is dictionnaire``), on laisse ``None`` pour que
+    # la nouvelle partie retombe sur son propre ``dictionnaire``.
+    dictionnaire_ia = (
+        None
+        if partie.dictionnaire_ia is partie.dictionnaire
+        else partie.dictionnaire_ia
+    )
     return creer_partie(
         noms_humains=noms_humains,
         dictionnaire=dictionnaire,
@@ -254,6 +278,7 @@ def recreer_partie_meme_joueurs(
         graine=graine,
         tirage_ordre=tirage_ordre,
         bonus_fin_partie=partie.bonus_fin_partie,
+        dictionnaire_ia=dictionnaire_ia,
     )
 
 
@@ -270,6 +295,18 @@ class Partie:
     ``graine`` est conservée telle quelle : c'est elle, avec la suite ordonnée
     des actions, qui rend le déroulement d'une partie entièrement reproductible
     (base de la persistance, :mod:`scrabble.persistance.stockage`).
+
+    Deux dictionnaires (issue #206)
+    -------------------------------
+    ``dictionnaire`` (complet) sert **toujours** à la validation d'un coup
+    (:func:`valider_coup`), qu'il soit joué par un humain ou par une IA : le
+    joueur humain n'est jamais restreint. ``dictionnaire_ia`` sert seulement à la
+    **génération** des coups de l'IA (:func:`scrabble.moteur.ia.choisir_coup`).
+    Par défaut (``dictionnaire_ia is None``), il est identique à ``dictionnaire``
+    (même objet, comportement historique strictement inchangé). Le réglage
+    « vocabulaire humain » y injecte un Trie restreint (mots courants ∪
+    classiques), qui élague l'espace de recherche de l'IA sans jamais élargir ni
+    restreindre ce que l'humain peut jouer ou vérifier.
     """
 
     def __init__(
@@ -280,6 +317,7 @@ class Partie:
         graine: int | None = None,
         sac: Sac | None = None,
         bonus_fin_partie: bool = False,
+        dictionnaire_ia: DictionnaireMots | None = None,
     ) -> None:
         if not 1 <= len(joueurs) <= MAX_JOUEURS:
             raise ValueError(
@@ -288,6 +326,13 @@ class Partie:
             )
         self.joueurs = joueurs
         self.dictionnaire = dictionnaire
+        # Dictionnaire de génération des coups de l'IA (issue #206). ``None`` →
+        # même objet que ``dictionnaire`` (aucun filtre, coût nul) ; un Trie
+        # restreint limite l'IA aux mots courants/classiques. La validation d'un
+        # coup reste toujours sur ``dictionnaire`` complet (humain comme IA).
+        self.dictionnaire_ia = (
+            dictionnaire if dictionnaire_ia is None else dictionnaire_ia
+        )
         self.graine = graine
         # Réglage câblé par l'appelant (issue #134) : bonus officiel au finisseur
         # sur fin par chevalet vidé. Le moteur n'importe pas ``config.py``.
@@ -430,7 +475,7 @@ class Partie:
                 f"Le joueur IA {joueur.nom!r} n'a pas de niveau défini."
             )
         coup = ia.choisir_coup(
-            self.plateau, joueur.chevalet, self.dictionnaire, joueur.niveau
+            self.plateau, joueur.chevalet, self.dictionnaire_ia, joueur.niveau
         )
         if coup is None:
             return self.passer()

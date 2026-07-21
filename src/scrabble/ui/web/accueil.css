@@ -896,6 +896,16 @@ section h2 {
     gap: 8px;
 }
 
+/* Carte « classique du jeu » (issue #204) : même style que les cartes par
+   source, mais pleine largeur et détachée du bloc définition qui suit. */
+#vue-reglages .classique {
+    margin-bottom: 20px;
+}
+
+#vue-reglages .classique:empty {
+    margin-bottom: 0;
+}
+
 #vue-reglages .definition h3 {
     font-size: 1.1rem;
     margin-bottom: 8px;

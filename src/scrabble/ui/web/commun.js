@@ -117,10 +117,13 @@
      * Câble un bouton déclencheur + son popover : ouverture/fermeture au clic sur
      * le bouton, fermeture au clic hors du popover ou à la touche Échap. Met à
      * jour aria-expanded. ``onOuvrir`` (optionnel) est appelé à chaque ouverture.
-     * Ouvrir un popover ferme automatiquement tout autre popover câblé encore
-     * ouvert dans la même fenêtre (issue #151).
+     * ``onFermer`` (optionnel) est appelé à chaque fermeture EFFECTIVE (popover
+     * réellement replié), pour réinitialiser l'état associé — p. ex. vider le
+     * champ de recherche du dictionnaire (issue #196). Ouvrir un popover ferme
+     * automatiquement tout autre popover câblé encore ouvert dans la même fenêtre
+     * (issue #151).
      */
-    function configurerPopover(bouton, popover, onOuvrir) {
+    function configurerPopover(bouton, popover, onOuvrir, onFermer) {
         if (!bouton || !popover) {
             return;
         }
@@ -131,6 +134,9 @@
             }
             popover.hidden = true;
             bouton.setAttribute('aria-expanded', 'false');
+            if (typeof onFermer === 'function') {
+                onFermer();
+            }
         };
         popoversCables.push({ fermer });
         const ouvrir = () => {

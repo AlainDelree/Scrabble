@@ -9,9 +9,10 @@ Confidentialité du chevalet
 ---------------------------
 Le panneau du bas suit le **joueur humain de référence** — le premier joueur
 humain de la partie (voir :func:`index_humain_reference`). Depuis l'issue #99,
-ses lettres sont **toujours** exposées à la fenêtre chevalet (panneau toujours
-visible et réarrangeable, comme un vrai chevalet physique), y compris hors de
-son tour ; seule la pose réelle sur le plateau reste réservée à son tour (garde
+ses lettres sont **toujours** exposées au panneau du chevalet (zone C intégrée à
+``jeu.html`` depuis l'issue #187 ; panneau toujours visible et réarrangeable,
+comme un vrai chevalet physique), y compris hors de son tour ; seule la pose
+réelle sur le plateau reste réservée à son tour (garde
 de tour côté API, voir :meth:`ApiJeu._refuser_hors_tour`). En revanche le
 chevalet n'est **jamais** exposé pour un autre joueur — ni un ordinateur, ni un
 second humain : :meth:`ApiJeu._etat_chevalet` ne sérialise que le chevalet du
@@ -43,7 +44,6 @@ import webview
 
 from scrabble import journal
 from scrabble.config import AVATARS_DISPONIBLES, THEMES_PLATEAU, charger_config
-from scrabble.reglages import lire_reglage, modifier_reglage
 from scrabble.dictionnaire.dictionnaire import (
     CHEMIN_DEFINITIONS,
     Trie,
@@ -125,18 +125,31 @@ def serialiser_plateau(plateau: PlateauPartie) -> list[list[dict[str, Any]]]:
     ]
 
 
-# Côtés attribués aux autres joueurs, indexés par leur rang *relatif* au joueur
-# humain de référence dans l'ordre de jeu (issue #122). La clé est l'effectif
-# total ; la valeur donne, pour le 1er, 2e, 3e joueur *après* la référence dans
-# l'ordre de jeu, le côté du plateau à occuper, en tournant dans le sens horaire
-# à partir du bas : bas → gauche → haut → droite.
+# Slots attribués aux autres joueurs, indexés par leur rang *relatif* au joueur
+# humain de référence dans l'ordre de jeu (issues #122 puis #195). La clé est
+# l'effectif total ; la valeur donne, pour le 1er, 2e, 3e joueur *après* la
+# référence dans l'ordre de jeu, le slot à occuper dans la zone B de la marge
+# gauche.
 #
-# Exception documentée à 2 joueurs : face-à-face bas/haut, il n'y a pas de strict
-# sens horaire dans ce cas précis (l'unique adversaire est placé en face).
+# Depuis la refonte en 4 zones (#186), les fiches ne sont plus disposées
+# spatialement autour du plateau : elles sont EMPILÉES verticalement dans la
+# marge gauche, dans l'ordre DOM des slots — de haut en bas : ``haut`` →
+# ``gauche`` → ``droite`` → ``bas`` (voir ``jeu.html``/``jeu.css``, ``.slot`` et
+# ``.slot:empty { display: none }`` qui replie les slots inutilisés). Les noms de
+# slots sont donc devenus de simples repères de RANG vertical (« 1er, 2e, 3e slot
+# à partir du haut »), l'ancienne sémantique spatiale « côté du plateau » étant
+# obsolète.
+#
+# On veut que la lecture de haut en bas suive l'ORDRE DE JEU : le joueur qui joue
+# juste après l'humain de référence en haut, puis les suivants dans l'ordre, la
+# référence restant toujours en bas (slot ``bas``, comportement acquis #33/#99).
+# On mappe donc le rang relatif k directement sur les slots du haut vers le bas :
+# k=1 → ``haut``, k=2 → ``gauche``, k=3 → ``droite`` ; la référence occupe
+# ``bas``.
 SEQUENCES_POSITIONS = {
     2: ("haut",),
-    3: ("gauche", "haut"),
-    4: ("gauche", "haut", "droite"),
+    3: ("haut", "gauche"),
+    4: ("haut", "gauche", "droite"),
 }
 
 
@@ -145,7 +158,7 @@ def index_humain_reference(joueurs: list[Joueur]) -> int:
 
     Source de vérité unique du « joueur humain de référence » (issue #99) — celui
     dont le panneau du bas (chevalet) est toujours visible et réarrangeable, y
-    compris hors de son tour, et dont on expose les lettres à la fenêtre chevalet.
+    compris hors de son tour, et dont on expose les lettres au panneau chevalet.
     Reprend exactement la règle déjà utilisée pour la position ``"bas"`` : le
     premier joueur ``humain`` de la liste, ou l'index ``0`` s'il n'y a aucun
     humain (cas théorique / test). Réutilisée par :func:`calculer_positions`
@@ -159,31 +172,31 @@ def index_humain_reference(joueurs: list[Joueur]) -> int:
 
 
 def calculer_positions(joueurs: list[Joueur]) -> list[str]:
-    """Position spatiale de chaque joueur autour du plateau (index → côté).
+    """Slot vertical de chaque joueur dans la marge gauche (index → slot).
 
-    Renvoie une liste parallèle à ``joueurs`` où l'élément ``i`` est le côté
+    Renvoie une liste parallèle à ``joueurs`` où l'élément ``i`` est le slot
     (``"bas"``, ``"haut"``, ``"gauche"`` ou ``"droite"``) assigné au joueur
-    d'index ``i``. Règle (issues #33 puis #122), avec une seule source de vérité
-    côté Python :
+    d'index ``i``. Depuis la refonte en 4 zones (#186) ces noms ne désignent plus
+    un côté du plateau mais un RANG dans l'empilement vertical de la zone B (de
+    haut en bas : ``haut`` → ``gauche`` → ``droite`` → ``bas`` ; voir
+    :data:`SEQUENCES_POSITIONS`). Règle (issues #33, #122 puis #195), avec une
+    seule source de vérité côté Python :
 
     * Le **joueur humain de référence** — le premier joueur ``humain`` de la
-      liste ``joueurs`` — est toujours en ``"bas"`` (position naturelle face à
-      l'écran). S'il n'y a aucun humain (cas théorique / test), le premier
-      joueur tient ce rôle.
-    * Tous les autres joueurs (humains et ordinateurs confondus) se répartissent
-      sur les côtés restants **dans le sens horaire** (bas → gauche → haut →
-      droite), selon leur rang *relatif* à la référence dans l'ordre de jeu :
-      le joueur qui joue juste après la référence occupe le côté suivant dans le
-      sens horaire, et ainsi de suite. L'ordre de jeu étant déjà encodé dans
-      l'ordre de la liste ``joueurs`` (le tirage d'ordre l'a réordonnée), les
-      positions suivent l'ordre de jeu réel — y compris quand l'humain n'est pas
-      le premier à jouer.
-
-    Exception documentée à 2 joueurs : face-à-face bas/haut (voir
-    :data:`SEQUENCES_POSITIONS`), sans strict sens horaire dans ce cas précis.
+      liste ``joueurs`` — est toujours en ``"bas"`` (dernière fiche, en bas de la
+      pile, face à l'écran). S'il n'y a aucun humain (cas théorique / test), le
+      premier joueur tient ce rôle.
+    * Tous les autres joueurs (humains et ordinateurs confondus) s'empilent
+      **dans l'ordre de jeu**, du haut vers le bas, selon leur rang *relatif* à
+      la référence : le joueur qui joue juste après la référence occupe la fiche
+      du haut, le suivant celle d'en dessous, et ainsi de suite jusqu'à revenir
+      à la référence en bas. L'ordre de jeu étant déjà encodé dans l'ordre de la
+      liste ``joueurs`` (le tirage d'ordre l'a réordonnée), la lecture de haut en
+      bas suit l'ordre de jeu réel — y compris quand l'humain n'est pas le
+      premier à jouer.
 
     Cas particuliers : liste vide → ``[]`` ; un seul joueur → ``["bas"]`` (aucune
-    position latérale).
+    autre fiche).
     """
     if not joueurs:
         return []
@@ -294,9 +307,10 @@ def serialiser_joueur_public(
 
     Contient le nombre de lettres du chevalet (``nb_lettres``) mais **jamais**
     leur identité : l'affichage masqué peut ainsi montrer le bon nombre de
-    rectangles grisés sans rien dévoiler. ``position`` est le côté du plateau
-    assigné au joueur (voir :func:`calculer_positions`) : l'UI place le panneau
-    du joueur sur ce côté (une seule source de vérité, calculée côté Python).
+    rectangles grisés sans rien dévoiler. ``position`` est le slot d'empilement
+    vertical assigné au joueur (voir :func:`calculer_positions`) : l'UI place la
+    fiche du joueur dans ce slot (une seule source de vérité, calculée côté
+    Python), la lecture de haut en bas suivant l'ordre de jeu (issue #195).
     ``avatar`` est l'identifiant du portrait SVG attribué (voir
     :func:`calculer_avatars`), également calculé côté Python.
     """
@@ -1044,19 +1058,20 @@ def detail_tirage_ordre(
 class ApiJeu:
     """API Python exposée au JavaScript de l'écran de jeu (issue #90).
 
-    Deux fenêtres pywebview partagent cette même instance d'API : la fenêtre
-    **plateau** (maximisée) et la fenêtre **chevalet** (flottante, frameless,
-    toujours au-dessus). L'API respecte la règle de confidentialité : l'état
-    poussé vers la fenêtre plateau est **public** (jamais les lettres du
-    chevalet, issues #33/#35) ; seul l'état poussé vers la fenêtre chevalet
-    contient les lettres privées du **seul** joueur courant.
+    Depuis l'issue #187 (migration du chevalet en zone C) puis l'issue #193
+    (nettoyage du modèle de fenêtres), **une seule** fenêtre pywebview porte
+    tout l'écran de jeu (``jeu.html`` : plateau + panneau chevalet intégré). Il
+    n'y a plus de fenêtre chevalet compagnon flottante. L'API respecte la règle
+    de confidentialité : la charge ``appliquerEtatPlateau`` est **publique**
+    (jamais les lettres du chevalet, issues #33/#35), tandis que la charge
+    ``appliquerEtatChevalet`` contient les lettres privées du **seul** joueur
+    humain de référence — toutes deux poussées à cette même fenêtre.
 
     Source de vérité de l'état de pose (option 1 du rapport #89, §2.2) :
     ``ApiJeu`` centralise ``_selection`` (index de la lettre sélectionnée dans
-    le chevalet) et ``_en_attente`` (liste des placements en attente). Les deux
-    fenêtres ne sont que des vues : elles lisent/écrivent cet état via les
-    méthodes exposées, et toute mutation est rediffusée aux deux fenêtres par
-    :meth:`_diffuser`.
+    le chevalet) et ``_en_attente`` (liste des placements en attente). La
+    fenêtre n'est qu'une vue : elle lit/écrit cet état via les méthodes
+    exposées, et toute mutation est rediffusée par :meth:`_diffuser`.
 
     Instanciation différée et réutilisation (issue #179) : dans le modèle
     mono-fenêtre, une **même** instance d'``ApiJeu`` sert plusieurs parties
@@ -1088,12 +1103,13 @@ class ApiJeu:
         # d'infrastructure indépendant d'une partie : posé une seule fois ici,
         # jamais remis à zéro par :meth:`charger_partie`.
         self._chemin_persistance = chemin_persistance
-        # Deux fenêtres distinctes (issue #90) au lieu du ``_window`` unique.
-        # Dans le modèle mono-fenêtre (issue #179), la fenêtre physique PERSISTE
-        # d'une partie à l'autre : :meth:`charger_partie` ne les touche donc pas
-        # (elles ne font pas partie de l'état « par partie » remis à zéro).
+        # Fenêtre unique de l'écran de jeu (``jeu.html`` : plateau + chevalet
+        # intégré en zone C depuis #187 ; plus de fenêtre chevalet compagnon
+        # depuis #193). Dans le modèle mono-fenêtre (issue #179), la fenêtre
+        # physique PERSISTE d'une partie à l'autre : :meth:`charger_partie` ne la
+        # touche donc pas (elle ne fait pas partie de l'état « par partie » remis
+        # à zéro).
         self._window_plateau: webview.Window | None = None
-        self._window_chevalet: webview.Window | None = None
         # Tout l'état interne lié à UNE partie est posé par un point unique de
         # remise à zéro (issue #179) : une même instance servant plusieurs parties
         # successives dans le modèle mono-fenêtre, ce point garantit qu'aucun
@@ -1131,9 +1147,9 @@ class ApiJeu:
         # ``infos_tirage`` est fourni — un dict ``{noms_creation, graine,
         # noms_humains}`` transmis par l'accueil (« Lancer la partie ») ou par
         # « Recommencer » (issue #142) — l'écran de jeu s'ouvre en état « pré-
-        # partie » : plateau, fiches joueurs et barre globale masqués, écran de
-        # tirage affiché, fenêtre chevalet créée masquée. ``None`` (reprise d'une
-        # partie existante) : pas de tirage, l'écran s'ouvre directement jouable.
+        # partie » : plateau, fiches joueurs, barre globale et panneau chevalet
+        # masqués par le JS, écran de tirage affiché à leur place. ``None``
+        # (reprise d'une partie existante) : pas de tirage, écran directement jouable.
         # ``_tirage_termine`` passe à True dès qu'il n'y a plus de tirage à mener
         # (aucun tirage demandé, ou « Continuer » cliqué) : il garde
         # :meth:`terminer_tirage` idempotente.
@@ -1169,11 +1185,6 @@ class ApiJeu:
         self._joker_demande: dict[str, Any] | None = None
         # Évite de journaliser plusieurs fois la même fin de partie (issue #66).
         self._fin_journalisee = False
-        # Anti-flood pour le glisser-déposer applicatif du chevalet
-        # (issue #91 point 2, tracé pour l'issue #92) : on journalise le début de
-        # chaque drag et son PREMIER déplacement effectif (preuve que les événements
-        # pointeur JS atteignent bien Python), pas chacune des frames suivantes.
-        self._drag_premier_deplacement = False
         # Évite de finaliser plusieurs fois la partie en base (issue #81).
         self._fin_persistee = False
         # Vrai lorsque l'utilisateur a demandé « Retour au menu » (issue #74) :
@@ -1193,12 +1204,6 @@ class ApiJeu:
         # afficher. On mémorise ici les infos (``noms_creation``/``graine``/
         # ``noms_humains``) que :func:`lancer_jeu` passera à la nouvelle ``ApiJeu``.
         self._nouvelles_infos_tirage: dict[str, Any] | None = None
-        # Garde-fou anti-boucle de la fermeture croisée par la croix (issue #94) :
-        # fermer une fenêtre par sa croix détruit l'autre, dont la destruction
-        # re-déclenche l'événement ``closing`` (sous GTK, ``destroy()`` passe aussi
-        # par ``close_window``). Ce drapeau, posé au premier passage, fait
-        # court-circuiter les déclenchements suivants pour éviter une récursion.
-        self._fermeture_en_cours = False
 
     def charger_partie(
         self,
@@ -1226,110 +1231,15 @@ class ApiJeu:
         self._infos_tirage = infos_tirage
         self._tirage_termine = infos_tirage is None
 
-    def set_windows(
-        self,
-        plateau: webview.Window,
-        chevalet: webview.Window | None = None,
-    ) -> None:
-        """Associe les deux fenêtres pywebview (plateau + chevalet) — issue #90."""
-        self._window_plateau = plateau
-        self._window_chevalet = chevalet
-
     def set_window(self, window: webview.Window) -> None:
-        """Associe la fenêtre **plateau** (compat. mono-fenêtre, issue #74).
+        """Associe la fenêtre **unique** de l'écran de jeu (issues #74/#193).
 
-        Conservée pour les appelants et tests historiques : elle ne renseigne que
-        la fenêtre plateau, la fenêtre chevalet restant à ``None``. Le point
-        d'entrée à privilégier depuis l'issue #90 est :meth:`set_windows`.
+        Depuis le nettoyage du modèle de fenêtres (issue #193), l'écran de jeu ne
+        comporte plus qu'une seule fenêtre physique (``jeu.html`` : plateau +
+        chevalet intégré en zone C). Cette méthode remplace l'ancien
+        ``set_windows(plateau, chevalet)`` de l'issue #90.
         """
         self._window_plateau = window
-
-    def installer_fermeture_croisee(self) -> None:
-        """Câble la fermeture native (croix ✕) des deux fenêtres — issue #94.
-
-        Avant l'issue #90, l'écran de jeu était une **fenêtre unique** : la fermer
-        par sa croix quittait proprement l'application (issue #74). Depuis la
-        séparation en deux fenêtres, fermer « Scrabble - Plateau » par sa croix
-        laissait « Scrabble - Chevalet » (``on_top``) orpheline, et inversement —
-        seul le bouton applicatif « Retour au menu » détruisait bien les deux.
-
-        On s'abonne donc à l'événement pywebview ``events.closing`` de **chacune**
-        des deux fenêtres : à la fermeture native de l'une, on détruit l'autre
-        (:meth:`_sur_fermeture_native`). Contrairement à « Retour au menu », une
-        fermeture par la croix **quitte l'application** (on ne positionne pas
-        ``_retour_menu``, donc :func:`lancer_jeu` ne rouvre pas l'accueil) —
-        comportement attendu d'une croix, cohérent avec la fenêtre unique d'avant
-        l'issue #90.
-
-        Tolère les fenêtres factices des tests (pas d'attribut ``events`` ou pas
-        d'événement ``closing``) : dans ce cas on n'abonne rien.
-
-        Coquille unifiée (issue #182) — vérifié : le même câblage sécurise la
-        fermeture par la croix dans la coquille mono-fenêtre (issue #180), où le
-        chevalet compagnon est **persistant** et **masqué la plupart du temps**
-        (vue Accueil, tirage d'ordre en cours). :meth:`_sur_fermeture_native`
-        détruit **inconditionnellement** la fenêtre jumelle, qu'elle soit visible
-        ou masquée : un ✕ natif sur la fenêtre principale — quelle que soit la vue
-        active au moment du clic — détruit donc aussi le chevalet masqué, et
-        réciproquement un ✕ sur le chevalet détruit la fenêtre principale. Aucune
-        fenêtre masquée ne subsiste pour maintenir ``webview.start()`` vivant
-        (risque n°1 des rapports #177/#178), et aucun abonné ne renvoyant jamais
-        ``False``, aucune confirmation implicite ne bloque la fermeture (la
-        confirmation d'un coup en attente reste, elle, portée côté JS par le
-        bouton applicatif « Retour au menu », pas par la croix).
-        """
-        for fenetre in (self._window_plateau, self._window_chevalet):
-            evenements = getattr(fenetre, "events", None)
-            closing = getattr(evenements, "closing", None)
-            if closing is None:
-                continue
-            # ``Event.__iadd__`` (pywebview) ajoute un abonné et renvoie l'événement
-            # lui-même : ``closing += handler`` mute l'événement en place. Le
-            # handler déclare un paramètre ``window`` : pywebview lui passe alors la
-            # fenêtre émettrice, ce qui permet de détruire *l'autre*.
-            closing += self._sur_fermeture_native
-
-    def _sur_fermeture_native(self, window: "webview.Window") -> None:
-        """Ferme la fenêtre jumelle quand ``window`` est fermée par sa croix (issue #94).
-
-        Abonné à ``events.closing`` des deux fenêtres par
-        :meth:`installer_fermeture_croisee`. La fenêtre qui reçoit la croix se
-        ferme d'elle-même (on ne la détruit pas ici, pour éviter une double
-        fermeture) ; on se contente de détruire **l'autre** fenêtre si elle est
-        encore ouverte, afin qu'aucune ne reste orpheline.
-
-        Garde-fou anti-boucle (``_fermeture_en_cours``) : sous GTK, ``destroy()``
-        repasse par ``close_window`` et re-déclenche ``closing``. Sans ce drapeau,
-        détruire la fenêtre B depuis la fermeture de A relancerait le traitement
-        pour B (qui tenterait de re-détruire A), etc. Au premier passage on lève le
-        drapeau ; les déclenchements suivants ressortent immédiatement.
-
-        On ne renvoie jamais ``False`` : l'événement ``closing`` de pywebview
-        n'annule la fermeture que si un abonné renvoie ``False``. Renvoyer ``None``
-        laisse donc la fermeture se poursuivre normalement.
-        """
-        if self._fermeture_en_cours:
-            return
-        self._fermeture_en_cours = True
-        journal.info(
-            "Jeu : fermeture native (croix) détectée — fermeture des deux "
-            f"fenêtres et sortie (partie #{self._id_partie})."
-        )
-        autre = (
-            self._window_chevalet
-            if window is self._window_plateau
-            else self._window_plateau
-        )
-        if autre is None:
-            return
-        try:
-            autre.destroy()
-        except Exception as e:  # noqa: BLE001 - une fermeture ratée ne doit rien bloquer
-            journal.erreur(
-                "Jeu : destruction de la fenêtre jumelle (fermeture croisée) "
-                "impossible.",
-                e,
-            )
 
     @staticmethod
     def _erreur_aucune_partie() -> dict[str, Any]:
@@ -1364,11 +1274,12 @@ class ApiJeu:
         return self._etat_plateau()
 
     def obtenir_etat_chevalet(self) -> dict[str, Any]:
-        """État initial **privé** pour la fenêtre chevalet (issue #90).
+        """État initial **privé** pour le panneau chevalet (zone C — issues #90/#187).
 
-        Équivalent de la charge diffusée par :meth:`_diffuser` vers la fenêtre
-        chevalet (lettres du seul joueur humain courant comprises), exposé pour le
-        chargement initial de cette fenêtre. Voir :meth:`_etat_chevalet`.
+        Équivalent de la charge ``appliquerEtatChevalet`` diffusée par
+        :meth:`_diffuser` (lettres du seul joueur humain de référence comprises),
+        exposé pour le chargement initial du panneau chevalet intégré à
+        ``jeu.html``. Voir :meth:`_etat_chevalet`.
         """
         if self._partie is None:
             return self._erreur_aucune_partie()
@@ -1399,59 +1310,24 @@ class ApiJeu:
         )
 
     def terminer_tirage(self) -> dict[str, Any]:
-        """Fin du tirage d'ordre : révèle la fenêtre chevalet (issue #170).
+        """Fin du tirage d'ordre : rend l'écran de jeu jouable (issue #170).
 
         Appelée quand l'utilisateur clique « Continuer » sur l'écran de tirage.
-        Le JS, de son côté, réaffiche le plateau, les fiches joueurs ET la barre
-        globale. Ici, on révèle la fenêtre **chevalet** (créée masquée le temps du
-        tirage) et on la finalise comme lors d'une ouverture normale : on la
-        repositionne en bas-centre (:func:`_repositionner_chevalet`) et on la lie
-        au plateau (:func:`_lier_chevalet_au_plateau`, issue #105) — étapes
-        volontairement différées jusqu'ici pour ne pas faire apparaître le chevalet
-        pendant le tirage.
+        Le JS, de son côté, réaffiche le plateau, les fiches joueurs, la barre
+        globale ET le panneau chevalet intégré (zone C). Depuis le nettoyage du
+        modèle de fenêtres (issue #193, plus de fenêtre chevalet compagnon à
+        révéler/positionner), Python n'a plus qu'à marquer le tirage terminé.
 
         Idempotente (garde ``_tirage_termine``) : un second appel — reprise, ou
-        double-clic — est sans effet. Tolère l'absence de fenêtre chevalet (tests).
+        double-clic — est sans effet.
         """
         if self._tirage_termine:
             return {"succes": True}
         self._tirage_termine = True
         journal.info(
-            f"Jeu : tirage d'ordre terminé — ouverture du chevalet "
-            f"(partie #{self._id_partie})."
+            f"Jeu : tirage d'ordre terminé (partie #{self._id_partie})."
         )
-        chevalet = self._window_chevalet
-        if chevalet is not None:
-            try:
-                chevalet.show()
-            except Exception as e:  # noqa: BLE001 - une révélation ratée ne bloque pas le jeu
-                journal.erreur("Jeu : affichage de la fenêtre chevalet impossible.", e)
-            _repositionner_chevalet(chevalet)
-            if self._window_plateau is not None:
-                _lier_chevalet_au_plateau(self._window_plateau, chevalet)
         return {"succes": True}
-
-    def masquer_chevalet(self) -> None:
-        """Masque la fenêtre chevalet compagnon sans la détruire (issue #181).
-
-        Dans la coquille unifiée (issue #180), le chevalet est une fenêtre
-        physique **persistante** créée une seule fois au lancement : lors d'une
-        transition Jeu→Accueil (« Retour au menu », « Annuler le tirage ») ou du
-        redémarrage d'une partie (« Recommencer », nouveau tirage à mener), on le
-        remet simplement **masqué** (``hide()``) au lieu de le ``destroy()`` comme
-        le fait le chemin de production. :meth:`finaliser_entree_vue_jeu` /
-        :meth:`terminer_tirage` le ré-révéleront (``show()``) à la bonne étape.
-
-        Tolère l'absence de fenêtre chevalet (tests, lancement autonome) et une
-        erreur de backend (une révélation/masquage raté ne doit rien bloquer).
-        """
-        chevalet = self._window_chevalet
-        if chevalet is None:
-            return
-        try:
-            chevalet.hide()
-        except Exception as e:  # noqa: BLE001 - un masquage raté ne bloque rien
-            journal.erreur("Jeu : masquage de la fenêtre chevalet impossible.", e)
 
     def finaliser_entree_vue_jeu(self) -> None:
         """Rejoue la finalisation des fenêtres à chaque entrée en vue Jeu (issue #180).
@@ -1466,19 +1342,16 @@ class ApiJeu:
 
         * **maximisation du plateau** (:func:`_maximiser_plateau`) — la fenêtre
           unique, déjà affichée, est (ré)affirmée maximisée à chaque entrée ;
-        * **révélation + liaison du chevalet** si aucun tirage n'est en cours
-          (reprise) : le chevalet, créé **une seule fois** masqué au démarrage
-          (issue #180), est montré (``show()``), repositionné
-          (:func:`_repositionner_chevalet`) et re-lié au plateau
-          (:func:`_lier_chevalet_au_plateau`, risque 4 du rapport #178 : la
-          liaison transiente/owned est re-posée à chaque entrée). Si un tirage est
-          en cours, le chevalet reste masqué : :meth:`terminer_tirage` le révélera
-          au clic « Continuer », comme dans le chemin historique ;
-        * **amorçage du chevalet** (:meth:`_diffuser`) : sa fenêtre ayant été
-          chargée une seule fois au démarrage — **avant** qu'une partie n'existe —
-          son ``obtenir_etat_chevalet`` initial n'a rien reçu. On lui pousse donc
-          l'état frais (même masqué, l'``evaluate_js`` traverse le pont), pour que
-          les bonnes lettres soient prêtes dès sa révélation.
+        * **amorçage du panneau chevalet** (:meth:`_diffuser`) : la fenêtre ayant
+          été chargée une seule fois au démarrage — **avant** qu'une partie
+          n'existe — son ``obtenir_etat_chevalet`` initial n'a rien reçu. On lui
+          pousse donc l'état frais (l'``evaluate_js`` traverse le pont), pour que
+          les bonnes lettres soient prêtes, y compris pendant que le JS masque
+          encore la zone C le temps du tirage d'ordre.
+
+        Depuis le nettoyage du modèle de fenêtres (issue #193), il n'y a plus de
+        fenêtre chevalet compagnon à révéler, repositionner ou lier ici : le
+        chevalet est une zone de la fenêtre unique, montrée/masquée par le JS.
 
         Exécutée dans un **fil dédié** (comme le callback de ``webview.start``) :
         elle enchaîne des attentes ``shown`` et des déplacements de fenêtre qui ne
@@ -1494,22 +1367,10 @@ class ApiJeu:
     def _finaliser_entree_vue_jeu(self) -> None:
         """Corps (hors fil) de :meth:`finaliser_entree_vue_jeu` — voir sa docstring."""
         plateau = self._window_plateau
-        chevalet = self._window_chevalet
         if plateau is not None:
             _maximiser_plateau(plateau)
-        # ``_tirage_termine`` est faux tant qu'un tirage d'ordre doit s'afficher :
-        # dans ce cas on laisse le chevalet masqué (terminer_tirage s'en chargera).
-        tirage_en_cours = not self._tirage_termine
-        if not tirage_en_cours and chevalet is not None:
-            try:
-                chevalet.show()
-            except Exception as e:  # noqa: BLE001 - une révélation ratée ne bloque pas le jeu
-                journal.erreur("Jeu : affichage de la fenêtre chevalet impossible.", e)
-            _repositionner_chevalet(chevalet)
-            if plateau is not None:
-                _lier_chevalet_au_plateau(plateau, chevalet)
-        # Amorce le chevalet pré-chargé (créé une fois au démarrage, avant toute
-        # partie) avec l'état frais, même s'il est encore masqué.
+        # Amorce le panneau chevalet (zone C) pré-chargé — la fenêtre ayant été
+        # chargée une fois au démarrage, avant toute partie — avec l'état frais.
         if self._partie is not None:
             self._diffuser()
 
@@ -1552,8 +1413,8 @@ class ApiJeu:
         partie a été créée et suivie en base mais **aucun coup n'a été joué** : on
         la supprime donc de la persistance (:func:`supprimer_partie`) pour qu'elle
         n'apparaisse pas comme partie fantôme dans « Reprendre une partie », puis
-        on ferme les deux fenêtres de jeu et on rouvre l'accueil — en réutilisant
-        le mécanisme « Retour au menu » (drapeau ``_retour_menu`` lu par
+        on ferme la fenêtre de jeu et on rouvre l'accueil — en réutilisant le
+        mécanisme « Retour au menu » (drapeau ``_retour_menu`` lu par
         :func:`lancer_jeu`, qui rappelle alors :func:`~scrabble.ui.accueil.
         lancer_accueil`). L'écran de jeu ne s'étant pas encore ouvert visuellement
         (le tirage est affiché à sa place), l'utilisateur perçoit un simple retour
@@ -1562,19 +1423,13 @@ class ApiJeu:
         Retourne ``{"succes": True}`` si la fermeture a été demandée, sinon
         ``{"succes": False, "erreur": ...}`` (le JS réactive alors le bouton).
         """
-        if self._window_plateau is None and self._window_chevalet is None:
+        if self._window_plateau is None:
             return {"succes": False, "erreur": "Aucune fenêtre associée."}
         self.supprimer_partie_annulee()
         try:
             # Retour à l'accueil via le même chemin que « Retour au menu ».
             self._retour_menu = True
-            # On détruit soi-même les deux fenêtres : on neutralise la fermeture
-            # croisée native (issue #94) pour éviter la double destruction.
-            self._fermeture_en_cours = True
-            if self._window_chevalet is not None:
-                self._window_chevalet.destroy()
-            if self._window_plateau is not None:
-                self._window_plateau.destroy()
+            self._window_plateau.destroy()
             return {"succes": True}
         except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
             self._retour_menu = False
@@ -1599,9 +1454,9 @@ class ApiJeu:
         (issue #140), le JS mesure — au chargement de la fenêtre plateau, sous le
         vrai moteur WebKitGTK — la hauteur totale de la fenêtre, le bas réel du
         plateau et l'espace restant en dessous. Objectif : objectiver la
-        régression de l'issue #152 (moins d'espace sous le plateau qu'avant, la
-        fenêtre chevalet — 175 px de haut minimum, cf. #140/#141 — empiétant sur
-        le plateau) et vérifier, après correctif, que l'espace disponible est bien
+        régression de l'issue #152 (moins d'espace sous le plateau qu'avant, le
+        chevalet — 175 px de haut minimum, cf. #140/#141 — empiétant sur le
+        plateau) et vérifier, après correctif, que l'espace disponible est bien
         redevenu suffisant (``espace_sous_plateau`` >= ``chevalet_min``).
 
         Purement informatif : n'altère aucun état, retourne toujours un succès.
@@ -1680,7 +1535,7 @@ class ApiJeu:
         return etat
 
     def _etat_chevalet(self) -> dict[str, Any]:
-        """État **complet** (lettres privées incluses) destiné à la fenêtre chevalet.
+        """État **complet** (lettres privées incluses) destiné au panneau chevalet.
 
         Depuis l'issue #99, le payload porte sur le **joueur humain de référence**
         (:func:`index_humain_reference`), et non plus sur le joueur courant : ses
@@ -1719,27 +1574,40 @@ class ApiJeu:
         }
 
     def _diffuser(self) -> None:
-        """Pousse l'état pertinent à chaque fenêtre après toute mutation (issue #90).
+        """Pousse l'état pertinent à la fenêtre Jeu après toute mutation (issue #90).
 
-        Vers la fenêtre **plateau** : l'état **public** (:meth:`_etat_plateau`),
-        jamais de lettre du chevalet. Vers la fenêtre **chevalet** : l'état
-        **complet** (:meth:`_etat_chevalet`), lettres privées comprises. Chaque
-        fenêtre expose un point d'entrée JS (``window.appliquerEtatPlateau`` /
-        ``window.appliquerEtatChevalet``) que l'on appelle via ``evaluate_js``.
-        L'appel est encadré d'un ``try/except`` : une fenêtre fermée ou un JS pas
-        encore prêt ne doit jamais faire planter une action de jeu.
+        Depuis l'issue #187 (Issue B), le chevalet a migré de sa fenêtre flottante
+        séparée vers la zone C de ``jeu.html`` : les DEUX charges sont donc poussées
+        à la **même** fenêtre (``self._window_plateau``, l'unique fenêtre Jeu), qui
+        expose désormais les deux points d'entrée JS :
+
+        * ``window.appliquerEtatPlateau`` reçoit l'état **public**
+          (:meth:`_etat_plateau`), jamais de lettre du chevalet ;
+        * ``window.appliquerEtatChevalet`` reçoit l'état **complet**
+          (:meth:`_etat_chevalet`), lettres privées du seul joueur humain de
+          référence comprises.
+
+        Confidentialité (issues #33/#35, #99) — À NOTER : les lettres privées et
+        l'état public co-résident maintenant dans le même document, mais aucune
+        fuite n'est introduite : :meth:`_etat_chevalet` ne sérialise toujours que
+        le chevalet du joueur humain de référence (jamais un ordinateur ni un autre
+        humain), exactement comme lorsqu'il alimentait une fenêtre séparée. La
+        garantie de l'issue #99 est inchangée ; seule la fenêtre cible a changé.
+
+        Chaque appel est encadré d'un ``try/except`` (:meth:`_pousser`) : une
+        fenêtre fermée ou un JS pas encore prêt ne doit jamais faire planter une
+        action de jeu.
+
+        Depuis le nettoyage du modèle de fenêtres (issue #193), il n'existe plus
+        qu'une seule fenêtre : les deux charges y sont poussées, il n'y a plus de
+        fenêtre chevalet flottante à alimenter.
         """
         self._pousser(
             self._window_plateau, "appliquerEtatPlateau", self._etat_plateau()
         )
         self._pousser(
-            self._window_chevalet, "appliquerEtatChevalet", self._etat_chevalet()
+            self._window_plateau, "appliquerEtatChevalet", self._etat_chevalet()
         )
-        # Z-order : plus de ré-affirmation applicative d'``on_top`` ici (issue #105).
-        # Le chevalet est désormais lié au plateau par une relation transiente
-        # (``set_transient_for``, cf. :func:`_lier_chevalet_au_plateau`), honorée
-        # une fois pour toutes par le gestionnaire de fenêtres — inutile de la
-        # re-poser après chaque interaction.
 
     @staticmethod
     def _pousser(
@@ -1756,85 +1624,6 @@ class ApiJeu:
             window.evaluate_js(script)
         except Exception as e:  # noqa: BLE001 - une vue absente ne bloque pas le jeu
             journal.erreur("Jeu : échec de la diffusion d'un état à une fenêtre.", e)
-
-    def debut_deplacement_chevalet(self) -> dict[str, Any]:
-        """Position absolue actuelle de la fenêtre chevalet, au début d'un drag JS.
-
-        Correctif du point #2 de l'issue #91. Sous WebKitGTK, le mécanisme
-        ``.pywebview-drag-region`` **n'est pas implémenté** (le backend GTK ne câble
-        le déplacement d'une fenêtre ``frameless`` que via ``easy_drag=True``, qui
-        déplacerait la fenêtre au moindre glissé — y compris pendant un clic-clic de
-        pose). On implémente donc le déplacement côté application : le JS de la barre
-        de titre lit ici la position de départ, puis appelle
-        :meth:`deplacer_chevalet` en absolu à chaque mouvement. Portable sur tous les
-        backends (repose sur ``window.move``).
-        """
-        if self._window_chevalet is None:
-            return {"succes": False, "erreur": "Aucune fenêtre chevalet."}
-        try:
-            x, y = int(self._window_chevalet.x), int(self._window_chevalet.y)
-            # Trace (issue #92) : confirme que l'événement pointeur de la barre de
-            # drag a bien traversé le pont JS → Python. Réarme la trace du premier
-            # déplacement pour ce nouveau drag.
-            self._drag_premier_deplacement = False
-            journal.info(
-                f"Jeu : début de déplacement du chevalet demandé (position "
-                f"actuelle ({x}, {y}))."
-            )
-            return {"succes": True, "x": x, "y": y}
-        except Exception as e:  # noqa: BLE001 - position indisponible : le JS ignore le drag
-            return {"succes": False, "erreur": f"Position indisponible : {e}"}
-
-    def deplacer_chevalet(self, x: Any, y: Any) -> dict[str, Any]:
-        """Déplace la fenêtre chevalet à la position **absolue** ``(x, y)`` (issue #91).
-
-        Appelée en continu par le glisser-déposer JS de la barre de titre
-        (``.barre-drag``), pour le déplacement applicatif décrit dans
-        :meth:`debut_deplacement_chevalet`. Les coordonnées sont bornées à des
-        entiers ; tout échec est remonté au JS sans planter le jeu.
-        """
-        if self._window_chevalet is None:
-            return {"succes": False, "erreur": "Aucune fenêtre chevalet."}
-        try:
-            self._window_chevalet.move(int(x), int(y))
-            if not self._drag_premier_deplacement:
-                self._drag_premier_deplacement = True
-                journal.info(
-                    f"Jeu : premier déplacement du chevalet reçu et appliqué "
-                    f"(move vers ({int(x)}, {int(y)}) ; frames suivantes "
-                    f"silencieuses)."
-                )
-            return {"succes": True}
-        except Exception as e:  # noqa: BLE001 - un déplacement raté ne bloque pas le jeu
-            return {"succes": False, "erreur": f"Déplacement impossible : {e}"}
-
-    def fin_deplacement_chevalet(self) -> dict[str, Any]:
-        """Mémorise la position de la fenêtre chevalet à la **fin** d'un drag (issue #135).
-
-        Appelée par le JS de la barre de titre une seule fois, au relâchement du
-        clic (``mouseup``) — surtout pas à chaque mouvement, pour n'écrire sur
-        disque qu'une fois par déplacement plutôt qu'à chaque pixel parcouru. La
-        position lue (``window.x``/``.y``, fiable depuis la bascule XWayland de
-        l'issue #93) est persistée dans le réglage ``position_chevalet`` via le
-        mécanisme habituel (:mod:`scrabble.reglages`, auto-réparation + écriture
-        atomique), pour être réutilisée au prochain lancement de l'écran de jeu.
-        Tout échec est journalisé sans planter le jeu.
-        """
-        if self._window_chevalet is None:
-            return {"succes": False, "erreur": "Aucune fenêtre chevalet."}
-        try:
-            x, y = int(self._window_chevalet.x), int(self._window_chevalet.y)
-        except Exception as e:  # noqa: BLE001 - position indisponible : on n'enregistre rien
-            return {"succes": False, "erreur": f"Position indisponible : {e}"}
-        try:
-            modifier_reglage("position_chevalet", {"x": x, "y": y})
-            journal.info(f"Jeu : position du chevalet mémorisée ({x}, {y}).")
-        except Exception as e:  # noqa: BLE001 - une mémorisation ratée ne bloque pas le jeu
-            journal.erreur(
-                "Jeu : échec de la mémorisation de la position du chevalet.", e
-            )
-            return {"succes": False, "erreur": f"Mémorisation impossible : {e}"}
-        return {"succes": True, "x": x, "y": y}
 
     def _refuser_hors_tour(self) -> dict[str, Any] | None:
         """Refus normalisé si une mutation de pose est tentée hors du tour.
@@ -1860,9 +1649,9 @@ class ApiJeu:
     def selectionner_lettre(self, index: Any) -> dict[str, Any]:
         """Sélectionne (ou désélectionne) la lettre du chevalet d'index ``index``.
 
-        Appelée par la fenêtre chevalet au clic sur une lettre. ``index`` à
+        Appelée par le panneau chevalet au clic sur une lettre. ``index`` à
         ``None`` (ou l'index déjà sélectionné) annule la sélection. Met à jour
-        ``_selection`` puis diffuse l'état aux deux fenêtres.
+        ``_selection`` puis diffuse l'état à la fenêtre.
 
         Réservée au tour du joueur de référence (garde :meth:`_refuser_hors_tour`,
         issue #99) : hors tour, la sélection est refusée sans toucher à l'état.
@@ -1904,8 +1693,8 @@ class ApiJeu:
           partir de ``_selection`` et du chevalet du joueur courant. Si la lettre
           sélectionnée est un **joker**, aucune lettre n'est encore posée : on
           mémorise la case (``_joker_demande``) et on renvoie ``joker_requis`` —
-          la fenêtre chevalet ouvrira alors sa modale de choix.
-        * **Depuis la fenêtre chevalet** (après choix de la lettre d'un joker) :
+          le menu de choix de la lettre du joker s'ouvre alors côté JS.
+        * **Depuis le panneau chevalet** (après choix de la lettre d'un joker) :
           ``lettre``/``joker``/``valeur``/``index`` sont fournis explicitement et
           le placement est finalisé tel quel.
 
@@ -2115,7 +1904,7 @@ class ApiJeu:
         """Pose le mot formé par les lettres en attente (``_en_attente``) — issue #90.
 
         Depuis l'issue #90, la mécanique clic-clic est pilotée par l'état interne :
-        la fenêtre chevalet a construit ``_en_attente`` au fil des appels à
+        le panneau chevalet a construit ``_en_attente`` au fil des appels à
         :meth:`poser_lettre_en_attente`, et cette méthode le lit directement — le
         JS ne passe donc plus de ``placements``. Le paramètre ``placements`` reste
         accepté (rétro-compatibilité et tests) : s'il est fourni, il **remplace**
@@ -2282,7 +2071,7 @@ class ApiJeu:
             self._finaliser_si_terminee()
             # Nouveau tirage + tour suivant : on repart d'un état de pose vierge
             # et on rediffuse le nouvel état public (plateau) et le nouveau
-            # chevalet (fenêtre chevalet) — issue #90.
+            # chevalet (zone C intégrée) — issue #90.
             self._selection = None
             self._en_attente = []
             self._joker_demande = None
@@ -2338,7 +2127,7 @@ class ApiJeu:
     def basculer_echange(self, index: Any) -> dict[str, Any]:
         """Marque/démarque la lettre d'index ``index`` pour l'échange partiel.
 
-        Appelée par la fenêtre chevalet, en mode échange (:attr:`_mode_echange`),
+        Appelée par le panneau chevalet, en mode échange (:attr:`_mode_echange`),
         au clic sur une lettre : un premier clic la marque, un reclic la démarque
         (sélection multiple, distincte de la sélection simple de pose). ``index``
         vise la position de la lettre dans le chevalet du joueur courant (qui est
@@ -2488,7 +2277,7 @@ class ApiJeu:
             self._journaliser_fin_partie()
             self._finaliser_si_terminee()
             # Tour suivant : état de pose remis à zéro et rediffusé (nouvel état
-            # public au plateau, nouveau chevalet à la fenêtre chevalet) — #90.
+            # public au plateau, nouveau chevalet en zone C intégrée) — #90.
             self._selection = None
             self._en_attente = []
             self._joker_demande = None
@@ -2564,18 +2353,18 @@ class ApiJeu:
             journal.info(f"Jeu : fin de partie — gagnant(s) : {gagnants}.")
 
     def retour_menu(self) -> dict[str, Any]:
-        """Ferme **les deux** fenêtres de jeu pour revenir à l'accueil (issues #74/#90).
+        """Ferme la fenêtre de jeu pour revenir à l'accueil (issues #74/#193).
 
-        Point d'entrée du bouton « 🏠 Retour au menu ». Ferme les fenêtres de jeu
+        Point d'entrée du bouton « 🏠 Retour au menu ». Ferme la fenêtre de jeu
         **depuis Python** via ``window.destroy()`` — et non ``window.close()``
         côté JS, non honoré par tous les backends pywebview (GTK/WebKit sous
-        Linux, issues #53/#57). Depuis l'issue #90, il faut détruire **la fenêtre
-        plateau ET la fenêtre chevalet** : sans cela la fenêtre chevalet
-        ``on_top`` resterait orpheline, flottant au-dessus de l'accueil rouvert.
-        Une fois les fenêtres fermées, ``webview.start()`` rend la main à
-        :func:`lancer_jeu`, qui, voyant le drapeau ``_retour_menu``, rouvre
-        l'écran d'accueil (:func:`lancer_accueil`) en **réutilisant la session de
-        journalisation** déjà ouverte (cohérent avec l'issue #66).
+        Linux, issues #53/#57). Depuis le nettoyage du modèle de fenêtres (issue
+        #193), l'écran de jeu ne comporte plus qu'une seule fenêtre physique
+        (plateau + chevalet intégré) : une seule fenêtre à détruire. Une fois
+        fermée, ``webview.start()`` rend la main à :func:`lancer_jeu`, qui, voyant
+        le drapeau ``_retour_menu``, rouvre l'écran d'accueil
+        (:func:`lancer_accueil`) en **réutilisant la session de journalisation**
+        déjà ouverte (cohérent avec l'issue #66).
 
         La partie n'est pas modifiée ici : elle reste persistée et reprenable
         via « Reprendre une partie » (le suivi en base est mis à jour en continu
@@ -2587,27 +2376,14 @@ class ApiJeu:
         ``{"succes": False, "erreur": ...}`` (le JS réactive alors le bouton
         plutôt que de rester bloqué).
         """
-        if self._window_plateau is None and self._window_chevalet is None:
+        if self._window_plateau is None:
             return {"succes": False, "erreur": "Aucune fenêtre associée."}
         try:
             journal.info(
                 f"Jeu : retour au menu demandé (partie #{self._id_partie})."
             )
             self._retour_menu = True
-            # On détruit nous-mêmes les deux fenêtres : on lève donc le garde-fou
-            # anti-boucle (issue #94) pour que l'événement ``closing`` déclenché par
-            # ces ``destroy()`` (sous GTK, ``destroy`` repasse par ``close_window``)
-            # ne relance pas :meth:`_sur_fermeture_native`, qui tenterait de
-            # re-détruire l'autre fenêtre — un double ``destroy`` lèverait une
-            # exception qui, ici, ferait basculer ``_retour_menu`` à ``False`` et
-            # empêcherait la réouverture de l'accueil.
-            self._fermeture_en_cours = True
-            # Détruire la fenêtre chevalet en premier : ``on_top``, elle doit
-            # disparaître avant l'accueil rouvert. La fenêtre plateau ensuite.
-            if self._window_chevalet is not None:
-                self._window_chevalet.destroy()
-            if self._window_plateau is not None:
-                self._window_plateau.destroy()
+            self._window_plateau.destroy()
             return {"succes": True}
         except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
             # La fermeture a échoué : on ne rouvrira pas l'accueil (les fenêtres
@@ -2685,8 +2461,8 @@ class ApiJeu:
         """Rejoue une nouvelle partie avec les mêmes joueurs (issue #142).
 
         Troisième action de la modale de fin de partie. Crée une partie neuve
-        (:meth:`preparer_partie_recommencee`) puis ferme **les deux** fenêtres de
-        jeu à la manière de :meth:`retour_menu`. Une fois la boucle rendue,
+        (:meth:`preparer_partie_recommencee`) puis ferme la fenêtre de jeu à la
+        manière de :meth:`retour_menu`. Une fois la boucle rendue,
         :func:`lancer_jeu` relance l'écran de jeu sur cette nouvelle partie
         (drapeau ``_recommencer``).
 
@@ -2696,20 +2472,14 @@ class ApiJeu:
         Retourne ``{"succes": True}`` si la fermeture a été demandée, sinon
         ``{"succes": False, "erreur": ...}`` (le JS réactive alors le bouton).
         """
-        if self._window_plateau is None and self._window_chevalet is None:
+        if self._window_plateau is None:
             return {"succes": False, "erreur": "Aucune fenêtre associée."}
         try:
             nouvelle, nouvel_id, _ = self.preparer_partie_recommencee()
             self._nouvelle_partie = nouvelle
             self._nouvel_id_partie = nouvel_id
             self._recommencer = True
-            # Même garde-fou anti-boucle que ``retour_menu`` : on détruit soi-même
-            # les deux fenêtres, on neutralise donc la fermeture croisée native.
-            self._fermeture_en_cours = True
-            if self._window_chevalet is not None:
-                self._window_chevalet.destroy()
-            if self._window_plateau is not None:
-                self._window_plateau.destroy()
+            self._window_plateau.destroy()
             return {"succes": True}
         except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
             # Échec (création ou fermeture) : on n'enchaîne pas de nouvelle partie
@@ -2739,8 +2509,8 @@ def lancer_jeu(
     ``infos_tirage`` (issue #170) : quand l'accueil vient de créer une partie
     (« Lancer la partie »), il passe ici le détail nécessaire au tirage d'ordre
     (``{noms_creation, graine, noms_humains}``). L'écran de jeu s'ouvre alors en
-    état « pré-partie » — plateau, fiches joueurs et barre globale masqués, écran
-    de tirage affiché à leur place, fenêtre chevalet créée masquée — jusqu'à ce
+    état « pré-partie » — plateau, fiches joueurs, barre globale et panneau
+    chevalet masqués par le JS, écran de tirage affiché à leur place — jusqu'à ce
     que l'utilisateur clique « Continuer ». ``None`` (reprise de partie) : l'écran
     s'ouvre directement jouable, sans tirage.
 
@@ -2818,253 +2588,26 @@ def _rouvrir_accueil(id_partie: int | None) -> None:
     lancer_accueil(reutiliser_session=True)
 
 
-# Dimensions par défaut de la fenêtre chevalet flottante (issue #90, ajustées
-# #91/#94, épurées #102, resserrées #104). Depuis l'issue #102 la fenêtre ne
-# contient plus que la barre de déplacement fine et le panneau unique des lettres :
-# l'en-tête vert (titre « Chevalet de [nom] » + instructions) et l'icône d'aide
-# « i » ont été retirés. Les dimensions sont recalculées au plus près du contenu
-# réel restant, mesuré en headless (Chromium/Playwright, cf.
-# ``scripts/_harness_jeu/mesure_chevalet_104.mjs`` puis ``…_106.mjs`` qui mesure en
-# plus la symétrie verticale et le vide à droite). L'issue #102 (620×190) laissait
-# encore un espace vide notable à droite et un peu d'air sous la rangée : la marge
-# de sécurité prise sur la mesure Chromium (~32 % en largeur, ~26 % en hauteur)
-# s'avérait trop généreuse. #104 la ramène à ~15-25 %, plus proche du contenu, tout
-# en gardant de quoi absorber l'écart de rendu Chromium ↔ WebKitGTK (viser un peu
-# large plutôt que pile-poil, cf. issues #92/#94).
-#
-# Largeur : la rangée de 9 cases (7 lettres + 2 vides) fait 408 px (40 px/case +
-# 6 px de gap) — c'est du pixel FIXE, identique quel que soit le moteur de rendu ;
-# avec les paddings (bloc 24 px + fenêtre 28 px) elle réclame 460 px, PLANCHER sous
-# lequel la rangée elle-même se comprimerait (mesuré : à 460 px la rangée retombe à
-# 406 px). Le titre du panneau (« 🎴 Mes lettres — cliquez… ») fait ~418 px en
-# Chromium, soit ~470 px paddings compris : gardé sur une seule ligne au-dessus de
-# 470 px, il peut se replier sur 2 lignes en dessous sans casser la mise en page (la
-# hauteur ci-dessous le tolère). #104 avait fixé 540 px (~79 px de vide à droite de
-# la dernière case) ; #106 resserre à 480 px : le vide tombe à ~19 px tout en gardant
-# le titre sur une ligne (480 > 470) et ~20 px de marge sur le plancher de 460 px.
-#
-# Hauteur : le contenu (barre ~35 px + panneau ~98 px + paddings) descend à ~141 px
-# en Chromium sur une ligne de titre, ~166 px si le titre se replie sur 2 lignes. On
-# garde 175 px : c'est le plancher qui, avec le recentrage vertical du cadre
-# (``justify-content: center`` sur ``.chevalet-fenetre``, issue #106), contient encore
-# le cas replié (166 px) sans coupe ni défilement. #106 ne réduit PAS la hauteur :
-# l'asymétrie verticale (plus de vert sous le cadre qu'au-dessus) n'était pas un
-# problème de taille mais d'alignement — le corps flex absorbait toute la hauteur
-# résiduelle en la rejetant en bas. Le recentrage répartit désormais le vert à parts
-# égales en haut et en bas (mesuré : gapHaut = gapBas = 21 px à 480×175), quelle que
-# soit la hauteur exacte. Non redimensionnable : ces valeurs sont la taille réelle
-# utilisée. Des garde-fous de test (``test_largeur_suffisante_pour_le_contenu`` /
-# ``test_hauteur_suffisante_pour_le_contenu``) empêchent une régression de repasser
-# sous la taille du contenu.
-CHEVALET_LARGEUR = 480
-CHEVALET_HAUTEUR = 175
-# Marge basse : la fenêtre chevalet est posée près du bas de l'écran, à cette
-# distance du bord inférieur de la zone de travail.
-CHEVALET_MARGE_BAS = 40
-
-
-def _position_chevalet(
-    largeur: int = CHEVALET_LARGEUR, hauteur: int = CHEVALET_HAUTEUR
-) -> tuple[int, int]:
-    """Position (x, y) bas-centre de l'écran pour la fenêtre chevalet (issue #90).
-
-    Calculée à partir des dimensions d'écran disponibles via ``webview.screens``
-    (premier écran). Le chevalet est centré horizontalement et collé vers le bas
-    (à :data:`CHEVALET_MARGE_BAS` du bord inférieur). En l'absence d'information
-    d'écran exploitable (environnement sans affichage, ``webview.screens`` vide ou
-    en erreur), on retombe sur un placement neutre ``(100, 100)`` plutôt que de
-    faire échouer le lancement.
-
-    Point de vigilance #1 de l'issue #91 : sous WebKitGTK, ``webview.screens`` ne
-    renvoie des dimensions fiables **qu'une fois la boucle GUI démarrée**
-    (``webview.start``). Appelée trop tôt (avant ``start``), elle retombait sur le
-    repli neutre ``(100, 100)`` — d'où l'ouverture en haut à gauche. Cette fonction
-    est donc désormais rappelée **après** le démarrage de la boucle par
-    :func:`_repositionner_chevalet` pour corriger la position réelle de la fenêtre.
-    """
-    nb_ecrans = 0
-    try:
-        ecrans = webview.screens
-        # ``webview.screens`` est un proxy paresseux (proxy_tools) : y toucher avant
-        # qu'un backend GUI (GTK/QT) soit chargé lève ``WebViewException``. On lit
-        # donc le nombre d'écrans DANS ce try (une seule fois) — l'accès dupliqué et
-        # NON gardé qui traînait dans la trace ci-dessous faisait planter le lancement
-        # (et 6 tests) dès que le backend n'était pas encore prêt (issue #96).
-        nb_ecrans = len(ecrans) if ecrans else 0
-        ecran = ecrans[0] if ecrans else None
-        larg_ecran = int(getattr(ecran, "width", 0) or 0)
-        haut_ecran = int(getattr(ecran, "height", 0) or 0)
-    except Exception as e:  # noqa: BLE001 - pas d'écran interrogeable : repli neutre
-        journal.erreur("Jeu : lecture de webview.screens impossible.", e)
-        larg_ecran = haut_ecran = 0
-    # Trace explicite (issue #92) : permet de vérifier après coup ce que
-    # ``webview.screens`` a réellement renvoyé au moment de l'appel (0×0 = écran
-    # non encore interrogeable, typiquement avant le démarrage de la boucle GUI).
-    journal.info(
-        f"Jeu : _position_chevalet — écran mesuré {larg_ecran}×{haut_ecran}px "
-        f"(nb écrans = {nb_ecrans})."
-    )
-    if larg_ecran <= 0 or haut_ecran <= 0:
-        return 100, 100
-    x = max(0, (larg_ecran - largeur) // 2)
-    y = max(0, haut_ecran - hauteur - CHEVALET_MARGE_BAS)
-    return x, y
-
-
-def _dimensions_ecran() -> tuple[int, int]:
-    """Dimensions ``(largeur, hauteur)`` du premier écran, ou ``(0, 0)`` si illisible.
-
-    Lit ``webview.screens`` comme :func:`_position_chevalet` (même moteur, même
-    contrainte : fiable seulement une fois la boucle GUI démarrée sous WebKitGTK,
-    issue #91). Ne lève jamais : en l'absence d'écran interrogeable, retourne
-    ``(0, 0)`` — le repli est laissé à l'appelant.
-    """
-    try:
-        ecrans = webview.screens
-        ecran = ecrans[0] if ecrans else None
-        larg = int(getattr(ecran, "width", 0) or 0)
-        haut = int(getattr(ecran, "height", 0) or 0)
-    except Exception as e:  # noqa: BLE001 - pas d'écran interrogeable
-        journal.erreur("Jeu : lecture des dimensions d'écran impossible.", e)
-        return 0, 0
-    return larg, haut
-
-
-def _position_chevalet_memorisee(
-    largeur: int = CHEVALET_LARGEUR, hauteur: int = CHEVALET_HAUTEUR
-) -> tuple[int, int] | None:
-    """Position mémorisée du chevalet si elle tient dans l'écran actuel (issue #135).
-
-    Lit le réglage ``position_chevalet`` (via :mod:`scrabble.reglages`). Retourne
-    ``(x, y)`` uniquement si une position est enregistrée **et** que la fenêtre
-    (``largeur``×``hauteur`` posée en ``(x, y)``) tient entièrement dans le premier
-    écran mesuré via ``webview.screens`` — le même contrôle de limites que celui
-    servant au calcul bas-centre par défaut. Sinon retourne ``None`` (l'appelant
-    retombe alors sur :func:`_position_chevalet`) :
-
-    * réglage absent (``None``) ou illisible ;
-    * écran non mesurable (dimensions ``0`` — typiquement avant le démarrage de la
-      boucle GUI) : on ne peut pas garantir la validité, on préfère le calcul par
-      défaut sans toucher au réglage (il peut rester bon) ;
-    * position hors des limites de l'écran actuel (résolution/moniteur différent
-      entre deux sessions) : le réglage périmé est alors **réinitialisé** à
-      ``None`` plutôt que laissé invalide indéfiniment.
-    """
-    try:
-        pos = lire_reglage("position_chevalet")
-    except Exception as e:  # noqa: BLE001 - réglage illisible : repli par défaut
-        journal.erreur("Jeu : lecture du réglage position_chevalet impossible.", e)
-        return None
-    if not isinstance(pos, dict):
-        return None  # aucune position mémorisée (défaut None)
-    x, y = pos.get("x"), pos.get("y")
-    if not isinstance(x, int) or not isinstance(y, int):
-        return None
-    larg_ecran, haut_ecran = _dimensions_ecran()
-    if larg_ecran <= 0 or haut_ecran <= 0:
-        # Écran non mesurable : on ne réinitialise pas (position peut-être encore
-        # valide), mais on laisse le calcul par défaut décider pour cet appel.
-        journal.info(
-            "Jeu : position chevalet mémorisée non vérifiable (écran non mesuré) "
-            "— repli sur le calcul par défaut."
-        )
-        return None
-    dans_ecran = (0 <= x <= larg_ecran - largeur) and (0 <= y <= haut_ecran - hauteur)
-    if not dans_ecran:
-        journal.info(
-            f"Jeu : position chevalet mémorisée ({x}, {y}) hors de l'écran actuel "
-            f"{larg_ecran}×{haut_ecran}px — réinitialisation et repli bas-centre."
-        )
-        try:
-            modifier_reglage("position_chevalet", None)
-        except Exception as e:  # noqa: BLE001 - réinitialisation ratée : sans gravité
-            journal.erreur(
-                "Jeu : réinitialisation de position_chevalet impossible.", e
-            )
-        return None
-    journal.info(f"Jeu : position chevalet mémorisée réutilisée ({x}, {y}).")
-    return x, y
-
-
-def _creer_fenetre_chevalet(
-    js_api: Any, hidden: bool
-) -> "webview.Window":
-    """Crée la fenêtre flottante du chevalet (issue #90, factorisée #180).
-
-    Extrait de :func:`_lancer_fenetre_jeu` afin d'être réutilisé à l'identique par
-    la coquille mono-fenêtre unifiée (issue #180), qui crée la fenêtre chevalet
-    **une seule fois** au démarrage de l'application (masquée) au lieu de la
-    créer/détruire à chaque partie. La logique de création — dimensions resserrées
-    au panneau, position bas-centre, ``frameless``, drag applicatif — est donc
-    posée ici une fois pour les deux chemins de lancement.
-
-    * ``js_api`` : objet exposé au JS du chevalet (``chevalet.js``). Dans le chemin
-      historique c'est l'instance :class:`ApiJeu` (partagée avec la fenêtre
-      plateau) ; dans la coquille unifiée c'est **aussi** l':class:`ApiJeu` — le
-      chevalet parle toujours directement au jeu, jamais au routeur (aucune de ses
-      méthodes n'est en collision, cf. :class:`~scrabble.ui.application.ApiRouteur`).
-    * ``hidden`` : fenêtre créée masquée (``True``) le temps d'un tirage d'ordre
-      (issue #170) ou, dans la coquille unifiée, tant que la vue Jeu n'est pas
-      activée ; révélée ensuite par ``show()`` (:meth:`ApiJeu.terminer_tirage` ou
-      :meth:`ApiJeu.finaliser_entree_vue_jeu`).
-
-    Comme dans le code d'origine, la position bas-centre calculée ici est
-    approximative (``webview.screens`` n'est fiable qu'une fois la boucle démarrée,
-    issue #91) : elle est corrigée après coup par :func:`_repositionner_chevalet`.
-    """
-    x_chev, y_chev = _position_chevalet()
-    return webview.create_window(
-        "Scrabble - Chevalet",
-        str(DOSSIER_WEB / "chevalet.html"),
-        js_api=js_api,
-        width=CHEVALET_LARGEUR,
-        height=CHEVALET_HAUTEUR,
-        x=x_chev,
-        y=y_chev,
-        hidden=hidden,
-        frameless=True,     # fenêtre sans cadre ni barre de titre
-        # Plus d'``on_top`` global (issue #105) : le chevalet est lié au plateau
-        # par une relation transiente (:func:`_lier_chevalet_au_plateau`), posée
-        # une fois les deux fenêtres affichées — il reste au-dessus du plateau
-        # sans être forcé au-dessus de toutes les applications du système.
-        resizable=False,    # non redimensionnable par erreur
-        easy_drag=False,    # pas de drag « corps entier » : drag applicatif ciblé
-        # Fond vert dès le mappage de la fenêtre (issue #113), comme le plateau.
-        background_color=TAPIS_VERT,
-    )
-
-
 def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
-    """Crée les **deux** fenêtres de jeu (plateau + chevalet) et démarre la boucle.
+    """Crée l'**unique** fenêtre de jeu et démarre la boucle (issues #90/#193).
 
-    Séparation plateau/chevalet en deux fenêtres pywebview (issue #90) :
+    Depuis la migration du chevalet en zone C (issue #187) et le nettoyage du
+    modèle de fenêtres (issue #193), l'écran de jeu ne comporte plus qu'**une
+    seule** fenêtre pywebview (``jeu.html``) : plateau, panneaux joueurs, barre du
+    sac/historique, « Faire jouer l'ordinateur », vérification dictionnaire ET le
+    panneau chevalet intégré. Plus de fenêtre chevalet compagnon flottante à créer,
+    positionner, lier ou fermer en croisé.
 
-    * Fenêtre **plateau** : maximisée (``maximized=True``), sans ``width``/
-      ``height`` fixes, afin de s'adapter à n'importe quelle résolution logique
-      (le CSS contraint désormais le plateau par la hauteur disponible pour éviter
-      tout défilement). Elle porte le plateau, les panneaux joueurs, la barre du
-      sac/historique, « Faire jouer l'ordinateur » et la vérification dictionnaire.
-    * Fenêtre **chevalet** : flottante ``frameless=True``, ``resizable=False`` et
-      ``easy_drag=False``. Elle n'est plus « toujours au-dessus » globalement
-      (``on_top`` retiré, issue #105) : elle est liée au plateau par une relation
-      transiente (:func:`_lier_chevalet_au_plateau`). Le déplacement passe
-      par un glisser-déposer **applicatif** sur la barre du haut (``.barre-drag`` →
-      :meth:`ApiJeu.deplacer_chevalet`) : sous WebKitGTK, ``.pywebview-drag-region``
-      n'est pas géré (le backend GTK ne câble le drag d'une fenêtre ``frameless``
-      que via ``easy_drag=True``, qui déplacerait la fenêtre au moindre glissé, y
-      compris pendant un clic-clic de pose — issue #91 point 2). Taille resserrée
-      au panneau (``CHEVALET_LARGEUR``×``CHEVALET_HAUTEUR``, 480×175 depuis #106),
-      posée en bas-centre de l'écran.
-
-    Les deux fenêtres sont créées **avant** l'unique ``webview.start()`` (exigence
-    pywebview : toutes les fenêtres se déclarent avant de démarrer la boucle). Elles
-    partagent la même instance ``api`` (``js_api=api``), source de vérité de l'état
-    de pose (issue #90). Un callback ``webview.start(func, …)`` repositionne la
-    fenêtre chevalet une fois la boucle démarrée (issue #91 point 1 : ``screens``
-    n'est fiable qu'à ce moment).
+    Fenêtre maximisée (``maximized=True``), sans ``width``/``height`` fixes, pour
+    s'adapter à n'importe quelle résolution logique (le CSS contraint le plateau par
+    la hauteur disponible, évitant tout défilement). Un callback
+    ``webview.start(func, …)`` (:func:`_finaliser_fenetres`) réaffirme sa
+    maximisation une fois la boucle démarrée et la fenêtre affichée (issue #95 point
+    B : ``maximized=True`` n'est pas honoré sous XWayland tant que la fenêtre n'est
+    pas mappée).
     """
     window_plateau = webview.create_window(
-        "Scrabble - Plateau",
+        "Scrabble",
         str(DOSSIER_WEB / "jeu.html"),
         js_api=api,
         # Maximisée, sans taille fixe : le plateau + les panneaux tiennent sans
@@ -3076,240 +2619,36 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
         # par défaut de pywebview pendant le chargement HTML/CSS.
         background_color=TAPIS_VERT,
     )
-    # Tirage d'ordre en cours (issue #170) : tant que l'ordre n'est pas déterminé,
-    # l'écran de tirage occupe la fenêtre plateau et la fenêtre chevalet ne doit
-    # pas apparaître. On la crée donc **masquée** (``hidden=True``) ; elle sera
-    # révélée et finalisée par :meth:`ApiJeu.terminer_tirage` au clic « Continuer ».
-    tirage_en_cours = api._infos_tirage is not None
-    window_chevalet = _creer_fenetre_chevalet(api, hidden=tirage_en_cours)
-    api.set_windows(window_plateau, window_chevalet)
-    # Fermeture croisée par la croix (issue #94) : fermer nativement l'une des deux
-    # fenêtres détruit l'autre et quitte l'application (plus de fenêtre orpheline).
-    api.installer_fermeture_croisee()
+    api.set_window(window_plateau)
     # Finalisation après démarrage de la boucle (issues #91 point 1 et #95) : c'est
-    # seulement une fois ``webview.start()`` en cours et les fenêtres affichées que
+    # seulement une fois ``webview.start()`` en cours et la fenêtre affichée que
     # (a) ``webview.screens`` renvoie des dimensions fiables sous WebKitGTK et que
     # (b) une (ré)affirmation de l'état maximisé du plateau est honorée par le WM.
     #
     # Point B de l'issue #96 (fenêtre plateau ouverte « réduite ») — confirmation par
     # lecture du code de pywebview installé (``platforms/gtk.py``) : à la création,
     # ``BrowserView.__init__`` fait ``self.window.maximize()`` AVANT ``browser.show()``
-    # (la fenêtre n'est donc pas encore mappée), et pour le plateau sans ``width``/
-    # ``height`` la taille initiale non maximisée est le défaut ~800×600. Sous XWayland
-    # (backend forcé #93), cette maximisation pré-mappage est un no-op → fenêtre petite.
-    # La création du chevalet juste après (frameless, lié au plateau par transient
-    # depuis #105) est
-    # INDÉPENDANTE : rien dans le backend ne lie l'état maximisé du plateau à la seconde
-    # fenêtre. Le correctif (:func:`_maximiser_plateau`) est donc appliqué ici pour les
-    # DEUX chemins de lancement — autonome (``python -m scrabble.ui.jeu``) et normal
+    # (la fenêtre n'est donc pas encore mappée), et sans ``width``/``height`` la taille
+    # initiale non maximisée est le défaut ~800×600. Sous XWayland (backend forcé #93),
+    # cette maximisation pré-mappage est un no-op → fenêtre petite. Le correctif
+    # (:func:`_maximiser_plateau`) est donc appliqué ici pour les DEUX chemins de
+    # lancement — autonome (``python -m scrabble.ui.jeu``) et normal
     # (accueil → :func:`lancer_jeu`) — puisque tous deux passent par cette fonction et
-    # basculent XWayland avant le premier ``webview.start()`` : le chemin normal est
-    # affecté à l'identique, et corrigé à l'identique.
-    webview.start(
-        _finaliser_fenetres, (window_plateau, window_chevalet, tirage_en_cours)
-    )
+    # basculent XWayland avant le premier ``webview.start()``.
+    webview.start(_finaliser_fenetres, window_plateau)
 
 
-def _finaliser_fenetres(
-    window_plateau: "webview.Window",
-    window_chevalet: "webview.Window",
-    tirage_en_cours: bool = False,
-) -> None:
-    """Finalise l'état des deux fenêtres une fois la boucle GUI démarrée (issue #95).
+def _finaliser_fenetres(window_plateau: "webview.Window") -> None:
+    """Finalise l'état de la fenêtre unique une fois la boucle GUI démarrée (issue #95).
 
     Exécuté par ``webview.start(func, …)`` dans un fil dédié, **après** le démarrage
-    de la boucle. On y enchaîne deux corrections qui exigent toutes deux que la
-    fenêtre concernée soit déjà affichée par le backend :
-
-    1. **Maximisation du plateau** (:func:`_maximiser_plateau`) : ``maximized=True``
-       demandé à la création n'est pas honoré sous XWayland (cf. cette fonction).
-    2. **Repositionnement du chevalet** (:func:`_repositionner_chevalet`) : la
-       position bas-centre n'est calculable qu'une fois ``webview.screens`` fiable
-       (issue #91 point 1).
-    3. **Liaison chevalet↔plateau** (:func:`_lier_chevalet_au_plateau`) : le
-       chevalet est déclaré fenêtre transiente du plateau (``set_transient_for``,
-       issue #105), ce qui remplace l'ancien « always-on-top » global.
-
-    ``tirage_en_cours`` (issue #170) : lors d'une nouvelle partie, la fenêtre
-    chevalet est créée masquée le temps du tirage d'ordre. On se contente alors de
-    maximiser le plateau ; le repositionnement et la liaison du chevalet (qui
-    exigent une fenêtre affichée) sont différés jusqu'à :meth:`ApiJeu.terminer_
-    tirage`, appelée au clic « Continuer ». Sans tirage (reprise de partie), le
-    chevalet est visible d'emblée et finalisé ici comme auparavant.
+    de la boucle. Depuis le nettoyage du modèle de fenêtres (issue #193), il n'y a
+    plus qu'une seule fenêtre : la seule finalisation restante est la
+    **maximisation du plateau** (:func:`_maximiser_plateau`), ``maximized=True``
+    demandé à la création n'étant pas honoré sous XWayland tant que la fenêtre n'est
+    pas mappée (cf. cette fonction).
     """
     _maximiser_plateau(window_plateau)
-    if tirage_en_cours:
-        # Chevalet encore masqué : ne pas tenter de le repositionner/lier (il
-        # sera finalisé par ApiJeu.terminer_tirage une fois révélé).
-        return
-    _repositionner_chevalet(window_chevalet)
-    _lier_chevalet_au_plateau(window_plateau, window_chevalet)
-
-
-def _lier_chevalet_au_plateau(
-    window_plateau: "webview.Window", window_chevalet: "webview.Window"
-) -> None:
-    """Empile le chevalet au-dessus du plateau — et de lui seul (issues #105/#165).
-
-    Objectif inchangé depuis #105 : remplacer l'ancien « always-on-top » global
-    (``on_top`` / ``set_keep_above``, issues #91/#93) par une liaison qui garde le
-    chevalet au-dessus du **plateau uniquement**, sans le forcer au-dessus de tout
-    le système. Le chevalet doit repasser **sous** une autre application lorsque
-    celle-ci prend le focus.
-
-    Le mécanisme dépend du backend pywebview, **spécifique à l'OS** (issue #165) :
-
-    * **Linux** : pywebview utilise GTK/GDK → relation transiente
-      (``set_transient_for`` + indice ``Gdk.WindowTypeHint.UTILITY``), cf.
-      :func:`_lier_chevalet_gtk`.
-    * **Windows** : pywebview utilise WebView2/WinForms (pythonnet), dépourvu de la
-      notion GTK → relation de **propriété** Win32 (fenêtre « owned » via
-      ``SetWindowLongPtr(hwnd, GWLP_HWNDPARENT, hwnd_plateau)``), cf.
-      :func:`_lier_chevalet_windows`. C'est la correction #165 : sous #105 le
-      chevalet passait toujours derrière le plateau car l'API GTK ne s'applique
-      pas au backend Windows.
-
-    Les deux fenêtres doivent être affichées (``shown``) avant l'appel : dans les
-    deux backends, la liaison opère sur la fenêtre native, disponible une fois
-    mappée. On réutilise donc :func:`_attendre_fenetre_affichee` (déjà en place
-    pour la maximisation/le repositionnement).
-
-    Tolère les fenêtres factices des tests, dépourvues d'attribut ``native``
-    (garde ``getattr``) : la liaison est alors simplement ignorée. Toute erreur est
-    journalisée sans interrompre le jeu.
-
-    Point d'incertitude (issues #103/#105/#165) : la fiabilité réelle du
-    ré-empilement (Mutter/XWayland côté Linux, WebView2 côté Windows) ne peut être
-    garantie qu'après une vérification visuelle sur chaque plateforme.
-    """
-    _attendre_fenetre_affichee(window_plateau, "plateau")
-    _attendre_fenetre_affichee(window_chevalet, "chevalet")
-
-    natif_plateau = getattr(window_plateau, "native", None)
-    natif_chevalet = getattr(window_chevalet, "native", None)
-    if natif_plateau is None or natif_chevalet is None:
-        journal.info(
-            "Jeu : liaison chevalet↔plateau ignorée — fenêtre native indisponible "
-            "(backend inattendu ou fenêtre factice de test)."
-        )
-        return
-
-    import sys
-
-    if sys.platform.startswith("win"):
-        _lier_chevalet_windows(natif_plateau, natif_chevalet)
-    else:
-        _lier_chevalet_gtk(natif_plateau, natif_chevalet)
-
-
-def _lier_chevalet_gtk(natif_plateau: Any, natif_chevalet: Any) -> None:
-    """Liaison chevalet↔plateau sous Linux/GTK via ``set_transient_for`` (issue #105).
-
-    Déclare le chevalet fenêtre **transiente** (au sens des boîtes de dialogue) du
-    plateau : le gestionnaire de fenêtres empile alors les deux ensemble — le
-    chevalet reste au-dessus du plateau, mais passe sous une autre application qui
-    prend le focus. En renfort optionnel (évoqué par #103), on pose aussi l'indice
-    ``Gdk.WindowTypeHint.UTILITY``, qui invite le WM à traiter le chevalet comme une
-    fenêtre utilitaire (GDK importé à la demande, comme dans :func:`_zone_travail_ecran`).
-
-    Toute erreur est journalisée sans interrompre le jeu.
-    """
-    try:
-        natif_chevalet.set_transient_for(natif_plateau)
-        journal.info(
-            "Jeu : chevalet lié au plateau via set_transient_for (issue #105) ; "
-            "fiabilité du ré-empilement à confirmer visuellement."
-        )
-    except Exception as e:  # noqa: BLE001 - une liaison ratée ne bloque pas le jeu
-        journal.erreur("Jeu : liaison transiente chevalet↔plateau impossible.", e)
-
-    # Renfort optionnel (#103) : indice UTILITY au gestionnaire de fenêtres. GDK est
-    # importé à la demande, comme dans _zone_travail_ecran ; son absence (tests,
-    # backend non-GTK) n'est pas bloquante.
-    try:
-        import gi
-
-        gi.require_version("Gdk", "3.0")
-        from gi.repository import Gdk
-
-        natif_chevalet.set_type_hint(Gdk.WindowTypeHint.UTILITY)
-        journal.info("Jeu : indice type_hint UTILITY posé sur le chevalet (issue #105).")
-    except Exception as e:  # noqa: BLE001 - renfort optionnel : l'absence de GDK n'est pas bloquante
-        journal.info(
-            f"Jeu : indice type_hint UTILITY non posé sur le chevalet ({e!r}) — "
-            "renfort optionnel ignoré."
-        )
-
-
-def _lier_chevalet_windows(natif_plateau: Any, natif_chevalet: Any) -> None:
-    """Liaison chevalet↔plateau sous Windows via une fenêtre « owned » (issue #165).
-
-    Sous Windows, pywebview utilise le backend WebView2/WinForms (pythonnet), qui
-    ne connaît pas la relation transiente GTK de #105 — d'où le chevalet passant
-    toujours derrière le plateau (bug constaté en build CCW). On reproduit l'effet
-    « au-dessus du plateau, et seulement de lui » via la relation de **propriété**
-    de Win32 : une fenêtre « owned » reste automatiquement au-dessus de son
-    propriétaire dans l'ordre d'empilement, sans imposer un « toujours au premier
-    plan » global gênant pour le reste du bureau.
-
-    On récupère le handle natif (HWND) de chaque fenêtre — ``native`` est ici un
-    ``System.Windows.Forms.Form`` dont la propriété ``Handle`` (un ``IntPtr``)
-    donne le HWND — puis on déclare le plateau propriétaire du chevalet via
-    ``SetWindowLongPtr(hwnd_chevalet, GWLP_HWNDPARENT, hwnd_plateau)``.
-
-    Implémentation via ``ctypes`` (bibliothèque standard) plutôt que pywin32 :
-    aucune dépendance supplémentaire n'est ajoutée au projet, et la variante
-    ``…Ptr`` de l'API (indispensable pour ne pas tronquer un HWND 64 bits) est
-    ciblée directement avec les ``argtypes`` adéquats. Repli sur ``SetWindowLongW``
-    sur les rares Python 32 bits. Toute erreur est journalisée sans interrompre le jeu.
-    """
-    try:
-        hwnd_plateau = _hwnd_depuis_form(natif_plateau)
-        hwnd_chevalet = _hwnd_depuis_form(natif_chevalet)
-    except Exception as e:  # noqa: BLE001 - handle indisponible : on renonce sans bloquer
-        journal.erreur(
-            "Jeu : HWND du plateau/chevalet indisponible — liaison owned (Windows) impossible.",
-            e,
-        )
-        return
-
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        # GWLP_HWNDPARENT : offset qui, pour une fenêtre de plus haut niveau, définit
-        # son propriétaire (owner). Ce n'est PAS un vrai parent (pas de clipping) : la
-        # fenêtre owned reste flottante mais toujours au-dessus de son owner.
-        GWLP_HWNDPARENT = -8
-
-        user32 = ctypes.windll.user32
-        # SetWindowLongPtrW sur 64 bits ; repli SetWindowLongW sur 32 bits (où
-        # SetWindowLongPtrW n'est pas exporté).
-        set_window_long_ptr = getattr(
-            user32, "SetWindowLongPtrW", user32.SetWindowLongW
-        )
-        set_window_long_ptr.restype = ctypes.c_void_p
-        set_window_long_ptr.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
-
-        set_window_long_ptr(hwnd_chevalet, GWLP_HWNDPARENT, hwnd_plateau)
-        journal.info(
-            "Jeu : chevalet déclaré fenêtre « owned » du plateau via "
-            "SetWindowLongPtr/GWLP_HWNDPARENT (issue #165) ; ré-empilement à "
-            "confirmer visuellement sous Windows."
-        )
-    except Exception as e:  # noqa: BLE001 - une liaison ratée ne bloque pas le jeu
-        journal.erreur("Jeu : liaison owned chevalet↔plateau (Windows) impossible.", e)
-
-
-def _hwnd_depuis_form(natif: Any) -> int:
-    """Extrait le HWND (entier) d'une fenêtre native WinForms pywebview (issue #165).
-
-    ``native.Handle`` est un ``System.IntPtr`` : on privilégie ``ToInt64()`` (exact
-    en 64 bits) et on retombe sur ``int(...)`` si la méthode est absente.
-    """
-    handle = natif.Handle
-    to_int64 = getattr(handle, "ToInt64", None)
-    return to_int64() if callable(to_int64) else int(handle)
 
 
 def _zone_travail_ecran() -> tuple[int, int, int, int] | None:
@@ -3317,8 +2656,8 @@ def _zone_travail_ecran() -> tuple[int, int, int, int] | None:
 
     Surface d'écran réellement **utilisable**, panneaux et barres système EXCLUS
     (EWMH ``_NET_WORKAREA``) : c'est la cible d'une vraie maximisation. Lue via
-    **GDK**, le même moteur que ``webview.screens`` (déjà employé pour placer le
-    chevalet, issue #91). Sur cette machine, GDK renvoie p. ex. ``(66, 32, 1294,
+    **GDK**, le même moteur que ``webview.screens`` (déjà employé pour mesurer
+    l'écran, issue #91). Sur cette machine, GDK renvoie p. ex. ``(66, 32, 1294,
     736)`` sous un écran 1360×768 avec dock latéral + barre haute.
 
     Replis successifs si GDK est indisponible (tests, backend non-GTK) : géométrie
@@ -3374,7 +2713,7 @@ def _maximiser_plateau(window_plateau: "webview.Window") -> None:
     / ``resize`` / ``move`` absents sont simplement ignorés, chaque étape étant
     indépendante.
     """
-    # Comme pour le chevalet (#92), n'agir qu'une fois la fenêtre réellement affichée :
+    # N'agir qu'une fois la fenêtre réellement affichée (issue #92) :
     # une requête émise avant que le backend l'ait mappée peut être ignorée.
     _attendre_fenetre_affichee(window_plateau, "plateau")
     # Symptôme signalé (#95 point B) : la fenêtre s'ouvre « réduite dans la barre des
@@ -3416,72 +2755,17 @@ def _maximiser_plateau(window_plateau: "webview.Window") -> None:
         journal.erreur("Jeu : déploiement plein écran du plateau impossible.", e)
 
 
-def _repositionner_chevalet(window_chevalet: "webview.Window") -> None:
-    """Replace la fenêtre chevalet en bas-centre une fois la boucle GUI démarrée.
-
-    Exécuté par ``webview.start(func, …)`` dans un fil dédié, **après** le démarrage
-    de la boucle : à ce stade seulement ``webview.screens`` renvoie sous WebKitGTK
-    les dimensions réelles de l'écran (issue #91 point 1). On recalcule donc la
-    position bas-centre (:func:`_position_chevalet`) et on déplace la fenêtre. Toute
-    erreur est journalisée sans interrompre le jeu (la position initiale, au pire
-    ``(100, 100)``, reste alors en place).
-    """
-    journal.info(
-        "Jeu : _repositionner_chevalet atteint (boucle GUI démarrée, "
-        "callback webview.start exécuté)."
-    )
-    try:
-        # Sous WebKitGTK, le fil de ``webview.start`` démarre dès l'entrée dans la
-        # boucle GUI, parfois AVANT que la fenêtre chevalet soit réellement mappée
-        # à l'écran. Un ``move()`` émis trop tôt peut être ignoré par le
-        # gestionnaire de fenêtres. On attend donc explicitement l'événement
-        # ``shown`` de la fenêtre avant de la déplacer.
-        #
-        # NB (issue #93) : la cause racine de l'ouverture en haut à gauche n'était
-        # pas ce timing mais le backend Wayland natif, où ``move()`` est purement
-        # ignoré et ``window.x``/``window.y`` renvoient (0, 0). Cette fonction ne
-        # produit un repositionnement effectif qu'une fois l'application basculée
-        # sur XWayland (cf. :func:`scrabble.ui.backend_graphique.
-        # configurer_backend_graphique`, appelée au lancement) ; l'attente de
-        # ``shown`` reste une précaution utile sous X11.
-        _attendre_fenetre_affichee(window_chevalet)
-        # Priorité à la dernière position mémorisée si elle tient dans l'écran
-        # actuel (issue #135) ; sinon, calcul bas-centre par défaut (issue #90).
-        memorisee = _position_chevalet_memorisee()
-        if memorisee is not None:
-            x, y = memorisee
-            journal.info(
-                f"Jeu : repositionnement chevalet — position mémorisée ({x}, {y})."
-            )
-        else:
-            x, y = _position_chevalet()
-            journal.info(
-                f"Jeu : repositionnement chevalet — cible calculée ({x}, {y})."
-            )
-        window_chevalet.move(x, y)
-        # Relire la position réellement prise par la fenêtre après le move : c'est
-        # la preuve, dans le log, que le déplacement a bien été honoré par le WM
-        # (ou, sinon, qu'il s'agit d'une limite backend/WM — voir issue #92).
-        pos_reelle = _lire_position_fenetre(window_chevalet)
-        journal.info(
-            f"Jeu : window.move({x}, {y}) exécuté ; position lue après move = "
-            f"{pos_reelle}."
-        )
-    except Exception as e:  # noqa: BLE001 - un repositionnement raté ne bloque pas le jeu
-        journal.erreur("Jeu : repositionnement de la fenêtre chevalet impossible.", e)
-
-
 def _attendre_fenetre_affichee(
-    window: "webview.Window", nom: str = "chevalet", timeout: float = 5.0
+    window: "webview.Window", nom: str = "plateau", timeout: float = 5.0
 ) -> None:
     """Attend l'événement ``shown`` de ``window`` (au plus ``timeout`` s) — issue #92.
 
     ``webview.Window.events.shown`` est un événement pywebview signalé une fois la
     fenêtre affichée par le backend. On l'attend avant tout ``move``/``resize``/
     ``maximize`` pour éviter une requête ignorée (fenêtre pas encore mappée sous
-    WebKitGTK — cf. issues #92 pour le chevalet et #95 pour la maximisation du
-    plateau). ``nom`` sert uniquement aux traces. Tolère l'absence d'attribut
-    ``events`` (backends/fenêtres factices des tests) : dans ce cas on n'attend pas.
+    WebKitGTK — cf. issue #95 pour la maximisation du plateau). ``nom`` sert
+    uniquement aux traces. Tolère l'absence d'attribut ``events``
+    (backends/fenêtres factices des tests) : dans ce cas on n'attend pas.
     Toute erreur est journalisée sans interrompre le jeu.
     """
     evenements = getattr(window, "events", None)
@@ -3501,14 +2785,6 @@ def _attendre_fenetre_affichee(
         journal.erreur(
             f"Jeu : attente de l'affichage de la fenêtre {nom} impossible.", e
         )
-
-
-def _lire_position_fenetre(window: "webview.Window") -> str:
-    """Position ``(x, y)`` lue sur ``window`` sous forme lisible pour le journal."""
-    try:
-        return f"({int(window.x)}, {int(window.y)})"
-    except Exception:  # noqa: BLE001 - position indisponible : trace neutre
-        return "(indisponible)"
 
 
 # Petit lexique du mode démonstration. Il doit contenir au minimum les mots
@@ -3621,8 +2897,9 @@ def construire_partie_demo(nb_joueurs: int = 2) -> tuple[Partie, int | None]:
     sans passer par l'écran d'accueil. Les tuiles sont posées directement sur le
     plateau et les scores fixés à des valeurs plausibles : le but est de valider
     le **rendu** (cases bonus, tuiles, joker, scores, joueur courant, sac,
-    disposition spatiale des joueurs autour du plateau — issue #33), pas de
-    rejouer une partie réelle. Un joker (« blanc ») figure dans le mot vertical
+    empilement vertical des fiches joueurs dans l'ordre de jeu — issues
+    #33/#195), pas de rejouer une partie réelle. Un joker (« blanc ») figure
+    dans le mot vertical
     pour illustrer sa distinction visuelle.
 
     ``nb_joueurs`` (borné à 1–4, défaut 2) permet de vérifier **manuellement** la

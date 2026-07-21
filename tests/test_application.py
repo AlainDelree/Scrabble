@@ -14,10 +14,12 @@ La remise à zéro complète de ``ApiJeu.charger_partie`` est testée dans
 """
 
 import inspect
+import threading
 
 import pytest
 
 from scrabble.moteur.ia import Niveau
+from scrabble.ui import application as _mod_application
 from scrabble.ui.accueil import ApiAccueil
 from scrabble.ui.application import (
     VUE_ACCUEIL,
@@ -26,6 +28,27 @@ from scrabble.ui.application import (
     lancer_application_unifiee,
 )
 from scrabble.ui.jeu import ApiJeu
+
+# Référence vers le VRAI ``_differer`` (fil démon + délai), capturée avant tout
+# ``monkeypatch`` : la fixture autouse ci-dessous le remplace par une exécution
+# synchrone pour tous les tests, mais son comportement réel reste testable via
+# cette référence (cf. ``TestNavigationDifferee``).
+_DIFFERER_REEL = _mod_application._differer
+
+
+@pytest.fixture(autouse=True)
+def _navigation_synchrone(monkeypatch):
+    """Rend la navigation différée (issue #183) synchrone pendant les tests.
+
+    En production, ``_differer`` repousse le ``load_url`` dans un fil démon (après
+    un court délai) pour éviter le « callback de retour orphelin ». En test, on
+    l'exécute immédiatement : les assertions sur ``load_url``/finalisation restent
+    déterministes, sans fil ni délai. Les tests qui veulent observer le différé
+    lui-même re-patchent ``_differer`` localement.
+    """
+    monkeypatch.setattr(
+        "scrabble.ui.application._differer", lambda action: action()
+    )
 
 
 class _SousApiFactice:
@@ -312,19 +335,16 @@ class TestTransitionsJeuAccueil:
     """Transitions Jeu→Accueil dans la fenêtre unique (issue #181).
 
     « Retour au menu », « Recommencer » et « Annuler le tirage » naviguent par
-    ``load_url`` dans la MÊME fenêtre (aucune destruction/recréation), masquent le
-    chevalet persistant, réinitialisent l'état Accueil au retour et n'ouvrent/ne
-    ferment aucune session de journalisation supplémentaire.
+    ``load_url`` dans la MÊME fenêtre (aucune destruction/recréation),
+    réinitialisent l'état Accueil au retour et n'ouvrent/ne ferment aucune
+    session de journalisation supplémentaire.
     """
 
     def _routeur_en_jeu(self, monkeypatch, id_partie=None):
-        """Routeur en vue Jeu, partie chargée, chevalet monté, finalisation neutralisée."""
+        """Routeur en vue Jeu, partie chargée, finalisation neutralisée."""
         routeur = ApiRouteur()
         fenetre = _FenetreFactice()
         routeur.set_window(fenetre)
-        chevalet = _FenetreFactice()
-        # Chevalet compagnon persistant (créé une fois au démarrage, issue #180).
-        routeur._api_jeu._window_chevalet = chevalet
         partie, _id = _partie_deux_joueurs()
         routeur.charger_jeu(partie, id_partie)
         routeur.activer_vue(VUE_JEU)
@@ -334,10 +354,10 @@ class TestTransitionsJeuAccueil:
             "finaliser_entree_vue_jeu",
             lambda: appels.append("finaliser"),
         )
-        return routeur, fenetre, chevalet, partie, appels
+        return routeur, fenetre, partie, appels
 
-    def test_retourner_accueil_masque_reinitialise_et_navigue(self, monkeypatch):
-        routeur, fenetre, chevalet, _partie, _appels = self._routeur_en_jeu(
+    def test_retourner_accueil_reinitialise_et_navigue(self, monkeypatch):
+        routeur, fenetre, _partie, _appels = self._routeur_en_jeu(
             monkeypatch
         )
         # Prénom principal configuré : le retour doit re-seeder l'humain.
@@ -352,9 +372,7 @@ class TestTransitionsJeuAccueil:
         resultat = routeur.retourner_accueil()
 
         assert resultat["succes"] is True
-        # 1. chevalet compagnon masqué (jamais détruit).
-        assert chevalet.masquee is True
-        # 2. accueil réinitialisé : config vierge, humain re-seedé, partie purgée.
+        # 1. accueil réinitialisé : config vierge, humain re-seedé, partie purgée.
         assert routeur._api_accueil.config_partie.nb_ordinateurs == 0
         assert routeur._api_accueil.config_partie.nb_humains == 1
         assert routeur._api_accueil.config_partie.joueurs[0].nom == "Alice"
@@ -366,8 +384,8 @@ class TestTransitionsJeuAccueil:
         assert len(fenetre.urls) == 1
         assert fenetre.urls[0].endswith("accueil.html")
 
-    def test_recommencer_jeu_recharge_et_remasque_le_chevalet(self, monkeypatch):
-        routeur, fenetre, chevalet, partie, appels = self._routeur_en_jeu(
+    def test_recommencer_jeu_recharge(self, monkeypatch):
+        routeur, fenetre, partie, appels = self._routeur_en_jeu(
             monkeypatch
         )
 
@@ -381,8 +399,7 @@ class TestTransitionsJeuAccueil:
         # Reste en vue Jeu et recharge jeu.html (DOM neuf).
         assert routeur._vue_active == VUE_JEU
         assert fenetre.urls[-1].endswith("jeu.html")
-        # Chevalet remis masqué (nouveau tirage) + finalisation rejouée.
-        assert chevalet.masquee is True
+        # Finalisation rejouée.
         assert appels == ["finaliser"]
         # Aucun drapeau inter-boucles positionné dans le chemin unifié.
         assert routeur._api_jeu._recommencer is False
@@ -395,7 +412,7 @@ class TestTransitionsJeuAccueil:
             mod, "supprimer_partie",
             lambda id_p, chemin: supprimees.append(id_p) or True,
         )
-        routeur, fenetre, chevalet, _partie, _appels = self._routeur_en_jeu(
+        routeur, fenetre, _partie, _appels = self._routeur_en_jeu(
             monkeypatch, id_partie=99
         )
 
@@ -404,8 +421,7 @@ class TestTransitionsJeuAccueil:
         assert resultat["succes"] is True
         # Partie créée puis annulée : supprimée de la persistance.
         assert supprimees == [99]
-        # Puis même chemin que « Retour au menu » : chevalet masqué + nav accueil.
-        assert chevalet.masquee is True
+        # Puis même chemin que « Retour au menu » : navigation vers l'accueil.
         assert routeur._vue_active == VUE_ACCUEIL
         assert fenetre.urls[-1].endswith("accueil.html")
 
@@ -425,7 +441,7 @@ class TestTransitionsJeuAccueil:
             "scrabble.ui.jeu.supprimer_partie", lambda id_p, chemin: True
         )
 
-        routeur, _fenetre, _chevalet, partie, _appels = self._routeur_en_jeu(
+        routeur, _fenetre, partie, _appels = self._routeur_en_jeu(
             monkeypatch
         )
         routeur.retourner_accueil()
@@ -446,136 +462,16 @@ class TestTransitionsJeuAccueil:
             assert getattr(routeur, nom).__func__ is getattr(ApiRouteur, nom)
 
 
-class _FenetreUnifiee:
-    """Fenêtre pywebview factice **complète** pour un parcours de bout en bout (issue #182).
-
-    Combine le suivi ``load_url``/``show``/``hide`` de :class:`_FenetreFactice`
-    avec un vrai ``events.closing`` (``webview.event.Event``, comme
-    ``_FenetreFermable`` dans ``test_jeu.py``). Son ``destroy`` **re-émet**
-    ``closing`` comme le backend GTK (où ``destroy()`` repasse par
-    ``close_window``) : c'est exactement le scénario que le garde-fou anti-boucle
-    de la fermeture croisée doit neutraliser.
-    """
-
-    def __init__(self, nom: str) -> None:
-        from webview.event import Event
-
-        self.nom = nom
-        self.urls: list[str] = []
-        self.masquee = False
-        self.montree = False
-        self.detruite = False
-        self.events = type("_Ev", (), {})()
-        self.events.closing = Event(self, True)
-
-    def load_url(self, url: str) -> None:
-        self.urls.append(url)
-
-    def show(self) -> None:
-        self.montree = True
-        self.masquee = False
-
-    def hide(self) -> None:
-        self.masquee = True
-        self.montree = False
-
-    def destroy(self) -> None:
-        self.detruite = True
-        # Comme GTK : la destruction programmatique repasse par ``closing``.
-        self.events.closing.set()
-
-
-def _routeur_avec_fenetres_fermables():
-    """Routeur unifié câblé à deux fenêtres factices fermables (plateau + chevalet).
-
-    Reproduit le câblage posé par :func:`lancer_application_unifiee` sans ouvrir
-    de vraie fenêtre : ``set_windows`` + ``installer_fermeture_croisee`` sur la
-    sous-API Jeu, la fenêtre plateau étant AUSSI la fenêtre unique du routeur.
-    """
-    routeur = ApiRouteur()
-    plateau = _FenetreUnifiee("plateau")
-    chevalet = _FenetreUnifiee("chevalet")
-    routeur.set_window(plateau)
-    routeur._api_jeu.set_windows(plateau, chevalet)
-    routeur._api_jeu.installer_fermeture_croisee()
-    return routeur, plateau, chevalet
-
-
-class TestFermetureCroiseeUnifiee:
-    """Fermeture par la croix ✕ dans la coquille mono-fenêtre unifiée (issue #182).
-
-    Risque n°1 des rapports #177/#178 : une fenêtre masquée maintient
-    ``webview.start()`` vivant. Le chevalet compagnon (issue #180) est persistant
-    et masqué la plupart du temps (vue Accueil, tirage). Un ✕ natif doit détruire
-    **les deux** fenêtres physiques, quelle que soit la vue active, pour que la
-    boucle rende la main et que le processus se termine.
-    """
-
-    def test_croix_principale_en_vue_accueil_detruit_le_chevalet_masque(self):
-        """✕ sur la fenêtre principale en vue Accueil : le chevalet masqué est détruit."""
-        routeur, plateau, chevalet = _routeur_avec_fenetres_fermables()
-        # Vue Accueil active + chevalet masqué (état le plus fréquent du chevalet).
-        routeur.activer_vue(VUE_ACCUEIL)
-        routeur._api_jeu.masquer_chevalet()
-        assert chevalet.masquee is True
-
-        # Croix native sur la fenêtre principale (GTK émet ``closing``).
-        plateau.events.closing.set()
-
-        # Le chevalet — pourtant masqué — est bien détruit : plus aucune fenêtre
-        # ne peut maintenir ``webview.start()`` vivant.
-        assert chevalet.detruite is True
-        assert routeur._api_jeu._fermeture_en_cours is True
-
-    def test_croix_principale_en_vue_jeu_detruit_le_chevalet(self):
-        """✕ sur la fenêtre principale en vue Jeu : le chevalet est détruit."""
-        routeur, plateau, chevalet = _routeur_avec_fenetres_fermables()
-        routeur.activer_vue(VUE_JEU)
-
-        plateau.events.closing.set()
-
-        assert chevalet.detruite is True
-
-    def test_croix_du_chevalet_detruit_la_fenetre_principale(self):
-        """✕ sur le chevalet lui-même : la fenêtre principale est détruite."""
-        routeur, plateau, chevalet = _routeur_avec_fenetres_fermables()
-
-        chevalet.events.closing.set()
-
-        # Le chevalet se ferme de lui-même (backend) ; le handler détruit l'AUTRE
-        # fenêtre (la principale), donc aucune orpheline ne subsiste.
-        assert plateau.detruite is True
-
-    def test_aucune_confirmation_implicite_ne_bloque_la_croix(self):
-        """Le handler ne renvoie jamais ``False`` (aucune confirmation ne bloque la ✕).
-
-        pywebview n'annule une fermeture que si un abonné à ``closing`` renvoie
-        ``False``. La confirmation d'un coup en attente est portée côté JS par le
-        bouton « Retour au menu », jamais par la croix : le handler natif doit
-        laisser la fermeture se poursuivre.
-        """
-        routeur, plateau, chevalet = _routeur_avec_fenetres_fermables()
-        # Appel direct du handler : il retourne None (poursuite de la fermeture).
-        assert routeur._api_jeu._sur_fermeture_native(plateau) is None
-
-    def test_croix_ne_declenche_pas_de_retour_menu(self):
-        """La croix quitte l'application (elle ne repositionne pas ``_retour_menu``)."""
-        routeur, plateau, chevalet = _routeur_avec_fenetres_fermables()
-        plateau.events.closing.set()
-        # Contrairement à « Retour au menu », une croix ne rouvre pas l'accueil.
-        assert routeur._api_jeu._retour_menu is False
-
-
 class TestParcoursCompletUnifie:
     """Parcours de bout en bout dans la coquille unifiée (issue #182).
 
-    Un seul ``webview.start()``, une seule session de journalisation, aucune
-    ``AttributeError`` de routage, et une fermeture par la croix qui détruit tout.
-    Les vraies fenêtres et la vraie boucle pywebview sont neutralisées (headless).
+    Un seul ``webview.start()``, une seule session de journalisation et aucune
+    ``AttributeError`` de routage. Les vraies fenêtres et la vraie boucle
+    pywebview sont neutralisées (headless).
     """
 
     def test_parcours_complet_une_seule_session_et_fermeture(self, monkeypatch):
-        """lancement→accueil→partie→tirage→jeu→menu→reprise→recommencer→✕.
+        """lancement→accueil→partie→tirage→jeu→menu→reprise→recommencer.
 
         Le parcours entier est joué **à l'intérieur** de l'unique
         ``webview.start()`` (stubé) ouvert par :func:`lancer_application_unifiee`,
@@ -594,9 +490,6 @@ class TestParcoursCompletUnifie:
             "scrabble.ui.backend_graphique.deployer_fenetre_maximisee",
             lambda *a, **k: None,
         )
-        # Positionnement/liaison réels du chevalet (WebKitGTK) → no-op.
-        monkeypatch.setattr(mod_jeu, "_repositionner_chevalet", lambda *a, **k: None)
-        monkeypatch.setattr(mod_jeu, "_lier_chevalet_au_plateau", lambda *a, **k: None)
         # Persistance de « Recommencer » (nouvelle partie suivie en base) → id factice.
         monkeypatch.setattr(mod_jeu, "demarrer_suivi", lambda *a, **k: 123)
 
@@ -611,14 +504,12 @@ class TestParcoursCompletUnifie:
             journal, "cloturer_session", lambda *a, **k: cloturees.append(1)
         )
 
-        # --- Fenêtres factices injectées à la place des vraies ---
-        plateau = _FenetreUnifiee("plateau")
-        chevalet = _FenetreUnifiee("chevalet")
+        # --- Fenêtre factice unique injectée à la place de la vraie ---
+        plateau = _FenetreFactice()
         monkeypatch.setattr(
             "scrabble.ui.application.webview.create_window",
             lambda *a, **k: plateau,
         )
-        monkeypatch.setattr(mod_jeu, "_creer_fenetre_chevalet", lambda *a, **k: chevalet)
 
         # Routeur injecté : finalisation (fil + fenêtres réelles) neutralisée mais tracée.
         routeur = ApiRouteur()
@@ -629,7 +520,7 @@ class TestParcoursCompletUnifie:
 
         # Le driver JOUE tout le parcours à l'intérieur de l'unique webview.start.
         def _parcours(*_a, **_k):
-            # 0. Au lancement : vue Accueil, fenêtres câblées, session ouverte.
+            # 0. Au lancement : vue Accueil, fenêtre câblée, session ouverte.
             assert routeur._vue_active == VUE_ACCUEIL
             assert demarrees == [1] and cloturees == []
             # Routage Accueil : collision ``obtenir_etat`` + méthode accueil-only.
@@ -651,7 +542,7 @@ class TestParcoursCompletUnifie:
             assert routeur.demarrer_jeu()["succes"] is True
             assert routeur._vue_active == VUE_JEU
             assert plateau.urls[-1].endswith("jeu.html")
-            # Nouvelle partie : tirage d'ordre à mener (chevalet encore masqué).
+            # Nouvelle partie : tirage d'ordre à mener.
             assert routeur._api_jeu._tirage_termine is False
 
             # 2. Routage Jeu : collision ``obtenir_etat`` (→ etat_public) + jeu-only.
@@ -661,15 +552,13 @@ class TestParcoursCompletUnifie:
             with pytest.raises(AttributeError):
                 routeur.obtenir_niveaux()
 
-            # 3. Fin du tirage : le chevalet compagnon est révélé (jamais recréé).
+            # 3. Fin du tirage : marque simplement le tirage terminé.
             assert routeur.terminer_tirage()["succes"] is True
             assert routeur._api_jeu._tirage_termine is True
-            assert chevalet.montree is True
 
-            # 4. Retour au menu : chevalet masqué, navigation vers l'accueil.
+            # 4. Retour au menu : navigation vers l'accueil.
             assert routeur.retourner_accueil()["succes"] is True
             assert routeur._vue_active == VUE_ACCUEIL
-            assert chevalet.masquee is True
             assert plateau.urls[-1].endswith("accueil.html")
             # Re-routage Accueil effectif après la navigation.
             assert "joueurs" in routeur.obtenir_etat()
@@ -691,13 +580,6 @@ class TestParcoursCompletUnifie:
             # Aucun drapeau inter-boucles positionné dans le chemin unifié.
             assert routeur._api_jeu._recommencer is False
 
-            # 7. Fermeture par la croix ✕ sur la fenêtre principale.
-            plateau.events.closing.set()
-            # Le chevalet compagnon est détruit (plus de fenêtre masquée orpheline
-            # qui maintiendrait la boucle vivante). La fenêtre principale, elle, est
-            # fermée par le backend lui-même (l'émettrice de ``closing``).
-            assert chevalet.detruite is True
-
             # Toujours une seule session, jamais ré-ouverte/re-fermée en cours de route.
             assert demarrees == [1] and cloturees == []
 
@@ -713,6 +595,92 @@ class TestParcoursCompletUnifie:
         # Exactement UNE session ouverte et UNE fermée pour tout le parcours.
         assert demarrees == [1]
         assert cloturees == [1]
+
+
+class TestNavigationDifferee:
+    """La navigation ``load_url`` est différée après le retour de l'appel JS (issue #183).
+
+    pywebview livre la valeur de retour de l'appel JS courant (résolution du
+    ``Promise``) sur le document ENCORE affiché, juste après le retour de la
+    méthode Python. Si ``load_url`` remplace ce document trop tôt, le callback de
+    retour devient orphelin et le JS lève (exception non bloquante au terminal).
+    Le routeur diffère donc toute navigation déclenchée par un appel JS.
+    """
+
+    def _routeur_pret(self, monkeypatch, capture):
+        """Routeur en vue Jeu, partie chargée ; ``_differer`` capturé."""
+        monkeypatch.setattr(
+            "scrabble.ui.application._differer",
+            lambda action: capture.append(action),
+        )
+        routeur = ApiRouteur()
+        fenetre = _FenetreFactice()
+        routeur.set_window(fenetre)
+        monkeypatch.setattr(
+            routeur._api_jeu, "finaliser_entree_vue_jeu", lambda: None
+        )
+        return routeur, fenetre
+
+    def test_demarrer_jeu_ne_navigue_pas_avant_le_retour(self, monkeypatch):
+        """``demarrer_jeu`` rend la main (succès) SANS avoir encore navigué."""
+        capture: list = []
+        routeur, fenetre = self._routeur_pret(monkeypatch, capture)
+        partie, id_partie = _partie_deux_joueurs()
+        routeur._api_accueil._partie = partie
+        routeur._api_accueil._id_partie = id_partie
+
+        resultat = routeur.demarrer_jeu()
+
+        # Succès rendu, mais navigation encore EN ATTENTE (différée) : la valeur de
+        # retour peut être livrée sur accueil.html sans callback orphelin.
+        assert resultat["succes"] is True
+        assert fenetre.urls == []
+        assert len(capture) == 1
+        # La vue est déjà basculée AVANT la navigation (course #178, point 3).
+        assert routeur._vue_active == VUE_JEU
+
+        # L'action différée, une fois jouée, navigue effectivement vers jeu.html.
+        capture[0]()
+        assert fenetre.urls[-1].endswith("jeu.html")
+
+    def test_retourner_accueil_ne_navigue_pas_avant_le_retour(self, monkeypatch):
+        """``retourner_accueil`` diffère aussi sa navigation vers accueil.html."""
+        capture: list = []
+        routeur, fenetre = self._routeur_pret(monkeypatch, capture)
+        routeur.activer_vue(VUE_JEU)
+
+        resultat = routeur.retourner_accueil()
+
+        assert resultat["succes"] is True
+        assert fenetre.urls == []
+        assert len(capture) == 1
+        assert routeur._vue_active == VUE_ACCUEIL
+
+        capture[0]()
+        assert fenetre.urls[-1].endswith("accueil.html")
+
+    def test_recommencer_jeu_ne_navigue_pas_avant_le_retour(self, monkeypatch):
+        """``recommencer_jeu`` diffère le rechargement de jeu.html."""
+        capture: list = []
+        routeur, fenetre = self._routeur_pret(monkeypatch, capture)
+        partie, _id = _partie_deux_joueurs()
+        routeur.charger_jeu(partie, None)
+        routeur.activer_vue(VUE_JEU)
+
+        resultat = routeur.recommencer_jeu()
+
+        assert resultat["succes"] is True
+        assert fenetre.urls == []
+        assert len(capture) == 1
+
+        capture[0]()
+        assert fenetre.urls[-1].endswith("jeu.html")
+
+    def test_differer_execute_bien_l_action_dans_un_fil(self):
+        """Le vrai ``_differer`` finit par exécuter l'action (fil démon + délai)."""
+        fait = threading.Event()
+        _DIFFERER_REEL(fait.set)
+        assert fait.wait(timeout=2.0) is True
 
 
 class _DicoFactice:

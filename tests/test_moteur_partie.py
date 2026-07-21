@@ -491,3 +491,130 @@ def test_jouer_tours_ia_enchaine_jusqu_a_un_humain():
     # Humain d'abord (index 0) : jouer_tours_ia ne doit rien faire.
     assert partie.jouer_tours_ia() == []
     assert partie.joueur_courant().humain
+
+
+# --------------------------------------------------------------------------- #
+# Vocabulaire humain de l'IA (issue #206) : second dictionnaire optionnel
+# --------------------------------------------------------------------------- #
+
+def test_dictionnaire_ia_defaut_meme_objet():
+    """Par défaut, dictionnaire_ia EST le dictionnaire (même objet, coût nul)."""
+    trie = _trie("CHAT")
+    partie = Partie([Joueur("Alice")], trie, graine=1)
+    assert partie.dictionnaire_ia is partie.dictionnaire
+    assert partie.dictionnaire_ia is trie
+
+
+def test_dictionnaire_ia_distinct_quand_fourni():
+    """Un dictionnaire_ia explicite est conservé, distinct du dictionnaire complet."""
+    complet = _trie("CHAT", "CHIEN")
+    restreint = _trie("CHAT")
+    partie = Partie(
+        [Joueur("Alice")], complet, graine=1, dictionnaire_ia=restreint
+    )
+    assert partie.dictionnaire is complet
+    assert partie.dictionnaire_ia is restreint
+    assert partie.dictionnaire_ia is not partie.dictionnaire
+
+
+def test_jouer_tour_ia_genere_sur_dictionnaire_ia(monkeypatch):
+    """La génération des coups IA reçoit dictionnaire_ia, pas le dico complet."""
+    import scrabble.moteur.ia as ia_mod
+
+    complet = _trie("CHAT")
+    restreint = _trie("CHIEN")
+    partie = Partie(
+        [Joueur("IA", humain=False, niveau=Niveau.EXPERT)],
+        complet,
+        graine=1,
+        dictionnaire_ia=restreint,
+    )
+    captures: dict = {}
+
+    def faux_choisir(plateau, chevalet, dictionnaire, niveau):
+        captures["dico"] = dictionnaire
+        return None
+
+    monkeypatch.setattr(ia_mod, "choisir_coup", faux_choisir)
+    partie.jouer_tour_ia()
+    assert captures["dico"] is restreint
+
+
+def test_valider_coup_humain_reste_sur_dictionnaire_complet():
+    """Un coup humain est validé sur le dico complet, même IA restreinte (à vide)."""
+    complet = _trie("CADRE")
+    restreint = _trie()  # vocabulaire IA vide : n'affecte pas l'humain
+    joueur = Joueur("Alice")
+    partie = Partie(
+        [joueur], complet, graine=1, dictionnaire_ia=restreint
+    )
+    joueur.chevalet[:] = list("CADRE")
+
+    entree = partie.jouer_coup(_coup_cadre_au_centre())
+
+    assert entree.action == ACTION_COUP        # CADRE validé via le dico complet
+
+
+def test_ia_restreinte_ne_joue_pas_hors_vocabulaire():
+    """Avec le filtre actif, l'IA ne propose jamais un mot hors vocabulaire restreint.
+
+    Le mot « AS » existe dans le dictionnaire complet mais pas dans le
+    vocabulaire restreint de l'IA (limité à « CADRE »). L'IA, ne pouvant former
+    « CADRE » (ni C ni D dans son chevalet), passe — alors que le même « AS »
+    resterait jouable par un humain (dico complet).
+    """
+    complet = _trie("CADRE", "AS", "CADRES")
+    restreint = _trie("CADRE")
+    partie = Partie(
+        [Joueur("Humain"), Joueur("IA", humain=False, niveau=Niveau.EXPERT)],
+        complet,
+        graine=1,
+        dictionnaire_ia=restreint,
+    )
+    partie.joueurs[0].chevalet[:] = list("CADRE")
+    partie.jouer_coup(_coup_cadre_au_centre())   # pose CADRE, main à l'IA
+    partie.joueurs[1].chevalet[:] = ["S", "A", "T", "E", "R", "I", "O"]
+
+    entree = partie.jouer_tour_ia()
+
+    assert entree.action == ACTION_PASSE
+    # Le vocabulaire humain (dico complet) reste strictement plus large.
+    assert partie.dictionnaire.contient("AS")
+    assert not partie.dictionnaire_ia.contient("AS")
+
+
+def test_recreer_partie_conserve_dictionnaire_ia_restreint():
+    """« Recommencer » repropage le Trie restreint quand l'IA était limitée."""
+    complet = _trie("CHAT", "CHIEN")
+    restreint = _trie("CHAT")
+    joueurs = [
+        Joueur("Alice"),
+        Joueur("IA", humain=False, niveau=Niveau.FACILE),
+    ]
+    partie = Partie(joueurs, complet, graine=1, dictionnaire_ia=restreint)
+
+    nouvelle = recreer_partie_meme_joueurs(
+        partie, complet, graine=2, tirage_ordre=False
+    )
+
+    assert nouvelle.dictionnaire is complet
+    assert nouvelle.dictionnaire_ia is restreint
+
+
+def test_recreer_partie_sans_restriction_reste_sur_dictionnaire():
+    """Sans restriction d'origine, la nouvelle partie retombe sur son dictionnaire."""
+    complet = _trie("CHAT")
+    joueurs = [
+        Joueur("Alice"),
+        Joueur("IA", humain=False, niveau=Niveau.FACILE),
+    ]
+    partie = Partie(joueurs, complet, graine=1)  # dictionnaire_ia is complet
+    assert partie.dictionnaire_ia is partie.dictionnaire
+
+    nouveau_complet = _trie("CHAT", "CHIEN")
+    nouvelle = recreer_partie_meme_joueurs(
+        partie, nouveau_complet, graine=2, tirage_ordre=False
+    )
+
+    assert nouvelle.dictionnaire is nouveau_complet
+    assert nouvelle.dictionnaire_ia is nouvelle.dictionnaire

@@ -158,7 +158,7 @@ class TestJournalAccueil:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.reprendre_partie",
-            lambda id_partie, trie: partie,
+            lambda id_partie, trie, dictionnaire_ia=None: partie,
         )
         api = ApiAccueil()
         res = api.reprendre(99)
@@ -172,7 +172,7 @@ class TestJournalAccueil:
             lambda: Trie.depuis_iterable(["TEST"]),
         )
 
-        def _absente(id_partie, trie):
+        def _absente(id_partie, trie, dictionnaire_ia=None):
             raise KeyError(id_partie)
 
         monkeypatch.setattr("scrabble.ui.accueil.reprendre_partie", _absente)
