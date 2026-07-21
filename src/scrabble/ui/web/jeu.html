@@ -140,27 +140,10 @@
                         aria-live="polite" hidden></ol>
                 </div>
 
-                <!-- Sélecteur de lettre du joker (issue #168) : même famille
-                     visuelle que « Derniers coups ». Le bouton et son popover
-                     restent masqués tant qu'aucun joker n'est en cours de pose ;
-                     jeu.js les révèle quand Python signale ``joker_requis``. -->
-                <div class="joker-menu" id="joker-menu">
-                    <button id="btn-joker" class="historique-resume joker-resume"
-                            aria-haspopup="dialog" aria-expanded="false" hidden>
-                        <span class="historique-resume-inner">
-                            <span class="historique-resume-titre">🃏 Lettre du joker</span>
-                        </span>
-                    </button>
-                    <div id="joker-popover" class="historique-liste joker-popover"
-                         role="dialog"
-                         aria-label="Choisir la lettre représentée par le joker" hidden>
-                        <h3 class="joker-popover-titre">Quelle lettre représente le joker ?</h3>
-                        <div id="joker-grille" class="joker-grille"></div>
-                        <button id="joker-annuler" class="btn btn-secondaire btn-petit">
-                            Annuler
-                        </button>
-                    </div>
-                </div>
+                <!-- Le sélecteur de lettre du joker n'est plus ancré ici (issue
+                     #201) : la marge gauche étroite (refonte #186) tronquait sa
+                     grille. Il vit désormais en popover fixe posé sur la case du
+                     plateau — voir #joker-popover en fin de <body>. -->
                 </div><!-- /zone-systeme-ligne (ligne 2) -->
             </section>
 
@@ -429,9 +412,22 @@
         </div>
     </div>
 
-    <!-- Le sélecteur de lettre d'un joker vit dans la zone A (menu déroulant
-         « Lettre du joker », plus haut), même patron que « Derniers coups »
-         (issue #168). Il a quitté la fenêtre chevalet (issue #90). -->
+    <!-- Sélecteur de lettre du joker (issues #168/#201). Popover en position fixe
+         (masqué par défaut) : jeu.js le révèle et le place DIRECTEMENT sur la case
+         du plateau où le joker vient d'être posé (issue #201), avec recadrage dans
+         le viewport pour ne jamais déborder (comme les toasts de score, issue
+         #198). Fermeture façon « Derniers coups » : clic extérieur, Échap ou choix
+         d'une lettre. Auparavant ancré à un bouton « Lettre du joker » de la marge
+         gauche étroite, où la grille des 26 lettres était tronquée (issue #201). Il
+         avait quitté la fenêtre chevalet à l'issue #90. -->
+    <div id="joker-popover" class="historique-liste joker-popover" role="dialog"
+         aria-label="Choisir la lettre représentée par le joker" hidden>
+        <h3 class="joker-popover-titre">Quelle lettre représente le joker ?</h3>
+        <div id="joker-grille" class="joker-grille"></div>
+        <button id="joker-annuler" class="btn btn-secondaire btn-petit">
+            Annuler
+        </button>
+    </div>
 
     <!-- Calque de célébration festive quand un Scrabble (7 lettres, +50 pts) est
          posé (issue #64, suite de #58). Superposé plein écran mais totalement

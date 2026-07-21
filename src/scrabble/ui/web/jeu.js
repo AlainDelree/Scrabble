@@ -63,11 +63,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const historiqueListe = document.getElementById('historique-liste');
     const historiqueCompte = document.getElementById('historique-compte');
     const btnRafraichir = document.getElementById('btn-rafraichir');
-    // Sélecteur de lettre du joker (issue #168) : menu déroulant ancré dans la
-    // barre globale, même patron que « Derniers coups ». Remplace la modale de la
-    // fenêtre chevalet (issue #90/#157). Bouton d'ancrage + popover masqués tant
-    // qu'aucun joker n'est en cours de pose ; révélés par ouvrirSelecteurJoker().
-    const jokerBouton = document.getElementById('btn-joker');
+    // Sélecteur de lettre du joker (issues #168/#201). Popover en position fixe,
+    // masqué tant qu'aucun joker n'est en cours de pose ; ouvrirSelecteurJoker() le
+    // révèle et le place DIRECTEMENT sur la case du plateau où le joker est posé
+    // (issue #201), au lieu de l'ancrer à un bouton de la marge gauche étroite où
+    // la grille des 26 lettres était tronquée. Plus de bouton d'ancrage.
     const jokerPopover = document.getElementById('joker-popover');
     const jokerGrille = document.getElementById('joker-grille');
     const jokerAnnuler = document.getElementById('joker-annuler');
@@ -642,20 +642,64 @@ document.addEventListener('DOMContentLoaded', async () => {
     let jokerSelecteurOuvert = false;
 
     /**
-     * Ouvre le sélecteur de lettre du joker (issue #168) : menu déroulant ancré
-     * dans la barre globale de CETTE fenêtre plateau, même famille visuelle que
-     * « Derniers coups », en remplacement de l'ancienne modale de la fenêtre
-     * chevalet (qui imposait de l'agrandir, issue #157).
+     * Place le popover du sélecteur de joker directement sur/à côté de la case du
+     * plateau ``caseEl`` (issue #201). Le popover est en ``position: fixed`` : on
+     * lui pose des coordonnées viewport (centré sous la case, remonté au-dessus
+     * si la place manque en bas), puis on le recadre dans la fenêtre — même
+     * technique que les toasts de score (issue #198) — pour qu'il ne déborde
+     * jamais du plateau ni de l'écran, quelle que soit la position de la case
+     * (coin, bord). La grille des 26 lettres étant déjà rendue au moment de
+     * l'appel, ``getBoundingClientRect`` renvoie ses dimensions réelles.
+     */
+    function positionnerPopoverJoker(caseEl) {
+        const marge = 8;
+        const popRect = jokerPopover.getBoundingClientRect();
+        // Case introuvable (ne devrait pas arriver) : repli centré à l'écran.
+        if (!caseEl) {
+            jokerPopover.style.left =
+                `${Math.max(marge, (window.innerWidth - popRect.width) / 2)}px`;
+            jokerPopover.style.top =
+                `${Math.max(marge, (window.innerHeight - popRect.height) / 2)}px`;
+            return;
+        }
+        const caseRect = caseEl.getBoundingClientRect();
+        // Idéal : popover centré horizontalement sur la case, juste en dessous.
+        let left = caseRect.left + caseRect.width / 2 - popRect.width / 2;
+        let top = caseRect.bottom + marge;
+        // Pas la place en dessous : on tente au-dessus de la case (sinon on
+        // laissera le recadrage viewport ci-après le maintenir visible).
+        if (top + popRect.height > window.innerHeight - marge) {
+            const dessus = caseRect.top - marge - popRect.height;
+            if (dessus >= marge) {
+                top = dessus;
+            }
+        }
+        // Recadrage final dans le viewport (issue #198) : jamais hors des bords.
+        left = Math.min(left, window.innerWidth - marge - popRect.width);
+        left = Math.max(left, marge);
+        top = Math.min(top, window.innerHeight - marge - popRect.height);
+        top = Math.max(top, marge);
+        jokerPopover.style.left = `${left}px`;
+        jokerPopover.style.top = `${top}px`;
+    }
+
+    /**
+     * Ouvre le sélecteur de lettre du joker : popover en surimpression posé
+     * DIRECTEMENT sur la case du plateau où le joker vient d'être posé (issue
+     * #201), au lieu d'un menu déroulant ancré dans la marge gauche étroite où la
+     * grille des 26 lettres était tronquée (issue #168). Ce nouvel emplacement,
+     * sur le plateau bien plus large que la marge, affiche l'alphabet complet sans
+     * troncature et évite les allers-retours de souris marge ⇄ plateau.
      *
      * ``demande`` = {ligne, colonne, index} renvoyé par Python dans la réponse
      * ``joker_requis`` (au clic sur une case avec un joker sélectionné). La
      * confidentialité est préservée : ``index`` est une simple position de
      * chevalet — déjà connue de cette fenêtre puisque Python la lui renvoie — et
-     * jamais la lettre. À la sélection, on finalise la pose par le MÊME appel API
-     * qu'auparavant depuis le chevalet
+     * jamais la lettre ; ``ligne``/``colonne`` désignent la case déjà cliquée. À
+     * la sélection, on finalise la pose par le MÊME appel API qu'auparavant
      * (``poser_lettre_en_attente(l, c, lettre, true, 0, index)``) ; à l'abandon,
      * on relâche la sélection (``selectionner_lettre(null)``), le joker
-     * redevenant disponible au chevalet.
+     * redevenant disponible au chevalet — contrat métier inchangé (issue #201).
      */
     async function ouvrirSelecteurJoker(demande) {
         if (jokerSelecteurOuvert) {
@@ -663,20 +707,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         jokerSelecteurOuvert = true;
         // Referme d'abord les autres popovers de la barre (« Derniers coups » /
-        // « Vérification dictionnaire ») pour ne pas empiler deux surimpressions,
-        // puis révèle le bouton d'ancrage du menu joker.
+        // « Vérification dictionnaire ») pour ne pas empiler deux surimpressions.
         C.fermerTousPopovers();
-        jokerBouton.hidden = false;
+        // Case du plateau visée : le popover s'ouvre dessus (issue #201).
+        const caseEl = plateauEl.querySelector(
+            `.case[data-ligne="${demande.ligne}"][data-colonne="${demande.colonne}"]`);
         let choix = null;
         try {
-            choix = await C.choisirLettreJoker({
+            // La grille des 26 lettres est construite de façon SYNCHRONE par
+            // choisirLettreJoker (rendu immédiat, popover visible) : on peut le
+            // placer sur la case dès le retour de l'appel, avant peinture, sans
+            // aucun flash à sa position par défaut.
+            const promesse = C.choisirLettreJoker({
                 modale: jokerPopover, grille: jokerGrille, annuler: jokerAnnuler,
-                bouton: jokerBouton, popover: true,
+                popover: true,
             });
+            positionnerPopoverJoker(caseEl);
+            choix = await promesse;
         } finally {
             jokerSelecteurOuvert = false;
             jokerPopover.hidden = true;
-            jokerBouton.hidden = true;
         }
         if (choix) {
             try {

@@ -868,27 +868,32 @@ body {
 }
 
 /* --------------------------------------------------------------------------- */
-/* Sélecteur de lettre du joker (issue #168)                                    */
+/* Sélecteur de lettre du joker (issues #168/#201)                              */
 /* --------------------------------------------------------------------------- */
-/* Menu déroulant construit sur le MÊME patron que « Derniers coups » : un
-   bouton pastille (.historique-resume, réutilisé tel quel) ancré dans la barre
-   globale, dont la liste s'ouvre en surimpression dessous (.historique-liste,
-   réutilisée pour la boîte : position absolue, fond blanc, ombre). Il remplace
-   l'ancienne modale logée dans la fenêtre chevalet, qu'elle obligeait à agrandir
-   le temps du choix (issue #157). Le plateau étant maximisé, la place ne manque
-   pas ; le popover s'ouvre dans la gouttière gauche (haut de l'écran), hors de la
-   zone que le chevalet flottant recouvre (bas de l'écran) — aucun réglage de
-   z-order nécessaire (point #1 de l'issue). */
-.joker-menu {
-    position: relative;
-}
+/* Depuis l'issue #201, le sélecteur n'est plus un menu déroulant ancré dans la
+   marge gauche (zone A). Cette marge, devenue étroite avec la refonte 4 zones
+   (#186, ~300-340px), tronquait la grille des 26 lettres (V-Z coupées). Le
+   popover s'ouvre désormais DIRECTEMENT sur la case du plateau où le joker est
+   posé : le plateau est bien plus large que la marge, l'alphabet complet tient
+   sans troncature, et l'on évite les allers-retours de souris marge ⇄ plateau.
 
-/* Le popover réutilise .historique-liste (surimpression absolue, fond blanc,
-   ombre) mais héberge un titre + la grille 7 colonnes des 26 lettres + le bouton
-   « Annuler » : on l'élargit pour loger la grille et on centre son contenu. */
+   Le popover réutilise .historique-liste (fond blanc, ombre, coins arrondis)
+   mais passe en ``position: fixed`` : jeu.js (positionnerPopoverJoker) lui pose
+   des coordonnées viewport calées sur la case, recadrées dans la fenêtre pour ne
+   jamais déborder (issue #198). ``top``/``left`` héritées de .historique-liste
+   (absolute, top:100%/left:0) sont donc neutralisées et redéfinies par le JS. */
 .joker-popover {
+    position: fixed;
+    top: auto;
+    left: auto;
+    /* Au-dessus du plateau et des calques de toasts (z-index 50), sous les
+       modales plein écran (z-index 100) — qui ne coexistent jamais avec lui. */
+    z-index: 70;
     width: auto;
     min-width: 300px;
+    /* Borne la largeur pour que la grille 7 colonnes tienne dans le viewport même
+       sur une petite fenêtre ; le recadrage JS complète en repositionnant. */
+    max-width: min(360px, 92vw);
     align-items: center;
     text-align: center;
     padding: 12px 14px;
