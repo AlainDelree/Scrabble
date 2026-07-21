@@ -323,6 +323,14 @@ class ApiRouteur:
                 )
                 # 4. Rejouer la finalisation (maximisation, amorçage chevalet) à chaque
                 #    entrée en vue Jeu — une seule boucle webview.start.
+                #    Ici, contrairement au tout premier démarrage (issue #213), la
+                #    fenêtre EXISTE déjà et n'est PAS recréée (``load_url`` sur la même
+                #    fenêtre physique) : impossible de repasser par ``maximized=`` /
+                #    la géométrie de ``create_window``. Le seul levier est donc un
+                #    ``maximize()``/``resize`` impératif sur la fenêtre vivante
+                #    (``_maximiser_plateau``). Comme la fenêtre est déjà déployée sur
+                #    la zone de travail depuis l'ouverture, cette (ré)affirmation vise
+                #    la même géométrie et reste invisible — pas de flash à la bascule.
                 self._api_jeu.finaliser_entree_vue_jeu()
 
             _differer(_entrer_en_jeu)
@@ -482,6 +490,7 @@ def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
     from scrabble.ui.backend_graphique import (
         configurer_backend_graphique,
         deployer_fenetre_maximisee,
+        zone_travail_ecran,
     )
 
     # Bascule XWayland AVANT le premier (et unique) ``webview.start()`` du
@@ -502,20 +511,43 @@ def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
         routeur._api_accueil.initialiser_joueur_humain()
 
         chemin_html = DOSSIER_WEB / "accueil.html"
+        # Élimination du « flash petit → grand » à l'ouverture (issue #213).
+        # ``maximized=True`` seul ne suffit pas : sous XWayland (backend forcé #93),
+        # le ``Gtk.Window.maximize()`` émis par pywebview avant le mappage est un
+        # **no-op** (#95). La fenêtre s'ouvrait donc d'abord à sa taille de repli
+        # (700×780) PUIS était déployée sur la zone de travail par le callback
+        # ``deployer_fenetre_maximisee`` — un aller-retour visible. Correctif : on
+        # lit la zone de travail DÈS ICI (GDK est déjà interrogeable,
+        # ``configurer_backend_graphique`` ayant fixé le backend juste avant) et on
+        # crée la fenêtre directement à cette géométrie. Elle se mappe alors pleine
+        # dès la première image, sans étape intermédiaire réduite.
+        zone = zone_travail_ecran()
+        if zone is not None:
+            x, y, largeur, hauteur = zone
+            geometrie = {"x": x, "y": y, "width": largeur, "height": hauteur}
+        else:
+            # Zone inconnue (Windows/EdgeChromium — prod —, tests headless, GDK
+            # absent) : ``maximized=True`` y est honoré nativement, donc pas de
+            # flash ; 700×780 reste la taille de repli/restauration si l'utilisateur
+            # dé-maximise.
+            geometrie = {"width": 700, "height": 780}
         window = webview.create_window(
             "Scrabble",
             str(chemin_html),
             js_api=routeur,
-            # Fenêtre maximisée par défaut (issue #159) ; ``maximized=True`` étant
-            # un no-op sous XWayland (#95), le déploiement effectif est forcé par
-            # le callback ``deployer_fenetre_maximisee`` après démarrage de la
-            # boucle. ``width``/``height`` = taille de restauration/repli.
+            # Fenêtre maximisée par défaut (issue #159). On conserve ``maximized=True``
+            # pour les WM coopératifs et EdgeChromium (Windows, prod) qui l'honorent
+            # nativement ; sous XWayland (#95) où c'est un no-op, c'est la géométrie
+            # « zone de travail » passée via ``geometrie`` qui fait déjà s'ouvrir la
+            # fenêtre pleine (issue #213). Le callback ``deployer_fenetre_maximisee``
+            # (ré)affirme le déploiement après démarrage de la boucle (belt-and-
+            # suspenders : vraie maximisation sur WM coopératif, et repli si la zone
+            # était inconnue ici).
             maximized=True,
-            width=700,
-            height=780,
             resizable=True,
             # Fond vert dès le mappage (issue #113) : évite le flash blanc.
             background_color=TAPIS_VERT,
+            **geometrie,
         )
         routeur.set_window(window)
         # ``routeur.set_window`` a propagé la fenêtre unique à la sous-API Jeu
