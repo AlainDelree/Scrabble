@@ -207,23 +207,55 @@ class TestAvance:
 
 
 class TestFacile:
-    """FACILE choisit dans la moitié inférieure."""
+    """FACILE choisit dans les 60 % meilleurs coups (top 60 %) — issue #208."""
 
-    def test_choisit_dans_la_moitie_inferieure(self):
+    def test_choisit_dans_le_top_60_pct(self):
         plateau = PlateauPartie()
         chevalet = list("CADRES")
         dico = _trie("CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES")
         coups = generer_coups(plateau, chevalet, dico)
         if len(coups) < 2:
-            pytest.skip("Pas assez de coups pour tester la moitié")
-        moitie_inf = coups[len(coups) // 2 :]
+            pytest.skip("Pas assez de coups pour tester le top 60 %")
+        taille_haut = max(1, len(coups) * 60 // 100)
+        haut = coups[:taille_haut]
 
         for graine in range(50):
             coup = choisir_coup(
                 plateau, chevalet, dico, Niveau.FACILE, random.Random(graine)
             )
             if coup is not None:
-                assert any(cn.coup == coup for cn in moitie_inf)
+                assert any(cn.coup == coup for cn in haut)
+
+    def test_score_moyen_superieur_a_debutant(self):
+        """FACILE est réellement plus fort que DEBUTANT en score moyen.
+
+        Cœur de l'issue #208 : l'ancienne stratégie (moitié inférieure) rendait
+        FACILE plus FAIBLE que DEBUTANT ; le passage au top 60 % corrige cette
+        inversion nom/force sur un plateau/chevalet offrant des scores étalés.
+        """
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        dico = _trie(
+            "CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES",
+            "SE", "ED", "AR", "RA", "CAR", "ARC", "SAC", "ACRE", "CARDE",
+        )
+        coups_ref = generer_coups(plateau, chevalet, dico)
+
+        def moyenne_scores(niveau: Niveau, n: int = 300) -> float:
+            scores = []
+            for graine in range(n):
+                coup = choisir_coup(
+                    plateau, chevalet, dico, niveau, random.Random(graine)
+                )
+                if coup is not None:
+                    cn = next(c for c in coups_ref if c.coup == coup)
+                    scores.append(cn.score)
+            return statistics.mean(scores) if scores else 0.0
+
+        moy_debutant = moyenne_scores(Niveau.DEBUTANT)
+        moy_facile = moyenne_scores(Niveau.FACILE)
+        moy_inter = moyenne_scores(Niveau.INTERMEDIAIRE)
+        assert moy_debutant < moy_facile < moy_inter
 
 
 # --------------------------------------------------------------------------- #
@@ -413,17 +445,19 @@ _MOTS_IA_RESTREINT = (
 
 # Ordre des niveaux par score moyen croissant, tel qu'il découle RÉELLEMENT des
 # stratégies de sélection (cf. ia.py) :
-#   * FACILE tire dans la moitié INFÉRIEURE  → moyenne la plus basse ;
-#   * DEBUTANT tire uniformément parmi TOUS les coups → moyenne ~médiane ;
+#   * DEBUTANT tire uniformément parmi TOUS les coups → moyenne la plus basse ;
+#   * FACILE tire dans le top 60 % (écarte les 40 % plus faibles) → au-dessus
+#     de DEBUTANT mais nettement sous INTERMEDIAIRE ;
 #   * INTERMEDIAIRE (top 33 %), AVANCE (top 15 %), EXPERT (meilleur) → croissant.
-# NB : l'énoncé de l'issue #207 liste « Débutant < Facile < ... », mais dans le
-# code Facile est délibérément sous-optimal (moitié basse) et se place DONC
-# sous Débutant en score moyen. Cette inversion nom/score est une propriété
-# PRÉ-EXISTANTE des stratégies, indépendante du filtre (elle vaut à l'identique
-# avec et sans filtre) ; ces tests vérifient l'ordre tel qu'il est réellement.
+# NB : depuis l'issue #208, FACILE n'est plus la moitié INFÉRIEURE (ce qui le
+# plaçait sous DEBUTANT, contrairement à ce que suggèrent les noms) mais le
+# top 60 %. L'ordre réel coïncide désormais avec l'ordre des noms et avec
+# l'énoncé de l'issue #207 : « Débutant < Facile < Intermédiaire < Avancé <
+# Expert ». Cette monotonie est structurelle et vaut donc à l'identique avec et
+# sans le filtre de vocabulaire ; ces tests le vérifient empiriquement.
 _ORDRE_CROISSANT_ATTENDU = [
-    Niveau.FACILE,
     Niveau.DEBUTANT,
+    Niveau.FACILE,
     Niveau.INTERMEDIAIRE,
     Niveau.AVANCE,
     Niveau.EXPERT,
