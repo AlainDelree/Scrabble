@@ -695,6 +695,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const resultat = document.getElementById('resultat');
     const resultatMot = document.getElementById('resultat-mot');
     const sourcesEl = document.getElementById('sources');
+    const classiqueEl = document.getElementById('classique');
     const definitionContenu = document.getElementById('definition-contenu');
 
     function afficherMessageDico(texte) {
@@ -750,6 +751,40 @@ document.addEventListener('DOMContentLoaded', async () => {
         return carte;
     }
 
+    /**
+     * Construit la carte « classique du jeu » (issue #204) : étiquette portant
+     * sur le mot lui-même, indépendante de la source active. Même style visuel
+     * que les cartes par source, avec un bouton marquer/démarquer.
+     */
+    function carteClassique(statut) {
+        const carte = document.createElement('div');
+        carte.className = 'source-carte';
+
+        const pastilleClasse = statut.classique ? 'present' : 'absent';
+        const pastilleTexte = statut.classique ? 'Classique' : 'Non classique';
+        const detail = statut.classique
+            ? 'Marqué comme classique du jeu (autorisé pour l\'IA).'
+            : 'Non marqué comme classique du jeu.';
+
+        carte.innerHTML = `
+            <div class="source-titre">
+                <span>Classique du jeu</span>
+                <span class="pastille ${pastilleClasse}">${pastilleTexte}</span>
+            </div>
+            <div class="source-detail">${escapeHtml(detail)}</div>
+            <div class="source-actions"></div>
+        `;
+
+        const actions = carte.querySelector('.source-actions');
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-petit '
+            + (statut.classique ? 'btn-retirer' : 'btn-ajouter');
+        btn.textContent = statut.classique ? 'Retirer' : 'Marquer';
+        btn.addEventListener('click', () => modifierClassique(!statut.classique));
+        actions.appendChild(btn);
+        return carte;
+    }
+
     /** Rend le résultat complet d'une recherche (statut + définition). */
     function afficherResultat(data) {
         resultatMot.textContent = data.mot;
@@ -757,6 +792,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         Object.keys(data.sources).forEach((source) => {
             sourcesEl.appendChild(carteSource(source, data.sources[source]));
         });
+
+        classiqueEl.innerHTML = '';
+        if (data.classique) {
+            classiqueEl.appendChild(carteClassique(data.classique));
+        }
 
         definitionContenu.innerHTML = '';
         if (Array.isArray(data.definition) && data.definition.length) {
@@ -809,6 +849,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         const appel = ajouter ? api.ajouter_mot : api.retirer_mot;
         const data = await appel(motCourant, source);
+        if (!data.succes) {
+            afficherMessageDico(data.erreur || 'Modification impossible.');
+            return;
+        }
+        afficherMessageDico('');
+        afficherResultat(data);
+    }
+
+    /**
+     * Marque ou démarque le mot courant comme « classique du jeu » puis
+     * rafraîchit l'affichage. Un refus (mot absent des deux sources) est
+     * signalé via le message d'erreur du dictionnaire (issue #204).
+     */
+    async function modifierClassique(marquer) {
+        if (!motCourant) {
+            return;
+        }
+        const data = await api.marquer_classique_mot(motCourant, marquer);
         if (!data.succes) {
             afficherMessageDico(data.erreur || 'Modification impossible.');
             return;

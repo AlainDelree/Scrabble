@@ -30,10 +30,13 @@ from scrabble.dictionnaire.dictionnaire import (
     desaccentuer,
     est_mot_scrabble,
     lire_liste_mots,
+    marquer_classique,
     modifier_appartenance,
+    mot_existe_dans_une_source,
     normaliser_mot,
     obtenir_trie,
     rechercher_statut,
+    statut_classique,
     statut_source,
 )
 
@@ -597,6 +600,7 @@ def test_rechercher_statut_assemble_sources_et_definition(tmp_path, monkeypatch)
     )
     definitions = tmp_path / "definitions.json"
     definitions.write_text(json.dumps({"CHAT": ["Félin."]}), encoding="utf-8")
+    _preparer_classiques(tmp_path, monkeypatch, ajoutes=["CHAT"])
 
     resultat = rechercher_statut(
         "chat",
@@ -609,4 +613,134 @@ def test_rechercher_statut_assemble_sources_et_definition(tmp_path, monkeypatch)
     assert set(resultat["sources"]) == {"ods", "hunspell"}
     assert resultat["sources"]["ods"]["present"] is True
     assert resultat["sources"]["hunspell"]["indisponible"] is True
+    assert resultat["classique"]["classique"] is True
     assert resultat["definition"] == ["Félin."]
+
+
+# --------------------------------------------------------------------------- #
+# Statut « classique du jeu » (issue #204)
+# --------------------------------------------------------------------------- #
+
+def _preparer_classiques(tmp_path, monkeypatch, ajoutes=(), retires=()):
+    """Prépare la paire classiques_ajoutes/retires dans tmp_path et la branche."""
+    ajoutes_p = tmp_path / "classiques_ajoutes.txt"
+    retires_p = tmp_path / "classiques_retires.txt"
+    ajoutes_p.write_text("\n".join(ajoutes), encoding="utf-8")
+    retires_p.write_text("\n".join(retires), encoding="utf-8")
+    monkeypatch.setattr(d, "CHEMINS_CLASSIQUES", (ajoutes_p, retires_p))
+    return ajoutes_p, retires_p
+
+
+def test_statut_classique_marque(tmp_path, monkeypatch):
+    """Un mot présent dans classiques_ajoutes est signalé classique."""
+    _preparer_classiques(tmp_path, monkeypatch, ajoutes=["WU"])
+    statut = statut_classique("WU")
+    assert statut["ajout_manuel"] is True
+    assert statut["retrait_manuel"] is False
+    assert statut["classique"] is True
+
+
+def test_statut_classique_non_marque(tmp_path, monkeypatch):
+    """Un mot absent de la liste n'est pas classique."""
+    _preparer_classiques(tmp_path, monkeypatch)
+    assert statut_classique("CHAT")["classique"] is False
+
+
+def test_statut_classique_retrait_prioritaire(tmp_path, monkeypatch):
+    """Un retrait l'emporte sur un ajout (comme les sources)."""
+    _preparer_classiques(tmp_path, monkeypatch, ajoutes=["WU"], retires=["WU"])
+    assert statut_classique("WU")["classique"] is False
+
+
+def test_mot_existe_dans_une_source_ods(tmp_path):
+    """Présent dans l'ODS (une seule source suffit) → True."""
+    chemin_ods = tmp_path / "ods.txt"
+    chemin_ods.write_text("WU\nSIX\n", encoding="utf-8")
+    assert mot_existe_dans_une_source(
+        "WU", chemin_ods=chemin_ods, base_hunspell=tmp_path / "inexistant"
+    ) is True
+
+
+def test_mot_existe_dans_une_source_absent_partout(tmp_path):
+    """Absent de l'ODS et Hunspell indisponible → False."""
+    chemin_ods = tmp_path / "ods.txt"
+    chemin_ods.write_text("SIX\n", encoding="utf-8")
+    assert mot_existe_dans_une_source(
+        "ZORGLUB", chemin_ods=chemin_ods, base_hunspell=tmp_path / "inexistant"
+    ) is False
+
+
+def test_marquer_classique_accepte_mot_present(tmp_path, monkeypatch):
+    """Marquer un mot présent dans une source écrit dans ajoutes."""
+    ajoutes_p, retires_p = _preparer_classiques(tmp_path, monkeypatch)
+    chemin_ods = tmp_path / "ods.txt"
+    chemin_ods.write_text("WU\n", encoding="utf-8")
+
+    norme = marquer_classique(
+        "wu", present=True, chemin_ods=chemin_ods, base_hunspell=tmp_path / "no"
+    )
+    assert norme == "WU"
+    assert "WU" in lire_liste_mots(ajoutes_p)
+    assert "WU" not in lire_liste_mots(retires_p)
+
+
+def test_marquer_classique_refuse_mot_absent_des_deux_sources(tmp_path, monkeypatch):
+    """Un mot inexistant dans les deux sources est refusé, sans écrire."""
+    ajoutes_p, retires_p = _preparer_classiques(tmp_path, monkeypatch)
+    chemin_ods = tmp_path / "ods.txt"
+    chemin_ods.write_text("WU\n", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        marquer_classique(
+            "zorglub", present=True,
+            chemin_ods=chemin_ods, base_hunspell=tmp_path / "no",
+        )
+    # Aucune écriture : le fichier reste vide.
+    assert lire_liste_mots(ajoutes_p) == set()
+
+
+def test_marquer_classique_mot_invalide(tmp_path, monkeypatch):
+    """Un mot non jouable (chiffres) est rejeté avant toute vérification."""
+    _preparer_classiques(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        marquer_classique("w1", present=True)
+
+
+def test_marquer_classique_demarquage_sans_verif_source(tmp_path, monkeypatch):
+    """Le démarquage (present=False) ne vérifie pas l'existence en source."""
+    ajoutes_p, retires_p = _preparer_classiques(
+        tmp_path, monkeypatch, ajoutes=["WU"]
+    )
+    chemin_ods = tmp_path / "ods.txt"
+    chemin_ods.write_text("AUTRE\n", encoding="utf-8")
+
+    marquer_classique(
+        "wu", present=False, chemin_ods=chemin_ods, base_hunspell=tmp_path / "no"
+    )
+    assert "WU" not in lire_liste_mots(ajoutes_p)
+    assert "WU" in lire_liste_mots(retires_p)
+
+
+def test_marquer_classique_round_trip(tmp_path, monkeypatch):
+    """Recherche → marquage → nouvelle recherche confirme le statut (issue #204)."""
+    chemin_ods = _preparer_source_modifs(tmp_path, monkeypatch, ["WU"])
+    monkeypatch.setitem(
+        d.CHEMINS_MODIFS, "hunspell", (tmp_path / "ha.txt", tmp_path / "hr.txt")
+    )
+    _preparer_classiques(tmp_path, monkeypatch)
+
+    avant = rechercher_statut(
+        "wu", chemin_ods=chemin_ods, base_hunspell=tmp_path / "no",
+        chemin_definitions=tmp_path / "defs.json",
+    )
+    assert avant["classique"]["classique"] is False
+
+    marquer_classique(
+        "wu", present=True, chemin_ods=chemin_ods, base_hunspell=tmp_path / "no"
+    )
+
+    apres = rechercher_statut(
+        "wu", chemin_ods=chemin_ods, base_hunspell=tmp_path / "no",
+        chemin_definitions=tmp_path / "defs.json",
+    )
+    assert apres["classique"]["classique"] is True

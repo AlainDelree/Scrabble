@@ -56,6 +56,7 @@ from scrabble.config import (
 from scrabble.dictionnaire.dictionnaire import (
     SOURCES,
     charger_dictionnaire,
+    marquer_classique,
     modifier_appartenance,
     obtenir_trie,
     rechercher_statut,
@@ -723,6 +724,28 @@ class ApiAccueil:
     def retirer_mot(self, mot: str, source: str) -> dict[str, Any]:
         """Retire manuellement un mot d'une source précise, puis renvoie le statut."""
         return self._modifier(mot, source, present=False, verbe="retiré de")
+
+    def marquer_classique_mot(self, mot: str, present: bool) -> dict[str, Any]:
+        """Marque/démarque un mot comme « classique du jeu » puis renvoie le statut.
+
+        Délègue à :func:`~scrabble.dictionnaire.dictionnaire.marquer_classique`.
+        Un marquage refusé (mot absent des deux sources ODS8/Hunspell) remonte
+        au JS via ``{"succes": False, "erreur": ...}`` sans modifier de fichier.
+        """
+        verbe = "marqué classique" if present else "démarqué classique"
+        try:
+            norme = marquer_classique(mot, present)
+            journal.info(f"Réglages : « {norme} » {verbe}.")
+            statut = rechercher_statut(norme)
+            statut["succes"] = True
+            return statut
+        except ValueError as e:
+            return {"succes": False, "erreur": str(e)}
+        except Exception as e:  # noqa: BLE001 - on remonte l'erreur au JS
+            journal.erreur(
+                f"Réglages : échec du marquage classique de « {mot} ».", e
+            )
+            return {"succes": False, "erreur": str(e)}
 
     @staticmethod
     def _modifier(

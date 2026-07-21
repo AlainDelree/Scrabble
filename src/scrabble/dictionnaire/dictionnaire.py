@@ -75,6 +75,19 @@ CHEMINS_MODIFS: dict[str, tuple[Path, Path]] = {
         DOSSIER_DICO / "mots_retires_hunspell.txt",
     ),
 }
+# Statut « classique du jeu » (issue #204). Contrairement aux personnalisations
+# par source ci-dessus, cette étiquette porte sur le **mot lui-même**,
+# indépendamment de la source active : elle marque les petits mots à lettre
+# chère (WU, SIX, ZOO…) qu'on autorise l'IA à jouer même s'ils sont rares dans
+# le langage courant. Une paire ajoutés/retirés, sur le modèle exact des
+# fichiers ``mots_ajoutes_*``/``mots_retires_*``, un mot par ligne, même
+# normalisation. La liste candidate initiale (~531 mots) est produite par
+# ``scripts/generer_classiques.py`` et amorce ``classiques_ajoutes.txt``.
+CHEMINS_CLASSIQUES: tuple[Path, Path] = (
+    DOSSIER_DICO / "classiques_ajoutes.txt",
+    DOSSIER_DICO / "classiques_retires.txt",
+)
+
 CHEMIN_CACHE = DOSSIER_DICO / "trie_cache.pkl"
 # Index mot → définition(s) restreint aux mots de l'ODS8 (issue #15). Ce fichier
 # est volumineux et gitignoré : construit hors-ligne par
@@ -482,7 +495,8 @@ def rechercher_statut(
 
     Assemble, pour chaque source de :data:`SOURCES`, le statut renvoyé par
     :func:`statut_source`, plus la définition (:func:`definition_mot`, ODS8
-    uniquement). ``mot`` est le libellé normalisé (accents conservés) ; il est
+    uniquement) et le statut « classique du jeu » (:func:`statut_classique`,
+    issue #204). ``mot`` est le libellé normalisé (accents conservés) ; il est
     aussi renvoyé pour que l'UI affiche la forme réellement interrogée.
     """
     norme = normaliser_mot(mot)
@@ -493,6 +507,7 @@ def rechercher_statut(
             source: statut_source(norme, source, chemin_ods, base_hunspell)
             for source in SOURCES
         },
+        "classique": statut_classique(norme),
         "definition": definition_mot(norme, chemin_definitions),
     }
 
@@ -526,6 +541,103 @@ def modifier_appartenance(
     if source not in CHEMINS_MODIFS:
         raise ValueError(f"Source inconnue : « {source} ».")
     chemin_ajoutes, chemin_retires = chemins_modifs(source)
+    assurer_fichiers_modifs(chemin_ajoutes, chemin_retires)
+    ajoutes = lire_liste_mots(chemin_ajoutes)
+    retires = lire_liste_mots(chemin_retires)
+    if present:
+        ajoutes.add(norme)
+        retires.discard(norme)
+    else:
+        retires.add(norme)
+        ajoutes.discard(norme)
+    _reecrire_liste_mots(chemin_ajoutes, ajoutes)
+    _reecrire_liste_mots(chemin_retires, retires)
+    return norme
+
+
+# --------------------------------------------------------------------------- #
+# Statut « classique du jeu » (issue #204)
+# --------------------------------------------------------------------------- #
+
+def chemins_classiques() -> tuple[Path, Path]:
+    """Retourne le couple ``(classiques_ajoutes, classiques_retires)``.
+
+    Indirection volontaire (plutôt que l'accès direct à
+    :data:`CHEMINS_CLASSIQUES`) pour que les tests puissent réassigner la
+    constante du module via ``monkeypatch.setattr`` et voir l'effet ici.
+    """
+    return CHEMINS_CLASSIQUES
+
+
+def statut_classique(mot_normalise: str) -> dict[str, Any]:
+    """Statut « classique du jeu » d'un mot déjà normalisé (issue #204).
+
+    Contrairement à :func:`statut_source`, il n'y a pas de source « brute » :
+    l'étiquette existe uniquement via les fichiers de personnalisation. Un mot
+    est classique s'il figure dans ``classiques_ajoutes.txt`` sans figurer dans
+    ``classiques_retires.txt`` (même formule ``ajoutés − retirés`` que les
+    sources, avec un ensemble brut vide). Retourne ``{"ajout_manuel",
+    "retrait_manuel", "classique"}``.
+    """
+    chemin_ajoutes, chemin_retires = chemins_classiques()
+    ajout_manuel = mot_normalise in lire_liste_mots(chemin_ajoutes)
+    retrait_manuel = mot_normalise in lire_liste_mots(chemin_retires)
+    return {
+        "ajout_manuel": ajout_manuel,
+        "retrait_manuel": retrait_manuel,
+        "classique": ajout_manuel and not retrait_manuel,
+    }
+
+
+def mot_existe_dans_une_source(
+    mot_normalise: str,
+    chemin_ods: Path = CHEMIN_ODS,
+    base_hunspell: Path = BASE_HUNSPELL,
+) -> bool:
+    """Vrai si le mot appartient (brut) à **au moins une** des deux sources.
+
+    Vérification indépendante de la source active (issue #204) : on teste ODS8
+    puis Hunspell, l'existence dans l'une des deux suffisant. L'ordre est
+    volontaire (ODS8 d'abord) : la plupart des classiques en viennent, ce qui
+    évite d'avoir à déplier Hunspell (plusieurs secondes) dans le cas courant.
+    Une source indisponible (``None``) est simplement ignorée.
+    """
+    for source in SOURCES:
+        brut = charger_source_cache(source, chemin_ods, base_hunspell)
+        if brut is not None and mot_normalise in brut:
+            return True
+    return False
+
+
+def marquer_classique(
+    mot: str,
+    present: bool,
+    chemin_ods: Path = CHEMIN_ODS,
+    base_hunspell: Path = BASE_HUNSPELL,
+) -> str:
+    """Marque (``present=True``) ou démarque un mot comme « classique du jeu ».
+
+    Écrit dans la paire :data:`CHEMINS_CLASSIQUES` sur le modèle exact de
+    :func:`modifier_appartenance` (``classiques_ajoutes`` / ``classiques_retires``,
+    triés/dédoublonnés). Le mot est normalisé au préalable ; ``ValueError`` est
+    levée s'il n'est pas un mot jouable au Scrabble (vide, chiffres, ponctuation…).
+
+    **Refus explicite** (``ValueError``, sans toucher aux fichiers) si l'on tente
+    de marquer classique (``present=True``) un mot qui n'existe dans **aucune**
+    des deux sources ODS8/Hunspell : un mot non jouable ne peut pas être un
+    classique du jeu (issue #204). Le démarquage (``present=False``) ne subit pas
+    cette vérification — on doit toujours pouvoir retirer une étiquette. Retourne
+    le mot normalisé.
+    """
+    norme = normaliser_mot(mot)
+    if not norme or not est_mot_scrabble(norme):
+        raise ValueError(f"« {mot} » n'est pas un mot jouable au Scrabble.")
+    if present and not mot_existe_dans_une_source(norme, chemin_ods, base_hunspell):
+        raise ValueError(
+            f"« {norme} » n'existe dans aucune source (ni ODS8 ni Hunspell) : "
+            "un mot non jouable ne peut pas être un classique du jeu."
+        )
+    chemin_ajoutes, chemin_retires = chemins_classiques()
     assurer_fichiers_modifs(chemin_ajoutes, chemin_retires)
     ajoutes = lire_liste_mots(chemin_ajoutes)
     retires = lire_liste_mots(chemin_retires)

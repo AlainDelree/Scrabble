@@ -43,8 +43,10 @@ dictionnaire de définitions, filtres Wiktionnaire) et `_harness_jeu/`
 `data/dictionnaire/` (gitignoré) reçoit **manuellement** les dictionnaires
 tiers — **ODS8** (défaut) ou **Hunspell** déplié — avant tout build, sinon le
 jeu démarre mais valide zéro mot. Contient aussi `definitions.json`,
-personnalisations `mots_ajoutes_*`/`mots_retires_*` (une paire par source) et
-le cache `trie_cache.pkl`.
+personnalisations `mots_ajoutes_*`/`mots_retires_*` (une paire par source), la
+liste des « classiques du jeu » `classiques_ajoutes.txt`/`classiques_retires.txt`
+(étiquette sur le mot lui-même, gérée depuis l'onglet Dictionnaire, amorcée par
+`scripts/generer_classiques.py`, issue #204) et le cache `trie_cache.pkl`.
 
 ## Stack (`requirements.txt`)
 `pywebview` (UI), `pyinstaller` (build .exe), `pytest` (tests), `spylls`
