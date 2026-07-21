@@ -1737,15 +1737,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Toast éphémère « +X points » (issue #136) affiché ~3 s près du panneau du
+     * Toast éphémère « +X points » (issue #136) affiché ~3 s près de la fiche du
      * joueur qui vient de jouer, pour tout coup rapportant des points (humain ou
      * ordinateur, quel que soit le nombre de mots formés : X est le score TOTAL
-     * du coup). Réutilise le calque plein écran ``#scrabble-fete`` (toujours
-     * ``pointer-events: none``) mais, contrairement au toast Scrabble centré, se
-     * positionne dynamiquement face au bon panneau selon son côté (bas/haut/
-     * gauche/droite, cf. issue #120) pour être clairement associé au bon joueur.
-     * Il est indépendant du toast Scrabble : les deux peuvent coexister sans
-     * fusion ni logique d'articulation, chacun suivant son propre cycle.
+     * du coup). Injecté dans le calque plein écran ``#points-toasts`` (toujours
+     * ``pointer-events: none``), indépendant du toast Scrabble centré : les deux
+     * peuvent coexister sans fusion, chacun suivant son propre cycle.
+     *
+     * Positionnement (issue #198) : depuis la refonte en 4 zones (#186), les
+     * fiches ne sont plus disposées en croix autour du plateau mais empilées
+     * verticalement dans la marge gauche (zone B) ; l'ancien calcul, qui poussait
+     * le toast vers l'« intérieur du plateau » selon la position logique du
+     * panneau (haut/bas/gauche/droite), envoyait donc les toasts hors écran
+     * (notamment vers la gauche pour un panneau « droite »). On ancre désormais le
+     * toast juste à droite de la fiche réelle, pointant vers le plateau (qui
+     * domine la colonne droite), avec un recadrage final dans le viewport pour
+     * qu'il reste toujours visible quelle que soit la géométrie.
      */
     function afficherToastPoints(indexJoueur, score) {
         const points = Number(score);
@@ -1761,17 +1768,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const joueur = (etat.joueurs || []).find((j) => j.index === indexJoueur);
         const cote = (joueur && joueur.position) || 'bas';
         const slot = slots[cote] || slots.bas;
-        const panneau = slot ? slot.querySelector('.panneau-joueur') : null;
-        // On ancre le toast sur l'avatar/l'icône du joueur (« près de l'image de
-        // profil ») ; à défaut, sur le panneau entier.
-        const ancre = panneau
-            ? (panneau.querySelector('.panneau-avatar')
-                || panneau.querySelector('.panneau-icone')
-                || panneau)
-            : null;
+        // On ancre le toast sur la fiche entière (bord droit) plutôt que sur le
+        // seul avatar : dans la marge gauche étroite, cela place le bandeau juste
+        // à côté de la fiche, dans la zone du plateau, sans recouvrir le nom ni le
+        // score du joueur.
+        const ancre = slot ? slot.querySelector('.panneau-joueur') : null;
 
         // Placement (wrapper) et animation (toast interne) sont séparés : le
-        // wrapper porte la transformation de recentrage face au panneau, le toast
+        // wrapper porte la transformation de recentrage face à la fiche, le toast
         // porte le fondu d'apparition/disparition — aucune des deux ne se marche
         // dessus.
         const wrapper = document.createElement('div');
@@ -1784,28 +1788,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const gap = 10;
         if (ancre) {
             const r = ancre.getBoundingClientRect();
-            const cx = r.left + r.width / 2;
             const cy = r.top + r.height / 2;
-            // Le toast pointe vers l'intérieur du plateau selon le côté du panneau.
-            if (cote === 'haut') {
-                wrapper.style.left = `${cx}px`;
-                wrapper.style.top = `${r.bottom + gap}px`;
-                wrapper.style.transform = 'translate(-50%, 0)';
-            } else if (cote === 'gauche') {
-                wrapper.style.left = `${r.right + gap}px`;
-                wrapper.style.top = `${cy}px`;
-                wrapper.style.transform = 'translate(0, -50%)';
-            } else if (cote === 'droite') {
-                wrapper.style.left = `${r.left - gap}px`;
-                wrapper.style.top = `${cy}px`;
-                wrapper.style.transform = 'translate(-100%, -50%)';
-            } else { // 'bas' (et repli)
-                wrapper.style.left = `${cx}px`;
-                wrapper.style.top = `${r.top - gap}px`;
-                wrapper.style.transform = 'translate(-50%, -100%)';
-            }
+            // Les fiches sont toutes empilées dans la marge gauche : le toast
+            // pointe vers la droite, dans la zone du plateau, quel que soit le
+            // « côté » logique du panneau.
+            wrapper.style.left = `${r.right + gap}px`;
+            wrapper.style.top = `${cy}px`;
+            wrapper.style.transform = 'translate(0, -50%)';
         } else {
-            // Aucun panneau trouvé : repli discret en bas-centre du calque.
+            // Aucune fiche trouvée : repli discret en bas-centre du calque.
             const c = calque.getBoundingClientRect();
             wrapper.style.left = `${c.left + c.width / 2}px`;
             wrapper.style.top = `${c.top + c.height * 0.82}px`;
@@ -1813,6 +1804,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         calque.appendChild(wrapper);
+        // Recadrage final dans le viewport : après ajout, on mesure le toast rendu
+        // (le wrapper a une transformation de recentrage) et on translate le
+        // wrapper pour que le bandeau ne dépasse jamais d'un bord, garantissant
+        // qu'il reste toujours visible (issue #198).
+        const marge = 8;
+        const rect = toast.getBoundingClientRect();
+        let dx = 0;
+        let dy = 0;
+        if (rect.right > window.innerWidth - marge) {
+            dx = (window.innerWidth - marge) - rect.right;
+        }
+        if (rect.left + dx < marge) {
+            dx = marge - rect.left;
+        }
+        if (rect.bottom > window.innerHeight - marge) {
+            dy = (window.innerHeight - marge) - rect.bottom;
+        }
+        if (rect.top + dy < marge) {
+            dy = marge - rect.top;
+        }
+        if (dx || dy) {
+            wrapper.style.left = `${parseFloat(wrapper.style.left) + dx}px`;
+            wrapper.style.top = `${parseFloat(wrapper.style.top) + dy}px`;
+        }
         // 3 s d'affichage puis disparition automatique (le fondu de sortie est géré
         // par l'animation CSS, dont la durée totale vaut aussi 3 s).
         setTimeout(() => { wrapper.remove(); }, 3000);
