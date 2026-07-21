@@ -56,12 +56,6 @@ CONFIG_DEFAUT: dict[str, Any] = {
     # appliquée. Désactivé par défaut : le comportement historique (pénalité
     # seule, issue #22) reste inchangé pour qui ne touche pas à ce réglage.
     "bonus_fin_partie": False,
-    # Dernière position (x, y) de la fenêtre chevalet, mémorisée entre les
-    # sessions (issue #135). ``None`` par défaut : aucune position retenue, on
-    # calcule alors la position bas-centre habituelle. Sinon, un dictionnaire
-    # ``{"x": int, "y": int}`` — toute autre forme (types incorrects, clés en
-    # trop/manquantes) est réparée vers ``None``.
-    "position_chevalet": None,
     # Type d'échange des lettres autorisé pendant un tour (issue #138) :
     # "complet" (défaut, comportement historique : on remet tout le chevalet et
     # on repioche sept lettres) ou "partiel" (le joueur choisit librement une à
@@ -86,10 +80,6 @@ CLES_TEXTE_LIBRE: frozenset[str] = frozenset({"prenom_principal", "avatar_princi
 # Clés dont la valeur est un booléen (et non une chaîne) : validées à part,
 # toute valeur non booléenne déclenchant une réparation vers le défaut.
 CLES_BOOLEENNES: frozenset[str] = frozenset({"bonus_fin_partie"})
-
-# Clés dont la valeur est une position {"x": int, "y": int} ou ``None`` : validées
-# à part (issue #135). Toute autre forme est réparée vers ``None``.
-CLES_POSITION: frozenset[str] = frozenset({"position_chevalet"})
 
 # Thèmes visuels de plateau reconnus. Doivent rester alignés avec les classes
 # CSS ``theme-<nom>`` de ``ui/web/jeu.css`` et les libellés de ``ui/web/jeu.js``.
@@ -165,14 +155,6 @@ def _fusionner_defauts(brut: Any) -> tuple[dict[str, Any], bool]:
             config[cle] = defaut
             continue
         valeur = brut[cle]
-        if cle in CLES_POSITION:
-            # Position {"x": int, "y": int} ou None : toute autre forme est
-            # réparée vers None (aucune position retenue).
-            normalisee = _normaliser_position(valeur)
-            if normalisee != valeur:
-                doit_reparer = True
-            config[cle] = normalisee
-            continue
         if cle in CLES_BOOLEENNES:
             # Champ booléen : seul un vrai booléen est accepté (``isinstance``
             # exclut donc 0/1, "true"… qui déclenchent une réparation).
@@ -200,24 +182,6 @@ def _fusionner_defauts(brut: Any) -> tuple[dict[str, Any], bool]:
         doit_reparer = True
 
     return config, doit_reparer
-
-
-def _normaliser_position(valeur: Any) -> dict[str, int] | None:
-    """Retourne une position ``{"x": int, "y": int}`` valide, ou ``None`` sinon.
-
-    Seul un dictionnaire ayant *exactement* les clés ``x`` et ``y``, toutes deux
-    entières (les booléens, sous-classe d'``int``, sont refusés), est accepté.
-    Tout le reste — ``None``, type incorrect, clés en trop ou manquantes,
-    coordonnées non entières — retombe sur ``None`` (aucune position retenue).
-    """
-    if not isinstance(valeur, dict) or set(valeur) != {"x", "y"}:
-        return None
-    x, y = valeur["x"], valeur["y"]
-    if isinstance(x, bool) or isinstance(y, bool):
-        return None
-    if not isinstance(x, int) or not isinstance(y, int):
-        return None
-    return {"x": x, "y": y}
 
 
 def _ecrire_atomique(chemin: Path, config: dict[str, Any]) -> None:
