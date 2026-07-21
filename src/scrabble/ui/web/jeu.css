@@ -1252,6 +1252,31 @@ body {
     }
 }
 
+/* Surbrillance bleue TEMPORAIRE d'une lettre fraîchement posée (issue #197). En
+   complément de la révélation « tac » ci-dessus (trop discrète, surtout pour un
+   coup d'une seule lettre lors du tour d'un ordinateur), chaque tuile nouvellement
+   posée prend une teinte bleue à l'instant de la pose puis s'estompe progressivement
+   vers sa couleur d'origine sur ~5 s (bleu → blanc → --tuile-fond). Le JS
+   (animerPose) ajoute ``case-pose-fraiche`` sur la case au moment où elle est
+   révélée, et la retire à la fin du fondu. S'applique aussi bien à un coup humain
+   qu'à un coup d'ordinateur, et fonctionne même pour un coup d'une seule lettre.
+   On anime le FOND de la tuile (pas sa bordure, pour ne pas altérer le liseré
+   pointillé violet des jokers) ; z-index remonté pour rester au-dessus des voisines
+   pendant le fondu. Ce fondu est indépendant du liseré vert persistant
+   .derniere-pose (issue #125), qui porte sur la case et coexiste sans conflit. */
+.case.case-pose-fraiche {
+    z-index: 2;
+}
+.case.case-pose-fraiche > .tuile {
+    animation: pose-fraiche-fondu 5s ease-out both;
+}
+
+@keyframes pose-fraiche-fondu {
+    0%   { background: #5b9bd5; }
+    45%  { background: #ffffff; }
+    100% { background: var(--tuile-fond); }
+}
+
 /* Surbrillance PERSISTANTE du dernier coup joué (issue #125). À la différence de
    l'animation de pose ci-dessus (temporaire, ~2,5 s), ces cases restent mises en
    valeur jusqu'au coup SUIVANT : le JS (rendrePlateau) applique .derniere-pose

@@ -1673,6 +1673,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                         () => caseEl.classList.remove('case-pose-revele'),
                         { once: true }
                     );
+                    // Surbrillance bleue temporaire (issue #197) : teinte bleue à
+                    // l'instant de la pose, estompée vers la couleur d'origine sur
+                    // ~5 s par l'animation CSS ``pose-fraiche-fondu`` (fond de tuile).
+                    // On retire la classe à la fin du fondu pour laisser la case dans
+                    // son état normal. Indépendant du nombre de lettres du coup : même
+                    // une pose d'une seule lettre reste nettement repérable.
+                    caseEl.classList.add('case-pose-fraiche');
+                    setTimeout(
+                        () => caseEl.classList.remove('case-pose-fraiche'),
+                        5000
+                    );
                     jouerTac();
                     if (i === cases.length - 1) {
                         setTimeout(resolve, delai);
