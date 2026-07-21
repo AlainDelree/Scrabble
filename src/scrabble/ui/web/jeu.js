@@ -1532,8 +1532,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             verifierMotDictionnaire();
         }
     });
-    // Popover replié (issue #86) : au clic, focus sur le champ.
-    C.configurerPopover(btnOuvrirVerif, verifPopover, () => { champVerif.focus(); });
+    // Remet le popover de vérification à zéro (issue #196) : champ vidé, verdict
+    // et définition effacés, pour qu'une réouverture démarre sur un champ vierge
+    // prêt à recevoir une nouvelle recherche (plus besoin d'effacer à la main).
+    function reinitialiserVerifDictionnaire() {
+        champVerif.value = '';
+        afficherMessageBrouillon('');
+        masquerDefinitionBrouillon();
+    }
+
+    // Popover replié (issue #86) : au clic, focus sur le champ ; à la fermeture,
+    // on efface la recherche précédente (issue #196).
+    C.configurerPopover(
+        btnOuvrirVerif, verifPopover,
+        () => { champVerif.focus(); },
+        reinitialiserVerifDictionnaire,
+    );
 
     // ------------------------------------------------------------------ //
     // Encart d'historique glissant : ouverture/fermeture + clic sur une ligne
