@@ -52,6 +52,11 @@
 - [ ] **Onglet Général** — changer le **prénom principal** (le changement est sauvegardé automatiquement à la perte de focus).
 - [ ] **Onglet Général** — changer le **thème du plateau** (menu déroulant) : message « Changement sauvé automatiquement ».
 - [ ] **Onglet Général** — changer la **source du dictionnaire** (prend effet à la prochaine partie).
+- [ ] **Source du dictionnaire réellement appliquée** (issue #210) — nécessite que les deux sources soient installées dans `data/dictionnaire/` :
+  1. Repérer au préalable un **mot présent dans Hunspell mais absent de l'ODS8** (`H`) et un **mot présent dans l'ODS8 mais absent de Hunspell** (`O`) — l'onglet Dictionnaire, qui affiche le statut par source, permet de les identifier.
+  2. Réglages → Général → **source = Hunspell**, puis **lancer une nouvelle partie**. Poser (ou vérifier via la loupe 🔎) le mot `H` : il doit être **accepté** ; poser/vérifier le mot `O` : il doit être **refusé**.
+  3. Revenir à l'accueil, Réglages → Général → **source = ODS 8**, relancer une partie : cette fois `O` doit être **accepté** et `H` **refusé**.
+  4. Vérifier enfin qu'une **partie reprise** (« Reprendre ») respecte elle aussi la source active (même test sur `H`/`O`).
 - [ ] **Onglet Dictionnaire** — rechercher un **mot existant** : affichage du statut par source + définition si disponible.
 - [ ] **Onglet Dictionnaire** — rechercher un **mot inexistant** : statut « Absent » sur les sources.
 - [ ] **Onglet Dictionnaire** — **ajouter** un mot à une source (bouton « Ajouter ») puis vérifier son statut « Présent (ajouté manuellement) ».

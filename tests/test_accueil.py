@@ -322,10 +322,11 @@ class TestApiAccueilLancement:
         from scrabble.ui.accueil import ApiAccueil
         from scrabble.dictionnaire.dictionnaire import Trie
 
-        # Stub du dictionnaire pour éviter le chargement complet
+        # Stub du dictionnaire pour éviter le chargement complet ; il reçoit
+        # désormais la source lue dans la config (issue #210), d'où ``source``.
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda: Trie.depuis_iterable(["MAISON", "TEST"]),
+            lambda source="ods": Trie.depuis_iterable(["MAISON", "TEST"]),
         )
         # Stub de la persistance pour éviter d'écrire sur disque
         monkeypatch.setattr(
@@ -358,7 +359,7 @@ class TestApiAccueilLancement:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda: Trie.depuis_iterable(["TEST"]),
+            lambda source="ods": Trie.depuis_iterable(["TEST"]),
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.reprendre_partie",
@@ -393,7 +394,7 @@ class TestApiAccueilLancement:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda: Trie.depuis_iterable(["TEST"]),
+            lambda source="ods": Trie.depuis_iterable(["TEST"]),
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.reprendre_partie",
@@ -453,6 +454,169 @@ class TestApiAccueilLancement:
         assert result["succes"] is False
         assert "un seul joueur humain" in result["erreur"].lower()
         assert api.config_partie.nb_humains == 1
+
+
+class TestSourceDictionnaireAppliquee:
+    """La source « Source du dictionnaire » choisie est réellement appliquée (issue #210).
+
+    Avant correction, ``lancer_partie``/``reprendre`` appelaient ``obtenir_trie()``
+    sans argument : la partie repartait toujours sur l'ODS8, quel que soit le
+    choix (Hunspell) mémorisé dans les réglages. On vérifie ici que la source
+    lue dans la config est bien transmise au Trie complet **et** au Trie
+    restreint de l'IA.
+    """
+
+    def test_lancer_partie_transmet_source_config(self, monkeypatch):
+        """lancer_partie() passe ``source_dictionnaire`` de la config à obtenir_trie."""
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+
+        appels: list[str] = []
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.charger_config",
+            lambda: {"source_dictionnaire": "hunspell"},
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda source="ods": appels.append(source)
+            or Trie.depuis_iterable(["TEST"]),
+        )
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: 7)
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Facile")
+
+        result = api.lancer_partie()
+        assert result["succes"] is True
+        assert appels == ["hunspell"]
+
+    def test_reprendre_transmet_source_config(self, monkeypatch):
+        """reprendre() passe ``source_dictionnaire`` de la config à obtenir_trie."""
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.moteur.partie import Partie, Joueur
+
+        partie_reprise = Partie(
+            joueurs=[Joueur(nom="Bob", humain=True)],
+            dictionnaire=Trie.depuis_iterable(["TEST"]),
+            graine=123,
+        )
+        appels: list[str] = []
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.charger_config",
+            lambda: {"source_dictionnaire": "hunspell"},
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda source="ods": appels.append(source)
+            or Trie.depuis_iterable(["TEST"]),
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.reprendre_partie",
+            lambda id_partie, trie, dictionnaire_ia=None: partie_reprise,
+        )
+
+        api = ApiAccueil()
+        result = api.reprendre(99)
+        assert result["succes"] is True
+        assert appels == ["hunspell"]
+
+    def test_source_defaut_ods_sans_reglage(self, monkeypatch):
+        """Sans réglage explicite, la source reste « ods » (pas de régression)."""
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+
+        appels: list[str] = []
+        # Config sans clé source_dictionnaire : le défaut « ods » doit s'appliquer.
+        monkeypatch.setattr("scrabble.ui.accueil.charger_config", lambda: {})
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda source="ods": appels.append(source)
+            or Trie.depuis_iterable(["TEST"]),
+        )
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: 1)
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Facile")
+
+        assert api.lancer_partie()["succes"] is True
+        assert appels == ["ods"]
+
+    def test_construire_trie_ia_utilise_source_transmise(self, monkeypatch):
+        """_construire_trie_ia(source) transmet cette même source à obtenir_trie_ia."""
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+
+        appels: list[str] = []
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.charger_config",
+            lambda: {"vocabulaire_humain": True},
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie_ia",
+            lambda source="ods": appels.append(source)
+            or Trie.depuis_iterable(["TEST"]),
+        )
+
+        trie_ia = ApiAccueil._construire_trie_ia("hunspell")
+        assert trie_ia is not None
+        assert appels == ["hunspell"]
+
+    def test_construire_trie_ia_none_si_vocabulaire_inactif(self, monkeypatch):
+        """_construire_trie_ia renvoie None (et n'appelle pas obtenir_trie_ia) si inactif."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        appels: list[str] = []
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.charger_config",
+            lambda: {"vocabulaire_humain": False},
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie_ia",
+            lambda source="ods": appels.append(source),
+        )
+
+        assert ApiAccueil._construire_trie_ia("hunspell") is None
+        assert appels == []
+
+    def test_lancer_partie_hunspell_valide_mot_hunspell_rejette_ods(
+        self, monkeypatch
+    ):
+        """Bout en bout : avec la source Hunspell, la partie créée valide un mot
+        présent uniquement dans Hunspell et rejette un mot présent uniquement
+        dans l'ODS (issue #210).
+
+        On stube ``obtenir_trie`` par un dictionnaire distinct selon la source :
+        le Trie effectivement porté par la partie doit être celui de Hunspell,
+        prouvant que le réglage a un effet réel sur la validation des mots.
+        """
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+
+        tries = {
+            "ods": Trie.depuis_iterable(["MAISON", "MOTODS"]),
+            "hunspell": Trie.depuis_iterable(["MAISON", "MOTHUN"]),
+        }
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.charger_config",
+            lambda: {"source_dictionnaire": "hunspell"},
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie", lambda source="ods": tries[source]
+        )
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: 1)
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Facile")
+
+        result = api.lancer_partie()
+        assert result["succes"] is True
+        dico = api._partie.dictionnaire
+        assert "MOTHUN" in dico  # présent uniquement dans Hunspell → accepté
+        assert "MOTODS" not in dico  # présent uniquement dans l'ODS → refusé
 
 
 class TestApiAccueilJoueurHumainParDefaut:
@@ -650,7 +814,7 @@ class TestApiAccueilInfosTirage:
 
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda: Trie.depuis_iterable(["MAISON", "TEST"]),
+            lambda source="ods": Trie.depuis_iterable(["MAISON", "TEST"]),
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.demarrer_suivi",

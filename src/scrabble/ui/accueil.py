@@ -55,7 +55,6 @@ from scrabble.config import (
 )
 from scrabble.dictionnaire.dictionnaire import (
     SOURCES,
-    charger_dictionnaire,
     marquer_classique,
     modifier_appartenance,
     obtenir_trie,
@@ -429,20 +428,24 @@ class ApiAccueil:
         return {"succes": True, "etat": self.obtenir_etat()}
 
     @staticmethod
-    def _construire_trie_ia() -> Any:
+    def _construire_trie_ia(source: str) -> Any:
         """Trie restreint de l'IA si « vocabulaire humain » est actif, sinon ``None``.
 
         Réglage global unique (issue #206), indépendant du niveau de difficulté :
         désactivé (défaut) → ``None`` (l'IA joue sur le dictionnaire complet,
         comportement historique inchangé, coût nul). Activé → Trie restreint
         (:func:`~scrabble.dictionnaire.dictionnaire.obtenir_trie_ia`) construit sur
-        la **même** source que le Trie complet du jeu — appelé, comme
-        ``obtenir_trie()``, sans forcer de source, pour garantir que le vocabulaire
-        de l'IA reste un sous-ensemble strict du dictionnaire de validation.
+        la **même** ``source`` que le Trie complet du jeu.
+
+        La source est transmise **en paramètre** par l'appelant (issue #210) —
+        exactement la valeur passée à ``obtenir_trie(source)`` — plutôt que relue
+        ici via un second ``charger_config()`` qui pourrait en théorie diverger.
+        On garantit ainsi que le vocabulaire de l'IA reste un sous-ensemble strict
+        du dictionnaire de validation effectivement utilisé pour la partie.
         """
         if not bool(charger_config().get("vocabulaire_humain", False)):
             return None
-        return obtenir_trie_ia()
+        return obtenir_trie_ia(source)
 
     def lancer_partie(self) -> dict[str, Any]:
         """Crée et démarre la partie avec la configuration actuelle.
@@ -489,12 +492,20 @@ class ApiAccueil:
                 j.niveau for j in self.config_partie.joueurs if not j.humain
             ]
             graine = random.randint(0, 2**31 - 1)
-            trie = obtenir_trie()
-            # Réglage du bonus officiel au finisseur (issue #134), lu depuis la
-            # config auto-réparante et câblé dans le moteur via creer_partie.
-            bonus_fin_partie = bool(charger_config().get("bonus_fin_partie", False))
-            # Réglage « vocabulaire humain » (issue #206) : Trie restreint de l'IA.
-            trie_ia = self._construire_trie_ia()
+            # Source du dictionnaire choisie dans les réglages (issue #210) : sans
+            # cet argument, ``obtenir_trie()`` retombait silencieusement sur l'ODS
+            # même quand l'utilisateur avait sélectionné Hunspell. On lit la config
+            # une seule fois pour la source ET le bonus de fin de partie, et on
+            # transmet la même source au Trie complet et au Trie restreint de l'IA.
+            config = charger_config()
+            source = config.get("source_dictionnaire", "ods")
+            trie = obtenir_trie(source)
+            # Réglage du bonus officiel au finisseur (issue #134), câblé dans le
+            # moteur via creer_partie.
+            bonus_fin_partie = bool(config.get("bonus_fin_partie", False))
+            # Réglage « vocabulaire humain » (issue #206) : Trie restreint de l'IA,
+            # construit sur la même source que le Trie complet (issue #210).
+            trie_ia = self._construire_trie_ia(source)
             self._partie = creer_partie(
                 noms_humains=noms_humains,
                 dictionnaire=trie,
@@ -596,10 +607,15 @@ class ApiAccueil:
         de jeu puisse s'ouvrir avec la partie reprise.
         """
         try:
-            trie = obtenir_trie()
+            # Source du dictionnaire choisie dans les réglages (issue #210) :
+            # une partie reprise doit valider les mots et générer les coups de
+            # l'IA sur la source active (Hunspell/ODS), pas sur l'ODS par défaut.
+            source = charger_config().get("source_dictionnaire", "ods")
+            trie = obtenir_trie(source)
             # Réglage « vocabulaire humain » (issue #206) : une partie reprise doit
-            # continuer de restreindre son IA si le réglage est actif.
-            trie_ia = self._construire_trie_ia()
+            # continuer de restreindre son IA si le réglage est actif — sur la même
+            # source que le Trie complet (issue #210).
+            trie_ia = self._construire_trie_ia(source)
             self._partie = reprendre_partie(
                 id_partie, trie, dictionnaire_ia=trie_ia
             )
