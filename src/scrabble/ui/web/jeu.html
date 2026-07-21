@@ -170,17 +170,21 @@
             <!-- Les 4 fiches joueurs, autrefois réparties AUTOUR du plateau dans
                  les slots haut/gauche/droite/bas (issue #33), sont désormais
                  EMPILÉES verticalement ici (issue #186). Les id des slots sont
-                 conservés : jeu.js (rendrePanneaux) continue de placer chaque
-                 fiche dans le slot du côté que Python lui a assigné — l'ordre
-                 d'empilement suit l'ordre du DOM (haut, gauche, droite, bas). Le
+                 conservés mais leur sémantique n'est plus spatiale : ils ne sont
+                 qu'un RANG dans la pile, l'ordre du DOM fixant l'empilement du
+                 haut vers le bas (haut, gauche, droite, bas). jeu.js
+                 (rendrePanneaux) place chaque fiche dans le slot que Python lui a
+                 assigné ; depuis l'issue #195, Python répartit les slots pour que
+                 la lecture de haut en bas suive l'ORDRE DE JEU (le joueur suivant
+                 l'humain en haut, …), l'humain de référence restant en bas. Le
                  bouton « ▶ Jouer » reste actif sur la fiche de l'ordinateur dont
                  c'est le tour (issue #149, porté par creerPanneauJoueur). -->
             <section class="zone-gauche zone-joueurs" aria-label="Joueurs">
-                <div id="slot-haut" class="slot" aria-label="Joueur du haut"></div>
-                <div id="slot-gauche" class="slot" aria-label="Joueur de gauche"></div>
-                <div id="slot-droite" class="slot" aria-label="Joueur de droite"></div>
+                <div id="slot-haut" class="slot" aria-label="Fiche joueur (1re)"></div>
+                <div id="slot-gauche" class="slot" aria-label="Fiche joueur (2e)"></div>
+                <div id="slot-droite" class="slot" aria-label="Fiche joueur (3e)"></div>
                 <!-- slot-bas : fiche du joueur humain de référence (mêmes id /
-                     contenu qu'avant), désormais empilée avec les trois autres.
+                     contenu qu'avant), toujours en bas de la pile (issue #195).
                      Ses actions de tour vivent dans la zone D ci-dessous. -->
                 <div id="slot-bas" class="slot slot-bas" aria-label="Votre panneau"></div>
             </section>

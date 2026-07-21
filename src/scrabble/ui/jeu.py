@@ -125,18 +125,31 @@ def serialiser_plateau(plateau: PlateauPartie) -> list[list[dict[str, Any]]]:
     ]
 
 
-# Côtés attribués aux autres joueurs, indexés par leur rang *relatif* au joueur
-# humain de référence dans l'ordre de jeu (issue #122). La clé est l'effectif
-# total ; la valeur donne, pour le 1er, 2e, 3e joueur *après* la référence dans
-# l'ordre de jeu, le côté du plateau à occuper, en tournant dans le sens horaire
-# à partir du bas : bas → gauche → haut → droite.
+# Slots attribués aux autres joueurs, indexés par leur rang *relatif* au joueur
+# humain de référence dans l'ordre de jeu (issues #122 puis #195). La clé est
+# l'effectif total ; la valeur donne, pour le 1er, 2e, 3e joueur *après* la
+# référence dans l'ordre de jeu, le slot à occuper dans la zone B de la marge
+# gauche.
 #
-# Exception documentée à 2 joueurs : face-à-face bas/haut, il n'y a pas de strict
-# sens horaire dans ce cas précis (l'unique adversaire est placé en face).
+# Depuis la refonte en 4 zones (#186), les fiches ne sont plus disposées
+# spatialement autour du plateau : elles sont EMPILÉES verticalement dans la
+# marge gauche, dans l'ordre DOM des slots — de haut en bas : ``haut`` →
+# ``gauche`` → ``droite`` → ``bas`` (voir ``jeu.html``/``jeu.css``, ``.slot`` et
+# ``.slot:empty { display: none }`` qui replie les slots inutilisés). Les noms de
+# slots sont donc devenus de simples repères de RANG vertical (« 1er, 2e, 3e slot
+# à partir du haut »), l'ancienne sémantique spatiale « côté du plateau » étant
+# obsolète.
+#
+# On veut que la lecture de haut en bas suive l'ORDRE DE JEU : le joueur qui joue
+# juste après l'humain de référence en haut, puis les suivants dans l'ordre, la
+# référence restant toujours en bas (slot ``bas``, comportement acquis #33/#99).
+# On mappe donc le rang relatif k directement sur les slots du haut vers le bas :
+# k=1 → ``haut``, k=2 → ``gauche``, k=3 → ``droite`` ; la référence occupe
+# ``bas``.
 SEQUENCES_POSITIONS = {
     2: ("haut",),
-    3: ("gauche", "haut"),
-    4: ("gauche", "haut", "droite"),
+    3: ("haut", "gauche"),
+    4: ("haut", "gauche", "droite"),
 }
 
 
@@ -159,31 +172,31 @@ def index_humain_reference(joueurs: list[Joueur]) -> int:
 
 
 def calculer_positions(joueurs: list[Joueur]) -> list[str]:
-    """Position spatiale de chaque joueur autour du plateau (index → côté).
+    """Slot vertical de chaque joueur dans la marge gauche (index → slot).
 
-    Renvoie une liste parallèle à ``joueurs`` où l'élément ``i`` est le côté
+    Renvoie une liste parallèle à ``joueurs`` où l'élément ``i`` est le slot
     (``"bas"``, ``"haut"``, ``"gauche"`` ou ``"droite"``) assigné au joueur
-    d'index ``i``. Règle (issues #33 puis #122), avec une seule source de vérité
-    côté Python :
+    d'index ``i``. Depuis la refonte en 4 zones (#186) ces noms ne désignent plus
+    un côté du plateau mais un RANG dans l'empilement vertical de la zone B (de
+    haut en bas : ``haut`` → ``gauche`` → ``droite`` → ``bas`` ; voir
+    :data:`SEQUENCES_POSITIONS`). Règle (issues #33, #122 puis #195), avec une
+    seule source de vérité côté Python :
 
     * Le **joueur humain de référence** — le premier joueur ``humain`` de la
-      liste ``joueurs`` — est toujours en ``"bas"`` (position naturelle face à
-      l'écran). S'il n'y a aucun humain (cas théorique / test), le premier
-      joueur tient ce rôle.
-    * Tous les autres joueurs (humains et ordinateurs confondus) se répartissent
-      sur les côtés restants **dans le sens horaire** (bas → gauche → haut →
-      droite), selon leur rang *relatif* à la référence dans l'ordre de jeu :
-      le joueur qui joue juste après la référence occupe le côté suivant dans le
-      sens horaire, et ainsi de suite. L'ordre de jeu étant déjà encodé dans
-      l'ordre de la liste ``joueurs`` (le tirage d'ordre l'a réordonnée), les
-      positions suivent l'ordre de jeu réel — y compris quand l'humain n'est pas
-      le premier à jouer.
-
-    Exception documentée à 2 joueurs : face-à-face bas/haut (voir
-    :data:`SEQUENCES_POSITIONS`), sans strict sens horaire dans ce cas précis.
+      liste ``joueurs`` — est toujours en ``"bas"`` (dernière fiche, en bas de la
+      pile, face à l'écran). S'il n'y a aucun humain (cas théorique / test), le
+      premier joueur tient ce rôle.
+    * Tous les autres joueurs (humains et ordinateurs confondus) s'empilent
+      **dans l'ordre de jeu**, du haut vers le bas, selon leur rang *relatif* à
+      la référence : le joueur qui joue juste après la référence occupe la fiche
+      du haut, le suivant celle d'en dessous, et ainsi de suite jusqu'à revenir
+      à la référence en bas. L'ordre de jeu étant déjà encodé dans l'ordre de la
+      liste ``joueurs`` (le tirage d'ordre l'a réordonnée), la lecture de haut en
+      bas suit l'ordre de jeu réel — y compris quand l'humain n'est pas le
+      premier à jouer.
 
     Cas particuliers : liste vide → ``[]`` ; un seul joueur → ``["bas"]`` (aucune
-    position latérale).
+    autre fiche).
     """
     if not joueurs:
         return []
@@ -294,9 +307,10 @@ def serialiser_joueur_public(
 
     Contient le nombre de lettres du chevalet (``nb_lettres``) mais **jamais**
     leur identité : l'affichage masqué peut ainsi montrer le bon nombre de
-    rectangles grisés sans rien dévoiler. ``position`` est le côté du plateau
-    assigné au joueur (voir :func:`calculer_positions`) : l'UI place le panneau
-    du joueur sur ce côté (une seule source de vérité, calculée côté Python).
+    rectangles grisés sans rien dévoiler. ``position`` est le slot d'empilement
+    vertical assigné au joueur (voir :func:`calculer_positions`) : l'UI place la
+    fiche du joueur dans ce slot (une seule source de vérité, calculée côté
+    Python), la lecture de haut en bas suivant l'ordre de jeu (issue #195).
     ``avatar`` est l'identifiant du portrait SVG attribué (voir
     :func:`calculer_avatars`), également calculé côté Python.
     """
@@ -2883,8 +2897,9 @@ def construire_partie_demo(nb_joueurs: int = 2) -> tuple[Partie, int | None]:
     sans passer par l'écran d'accueil. Les tuiles sont posées directement sur le
     plateau et les scores fixés à des valeurs plausibles : le but est de valider
     le **rendu** (cases bonus, tuiles, joker, scores, joueur courant, sac,
-    disposition spatiale des joueurs autour du plateau — issue #33), pas de
-    rejouer une partie réelle. Un joker (« blanc ») figure dans le mot vertical
+    empilement vertical des fiches joueurs dans l'ordre de jeu — issues
+    #33/#195), pas de rejouer une partie réelle. Un joker (« blanc ») figure
+    dans le mot vertical
     pour illustrer sa distinction visuelle.
 
     ``nb_joueurs`` (borné à 1–4, défaut 2) permet de vérifier **manuellement** la

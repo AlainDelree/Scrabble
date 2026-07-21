@@ -37,9 +37,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Éléments du DOM ---
     const plateauEl = document.getElementById('plateau');
-    // Slots des panneaux joueurs, un par côté du plateau (issue #33). Le JS y
-    // insère le panneau du joueur dont la position (calculée côté Python) vaut
-    // le côté correspondant.
+    // Slots des fiches joueurs, empilés verticalement dans la zone B de la marge
+    // gauche (issues #33, #186 puis #195). De haut en bas : haut → gauche →
+    // droite → bas (ordre DOM). Le JS insère chaque fiche dans le slot désigné
+    // par sa position (calculée côté Python), de sorte que la lecture de haut en
+    // bas suive l'ordre de jeu, l'humain de référence restant en bas.
     const slots = {
         haut: document.getElementById('slot-haut'),
         gauche: document.getElementById('slot-gauche'),
@@ -288,7 +290,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return item;
     }
 
-    /** Dispose les panneaux joueurs dans le slot du côté assigné (issue #33). */
+    /** Empile les fiches joueurs dans le slot assigné (ordre de jeu, issue #195). */
     function rendrePanneaux(joueurs) {
         Object.values(slots).forEach((slot) => { slot.innerHTML = ''; });
         joueurs.forEach((joueur) => {
