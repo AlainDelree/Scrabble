@@ -85,6 +85,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         'DEBUTANT': 'Débutant',
                         'FACILE': 'Facile',
                         'INTERMEDIAIRE': 'Intermédiaire',
+                        'AVANCE': 'Avancé',
                         'EXPERT': 'Expert'
                     }[joueur.niveau] || joueur.niveau;
                     typeLabel += ` (${niveauLabel})`;

@@ -9,6 +9,10 @@ Niveaux de difficulté
 ---------------------
 * **EXPERT** : choisit le meilleur coup (premier de la liste triée). En cas
   d'égalité de score entre plusieurs coups de tête, choix aléatoire parmi eux.
+* **AVANCE** : choix aléatoire uniforme parmi les 15 % meilleurs coups (top
+  15 %). Plus fort qu'INTERMEDIAIRE (top 33 %) mais moins strict qu'EXPERT
+  (coup unique). Niveau intercalaire pour une progression plus fine (issue
+  #202).
 * **INTERMEDIAIRE** : choix aléatoire uniforme parmi le meilleur tiers des
   coups (top 33 %). Favorise les bons coups sans être optimal.
 * **FACILE** : choix aléatoire uniforme parmi la moitié inférieure des coups.
@@ -18,7 +22,7 @@ Niveaux de difficulté
 
 Comportement de repli (listes courtes)
 --------------------------------------
-Si la tranche calculée (tiers, moitié) est vide, on retombe sur la liste
+Si la tranche calculée (top 15 %, tiers, moitié) est vide, on retombe sur la liste
 complète. Cela évite tout crash sur des positions avec peu de coups jouables.
 Exemple : 2 coups disponibles, tiers = 0 → on choisit parmi les 2.
 
@@ -47,6 +51,7 @@ class Niveau(Enum):
     DEBUTANT = auto()
     FACILE = auto()
     INTERMEDIAIRE = auto()
+    AVANCE = auto()
     EXPERT = auto()
 
 
@@ -77,6 +82,8 @@ def choisir_coup(
 
     if niveau == Niveau.EXPERT:
         return _choisir_expert(coups, rng)
+    if niveau == Niveau.AVANCE:
+        return _choisir_avance(coups, rng)
     if niveau == Niveau.INTERMEDIAIRE:
         return _choisir_intermediaire(coups, rng)
     if niveau == Niveau.FACILE:
@@ -90,6 +97,17 @@ def _choisir_expert(coups: list[CoupNote], rng: random.Random) -> Coup:
     meilleur_score = coups[0].score
     meilleurs = [cn for cn in coups if cn.score == meilleur_score]
     return rng.choice(meilleurs).coup
+
+
+def _choisir_avance(coups: list[CoupNote], rng: random.Random) -> Coup:
+    """AVANCE : aléatoire parmi les 15 % meilleurs coups (top 15 %).
+
+    Seuil intercalaire entre le top 33 % d'INTERMEDIAIRE et le coup unique
+    d'EXPERT. ``max(1, ...)`` garantit un sous-ensemble non vide (repli sur le
+    seul meilleur coup pour les listes très courtes), comme les autres niveaux.
+    """
+    taille_haut = max(1, len(coups) * 15 // 100)
+    return rng.choice(coups[:taille_haut]).coup
 
 
 def _choisir_intermediaire(coups: list[CoupNote], rng: random.Random) -> Coup:

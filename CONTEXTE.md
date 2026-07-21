@@ -2,7 +2,7 @@
 
 ## Objectif
 Jeu de **Scrabble francophone** en solo : une joueuse humaine affronte un à
-trois ordinateurs (IA, niveaux Débutant/Facile/Intermédiaire/Expert).
+trois ordinateurs (IA, 5 niveaux Débutant/Facile/Intermédiaire/Avancé/Expert).
 Application **desktop** empaquetée en exécutable Windows via **PyInstaller**
 (`scrabble.spec`, mode `--onedir`, cf. issue #154). L'interface utilise
 **pywebview** : des fenêtres natives affichent du HTML/CSS/JS, rendu par

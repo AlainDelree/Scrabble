@@ -1,7 +1,7 @@
 """Tests des stratégies IA à niveaux de difficulté.
 
-Couvre les 4 niveaux (EXPERT, INTERMEDIAIRE, FACILE, DEBUTANT) sur la base
-du générateur exhaustif, la reproductibilité avec graine fixée, les cas
+Couvre les 5 niveaux (EXPERT, AVANCE, INTERMEDIAIRE, FACILE, DEBUTANT) sur la
+base du générateur exhaustif, la reproductibilité avec graine fixée, les cas
 limites (un seul coup, aucun coup), et l'intégration avec Partie/creer_partie.
 """
 
@@ -125,6 +125,43 @@ class TestScoreMoyenParNiveau:
         moy_debutant = moyenne_scores(Niveau.DEBUTANT)
         assert moy_expert > moy_debutant
 
+    def test_avance_score_moyen_entre_intermediaire_et_expert(self):
+        """AVANCE se situe strictement entre INTERMEDIAIRE et EXPERT.
+
+        Vérification statistique sur de nombreux tirages à graines variées
+        (issue #202) : sur un plateau/chevalet offrant de nombreux coups aux
+        scores étalés, la distribution de scores d'AVANCE (top 15 %) doit être
+        supérieure à celle d'INTERMEDIAIRE (top 33 %) et inférieure ou égale à
+        celle d'EXPERT (meilleur coup).
+        """
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        dico = _trie(
+            "CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES",
+            "SE", "ED", "AR", "RA", "CAR", "ARC", "SAC", "ACRE", "CARDE",
+        )
+        coups_ref = generer_coups(plateau, chevalet, dico)
+        # Le test n'a de sens que si les coups sont assez nombreux et étalés
+        # pour que top 15 % et top 33 % diffèrent réellement.
+        assert len(coups_ref) >= 10
+        assert len({cn.score for cn in coups_ref}) >= 3
+
+        def moyenne_scores(niveau: Niveau, n: int = 300) -> float:
+            scores = []
+            for graine in range(n):
+                coup = choisir_coup(
+                    plateau, chevalet, dico, niveau, random.Random(graine)
+                )
+                if coup is not None:
+                    cn = next(c for c in coups_ref if c.coup == coup)
+                    scores.append(cn.score)
+            return statistics.mean(scores) if scores else 0.0
+
+        moy_inter = moyenne_scores(Niveau.INTERMEDIAIRE)
+        moy_avance = moyenne_scores(Niveau.AVANCE)
+        moy_expert = moyenne_scores(Niveau.EXPERT)
+        assert moy_inter < moy_avance < moy_expert
+
 
 class TestIntermediaire:
     """INTERMEDIAIRE choisit dans le meilleur tiers."""
@@ -146,6 +183,27 @@ class TestIntermediaire:
             if coup is not None:
                 cn = next(c for c in coups if c.coup == coup)
                 assert cn.score in scores_tiers or cn in coups[:taille_tiers]
+
+
+class TestAvance:
+    """AVANCE choisit dans les 15 % meilleurs coups (top 15 %)."""
+
+    def test_choisit_dans_le_top_15_pct(self):
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        dico = _trie("CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES")
+        coups = generer_coups(plateau, chevalet, dico)
+        taille_haut = max(1, len(coups) * 15 // 100)
+        haut = coups[:taille_haut]
+        scores_haut = {cn.score for cn in haut}
+
+        for graine in range(50):
+            coup = choisir_coup(
+                plateau, chevalet, dico, Niveau.AVANCE, random.Random(graine)
+            )
+            if coup is not None:
+                cn = next(c for c in coups if c.coup == coup)
+                assert cn.score in scores_haut or cn in haut
 
 
 class TestFacile:

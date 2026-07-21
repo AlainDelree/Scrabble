@@ -87,6 +87,7 @@ NIVEAUX_LABELS: dict[str, Niveau] = {
     "Débutant": Niveau.DEBUTANT,
     "Facile": Niveau.FACILE,
     "Intermédiaire": Niveau.INTERMEDIAIRE,
+    "Avancé": Niveau.AVANCE,
     "Expert": Niveau.EXPERT,
 }
 

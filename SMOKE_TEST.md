@@ -86,7 +86,7 @@
 
 ### Ordinateur
 - [ ] **Faire jouer l'ordinateur** (bouton « ▶ Faire jouer l'ordinateur » dans la zone d'attente) : l'IA joue **un** tour, l'animation de pose se déclenche.
-- [ ] Vérifier le comportement pour **chaque niveau** présent dans la partie (Débutant / Facile / Intermédiaire / Expert), si possible.
+- [ ] Vérifier le comportement pour **chaque niveau** présent dans la partie (Débutant / Facile / Intermédiaire / Avancé / Expert), si possible.
 
 ### Échange
 - [ ] **Échanger tout son chevalet** (bouton « ♻️ Remettre toutes ses lettres et passer ») : le chevalet est vidé dans le sac et le tour passe.
