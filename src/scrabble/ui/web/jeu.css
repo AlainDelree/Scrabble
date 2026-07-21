@@ -1272,7 +1272,7 @@ body {
 }
 
 @keyframes pose-fraiche-fondu {
-    0%   { background: #5b9bd5; }
+    0%   { background: #f5a623; }
     45%  { background: #ffffff; }
     100% { background: var(--tuile-fond); }
 }
