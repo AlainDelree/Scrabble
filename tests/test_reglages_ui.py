@@ -111,6 +111,18 @@ def test_obtenir_reglages_generaux_expose_bonus_fin_partie(monkeypatch):
     assert data["bonus_fin_partie"] is True
 
 
+def test_obtenir_reglages_generaux_expose_vocabulaire_humain(monkeypatch):
+    """La structure expose vocabulaire_humain sous forme de booléen (issue #206)."""
+    monkeypatch.setattr(
+        r, "lire_reglage",
+        lambda cle: True if cle == "vocabulaire_humain" else "",
+    )
+
+    data = ApiAccueil().obtenir_reglages_generaux()
+
+    assert data["vocabulaire_humain"] is True
+
+
 def test_obtenir_reglages_generaux_expose_type_echange(monkeypatch):
     """La structure expose type_echange + les options complet/partiel (issue #138)."""
     monkeypatch.setattr(

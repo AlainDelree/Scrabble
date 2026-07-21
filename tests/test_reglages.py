@@ -109,6 +109,25 @@ def test_modifier_bonus_fin_partie_non_booleen_rejete(tmp_path):
         modifier_reglage("bonus_fin_partie", "true", chemin)
 
 
+@pytest.mark.parametrize("valeur", [True, False])
+def test_modifier_vocabulaire_humain_booleen(tmp_path, valeur):
+    """Le réglage booléen vocabulaire_humain (issue #206) fait un round-trip."""
+    chemin = tmp_path / "config.json"
+
+    retenue = modifier_reglage("vocabulaire_humain", valeur, chemin)
+
+    assert retenue is valeur
+    assert lire_reglage("vocabulaire_humain", chemin) is valeur
+    assert json.loads(chemin.read_text(encoding="utf-8"))["vocabulaire_humain"] is valeur
+
+
+def test_modifier_vocabulaire_humain_non_booleen_rejete(tmp_path):
+    """Une valeur non booléenne pour vocabulaire_humain lève TypeError."""
+    chemin = tmp_path / "config.json"
+    with pytest.raises(TypeError):
+        modifier_reglage("vocabulaire_humain", "oui", chemin)
+
+
 def test_modifier_reglage_inconnu(tmp_path):
     chemin = tmp_path / "config.json"
     with pytest.raises(KeyError):

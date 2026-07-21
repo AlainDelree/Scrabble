@@ -362,7 +362,7 @@ class TestApiAccueilLancement:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.reprendre_partie",
-            lambda id_partie, trie: partie_reprise,
+            lambda id_partie, trie, dictionnaire_ia=None: partie_reprise,
         )
 
         api = ApiAccueil()
@@ -397,7 +397,7 @@ class TestApiAccueilLancement:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.reprendre_partie",
-            lambda id_partie, trie: partie_reprise,
+            lambda id_partie, trie, dictionnaire_ia=None: partie_reprise,
         )
 
         api = ApiAccueil()

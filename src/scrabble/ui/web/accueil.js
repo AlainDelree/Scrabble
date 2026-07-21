@@ -524,6 +524,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectTheme = document.getElementById('select-theme');
     const selectSource = document.getElementById('select-source');
     const checkBonusFin = document.getElementById('check-bonus-fin');
+    const checkVocabulaireHumain = document.getElementById('check-vocabulaire-humain');
     const radiosTypeEchange = document.getElementById('radios-type-echange');
     const statutGeneral = document.getElementById('statut-general');
 
@@ -646,6 +647,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         remplirSelect(selectTheme, r.themes, r.theme_plateau);
         remplirSelect(selectSource, r.sources, r.source_dictionnaire);
         checkBonusFin.checked = Boolean(r.bonus_fin_partie);
+        checkVocabulaireHumain.checked = Boolean(r.vocabulaire_humain);
         remplirRadios(radiosTypeEchange, 'type_echange', r.types_echange, r.type_echange);
         labelsSources = {};
         (r.sources || []).forEach((s) => { labelsSources[s.valeur] = s.libelle; });
@@ -683,6 +685,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const retenue = await enregistrerReglage('bonus_fin_partie', checkBonusFin.checked);
         if (retenue !== null) {
             checkBonusFin.checked = Boolean(retenue);
+        }
+    });
+    // Vocabulaire humain (issue #206) : même schéma booléen que le bonus.
+    checkVocabulaireHumain.addEventListener('change', async () => {
+        const retenue = await enregistrerReglage(
+            'vocabulaire_humain', checkVocabulaireHumain.checked);
+        if (retenue !== null) {
+            checkVocabulaireHumain.checked = Boolean(retenue);
         }
     });
 

@@ -99,6 +99,7 @@ def test_fichier_valide_non_reecrit(tmp_path):
         "prenom_principal": "Marie",
         "theme_plateau": "vert",
         "bonus_fin_partie": True,
+        "vocabulaire_humain": True,
         "type_echange": "partiel",
         "avatar_principal": "avatar-04",
     }
@@ -123,6 +124,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
             "prenom_principal": "Alice",
             "theme_plateau": "abrege",
             "bonus_fin_partie": True,
+            "vocabulaire_humain": True,
             "type_echange": "partiel",
             "avatar_principal": "avatar-11",
         },
@@ -137,6 +139,7 @@ def test_sauvegarder_puis_recharger(tmp_path):
         "prenom_principal": "Alice",
         "theme_plateau": "abrege",
         "bonus_fin_partie": True,
+        "vocabulaire_humain": True,
         "type_echange": "partiel",
         "avatar_principal": "avatar-11",
     }
@@ -152,6 +155,7 @@ def test_prenom_principal_vide_par_defaut_non_reecrit(tmp_path):
         "prenom_principal": "",
         "theme_plateau": "classique",
         "bonus_fin_partie": False,
+        "vocabulaire_humain": False,
         "type_echange": "complet",
         "avatar_principal": "",
     }
@@ -333,6 +337,48 @@ def test_bonus_fin_partie_valeur_non_booleenne_reparee(tmp_path, invalide):
     assert config["bonus_fin_partie"] is False
     releu = json.loads(chemin.read_text(encoding="utf-8"))
     assert releu["bonus_fin_partie"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Vocabulaire humain de l'IA (issue #206)
+# --------------------------------------------------------------------------- #
+
+def test_vocabulaire_humain_desactive_par_defaut(tmp_path):
+    """Le réglage « vocabulaire humain » (issue #206) est désactivé par défaut."""
+    chemin = tmp_path / "config.json"
+
+    config = charger_config(chemin)
+
+    assert config["vocabulaire_humain"] is False
+    assert CONFIG_DEFAUT["vocabulaire_humain"] is False
+
+
+@pytest.mark.parametrize("valeur", [True, False])
+def test_vocabulaire_humain_booleen_conserve(tmp_path, valeur):
+    """Un vrai booléen est conservé tel quel, sans réparation."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(
+        json.dumps({"vocabulaire_humain": valeur}), encoding="utf-8"
+    )
+
+    config = charger_config(chemin)
+
+    assert config["vocabulaire_humain"] is valeur
+
+
+@pytest.mark.parametrize("invalide", ["true", 1, 0, None, "oui"])
+def test_vocabulaire_humain_valeur_non_booleenne_reparee(tmp_path, invalide):
+    """Toute valeur non booléenne (str, entier, None) retombe sur le défaut."""
+    chemin = tmp_path / "config.json"
+    chemin.write_text(
+        json.dumps({"vocabulaire_humain": invalide}), encoding="utf-8"
+    )
+
+    config = charger_config(chemin)
+
+    assert config["vocabulaire_humain"] is False
+    releu = json.loads(chemin.read_text(encoding="utf-8"))
+    assert releu["vocabulaire_humain"] is False
 
 
 # --------------------------------------------------------------------------- #

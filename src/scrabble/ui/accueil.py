@@ -59,6 +59,7 @@ from scrabble.dictionnaire.dictionnaire import (
     marquer_classique,
     modifier_appartenance,
     obtenir_trie,
+    obtenir_trie_ia,
     rechercher_statut,
 )
 from scrabble.moteur.ia import Niveau
@@ -427,6 +428,22 @@ class ApiAccueil:
         journal.info(f"Accueil : joueur retiré (index {index}).")
         return {"succes": True, "etat": self.obtenir_etat()}
 
+    @staticmethod
+    def _construire_trie_ia() -> Any:
+        """Trie restreint de l'IA si « vocabulaire humain » est actif, sinon ``None``.
+
+        Réglage global unique (issue #206), indépendant du niveau de difficulté :
+        désactivé (défaut) → ``None`` (l'IA joue sur le dictionnaire complet,
+        comportement historique inchangé, coût nul). Activé → Trie restreint
+        (:func:`~scrabble.dictionnaire.dictionnaire.obtenir_trie_ia`) construit sur
+        la **même** source que le Trie complet du jeu — appelé, comme
+        ``obtenir_trie()``, sans forcer de source, pour garantir que le vocabulaire
+        de l'IA reste un sous-ensemble strict du dictionnaire de validation.
+        """
+        if not bool(charger_config().get("vocabulaire_humain", False)):
+            return None
+        return obtenir_trie_ia()
+
     def lancer_partie(self) -> dict[str, Any]:
         """Crée et démarre la partie avec la configuration actuelle.
 
@@ -476,6 +493,8 @@ class ApiAccueil:
             # Réglage du bonus officiel au finisseur (issue #134), lu depuis la
             # config auto-réparante et câblé dans le moteur via creer_partie.
             bonus_fin_partie = bool(charger_config().get("bonus_fin_partie", False))
+            # Réglage « vocabulaire humain » (issue #206) : Trie restreint de l'IA.
+            trie_ia = self._construire_trie_ia()
             self._partie = creer_partie(
                 noms_humains=noms_humains,
                 dictionnaire=trie,
@@ -485,6 +504,7 @@ class ApiAccueil:
                 graine=graine,
                 tirage_ordre=True,
                 bonus_fin_partie=bonus_fin_partie,
+                dictionnaire_ia=trie_ia,
             )
             self._id_partie = demarrer_suivi(self._partie)
             # Détail à rejouer côté Jeu pour l'écran de tirage (issue #170) :
@@ -577,7 +597,12 @@ class ApiAccueil:
         """
         try:
             trie = obtenir_trie()
-            self._partie = reprendre_partie(id_partie, trie)
+            # Réglage « vocabulaire humain » (issue #206) : une partie reprise doit
+            # continuer de restreindre son IA si le réglage est actif.
+            trie_ia = self._construire_trie_ia()
+            self._partie = reprendre_partie(
+                id_partie, trie, dictionnaire_ia=trie_ia
+            )
             self._id_partie = id_partie
             # Reprise = pas de tirage d'ordre à rejouer : on efface tout
             # ``_infos_tirage`` résiduel d'un éventuel « Lancer la partie »
@@ -632,6 +657,7 @@ class ApiAccueil:
             "theme_plateau": self._lire("theme_plateau"),
             "source_dictionnaire": self._lire("source_dictionnaire"),
             "bonus_fin_partie": self._lire_bool("bonus_fin_partie"),
+            "vocabulaire_humain": self._lire_bool("vocabulaire_humain"),
             "type_echange": self._lire("type_echange"),
             "avatar_principal": self._lire("avatar_principal"),
             # Grille d'avatars disponibles pour le sélecteur visuel (issue #143) :
