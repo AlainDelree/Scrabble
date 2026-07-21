@@ -33,6 +33,15 @@ logs/
 # Photos de plateaux réels fournies pour inspiration visuelle (non commitées)
 Exemples plateau/
 
+# Installeur Windows (Inno Setup, issue #217) : setup.exe générés jamais
+# commités (volumineux, régénérables via installeur\scrabble.iss) — seul le
+# script .iss et le README du dossier sont suivis. Voir installeur\README.md.
+installeur/output/
+
+# Outils de build locaux à la machine CCW (ex. Inno Setup portable) — jamais
+# commités, jamais nécessaires ailleurs que sur la machine qui compile.
+.tools/
+
 # Divers
 .pytest_cache/
 tmp_diag_wiktionnaire/
