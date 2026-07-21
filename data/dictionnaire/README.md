@@ -12,6 +12,21 @@ Déposez manuellement ici, à cet emplacement, sans les ajouter au suivi git :
   Scrabble francophone).
 - `hunspell-french-dictionaries-v7.7/` — dictionnaire Hunspell
   `fr-toutesvariantes` (fichiers `.aff` / `.dic`).
+- `Lexique383.tsv` — base de fréquence lexicale **Lexique 3** (version 3.83,
+  ~25 Mo), source de fréquence pour le vocabulaire « humain » de l'IA
+  (issues #203/#205). Téléchargement : <https://www.lexique.org> (rubrique
+  téléchargements → *Lexique383*). Licence **CC-BY-SA 4.0** (libre de
+  redistribution, mais on ne le commite pas — même règle que les autres
+  dictionnaires). Colonnes utilisées : `ortho`, `freqlivres`, `freqfilms2`.
+
+## Fichiers générés (également hors git)
+
+- `mots_courants.txt` — ensemble des mots ODS8 jugés « courants » d'après
+  Lexique 3, un mot par ligne (normalisé comme l'ODS8 : MAJUSCULES, **sans
+  accent**). Produit par `scripts/generer_mots_courants.py` (issue #205) par
+  croisement ODS8 × `Lexique383.tsv`. Destiné à être consommé par le futur
+  filtre de vocabulaire de l'IA (issue C, à venir). Se régénère à tout moment ;
+  n'a pas à être déposé manuellement.
 
 ## Règle git
 

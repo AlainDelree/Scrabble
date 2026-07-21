@@ -47,6 +47,11 @@ personnalisations `mots_ajoutes_*`/`mots_retires_*` (une paire par source), la
 liste des « classiques du jeu » `classiques_ajoutes.txt`/`classiques_retires.txt`
 (étiquette sur le mot lui-même, gérée depuis l'onglet Dictionnaire, amorcée par
 `scripts/generer_classiques.py`, issue #204) et le cache `trie_cache.pkl`.
+Reçoit aussi manuellement `Lexique383.tsv` (Lexique 3, base de fréquence
+lexicale, CC-BY-SA 4.0), croisé avec l'ODS8 par
+`scripts/generer_mots_courants.py` (issue #205) pour produire `mots_courants.txt`
+(vocabulaire « humain » de l'IA — croisement **désaccentué** car l'ODS8 est
+stocké sans accents ; consommé par le futur filtre de vocabulaire, issue C).
 
 ## Stack (`requirements.txt`)
 `pywebview` (UI), `pyinstaller` (build .exe), `pytest` (tests), `spylls`
