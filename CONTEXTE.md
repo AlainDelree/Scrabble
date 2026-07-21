@@ -25,7 +25,9 @@ table, réglages) puis enchaîne vers l'écran de jeu.
   (`data/parties.db`).
 - **`ui/`** — fenêtres pywebview (`accueil`, `jeu`, `application`,
   `backend_graphique`, `noms_ordinateur`) + assets front dans **`ui/web/`**
-  (`accueil/jeu/chevalet` .html/.css/.js, avatars SVG, images).
+  (`accueil/jeu` .html/.css/.js, avatars SVG, images ; le chevalet est une zone
+  intégrée à `jeu.html`, plus de fenêtre ni de fichier `chevalet.*` — issues
+  #187/#193).
 - **`config.py`** (config auto-réparante `config.json`), `reglages.py`,
   `journal.py` (logs dans `logs/`).
 

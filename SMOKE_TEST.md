@@ -2,7 +2,7 @@
 
 > **Objectif.** Ce document liste tous les flux à **vérifier manuellement** avant
 > une « mise en production » : installation du jeu chez un tiers, ou après un gros
-> changement touchant plusieurs fenêtres (accueil, jeu/plateau, chevalet, réglages).
+> changement touchant les écrans de l'application (accueil, jeu, réglages).
 >
 > **Pourquoi.** Plusieurs régressions récentes (tirage d'ordre tronqué, modale du
 > joker tronquée après le resserrage de la fenêtre chevalet) n'ont été détectées
@@ -41,7 +41,7 @@
 - [ ] Le bouton « Tirer une lettre » reste **toujours visible** même si le contenu de la modale déborde (corps scrollable, bouton épinglé — issues #82/#116).
 - [ ] Une fois tous les tirages faits, l'**ordre de jeu** s'affiche et le bouton « Continuer » **s'active**.
 - [ ] **Annuler** le tirage (bouton « Annuler ») : retour à l'accueil sans lancer la partie.
-- [ ] **Continuer** : la fenêtre d'accueil se ferme et l'écran de jeu s'ouvre (avec la fenêtre chevalet).
+- [ ] **Continuer** : l'écran de jeu s'ouvre (plateau + panneau chevalet intégré en zone C, une seule fenêtre).
 
 ### Reprise de partie
 - [ ] **Reprendre une partie en cours** depuis la section « Reprendre une partie » (bouton « Reprendre ») : l'état de la partie est restauré.
@@ -69,7 +69,7 @@
 - [ ] Le **sac de lettres** 🎒 affiche le nombre de jetons restants et se met à jour.
 
 ### Poser un coup (clic-clic depuis le chevalet)
-- [ ] **Poser un mot valide** : sélectionner une lettre dans la fenêtre chevalet, cliquer une case vide du plateau, répéter, puis « ✓ Jouer » → coup accepté, score attribué.
+- [ ] **Poser un mot valide** : sélectionner une lettre dans le panneau chevalet, cliquer une case vide du plateau, répéter, puis « ✓ Jouer » → coup accepté, score attribué.
 - [ ] **Poser un mot invalide** : « ✓ Jouer » affiche un **message d'erreur clair** et ne joue pas le coup.
 - [ ] **Retirer une lettre en attente** : recliquer sa case sur le plateau la remet au chevalet.
 - [ ] **Annuler un coup en attente** (bouton « ✗ Annuler ») : toutes les lettres en attente reviennent au chevalet.

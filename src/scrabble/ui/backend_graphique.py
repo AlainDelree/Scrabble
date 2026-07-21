@@ -104,8 +104,8 @@ def configurer_backend_graphique(environ: dict | None = None) -> str | None:
     env["GDK_BACKEND"] = "x11"
     journal.info(
         "Backend graphique : session Wayland détectée — GDK_BACKEND=x11 forcé "
-        "(bascule sur XWayland) pour rétablir move()/window.x/window.y et on_top "
-        "de la fenêtre chevalet (cause racine issue #93)."
+        "(bascule sur XWayland) pour rétablir move()/resize()/window.x/window.y, "
+        "indispensables au déploiement plein écran du plateau (issue #93/#95)."
     )
     return "x11"
 

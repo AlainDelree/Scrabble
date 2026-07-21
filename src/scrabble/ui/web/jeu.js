@@ -1992,12 +1992,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             return;
         }
-        // Continuer : Python révèle et positionne la fenêtre chevalet ; on
-        // réaffiche le plateau, les fiches et la barre globale.
+        // Continuer : Python marque le tirage terminé ; on réaffiche le plateau,
+        // les fiches, la barre globale et le panneau chevalet intégré (zone C).
         try {
             await api.terminer_tirage();
         } catch (err) {
-            /* une erreur de révélation du chevalet ne doit pas bloquer le jeu */
+            /* une erreur de fin de tirage ne doit pas bloquer le jeu */
         }
         ecranTirage.hidden = true;
         document.body.classList.remove('tirage-en-cours');

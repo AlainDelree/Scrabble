@@ -29,8 +29,6 @@ from scrabble.regles.lettres import JOKER
 from scrabble.regles.plateau import CENTRE, TAILLE, TypeCase
 from scrabble.ui.jeu import (
     AVATARS,
-    CHEVALET_HAUTEUR,
-    CHEVALET_LARGEUR,
     ApiJeu,
     calculer_avatars,
     calculer_positions,
@@ -430,7 +428,6 @@ class TestApiJeuChargementDiffere:
         api._nouvelle_partie = _partie_simple()
         api._nouvel_id_partie = 123
         api._nouvelles_infos_tirage = {"x": 1}
-        api._fermeture_en_cours = True
 
         # Recharger une AUTRE partie (reprise : pas d'infos de tirage).
         nouvelle = _partie_simple(graine=99)
@@ -453,7 +450,6 @@ class TestApiJeuChargementDiffere:
         assert api._nouvelle_partie is None
         assert api._nouvel_id_partie is None
         assert api._nouvelles_infos_tirage is None
-        assert api._fermeture_en_cours is False
 
     def test_charger_partie_preserve_les_fenetres(self):
         """La fenêtre physique (partagée) n'est PAS remise à zéro par un chargement.
@@ -463,11 +459,9 @@ class TestApiJeuChargementDiffere:
         """
         api = ApiJeu()
         fenetre_plateau = object()
-        fenetre_chevalet = object()
-        api.set_windows(fenetre_plateau, fenetre_chevalet)
+        api.set_window(fenetre_plateau)
         api.charger_partie(_partie_simple(), 5)
         assert api._window_plateau is fenetre_plateau
-        assert api._window_chevalet is fenetre_chevalet
 
 
 # --------------------------------------------------------------------------- #
@@ -2403,39 +2397,6 @@ class TestApiJeuRecommencer:
         assert api._nouvelle_partie is None
 
 
-class _FenetreFermable:
-    """Fenêtre factice avec un vrai ``events.closing`` pywebview (issue #94).
-
-    Reproduit fidèlement le mécanisme testé : ``events.closing`` est un
-    ``webview.event.Event`` réel (donc ``+=`` et ``set()`` se comportent comme en
-    production, y compris le passage de la fenêtre émettrice au handler). Et,
-    comme le backend GTK où ``destroy()`` repasse par ``close_window`` et
-    re-déclenche ``closing``, notre ``destroy()`` **re-émet** l'événement : c'est
-    exactement le scénario que le garde-fou anti-boucle doit neutraliser.
-    """
-
-    def __init__(self, nom: str) -> None:
-        from webview.event import Event
-
-        self.nom = nom
-        self.detruite = False
-        self.events = type("_Ev", (), {})()
-        self.events.closing = Event(self, True)
-
-    def destroy(self) -> None:
-        self.detruite = True
-        # Comme GTK : la destruction programmatique repasse par ``closing``.
-        self.events.closing.set()
-
-
-def _api_deux_fenetres_fermables() -> tuple[ApiJeu, _FenetreFermable, _FenetreFermable]:
-    api = ApiJeu(_partie_simple(), id_partie=3)
-    plateau, chevalet = _FenetreFermable("plateau"), _FenetreFermable("chevalet")
-    api.set_windows(plateau, chevalet)
-    api.installer_fermeture_croisee()
-    return api, plateau, chevalet
-
-
 class TestDetailTirageOrdre:
     """Tests de ``detail_tirage_ordre`` migré de l'accueil (issue #170).
 
@@ -2490,7 +2451,7 @@ class TestApiJeuTirageOrdre:
 
     Le tirage, autrefois affiché en modale de l'accueil, est désormais mené dans
     la fenêtre Jeu : ``obtenir_tirage_ordre`` fournit son détail au démarrage (ou
-    ``None`` en reprise), ``terminer_tirage`` révèle le chevalet au clic
+    ``None`` en reprise), ``terminer_tirage`` marque le tirage terminé au clic
     « Continuer », et ``annuler_tirage`` supprime la partie créée puis revient à
     l'accueil. Testé sans vraie fenêtre grâce à des objets factices.
     """
@@ -2516,49 +2477,17 @@ class TestApiJeuTirageOrdre:
         humain = {t["nom"]: t["humain"] for t in detail["tirages"]}
         assert humain == {"Alice": True, "Robot": False}
 
-    def test_terminer_tirage_revele_le_chevalet_et_est_idempotent(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        repos: list = []
-        lies: list = []
-        monkeypatch.setattr(mod, "_repositionner_chevalet", lambda w: repos.append(w))
-        monkeypatch.setattr(
-            mod, "_lier_chevalet_au_plateau", lambda p, c: lies.append((p, c))
-        )
-
-        class _Fen:
-            def __init__(self) -> None:
-                self.montree = False
-
-            def show(self) -> None:
-                self.montree = True
-
+    def test_terminer_tirage_marque_termine_et_est_idempotent(self):
         api = ApiJeu(_partie_simple(), id_partie=1, infos_tirage=dict(self._INFOS))
-        plateau, chevalet = _Fen(), _Fen()
-        api.set_windows(plateau, chevalet)
+        assert api._tirage_termine is False
 
         res = api.terminer_tirage()
         assert res["succes"] is True
-        assert chevalet.montree is True
-        assert repos == [chevalet]
-        assert lies == [(plateau, chevalet)]
         assert api._tirage_termine is True
 
-        # Idempotent : un second appel (reprise/double-clic) ne re-révèle rien.
+        # Idempotent : un second appel (reprise/double-clic) reste sans effet.
         res2 = api.terminer_tirage()
         assert res2["succes"] is True
-        assert repos == [chevalet]  # inchangé
-
-    def test_terminer_tirage_tolere_absence_de_chevalet(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        monkeypatch.setattr(mod, "_repositionner_chevalet", lambda w: None)
-        monkeypatch.setattr(mod, "_lier_chevalet_au_plateau", lambda p, c: None)
-
-        api = ApiJeu(_partie_simple(), id_partie=1, infos_tirage=dict(self._INFOS))
-        # Aucune fenêtre associée (contexte de test) : ne doit pas planter.
-        res = api.terminer_tirage()
-        assert res["succes"] is True
         assert api._tirage_termine is True
 
     def test_annuler_tirage_supprime_la_partie_et_ferme(self, monkeypatch):
@@ -2572,16 +2501,14 @@ class TestApiJeuTirageOrdre:
         )
 
         api = ApiJeu(_partie_simple(), id_partie=42, infos_tirage=dict(self._INFOS))
-        plateau = _FenetreFermable("plateau")
-        chevalet = _FenetreFermable("chevalet")
-        api.set_windows(plateau, chevalet)
+        plateau = _FenetreEspionne()
+        api.set_window(plateau)
 
         res = api.annuler_tirage()
         assert res["succes"] is True
         # La partie fraîchement créée (aucun coup joué) est supprimée de la base.
         assert supprimees == [42]
         assert plateau.detruite is True
-        assert chevalet.detruite is True
         # Retour à l'accueil via le même drapeau que « Retour au menu ».
         assert api._retour_menu is True
 
@@ -2596,10 +2523,10 @@ class TestApiJeuTirageOrdre:
 class TestApiJeuHelpersCoquilleUnifiee:
     """Méthodes ApiJeu extraites/ajoutées pour la coquille unifiée (issue #181).
 
-    ``masquer_chevalet``, ``preparer_partie_recommencee`` et
-    ``supprimer_partie_annulee`` sont réutilisées par le routeur unifié
-    (``ApiRouteur``) sans détruire de fenêtre ni positionner de drapeau inter-
-    boucles. Elles sont aussi le cœur partagé du chemin de production.
+    ``preparer_partie_recommencee`` et ``supprimer_partie_annulee`` sont
+    réutilisées par le routeur unifié (``ApiRouteur``) sans détruire de fenêtre
+    ni positionner de drapeau inter-boucles. Elles sont aussi le cœur partagé du
+    chemin de production.
     """
 
     _INFOS = {
@@ -2614,30 +2541,6 @@ class TestApiJeuHelpersCoquilleUnifiee:
             Joueur(nom="Ordi", humain=False, niveau=Niveau.EXPERT),
         ]
         return Partie(joueurs, _DicoFactice(), graine=graine)
-
-    def test_masquer_chevalet_appelle_hide(self):
-        class _Fen:
-            def __init__(self) -> None:
-                self.masquee = False
-
-            def hide(self) -> None:
-                self.masquee = True
-
-        api = ApiJeu(_partie_simple(), id_partie=1)
-        plateau, chevalet = _Fen(), _Fen()
-        api.set_windows(plateau, chevalet)
-
-        api.masquer_chevalet()
-
-        assert chevalet.masquee is True
-        # La fenêtre plateau n'est jamais masquée par cette méthode.
-        assert plateau.masquee is False
-
-    def test_masquer_chevalet_tolere_absence_de_chevalet(self):
-        # Aucune fenêtre chevalet associée (set_window seule) : ne doit pas planter.
-        api = ApiJeu(_partie_simple(), id_partie=1)
-        api.set_window(object())
-        api.masquer_chevalet()  # ne lève pas
 
     def test_preparer_partie_recommencee_persiste_sans_toucher_les_drapeaux(
         self, tmp_path
@@ -2700,67 +2603,9 @@ class TestApiJeuHelpersCoquilleUnifiee:
         assert supprimees == []
 
 
-class TestFermetureCroisee:
-    """Fermeture native (croix ✕) de l'une des deux fenêtres — issue #94.
-
-    Fermer nativement une fenêtre doit détruire l'autre (plus d'orpheline) et
-    **quitter** l'application (contrairement à « Retour au menu » qui rouvre
-    l'accueil) : ``_retour_menu`` reste donc ``False``.
-    """
-
-    def test_fermer_plateau_detruit_le_chevalet(self):
-        api, plateau, chevalet = _api_deux_fenetres_fermables()
-        # Simule la croix sur la fenêtre plateau (GTK émet ``closing``).
-        plateau.events.closing.set()
-        assert chevalet.detruite is True
-        assert api._fermeture_en_cours is True
-        # Fermeture par la croix ≠ retour au menu : on ne rouvre pas l'accueil.
-        assert api._retour_menu is False
-
-    def test_fermer_chevalet_detruit_le_plateau(self):
-        api, plateau, chevalet = _api_deux_fenetres_fermables()
-        chevalet.events.closing.set()
-        assert plateau.detruite is True
-        assert api._retour_menu is False
-
-    def test_pas_de_boucle_infinie(self):
-        # ``destroy()`` de la fenêtre jumelle re-émet ``closing`` (comme GTK) : le
-        # garde-fou doit empêcher de re-détruire la première fenêtre en retour.
-        api, plateau, chevalet = _api_deux_fenetres_fermables()
-        plateau.events.closing.set()  # ne doit ni boucler ni lever
-        # Le chevalet est détruit une fois ; le plateau n'est pas re-détruit par le
-        # handler (il se ferme de lui-même côté backend, pas via ``destroy`` ici).
-        assert chevalet.detruite is True
-        assert plateau.detruite is False
-
-    def test_installer_tolere_une_fenetre_sans_events(self):
-        # Fenêtre factice sans attribut ``events`` (comme les tests historiques) :
-        # l'installation ne doit rien lever.
-        api = ApiJeu(_partie_simple(), id_partie=None)
-
-        class _Nue:
-            def destroy(self):  # pragma: no cover - jamais appelée ici
-                pass
-
-        api.set_window(_Nue())
-        api.installer_fermeture_croisee()  # ne doit pas lever
-
-    def test_retour_menu_reste_prioritaire(self):
-        # « Retour au menu » détruit les deux fenêtres ET rouvre l'accueil : le
-        # garde-fou anti-boucle ne doit pas empêcher ``_retour_menu`` de rester vrai
-        # malgré les ``closing`` re-émis par les ``destroy()``.
-        api, plateau, chevalet = _api_deux_fenetres_fermables()
-        resultat = api.retour_menu()
-        assert resultat["succes"] is True
-        assert plateau.detruite is True
-        assert chevalet.detruite is True
-        assert api._retour_menu is True
-
-
 # --------------------------------------------------------------------------- #
-# Suite #90 : séparation plateau/chevalet en deux fenêtres. État de pose
-# centralisé côté Python (_selection / _en_attente) et diffusion vers la bonne
-# fenêtre (payload public au plateau, payload privé au chevalet).
+# Suite #90 : état de pose centralisé côté Python (_selection / _en_attente)
+# et diffusion vers la fenêtre Jeu unique (payload public + payload privé).
 # --------------------------------------------------------------------------- #
 
 
@@ -2778,11 +2623,11 @@ class _FenetreEspionne:
         self.detruite = True
 
 
-def _api_pose(lettres: str = "CHATSER") -> tuple[ApiJeu, _FenetreEspionne, _FenetreEspionne]:
-    """API prête pour la pose, avec deux fenêtres espionnes (plateau + chevalet).
+def _api_pose(lettres: str = "CHATSER") -> tuple[ApiJeu, _FenetreEspionne]:
+    """API prête pour la pose, avec une fenêtre espionne unique (plateau).
 
     Le joueur 0 (humain, courant) porte le chevalet ``lettres``. Renvoie
-    ``(api, fenetre_plateau, fenetre_chevalet)``.
+    ``(api, fenetre_plateau)``.
     """
     joueurs = [
         Joueur(nom="Alice", humain=True),
@@ -2792,35 +2637,33 @@ def _api_pose(lettres: str = "CHATSER") -> tuple[ApiJeu, _FenetreEspionne, _Fene
     partie.index_courant = 0
     partie.joueurs[0].chevalet = list(lettres)
     api = ApiJeu(partie, None)
-    plateau, chevalet = _FenetreEspionne(), _FenetreEspionne()
-    api.set_windows(plateau, chevalet)
-    return api, plateau, chevalet
+    plateau = _FenetreEspionne()
+    api.set_window(plateau)
+    return api, plateau
 
 
 class TestApiJeuSelection:
     """``ApiJeu.selectionner_lettre`` : centralisation de ``_selection`` (issue #90)."""
 
     def test_selectionne_met_a_jour_et_diffuse(self):
-        api, plateau, chevalet = _api_pose()
+        api, plateau = _api_pose()
         res = api.selectionner_lettre(2)
         assert res["succes"] is True
         assert api._selection == 2
         # Depuis l'issue #187 (chevalet migré en zone C de jeu.html), les DEUX
-        # charges sont poussées à la MÊME fenêtre Jeu : la fenêtre plateau reçoit
-        # deux diffusions, la fenêtre chevalet (désormais vide) n'en reçoit aucune.
+        # charges sont poussées à la MÊME fenêtre Jeu unique.
         assert len(plateau.scripts) == 2
-        assert len(chevalet.scripts) == 0
         assert any("appliquerEtatPlateau" in s for s in plateau.scripts)
         assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
     def test_reclic_meme_index_deselectionne(self):
-        api, _plateau, _chevalet = _api_pose()
+        api, _plateau = _api_pose()
         api.selectionner_lettre(2)
         api.selectionner_lettre(2)
         assert api._selection is None
 
     def test_index_none_annule_la_selection(self):
-        api, _plateau, _chevalet = _api_pose()
+        api, _plateau = _api_pose()
         api.selectionner_lettre(1)
         api.selectionner_lettre(None)
         assert api._selection is None
@@ -2830,7 +2673,7 @@ class TestApiJeuPoseEnAttente:
     """Pose/retrait d'une lettre en attente pilotés par l'état interne (issue #90)."""
 
     def test_pose_resout_la_lettre_depuis_la_selection(self):
-        api, plateau, chevalet = _api_pose("CHATSER")
+        api, plateau = _api_pose("CHATSER")
         api.selectionner_lettre(0)  # « C »
         res = api.poser_lettre_en_attente(7, 7)
         assert res["succes"] is True
@@ -2847,13 +2690,13 @@ class TestApiJeuPoseEnAttente:
         assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
     def test_pose_sans_selection_refusee(self):
-        api, _plateau, _chevalet = _api_pose()
+        api, _plateau = _api_pose()
         res = api.poser_lettre_en_attente(7, 7)
         assert res["succes"] is False
         assert api._en_attente == []
 
     def test_pose_sur_case_occupee_refusee(self):
-        api, _plateau, _chevalet = _api_pose()
+        api, _plateau = _api_pose()
         api._partie.plateau.poser_tuile(7, 7, Tuile("Z"))
         api.selectionner_lettre(0)
         res = api.poser_lettre_en_attente(7, 7)
@@ -2861,13 +2704,13 @@ class TestApiJeuPoseEnAttente:
         assert api._en_attente == []
 
     def test_pose_hors_plateau_refusee(self):
-        api, _plateau, _chevalet = _api_pose()
+        api, _plateau = _api_pose()
         api.selectionner_lettre(0)
         res = api.poser_lettre_en_attente(-1, 7)
         assert res["succes"] is False
 
     def test_deux_lettres_sur_la_meme_case_refusee(self):
-        api, _plateau, _chevalet = _api_pose()
+        api, _plateau = _api_pose()
         api.selectionner_lettre(0)
         api.poser_lettre_en_attente(7, 7)
         api.selectionner_lettre(1)
@@ -2876,7 +2719,7 @@ class TestApiJeuPoseEnAttente:
         assert len(api._en_attente) == 1
 
     def test_retrait_supprime_le_placement_et_diffuse(self):
-        api, plateau, chevalet = _api_pose()
+        api, plateau = _api_pose()
         api.selectionner_lettre(0)
         api.poser_lettre_en_attente(7, 7)
         avant_plateau = len(plateau.scripts)
@@ -2889,14 +2732,14 @@ class TestApiJeuPoseEnAttente:
         assert len(plateau.scripts) == avant_plateau + 2
 
     def test_retrait_sans_placement_ne_diffuse_pas(self):
-        api, plateau, _chevalet = _api_pose()
+        api, plateau = _api_pose()
         avant = len(plateau.scripts)
         res = api.retirer_lettre_en_attente(0, 0)
         assert res["succes"] is True
         assert len(plateau.scripts) == avant  # aucune mutation, aucune diffusion
 
     def test_annuler_pose_vide_tout_et_diffuse(self):
-        api, plateau, chevalet = _api_pose()
+        api, plateau = _api_pose()
         api.selectionner_lettre(0)
         api.poser_lettre_en_attente(7, 7)
         api.selectionner_lettre(1)
@@ -2913,7 +2756,7 @@ class TestApiJeuPoseJoker:
     """Pose d'un joker : la modale de choix s'ouvre côté chevalet (issue #90)."""
 
     def test_clic_plateau_sur_joker_differe_la_pose(self):
-        api, _plateau, _chevalet = _api_pose(JOKER + "CHATSE")
+        api, _plateau = _api_pose(JOKER + "CHATSE")
         api.selectionner_lettre(0)  # le joker
         res = api.poser_lettre_en_attente(7, 7)
         assert res["succes"] is True
@@ -2923,7 +2766,7 @@ class TestApiJeuPoseJoker:
         assert api._joker_demande == {"ligne": 7, "colonne": 7, "index": 0}
 
     def test_finalisation_joker_depuis_le_chevalet(self):
-        api, _plateau, _chevalet = _api_pose(JOKER + "CHATSE")
+        api, _plateau = _api_pose(JOKER + "CHATSE")
         api.selectionner_lettre(0)
         api.poser_lettre_en_attente(7, 7)
         # Le chevalet renvoie la lettre choisie pour le joker.
@@ -2947,7 +2790,7 @@ class TestApiJeuRemplacementEnAttente:
     """
 
     def test_remplacement_avec_selection(self):
-        api, plateau, chevalet = _api_pose("CHATSER")
+        api, plateau = _api_pose("CHATSER")
         # « C » (index 0) posée en 7,7.
         api.selectionner_lettre(0)
         api.poser_lettre_en_attente(7, 7)
@@ -2971,7 +2814,7 @@ class TestApiJeuRemplacementEnAttente:
         assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
     def test_remplacement_ne_casse_pas_le_compteur(self):
-        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api, _plateau = _api_pose("CHATSER")
         # Deux lettres posées : « C » (0) en 7,7 et « H » (1) en 7,8.
         api.selectionner_lettre(0)
         api.poser_lettre_en_attente(7, 7)
@@ -2985,7 +2828,7 @@ class TestApiJeuRemplacementEnAttente:
         assert indices == [1, 2]  # « C » (0) libérée, « A » (2) posée, « H » (1) intacte
 
     def test_sans_selection_retrait_simple(self):
-        api, plateau, _chevalet = _api_pose("CHATSER")
+        api, plateau = _api_pose("CHATSER")
         api.selectionner_lettre(0)
         api.poser_lettre_en_attente(7, 7)
         # Aucune sélection active au moment du clic : retrait simple (cas limite 1).
@@ -2996,7 +2839,7 @@ class TestApiJeuRemplacementEnAttente:
         assert res.get("joker_requis") is None
 
     def test_remplacement_par_joker_ouvre_la_modale(self):
-        api, _plateau, chevalet = _api_pose("C" + JOKER + "ATSER")
+        api, _plateau = _api_pose("C" + JOKER + "ATSER")
         # « C » (index 0) posée en 7,7, puis on sélectionne le joker (index 1).
         api.selectionner_lettre(0)
         api.poser_lettre_en_attente(7, 7)
@@ -3019,7 +2862,7 @@ class TestApiJeuRemplacementEnAttente:
         assert api._joker_demande is None
 
     def test_case_sans_lettre_en_attente_sans_effet(self):
-        api, plateau, _chevalet = _api_pose("CHATSER")
+        api, plateau = _api_pose("CHATSER")
         api.selectionner_lettre(0)
         avant = len(plateau.scripts)
         res = api.remplacer_ou_retirer_lettre_en_attente(0, 0)
@@ -3030,7 +2873,7 @@ class TestApiJeuRemplacementEnAttente:
         assert len(plateau.scripts) == avant
 
     def test_remplacement_hors_tour_refuse(self):
-        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api, _plateau = _api_pose("CHATSER")
         api.selectionner_lettre(0)
         api.poser_lettre_en_attente(7, 7)
         # On passe hors tour : la mutation doit être refusée sans toucher l'état.
@@ -3051,12 +2894,12 @@ class TestApiJeuGardeDeTour:
 
     def _api_hors_tour(self):
         """API où le joueur de référence (index 0) n'est PAS courant (tour IA)."""
-        api, plateau, chevalet = _api_pose("CHATSER")
+        api, plateau = _api_pose("CHATSER")
         api._partie.index_courant = 1  # au tour de l'ordinateur
-        return api, plateau, chevalet
+        return api, plateau
 
     def test_selectionner_lettre_hors_tour_refusee(self):
-        api, plateau, chevalet = self._api_hors_tour()
+        api, plateau = self._api_hors_tour()
         avant_plateau = len(plateau.scripts)
         res = api.selectionner_lettre(0)
         assert res["succes"] is False
@@ -3066,14 +2909,14 @@ class TestApiJeuGardeDeTour:
         assert len(plateau.scripts) == avant_plateau
 
     def test_poser_lettre_en_attente_hors_tour_refusee(self):
-        api, _plateau, _chevalet = self._api_hors_tour()
+        api, _plateau = self._api_hors_tour()
         res = api.poser_lettre_en_attente(7, 7)
         assert res["succes"] is False
         assert res["erreur"] == "Ce n'est pas votre tour."
         assert api._en_attente == []
 
     def test_retirer_lettre_en_attente_hors_tour_refusee(self):
-        api, _plateau, _chevalet = self._api_hors_tour()
+        api, _plateau = self._api_hors_tour()
         # On injecte un placement pour vérifier qu'il n'est PAS retiré hors tour.
         api._en_attente = [
             {"ligne": 7, "colonne": 7, "lettre": "C", "joker": False,
@@ -3085,7 +2928,7 @@ class TestApiJeuGardeDeTour:
         assert len(api._en_attente) == 1  # placement intact
 
     def test_annuler_pose_hors_tour_refusee(self):
-        api, _plateau, _chevalet = self._api_hors_tour()
+        api, _plateau = self._api_hors_tour()
         api._selection = 2
         api._en_attente = [
             {"ligne": 7, "colonne": 7, "lettre": "C", "joker": False,
@@ -3098,7 +2941,7 @@ class TestApiJeuGardeDeTour:
         assert len(api._en_attente) == 1
 
     def test_mutation_refusee_partie_terminee(self):
-        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api, _plateau = _api_pose("CHATSER")
         api._partie.index_courant = 0  # c'est bien le tour du joueur de référence
         api._partie.terminee = True
         res = api.selectionner_lettre(0)
@@ -3107,7 +2950,7 @@ class TestApiJeuGardeDeTour:
         assert api._selection is None
 
     def test_mutation_autorisee_au_tour_du_joueur_reference(self):
-        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api, _plateau = _api_pose("CHATSER")
         api._partie.index_courant = 0  # tour du joueur de référence
         res = api.selectionner_lettre(0)
         assert res["succes"] is True
@@ -3126,7 +2969,7 @@ class TestApiJeuDiffusionConfidentialite:
     """
 
     def test_payload_plateau_public_sans_lettres_de_chevalet(self):
-        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api, _plateau = _api_pose("CHATSER")
         etat = api._etat_plateau()
         # Aucune identité de lettre de chevalet : ni au niveau racine, ni par joueur.
         assert "lettres" not in etat
@@ -3137,7 +2980,7 @@ class TestApiJeuDiffusionConfidentialite:
         assert "selection" in etat
 
     def test_payload_chevalet_contient_les_lettres_privees(self):
-        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api, _plateau = _api_pose("CHATSER")
         etat = api._etat_chevalet()
         lettres = [c["lettre"] for c in etat["lettres"]]
         assert lettres == list("CHATSER")
@@ -3157,7 +3000,7 @@ class TestApiJeuDiffusionConfidentialite:
         chevalet du joueur humain de référence (jamais celui de l'IA) et
         ``mon_tour`` vaut ``False`` puisque ce n'est pas son tour.
         """
-        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api, _plateau = _api_pose("CHATSER")
         api._partie.index_courant = 1  # au tour de l'ordinateur
         etat = api._etat_chevalet()
         lettres = [c["lettre"] for c in etat["lettres"]]
@@ -3171,7 +3014,7 @@ class TestApiJeuDiffusionConfidentialite:
         Même au tour de l'IA, ``lettres`` reste le chevalet du joueur de
         référence (index 0), jamais celui de l'ordinateur (index 1).
         """
-        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api, _plateau = _api_pose("CHATSER")
         api._partie.joueurs[1].chevalet = list("ZZZZZZZ")  # chevalet IA distinct
         api._partie.index_courant = 1  # au tour de l'ordinateur
         etat = api._etat_chevalet()
@@ -3181,11 +3024,9 @@ class TestApiJeuDiffusionConfidentialite:
         assert etat["mon_tour"] is False
 
     def test_diffusion_route_les_deux_charges_vers_la_fenetre_jeu(self):
-        api, plateau, chevalet = _api_pose("CHATSER")
+        api, plateau = _api_pose("CHATSER")
         api._diffuser()
-        # Les deux charges partent à la fenêtre Jeu unique (issue #187) : la
-        # fenêtre chevalet séparée (désormais vide) n'en reçoit plus aucune.
-        assert len(chevalet.scripts) == 0
+        # Les deux charges partent à la fenêtre Jeu unique (issue #187).
         assert len(plateau.scripts) == 2
         script_public = next(
             s for s in plateau.scripts if "appliquerEtatPlateau" in s)
@@ -3197,33 +3038,24 @@ class TestApiJeuDiffusionConfidentialite:
         assert '"lettres"' in script_prive
 
     def test_fenetre_absente_ne_bloque_pas_la_diffusion(self):
-        api, _plateau, _chevalet = _api_pose()
-        api.set_windows(None, None)  # plus aucune fenêtre
+        api, _plateau = _api_pose()
+        api.set_window(None)  # plus aucune fenêtre
         # Ne doit pas lever, même sans fenêtre à qui pousser l'état.
         api._diffuser()
 
 
-class _FenetreChevaletFactice(_FenetreEspionne):
-    """Fenêtre espionne qui trace en plus ``show()`` (chevalet, issue #180)."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.montree = False
-
-    def show(self) -> None:
-        self.montree = True
-
-
 class TestFinaliserEntreeVueJeu:
-    """``_finaliser_entree_vue_jeu`` rejoue la finalisation à chaque entrée (#180)."""
+    """``_finaliser_entree_vue_jeu`` rejoue la finalisation à chaque entrée (#180).
+
+    Depuis la suppression de la fenêtre chevalet (issue #193), le corps ne fait
+    plus que maximiser le plateau puis amorcer l'état (``_diffuser``).
+    """
 
     def _api(self, monkeypatch, infos_tirage=None):
-        """API prête + fenêtres espionnes ; neutralise les fonctions plein écran."""
+        """API prête + fenêtre espionne unique ; neutralise le plein écran."""
         from scrabble.ui import jeu as mod
 
-        api, plateau, _chev = _api_pose("CHATSER")
-        chevalet = _FenetreChevaletFactice()
-        api.set_windows(plateau, chevalet)
+        api, plateau = _api_pose("CHATSER")
         if infos_tirage is not None:
             # Rejoue le contrat de charger_partie : tirage encore à mener.
             api._infos_tirage = infos_tirage
@@ -3232,43 +3064,36 @@ class TestFinaliserEntreeVueJeu:
         appels = []
         monkeypatch.setattr(mod, "_maximiser_plateau",
                             lambda w: appels.append("maximiser"))
-        monkeypatch.setattr(mod, "_repositionner_chevalet",
-                            lambda w: appels.append("repositionner"))
-        monkeypatch.setattr(mod, "_lier_chevalet_au_plateau",
-                            lambda p, c: appels.append("lier"))
-        return api, plateau, chevalet, appels
+        return api, plateau, appels
 
-    def test_reprise_revele_et_amorce_le_chevalet(self, monkeypatch):
-        """Sans tirage : plateau maximisé, chevalet montré/lié et amorcé (_diffuser)."""
-        api, plateau, chevalet, appels = self._api(monkeypatch)  # reprise
+    def test_reprise_maximise_et_amorce(self, monkeypatch):
+        """Sans tirage : plateau maximisé puis état amorcé (_diffuser)."""
+        api, plateau, appels = self._api(monkeypatch)  # reprise
 
         api._finaliser_entree_vue_jeu()
 
-        assert appels == ["maximiser", "repositionner", "lier"]
-        assert chevalet.montree is True
+        assert appels == ["maximiser"]
         # Le chevalet ayant migré dans jeu.html (issue #187), l'amorçage
-        # (appliquerEtatChevalet via _diffuser) part désormais vers la fenêtre
-        # plateau/Jeu, non plus vers la fenêtre chevalet séparée.
+        # (appliquerEtatChevalet via _diffuser) part vers la fenêtre plateau/Jeu.
         assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
-    def test_tirage_en_cours_laisse_le_chevalet_masque(self, monkeypatch):
-        """Avec tirage : plateau maximisé, mais chevalet ni montré ni lié."""
+    def test_diffuse_meme_pendant_le_tirage(self, monkeypatch):
+        """Avec tirage en cours : plateau maximisé et état tout de même amorcé."""
         infos = {"noms_creation": ["Alice", "Robot"], "graine": 1,
                  "noms_humains": ["Alice"]}
-        api, plateau, chevalet, appels = self._api(monkeypatch, infos_tirage=infos)
+        api, plateau, appels = self._api(monkeypatch, infos_tirage=infos)
 
         api._finaliser_entree_vue_jeu()
 
-        # Seule la maximisation du plateau est rejouée ; pas de show/reposition/lier.
+        # La maximisation du plateau est rejouée (plus aucune distinction tirage).
         assert appels == ["maximiser"]
-        assert chevalet.montree is False
-        # Le chevalet (zone C de jeu.html) est tout de même amorcé via la fenêtre
-        # plateau/Jeu, même tirage en cours, prêt pour terminer_tirage (issue #187).
+        # L'état (zone C de jeu.html) est amorcé via la fenêtre plateau/Jeu, même
+        # tirage en cours, prêt pour terminer_tirage (issue #187).
         assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
     def test_thread_lance_le_corps(self, monkeypatch):
         """``finaliser_entree_vue_jeu`` exécute bien le corps (via un fil)."""
-        api, _plateau, _chevalet, _appels = self._api(monkeypatch)
+        api, _plateau, _appels = self._api(monkeypatch)
         marqueur = []
         monkeypatch.setattr(api, "_finaliser_entree_vue_jeu",
                             lambda: marqueur.append("fait"))
@@ -3287,7 +3112,7 @@ class TestApiJeuPoseViaEtatInterne:
     """``poser_mot``/``verifier_coup`` lisent ``_en_attente`` (issue #90)."""
 
     def test_poser_mot_sans_argument_lit_l_etat_interne(self):
-        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api, _plateau = _api_pose("CHATSER")
         for i, (lig, col, let) in enumerate(
             [(7, 7, "C"), (7, 8, "H"), (7, 9, "A"), (7, 10, "T")]
         ):
@@ -3301,7 +3126,7 @@ class TestApiJeuPoseViaEtatInterne:
         assert api._selection is None
 
     def test_verifier_coup_sans_argument_lit_l_etat_interne(self):
-        api, _plateau, _chevalet = _api_pose("CHATSER")
+        api, _plateau = _api_pose("CHATSER")
         for i, (lig, col, _let) in enumerate(
             [(7, 7, "C"), (7, 8, "H"), (7, 9, "A"), (7, 10, "T")]
         ):
@@ -3314,7 +3139,7 @@ class TestApiJeuPoseViaEtatInterne:
         assert api._partie.plateau.case_vide(7, 7)
 
     def test_poser_mot_reussi_diffuse_le_nouvel_etat(self):
-        api, plateau, chevalet = _api_pose("CHATSER")
+        api, plateau = _api_pose("CHATSER")
         for i, (lig, col) in enumerate([(7, 7), (7, 8), (7, 9), (7, 10)]):
             api.selectionner_lettre(i)
             api.poser_lettre_en_attente(lig, col)  # « CHAT »
@@ -3327,16 +3152,8 @@ class TestApiJeuPoseViaEtatInterne:
         assert any("appliquerEtatChevalet" in s for s in plateau.scripts)
 
 
-class TestApiJeuRetourMenuDeuxFenetres:
-    """``retour_menu`` détruit les DEUX fenêtres (issue #90)."""
-
-    def test_detruit_plateau_et_chevalet(self):
-        api, plateau, chevalet = _api_pose()
-        res = api.retour_menu()
-        assert res["succes"] is True
-        assert plateau.detruite is True
-        assert chevalet.detruite is True
-        assert api._retour_menu is True
+class TestApiJeuRetourMenuFenetreUnique:
+    """``retour_menu`` détruit la fenêtre unique (issue #193)."""
 
     def test_retour_menu_avec_seule_fenetre_plateau(self):
         # Compat mono-fenêtre : set_window ne renseigne que le plateau.
@@ -3346,6 +3163,8 @@ class TestApiJeuRetourMenuDeuxFenetres:
         res = api.retour_menu()
         assert res["succes"] is True
         assert fake.detruite is True
+        # « Retour au menu » repositionne le drapeau qui rouvre l'accueil.
+        assert api._retour_menu is True
 
 
 # --------------------------------------------------------------------------- #
@@ -3600,335 +3419,6 @@ class TestPersistanceEchecResteVisible:
         assert isinstance(exc, RuntimeError)
 
 
-class _FenetreDeplacable:
-    """Fenêtre pywebview factice avec position (x, y) et ``move`` (issue #91).
-
-    Sert aux tests du déplacement applicatif de la fenêtre chevalet. ``move`` met à
-    jour la position lue par ``x``/``y``, comme le fait réellement pywebview.
-    """
-
-    def __init__(self, x: int = 0, y: int = 0) -> None:
-        self.x = x
-        self.y = y
-
-    def evaluate_js(self, script: str) -> None:  # pour _diffuser
-        pass
-
-    def move(self, x: int, y: int) -> None:
-        self.x = int(x)
-        self.y = int(y)
-
-
-class TestDeplacementChevalet:
-    """Déplacement applicatif de la fenêtre chevalet (issue #91 point 2)."""
-
-    def _api(self):
-        joueurs = [Joueur(nom="Alice", humain=True)]
-        partie = Partie(joueurs, _DicoFactice(), graine=1)
-        api = ApiJeu(partie, None)
-        fen = _FenetreDeplacable(x=200, y=500)
-        api.set_windows(_FenetreEspionne(), fen)
-        return api, fen
-
-    def test_debut_deplacement_renvoie_position_courante(self):
-        api, fen = self._api()
-        res = api.debut_deplacement_chevalet()
-        assert res == {"succes": True, "x": 200, "y": 500}
-
-    def test_debut_deplacement_sans_fenetre(self):
-        joueurs = [Joueur(nom="Alice", humain=True)]
-        api = ApiJeu(Partie(joueurs, _DicoFactice(), graine=1), None)
-        assert api.debut_deplacement_chevalet()["succes"] is False
-
-    def test_deplacer_deplace_la_fenetre_en_absolu(self):
-        api, fen = self._api()
-        res = api.deplacer_chevalet(340, 610)
-        assert res["succes"] is True
-        assert (fen.x, fen.y) == (340, 610)
-
-    def test_deplacer_borne_en_entiers(self):
-        api, fen = self._api()
-        api.deplacer_chevalet(12.9, 30.2)
-        assert (fen.x, fen.y) == (12, 30)
-
-    def test_deplacer_sans_fenetre_echoue_proprement(self):
-        joueurs = [Joueur(nom="Alice", humain=True)]
-        api = ApiJeu(Partie(joueurs, _DicoFactice(), graine=1), None)
-        assert api.deplacer_chevalet(1, 2)["succes"] is False
-
-
-class _NatifEspion:
-    """Faux ``Gtk.Window`` : espionne ``set_transient_for`` / ``set_type_hint``."""
-
-    def __init__(self) -> None:
-        self.transient_for = "NON-APPELE"
-        self.type_hints: list = []
-
-    def set_transient_for(self, parent) -> None:
-        self.transient_for = parent
-
-    def set_type_hint(self, hint) -> None:
-        self.type_hints.append(hint)
-
-
-class _FenetreNative:
-    """Fenêtre factice dotée (ou non) d'un faux attribut ``.native`` — issue #105."""
-
-    def __init__(self, native=None) -> None:
-        if native is not None:
-            self.native = native
-
-
-class TestLierChevaletAuPlateau:
-    """Liaison transiente chevalet↔plateau via ``set_transient_for`` (issue #105)."""
-
-    def test_appelle_set_transient_for_avec_le_plateau_natif(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        # Neutralise l'attente de ``shown`` (fenêtres factices sans events).
-        monkeypatch.setattr(mod, "_attendre_fenetre_affichee", lambda *a, **k: None)
-        natif_plateau = _NatifEspion()
-        natif_chevalet = _NatifEspion()
-        plateau = _FenetreNative(natif_plateau)
-        chevalet = _FenetreNative(natif_chevalet)
-
-        mod._lier_chevalet_au_plateau(plateau, chevalet)
-
-        # Le chevalet est déclaré transient de la fenêtre native du plateau.
-        assert natif_chevalet.transient_for is natif_plateau
-
-    def test_tolere_une_fenetre_sans_native(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        monkeypatch.setattr(mod, "_attendre_fenetre_affichee", lambda *a, **k: None)
-        plateau = _FenetreNative()  # aucune ``.native``
-        chevalet = _FenetreNative(_NatifEspion())
-
-        # Ne doit pas lever : la liaison est simplement ignorée.
-        mod._lier_chevalet_au_plateau(plateau, chevalet)
-
-    def test_dispatch_windows_utilise_le_backend_natif(self, monkeypatch):
-        """Sous Windows, on route vers le mécanisme owned, pas vers GTK (issue #165)."""
-        import sys
-
-        from scrabble.ui import jeu as mod
-
-        monkeypatch.setattr(mod, "_attendre_fenetre_affichee", lambda *a, **k: None)
-        monkeypatch.setattr(sys, "platform", "win32")
-        appels: list[str] = []
-        monkeypatch.setattr(
-            mod, "_lier_chevalet_windows", lambda p, c: appels.append("win")
-        )
-        monkeypatch.setattr(
-            mod, "_lier_chevalet_gtk", lambda p, c: appels.append("gtk")
-        )
-        plateau = _FenetreNative(object())
-        chevalet = _FenetreNative(object())
-
-        mod._lier_chevalet_au_plateau(plateau, chevalet)
-
-        assert appels == ["win"]
-
-    def test_dispatch_linux_utilise_le_backend_gtk(self, monkeypatch):
-        """Sous Linux, on conserve le mécanisme transiente GTK (issue #105)."""
-        import sys
-
-        from scrabble.ui import jeu as mod
-
-        monkeypatch.setattr(mod, "_attendre_fenetre_affichee", lambda *a, **k: None)
-        monkeypatch.setattr(sys, "platform", "linux")
-        appels: list[str] = []
-        monkeypatch.setattr(
-            mod, "_lier_chevalet_windows", lambda p, c: appels.append("win")
-        )
-        monkeypatch.setattr(
-            mod, "_lier_chevalet_gtk", lambda p, c: appels.append("gtk")
-        )
-        plateau = _FenetreNative(_NatifEspion())
-        chevalet = _FenetreNative(_NatifEspion())
-
-        mod._lier_chevalet_au_plateau(plateau, chevalet)
-
-        assert appels == ["gtk"]
-
-
-class TestHwndDepuisForm:
-    """Extraction du HWND d'une fenêtre WinForms pywebview (issue #165)."""
-
-    def test_privilegie_toint64(self):
-        from scrabble.ui import jeu as mod
-
-        class _IntPtr:
-            def ToInt64(self):
-                return 123456
-
-        class _Form:
-            Handle = _IntPtr()
-
-        assert mod._hwnd_depuis_form(_Form()) == 123456
-
-    def test_repli_sur_int_si_pas_de_toint64(self):
-        from scrabble.ui import jeu as mod
-
-        class _Form:
-            Handle = 789
-
-        assert mod._hwnd_depuis_form(_Form()) == 789
-
-
-class TestDimensionsChevalet:
-    """La fenêtre chevalet est assez large pour Brouillon + « À jouer » (point 4)."""
-
-    def test_position_centree_et_basse_sur_ecran_connu(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        class _Ecran:
-            width = 1920
-            height = 1080
-
-        monkeypatch.setattr(mod.webview, "screens", [_Ecran()])
-        x, y = mod._position_chevalet()
-        assert x == (1920 - CHEVALET_LARGEUR) // 2
-        assert y == 1080 - CHEVALET_HAUTEUR - mod.CHEVALET_MARGE_BAS
-
-    def test_repli_neutre_si_aucun_ecran(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        monkeypatch.setattr(mod.webview, "screens", [])
-        assert mod._position_chevalet() == (100, 100)
-
-    def test_largeur_suffisante_pour_le_contenu(self):
-        # Garde-fou largeur (issue #94, épuré #102, resserré #104, #106) : le contenu
-        # le plus large est le titre du panneau (~418 px, ~470 px paddings compris) ;
-        # la rangée FIXE de 9 cases réclame 460 px — PLANCHER dur (mesuré : à 460 px la
-        # rangée se comprime déjà, retombant à 406 px). #104 avait fixé 540 px, #106 a
-        # resserré à 480 px : au-dessus de 470 px le titre reste sur une ligne, et
-        # ~20 px de marge subsistent sur le plancher de 460 px. La borne basse (460 px)
-        # interdit de compromettre la rangée ; la borne haute empêche un retour à
-        # l'espace vide notable de #102/#104 (540-620 px) puis à la mise en page à deux
-        # blocs (~880 px).
-        assert 460 <= CHEVALET_LARGEUR <= 560
-
-    def test_hauteur_suffisante_pour_le_contenu(self):
-        # Garde-fou hauteur (issue #94, revu #100, épuré #102, resserré #104, #106) :
-        # la fenêtre ne contient que la barre de déplacement (~35 px) et le panneau de
-        # 9 cases (~98 px + padding) — le contenu descend à ~141 px sur une ligne de
-        # titre, ~166 px si le titre se replie sur 2 lignes. #106 recentre le cadre
-        # verticalement (``justify-content: center``) : avec les 16 px de padding
-        # vertical, contenir le cas replié sans défilement impose ~173 px (35 + 122 +
-        # 16). On garde 175 px (le recentrage rend le vert symétrique, il n'est plus
-        # utile de rogner la hauteur). La borne basse (172 px) garantit l'absence de
-        # coupe/défilement même titre replié ; la borne haute empêche un retour au vide
-        # antérieur (~190/300 px).
-        assert 172 <= CHEVALET_HAUTEUR <= 200
-
-
-class _FenetreShown:
-    """Fenêtre factice exposant ``events.shown.wait`` (comme pywebview) — issue #92."""
-
-    class _Events:
-        class _Shown:
-            def __init__(self) -> None:
-                self.attentes: list = []
-
-            def wait(self, timeout=None):
-                self.attentes.append(timeout)
-                return True
-
-        def __init__(self) -> None:
-            self.shown = _FenetreShown._Events._Shown()
-
-    def __init__(self, x: int = 0, y: int = 0) -> None:
-        self.x = x
-        self.y = y
-        self.events = _FenetreShown._Events()
-        self.moves: list = []
-
-    def move(self, x: int, y: int) -> None:
-        self.x, self.y = int(x), int(y)
-        self.moves.append((self.x, self.y))
-
-
-class TestRepositionnementChevalet:
-    """Callback de repositionnement différé + attente d'affichage (issue #92 point 1)."""
-
-    def _ecran(self, monkeypatch, larg=1920, haut=1080):
-        from scrabble.ui import jeu as mod
-
-        class _Ecran:
-            width = larg
-            height = haut
-
-        monkeypatch.setattr(mod.webview, "screens", [_Ecran()])
-
-    def _capturer_info(self, monkeypatch):
-        infos: list = []
-        monkeypatch.setattr(
-            "scrabble.ui.jeu.journal.info", lambda message: infos.append(message)
-        )
-        return infos
-
-    def test_callback_attendu_atteint_et_deplace(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        self._ecran(monkeypatch)
-        infos = self._capturer_info(monkeypatch)
-        fen = _FenetreShown(x=100, y=100)
-        mod._repositionner_chevalet(fen)
-        # La fenêtre a bien été déplacée vers la position bas-centre calculée.
-        x_attendu = (1920 - CHEVALET_LARGEUR) // 2
-        y_attendu = 1080 - CHEVALET_HAUTEUR - mod.CHEVALET_MARGE_BAS
-        assert fen.moves == [(x_attendu, y_attendu)]
-        # Traces explicites : callback atteint + position lue après move.
-        assert any("_repositionner_chevalet atteint" in m for m in infos)
-        assert any("position lue après move" in m for m in infos)
-
-    def test_attend_l_affichage_avant_de_deplacer(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        self._ecran(monkeypatch)
-        self._capturer_info(monkeypatch)
-        fen = _FenetreShown()
-        mod._repositionner_chevalet(fen)
-        # On a bien attendu l'événement ``shown`` (au moins un appel à wait).
-        assert fen.events.shown.attentes  # non vide
-
-    def test_attente_toleree_sans_events(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        self._ecran(monkeypatch)
-        infos = self._capturer_info(monkeypatch)
-        # _FenetreDeplacable n'a pas d'attribut ``events`` : pas d'attente, pas de plantage.
-        fen = _FenetreDeplacable(x=100, y=100)
-        mod._repositionner_chevalet(fen)
-        assert any("'shown' indisponible" in m for m in infos)
-        assert (fen.x, fen.y) != (100, 100)  # déplacée malgré tout
-
-
-class TestTracesDeplacementChevalet:
-    """Traces du glisser-déposer applicatif (issue #92 point 2)."""
-
-    def _api(self):
-        joueurs = [Joueur(nom="Alice", humain=True)]
-        api = ApiJeu(Partie(joueurs, _DicoFactice(), graine=1), None)
-        api.set_windows(_FenetreEspionne(), _FenetreDeplacable(x=200, y=500))
-        return api
-
-    def test_debut_journalise_et_premier_deplacement_seulement(self, monkeypatch):
-        infos: list = []
-        monkeypatch.setattr(
-            "scrabble.ui.jeu.journal.info", lambda message: infos.append(message)
-        )
-        api = self._api()
-        api.debut_deplacement_chevalet()
-        api.deplacer_chevalet(210, 505)
-        api.deplacer_chevalet(220, 510)
-        api.deplacer_chevalet(230, 515)
-        assert any("début de déplacement" in m for m in infos)
-        # Une seule trace de déplacement (le premier), pas une par frame.
-        assert sum("premier déplacement" in m for m in infos) == 1
-
-
 class _FenetrePlateauFactice:
     """Fenêtre plateau factice : enregistre maximize/restore/resize/move (issue #95).
 
@@ -4010,29 +3500,17 @@ class TestMaximiserPlateau:
 
 
 class TestFinaliserFenetres:
-    """Enchaînement maximisation plateau + repositionnement chevalet (issue #95)."""
+    """Maximisation du plateau à la finalisation (issue #95 / #193)."""
 
-    def test_finalise_les_deux_fenetres(self, monkeypatch):
+    def test_finalise_maximise_le_plateau(self, monkeypatch):
         from scrabble.ui import jeu as mod
 
         appels: list = []
         monkeypatch.setattr(
             mod, "_maximiser_plateau", lambda w: appels.append(("plateau", w))
         )
-        monkeypatch.setattr(
-            mod, "_repositionner_chevalet", lambda w: appels.append(("chevalet", w))
-        )
-        monkeypatch.setattr(
-            mod,
-            "_lier_chevalet_au_plateau",
-            lambda p, c: appels.append(("liaison", p, c)),
-        )
-        mod._finaliser_fenetres("PLAT", "CHEV")
-        assert appels == [
-            ("plateau", "PLAT"),
-            ("chevalet", "CHEV"),
-            ("liaison", "PLAT", "CHEV"),
-        ]
+        mod._finaliser_fenetres("PLAT")
+        assert appels == [("plateau", "PLAT")]
 
 
 class TestZoneTravailEcran:
@@ -4077,164 +3555,6 @@ class TestZoneTravailEcran:
         monkeypatch.setattr(builtins, "__import__", _refuse_gi)
         monkeypatch.setattr(mod.webview, "screens", [])
         assert mod._zone_travail_ecran() is None
-
-
-class TestMemoriserPositionChevalet:
-    """Mémorisation/restauration de la position de la fenêtre chevalet (issue #135)."""
-
-    def _api(self, x=200, y=500):
-        joueurs = [Joueur(nom="Alice", humain=True)]
-        api = ApiJeu(Partie(joueurs, _DicoFactice(), graine=1), None)
-        fen = _FenetreDeplacable(x=x, y=y)
-        api.set_windows(_FenetreEspionne(), fen)
-        return api, fen
-
-    def _ecran(self, monkeypatch, larg=1920, haut=1080):
-        from scrabble.ui import jeu as mod
-
-        class _Ecran:
-            width = larg
-            height = haut
-
-        monkeypatch.setattr(mod.webview, "screens", [_Ecran()])
-
-    # --- Persistance à la fin d'un déplacement -----------------------------
-
-    def test_fin_deplacement_persiste_la_position(self, tmp_path, monkeypatch):
-        """À la fin d'un drag, la position est écrite via le mécanisme de réglages."""
-        from scrabble.ui import jeu as mod
-        from scrabble.reglages import lire_reglage
-        from scrabble.reglages import modifier_reglage as vrai_modifier
-
-        chemin = tmp_path / "config.json"
-        # Redirige l'écriture du réglage vers un fichier de test (round-trip réel
-        # sur disque via scrabble.reglages/config, auto-réparation + écriture atomique).
-        monkeypatch.setattr(
-            mod,
-            "modifier_reglage",
-            lambda cle, valeur: vrai_modifier(cle, valeur, chemin),
-        )
-        api, _ = self._api(x=340, y=610)
-
-        res = api.fin_deplacement_chevalet()
-
-        assert res == {"succes": True, "x": 340, "y": 610}
-        assert lire_reglage("position_chevalet", chemin) == {"x": 340, "y": 610}
-
-    def test_fin_deplacement_journalise(self, tmp_path, monkeypatch):
-        from scrabble.ui import jeu as mod
-        from scrabble.reglages import modifier_reglage as vrai_modifier
-
-        chemin = tmp_path / "config.json"
-        monkeypatch.setattr(
-            mod,
-            "modifier_reglage",
-            lambda cle, valeur: vrai_modifier(cle, valeur, chemin),
-        )
-        infos: list = []
-        monkeypatch.setattr(
-            "scrabble.ui.jeu.journal.info", lambda message: infos.append(message)
-        )
-        api, _ = self._api(x=12, y=34)
-
-        api.fin_deplacement_chevalet()
-
-        assert any("position du chevalet mémorisée" in m for m in infos)
-
-    def test_fin_deplacement_sans_fenetre_echoue_proprement(self):
-        joueurs = [Joueur(nom="Alice", humain=True)]
-        api = ApiJeu(Partie(joueurs, _DicoFactice(), graine=1), None)
-        assert api.fin_deplacement_chevalet()["succes"] is False
-
-    def test_fin_deplacement_erreur_reglage_non_bloquante(self, monkeypatch):
-        """Un échec d'écriture du réglage est remonté sans planter le jeu."""
-        from scrabble.ui import jeu as mod
-
-        def _explose(cle, valeur):
-            raise RuntimeError("disque plein (test)")
-
-        monkeypatch.setattr(mod, "modifier_reglage", _explose)
-        monkeypatch.setattr("scrabble.ui.jeu.journal.erreur", lambda *a, **k: None)
-        api, _ = self._api()
-
-        res = api.fin_deplacement_chevalet()
-
-        assert res["succes"] is False
-
-    # --- Lecture de la position mémorisée au lancement ---------------------
-
-    def test_memorisee_valide_utilisee(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        self._ecran(monkeypatch)  # 1920×1080
-        monkeypatch.setattr(mod, "lire_reglage", lambda cle: {"x": 500, "y": 700})
-        assert mod._position_chevalet_memorisee() == (500, 700)
-
-    def test_memorisee_absente_repli_none(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        self._ecran(monkeypatch)
-        monkeypatch.setattr(mod, "lire_reglage", lambda cle: None)
-        assert mod._position_chevalet_memorisee() is None
-
-    def test_memorisee_ecran_non_mesurable_repli_none(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        # Aucun écran interrogeable (avant démarrage de la boucle GUI) : on ne
-        # peut pas vérifier les limites, on retombe sur le calcul par défaut.
-        monkeypatch.setattr(mod.webview, "screens", [])
-        reinit: list = []
-        monkeypatch.setattr(mod, "lire_reglage", lambda cle: {"x": 500, "y": 700})
-        monkeypatch.setattr(
-            mod, "modifier_reglage", lambda cle, valeur: reinit.append((cle, valeur))
-        )
-        assert mod._position_chevalet_memorisee() is None
-        # Écran non mesurable : on ne réinitialise PAS (position peut-être bonne).
-        assert reinit == []
-
-    def test_memorisee_hors_ecran_repli_et_reinitialisee(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        self._ecran(monkeypatch, larg=1280, haut=720)
-        reinit: list = []
-        monkeypatch.setattr(mod, "lire_reglage", lambda cle: {"x": 5000, "y": 5000})
-        monkeypatch.setattr(
-            mod, "modifier_reglage", lambda cle, valeur: reinit.append((cle, valeur))
-        )
-        assert mod._position_chevalet_memorisee() is None
-        # Le réglage périmé (hors écran actuel) est réinitialisé à None.
-        assert reinit == [("position_chevalet", None)]
-
-    # --- Intégration via _repositionner_chevalet ---------------------------
-
-    def test_repositionner_utilise_position_memorisee(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        self._ecran(monkeypatch)  # 1920×1080
-        monkeypatch.setattr("scrabble.ui.jeu.journal.info", lambda m: None)
-        monkeypatch.setattr(mod, "lire_reglage", lambda cle: {"x": 500, "y": 700})
-        fen = _FenetreShown(x=100, y=100)
-
-        mod._repositionner_chevalet(fen)
-
-        # La position mémorisée valide prime sur le calcul bas-centre.
-        assert fen.moves == [(500, 700)]
-
-    def test_repositionner_hors_ecran_retombe_sur_defaut(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
-        self._ecran(monkeypatch)  # 1920×1080
-        monkeypatch.setattr("scrabble.ui.jeu.journal.info", lambda m: None)
-        monkeypatch.setattr(mod, "lire_reglage", lambda cle: {"x": 9000, "y": 9000})
-        monkeypatch.setattr(mod, "modifier_reglage", lambda cle, valeur: None)
-        fen = _FenetreShown(x=100, y=100)
-
-        mod._repositionner_chevalet(fen)
-
-        # Position hors écran → repli sur le calcul bas-centre par défaut.
-        x_attendu = (1920 - CHEVALET_LARGEUR) // 2
-        y_attendu = 1080 - CHEVALET_HAUTEUR - mod.CHEVALET_MARGE_BAS
-        assert fen.moves == [(x_attendu, y_attendu)]
 
 
 class TestClasserScoreTotal:
