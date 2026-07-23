@@ -616,9 +616,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /** Message de retour des actions de tour (issue #101), sous les boutons. */
-    function afficherMessageCoup(texte, type) {
+    let messageCoupTimer = null;
+    function afficherMessageCoup(texte, type, dureeMs) {
+        if (messageCoupTimer) {
+            clearTimeout(messageCoupTimer);
+            messageCoupTimer = null;
+        }
         messageCoup.textContent = texte || '';
         messageCoup.className = 'message-coup' + (texte ? ' ' + (type || 'info') : '');
+        // Auto-effacement optionnel (issue #226) : le message « Coup joué » est posé
+        // APRÈS le rendu déclenché par le push d'état (qui, passé au tour de
+        // l'ordinateur, a déjà vidé la zone via majActionsTour). Plus aucun rendu ne
+        // survient ensuite tant qu'aucun bouton n'est cliqué, si bien que le message
+        // resterait affiché indéfiniment. On le fait disparaître de lui-même, comme
+        // le toast « +N points » du joueur humain (3 s, cf. afficherToastPoints).
+        if (texte && dureeMs) {
+            messageCoupTimer = setTimeout(() => {
+                messageCoup.textContent = '';
+                messageCoup.className = 'message-coup';
+                messageCoupTimer = null;
+            }, dureeMs);
+        }
     }
 
     /** Message éphémère de pose (issue #90), affiché en surimpression. */
@@ -1407,7 +1425,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (res && res.succes) {
             const points = res.points != null ? res.points : 0;
-            afficherMessageCoup(`Coup joué (+${points} point${points > 1 ? 's' : ''}).`, 'succes');
+            afficherMessageCoup(`Coup joué (+${points} point${points > 1 ? 's' : ''}).`, 'succes', 3000);
             // Python rediffuse l'état (nouveau tour) : le rendu suit via le push.
         } else {
             afficherMessageCoup((res && res.erreur) ? res.erreur : 'Coup refusé.', 'erreur');
