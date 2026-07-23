@@ -354,6 +354,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             modaleFin.hidden = false;
             // Le focus part sur « Rester » : l'action neutre par défaut.
             btnFinRester.focus();
+
+            // Célébration (issue #227) : feu d'artifice de victoire UNIQUEMENT si
+            // le joueur humain de référence figure parmi les gagnants (victoire ou
+            // ex æquo). On ne fête pas une partie perdue par l'humain. Déclenché
+            // ici, dans l'ouverture unique, pour ne jouer qu'une seule fois.
+            const humainGagne = Array.isArray(gagnants) && gagnants.length
+                && (joueurs || []).some((j) => j.humain && gagnants.includes(j.nom));
+            if (humainGagne) {
+                celebrerVictoire();
+            }
         }
     }
 
@@ -1825,6 +1835,109 @@ document.addEventListener('DOMContentLoaded', async () => {
             calque.appendChild(p);
         }
         setTimeout(() => { calque.innerHTML = ''; }, 2600);
+    }
+
+    /**
+     * Célébration de FIN DE PARTIE gagnée par le joueur humain (issue #227) :
+     * un feu d'artifice volontairement plus long et plus fourni que celui d'un
+     * Scrabble (``celebrerScrabble``). Là où le Scrabble tire ~32 particules en
+     * une seule salve centrale de ~1,6 s, la victoire enchaîne plusieurs SALVES
+     * (``NB_SALVES``) réparties sur ~5 s, chacune jaillissant d'un point différent
+     * de l'écran avec son propre éclair (flash) et une pluie de particules aux
+     * formes (carrés/ronds) et couleurs variées, avec retombée gravitaire.
+     *
+     * Le calque ``#victoire-fete`` est plein écran, AU-DESSUS de la modale de fin,
+     * mais toujours ``pointer-events: none`` : les particules décorent l'écran
+     * sans jamais masquer durablement ni bloquer le score final et les boutons.
+     * En mouvement réduit, seul le toast statique « 🏆 Victoire ! » est affiché.
+     */
+    function celebrerVictoire() {
+        const calque = document.getElementById('victoire-fete');
+        if (!calque) {
+            return;
+        }
+        calque.innerHTML = '';
+        const reduit = window.matchMedia
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        const toast = document.createElement('div');
+        toast.className = 'victoire-toast';
+        toast.textContent = '🏆 Victoire ! Bravo 🎉';
+        calque.appendChild(toast);
+
+        if (reduit) {
+            setTimeout(() => { calque.innerHTML = ''; }, 4000);
+            return;
+        }
+
+        // Palette plus riche que celle du Scrabble (6 teintes) : on ajoute or,
+        // orange, rose, cyan, magenta, lime et blanc pour un rendu festif varié.
+        const couleurs = [
+            '#2e7d32', '#1565c0', '#6a1b9a', '#ffd54f', '#ef6d86', '#d21f24',
+            '#ff8f00', '#00bcd4', '#e91e63', '#8bc34a', '#ffffff', '#ffca28',
+        ];
+        const NB_SALVES = 9;         // nombre de salves successives
+        const INTERVALLE = 550;      // ms entre deux salves
+        const DUREE_PARTICULE = 1800; // durée d'animation d'une particule (ms)
+
+        // Lance une salve : un éclair central + une gerbe de particules radiales,
+        // à une position (ox, oy) exprimée en pourcentage du viewport. On évite les
+        // bords extrêmes et on privilégie la moitié haute pour un effet « ciel ».
+        function lancerSalve() {
+            if (!document.body.contains(calque)) {
+                return;
+            }
+            const ox = 12 + Math.random() * 76;   // 12 %..88 % en largeur
+            const oy = 14 + Math.random() * 46;   // 14 %..60 % en hauteur
+            const base = couleurs[Math.floor(Math.random() * couleurs.length)];
+
+            const flash = document.createElement('div');
+            flash.className = 'eclat-flash';
+            flash.style.left = `${ox}%`;
+            flash.style.top = `${oy}%`;
+            flash.style.setProperty('--col', base);
+            calque.appendChild(flash);
+            setTimeout(() => flash.remove(), 700);
+
+            const nb = 26 + Math.floor(Math.random() * 12); // 26..37 particules
+            for (let i = 0; i < nb; i += 1) {
+                const p = document.createElement('div');
+                p.className = 'particule-victoire';
+                if (Math.random() < 0.45) {
+                    p.classList.add('etincelle-ronde');
+                }
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 90 + Math.random() * 160;
+                const dx = Math.cos(angle) * distance;
+                const dy = Math.sin(angle) * distance;
+                p.style.left = `${ox}%`;
+                p.style.top = `${oy}%`;
+                p.style.setProperty('--dx', `${Math.round(dx)}px`);
+                p.style.setProperty('--dy', `${Math.round(dy)}px`);
+                // Retombée gravitaire (chute verticale supplémentaire).
+                p.style.setProperty('--chute', `${60 + Math.round(Math.random() * 100)}px`);
+                p.style.setProperty('--rot', `${Math.round((Math.random() - 0.5) * 720)}deg`);
+                p.style.setProperty('--col', couleurs[Math.floor(Math.random() * couleurs.length)]);
+                calque.appendChild(p);
+                // Retrait individuel après l'animation pour éviter l'accumulation
+                // de nœuds pendant les ~5 s de célébration.
+                setTimeout(() => p.remove(), DUREE_PARTICULE + 200);
+            }
+        }
+
+        lancerSalve();
+        let salves = 1;
+        const minuteur = setInterval(() => {
+            lancerSalve();
+            salves += 1;
+            if (salves >= NB_SALVES) {
+                clearInterval(minuteur);
+            }
+        }, INTERVALLE);
+
+        // Nettoyage final : après la dernière salve et le temps qu'elle s'éteigne.
+        const dureeTotale = NB_SALVES * INTERVALLE + DUREE_PARTICULE + 400;
+        setTimeout(() => { calque.innerHTML = ''; }, dureeTotale);
     }
 
     /**

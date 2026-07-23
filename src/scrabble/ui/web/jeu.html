@@ -452,6 +452,16 @@
          est lui aussi plein écran et transparent aux clics. -->
     <div id="points-toasts" class="points-toasts" aria-hidden="true"></div>
 
+    <!-- Calque de célébration de fin de partie GAGNÉE par le joueur humain
+         (issue #227). Feu d'artifice plus long et plus fourni que celui d'un
+         Scrabble : plusieurs salves colorées étalées dans le temps. Superposé
+         plein écran AU-DESSUS de la modale de fin (z-index > .modale) mais
+         totalement transparent aux clics (pointer-events: none via
+         .victoire-fete) : les particules décorent l'écran sans jamais bloquer
+         l'accès au score final ni aux boutons de la modale. En mouvement réduit,
+         seul un message sobre « 🏆 Victoire ! » est affiché. -->
+    <div id="victoire-fete" class="victoire-fete" aria-hidden="true"></div>
+
     <script src="commun.js"></script>
     <script src="jeu.js"></script>
 </body>

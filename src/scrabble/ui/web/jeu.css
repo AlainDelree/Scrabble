@@ -1424,6 +1424,125 @@ body {
 }
 
 /* --------------------------------------------------------------------------- */
+/* Célébration de fin de partie GAGNÉE : feu d'artifice enrichi (issue #227)    */
+/* --------------------------------------------------------------------------- */
+/* Calque plein écran, TOUJOURS transparent aux clics (pointer-events: none). À
+   la différence du Scrabble (#scrabble-fete, z-index 50, SOUS les modales), ce
+   calque est placé AU-DESSUS de la modale de fin (z-index 100) pour que le feu
+   d'artifice reste pleinement visible par-dessus le fond assombri de la modale,
+   sans jamais bloquer l'accès au score final ni aux boutons (les particules sont
+   éparses, brèves et non interactives). Le JS (celebrerVictoire) y injecte
+   plusieurs salves étalées sur ~5 s, puis vide le calque. */
+.victoire-fete {
+    position: fixed;
+    inset: 0;
+    z-index: 110;            /* au-dessus de .modale (100) — décor non bloquant */
+    pointer-events: none;    /* n'intercepte jamais un clic */
+    overflow: hidden;
+}
+
+/* Éclair d'ouverture d'une salve : petit halo radial qui gonfle et s'efface,
+   marquant le point d'explosion. left/top (position de la salve) sont fixés par
+   le JS en pourcentage du viewport. */
+.victoire-fete .eclat-flash {
+    position: absolute;
+    width: 26px;
+    height: 26px;
+    margin: -13px 0 0 -13px;   /* centre le halo sur le point (left, top) */
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--col, #fff) 0%, transparent 70%);
+    opacity: 0;
+    will-change: transform, opacity;
+    animation: victoire-flash 0.6s ease-out both;
+}
+
+@keyframes victoire-flash {
+    0%   { transform: scale(0.2); opacity: 0.9; }
+    100% { transform: scale(3.6); opacity: 0; }
+}
+
+/* Une particule de la gerbe. Carré par défaut, ronde avec .etincelle-ronde, pour
+   varier les formes. Sa position d'explosion (left/top), sa trajectoire radiale
+   (--dx, --dy), sa retombée gravitaire (--chute), sa rotation (--rot) et sa
+   couleur (--col) sont fixées par le JS. */
+.victoire-fete .particule-victoire {
+    position: absolute;
+    width: 11px;
+    height: 11px;
+    margin: -5px 0 0 -5px;     /* centre la particule sur le point d'explosion */
+    background: var(--col, var(--couleur-primaire));
+    border-radius: 2px;
+    opacity: 0;
+    will-change: transform, opacity;
+    animation: victoire-eclat 1.8s ease-out both;
+}
+
+.victoire-fete .particule-victoire.etincelle-ronde {
+    border-radius: 50%;
+}
+
+@keyframes victoire-eclat {
+    0% {
+        transform: translate(0, 0) scale(0.3) rotate(0deg);
+        opacity: 1;
+    }
+    12% {
+        opacity: 1;
+    }
+    100% {
+        /* jaillissement radial (--dx, --dy) + retombée gravitaire (--chute) */
+        transform:
+            translate(var(--dx, 0px), calc(var(--dy, 0px) + var(--chute, 80px)))
+            scale(1) rotate(var(--rot, 180deg));
+        opacity: 0;
+    }
+}
+
+/* Bandeau festif « 🏆 Victoire ! », en complément du feu d'artifice et de la
+   modale de fin. Centré en haut, purement décoratif (calque en pointer-events:
+   none). Reste visible ~5 s le temps de la célébration. */
+.victoire-fete .victoire-toast {
+    position: absolute;
+    top: 8%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.7rem 1.7rem;
+    background: var(--couleur-primaire);
+    color: #fff;
+    font-size: clamp(1.3rem, 5vw, 2.2rem);
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    border-radius: var(--rayon-bordure);
+    box-shadow: var(--ombre);
+    white-space: nowrap;
+    animation: victoire-toast-apparition 5s ease-out both;
+}
+
+@keyframes victoire-toast-apparition {
+    0%   { opacity: 0; transform: translateX(-50%) translateY(-14px) scale(0.9); }
+    5%   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+    90%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.98); }
+}
+
+/* Accessibilité : en mouvement réduit, le JS n'injecte ni salves ni particules
+   (seul le toast est affiché). On neutralise par sécurité toute animation
+   résiduelle et on fige le toast statiquement le temps du nettoyage. */
+@media (prefers-reduced-motion: reduce) {
+    .victoire-fete .particule-victoire,
+    .victoire-fete .eclat-flash {
+        animation: none;
+        opacity: 0;
+    }
+
+    .victoire-fete .victoire-toast {
+        animation: none;
+        opacity: 1;
+        transform: translateX(-50%);
+    }
+}
+
+/* --------------------------------------------------------------------------- */
 /* Toast « +X points » près du panneau du joueur (issue #136)                  */
 /* --------------------------------------------------------------------------- */
 /* Calque dédié, plein écran et transparent aux clics, distinct de #scrabble-fete
