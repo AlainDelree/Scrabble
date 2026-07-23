@@ -139,6 +139,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             retirerSurbrillanceCoupConsulte();
             if (btnScoreJouer) btnScoreJouer.hidden = true;
         },
+        // Clic « dehors » sur le calque de la modale (issue #228, suite de #225).
+        // Ce calque plein écran (z-index 100) recouvre le bandeau d'actions : un
+        // clic sur le bouton « Jouer » principal (#btn-valider) est alors capté
+        // ici comme un clic dehors et ne faisait que fermer la modale, imposant
+        // un second clic pour poser réellement le coup. Si le clic tombe sur le
+        // rectangle de #btn-valider et qu'un coup est en attente (bouton actif),
+        // on pose le coup en un seul clic ; jouerCoup() referme lui-même la
+        // modale. Sinon on renvoie false : fermeture simple habituelle.
+        surClicDehors: (evt) => {
+            if (btnValider.disabled) return false;
+            const r = btnValider.getBoundingClientRect();
+            const surBouton = evt.clientX >= r.left && evt.clientX <= r.right
+                && evt.clientY >= r.top && evt.clientY <= r.bottom;
+            if (!surBouton) return false;
+            jouerCoup();
+            return true;
+        },
     });
 
     // Thèmes reconnus (alignés avec scrabble.config.THEMES_PLATEAU et le CSS).

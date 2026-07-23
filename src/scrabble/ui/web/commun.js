@@ -305,7 +305,11 @@
      * ``auFermer`` (facultatif, issue #128) est appelé à chaque fermeture, quelle
      * qu'en soit l'origine (bouton, clic sur le fond) : l'écran de jeu s'en sert
      * pour retirer la surbrillance du coup consulté et rendre la main au dernier
-     * coup réel. Renvoie un objet {afficher, afficherSansDetail, fermer}.
+     * coup réel. ``surClicDehors(evt)`` (facultatif, issue #228) intercepte le
+     * clic sur le calque de fond avant la fermeture : s'il renvoie ``true``, il a
+     * traité le clic lui-même (p. ex. poser le coup quand le clic vise le
+     * « Jouer » principal masqué) et la fermeture par défaut est annulée.
+     * Renvoie un objet {afficher, afficherSansDetail, fermer}.
      */
     function creerModaleScore(refs) {
         function fermer() {
@@ -368,6 +372,17 @@
         }
         refs.modale.addEventListener('click', (evt) => {
             if (evt.target === refs.modale) {
+                // Clic sur le calque de fond : par défaut on ferme simplement.
+                // Mais le consommateur peut fournir ``surClicDehors`` (issue #228)
+                // pour intercepter d'abord ce clic : le calque plein écran masque
+                // les boutons du bandeau, et un clic « dehors » peut en réalité
+                // viser le « Jouer » principal. Si le hook renvoie ``true``, il a
+                // pris le clic en charge (et refermé la modale lui-même) ; sinon
+                // on conserve la fermeture simple habituelle.
+                if (typeof refs.surClicDehors === 'function'
+                    && refs.surClicDehors(evt)) {
+                    return;
+                }
                 fermer();
             }
         });
