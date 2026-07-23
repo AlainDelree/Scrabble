@@ -332,7 +332,16 @@
             <h3 id="score-titre">Détail du score</h3>
             <div id="score-detail" class="score-detail"></div>
             <div id="score-total" class="score-total"></div>
-            <button id="score-fermer" class="btn btn-primaire">Fermer</button>
+            <!-- Deux actions (issue #225) : « Fermer » (consultation) et, quand la
+                 modale montre un COUP EN ATTENTE ouvert via « Vérifier et calculer »,
+                 un « Jouer » qui ferme la modale ET pose le coup en un seul clic —
+                 supprime le double clic (fermer la modale puis cliquer Jouer). Le
+                 bouton reste masqué en consultation d'historique (aucun coup à poser),
+                 dévoilé par jeu.js. -->
+            <div class="modale-actions modale-score-actions">
+                <button id="score-fermer" class="btn btn-secondaire">Fermer</button>
+                <button id="score-jouer" class="btn btn-primaire" hidden>✓ Jouer</button>
+            </div>
         </div>
     </div>
 

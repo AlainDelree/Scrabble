@@ -99,6 +99,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const zoneActionsDroite = document.getElementById('zone-actions-droite');
     const btnValider = document.getElementById('btn-valider');
     const btnVerifierCoup = document.getElementById('btn-verifier-coup');
+    // Bouton « Jouer » embarqué dans la modale « Vérifier et calculer » (issue
+    // #225) : ferme la modale et pose le coup en un seul clic.
+    const btnScoreJouer = document.getElementById('score-jouer');
     const btnAnnuler = document.getElementById('btn-annuler');
     const btnPasser = document.getElementById('btn-passer');
     const btnEchangerTout = document.getElementById('btn-echanger-tout');
@@ -128,8 +131,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         fermer: document.getElementById('score-fermer'),
         // À la fermeture (bouton ou clic dehors), on retire la surbrillance du
         // coup consulté : le plateau revient alors au dernier coup réel (dont la
-        // surbrillance .derniere-pose n'a jamais été touchée), issue #128.
-        auFermer: () => retirerSurbrillanceCoupConsulte(),
+        // surbrillance .derniere-pose n'a jamais été touchée), issue #128. On
+        // remasque aussi le « Jouer » embarqué (issue #225) : il n'a de sens que
+        // pour un coup en attente et ne doit pas réapparaître en consultation
+        // d'historique.
+        auFermer: () => {
+            retirerSurbrillanceCoupConsulte();
+            if (btnScoreJouer) btnScoreJouer.hidden = true;
+        },
     });
 
     // Thèmes reconnus (alignés avec scrabble.config.THEMES_PLATEAU et le CSS).
@@ -1368,6 +1377,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 + `Cliquez « Jouer » pour le poser.`, 'succes');
             if (res.detail) {
                 modaleScore.afficher(res.detail, `Coup en attente${mot ? ' — « ' + mot + ' »' : ''}`);
+                // Coup validé et en attente : on propose de le poser directement
+                // depuis la modale (issue #225), sans repasser par le bouton
+                // « Jouer » principal masqué derrière le calque de la modale.
+                if (btnScoreJouer) btnScoreJouer.hidden = false;
             }
         } else {
             afficherMessageCoup((res && res.erreur) ? res.erreur : 'Coup invalide.', 'erreur');
@@ -1376,7 +1389,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Jouer : pose le mot formé par les lettres en attente (lues côté Python).
-    btnValider.addEventListener('click', async () => {
+    // Factorisé (issue #225) car deux boutons y mènent désormais : le « Jouer »
+    // principal (#btn-valider) et le « Jouer » de la modale « Vérifier et calculer »
+    // (#score-jouer). On ferme d'abord la modale de score si elle est encore
+    // ouverte : un seul clic suffit alors à poser le coup, sans le double clic
+    // (fermer la modale, puis cliquer Jouer) qui déroutait les joueuses.
+    async function jouerCoup() {
+        modaleScore.fermer();
         btnValider.disabled = true;
         let res;
         try {
@@ -1394,7 +1413,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             afficherMessageCoup((res && res.erreur) ? res.erreur : 'Coup refusé.', 'erreur');
             majActionsTour();
         }
-    });
+    }
+    btnValider.addEventListener('click', jouerCoup);
+    if (btnScoreJouer) {
+        btnScoreJouer.addEventListener('click', jouerCoup);
+    }
 
     // Passer son tour sans poser ni échanger de lettres (issue #132). Droit
     // normal du jeu, utilisable à tout moment du tour — et seul recours d'un

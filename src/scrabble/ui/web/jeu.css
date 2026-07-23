@@ -1794,6 +1794,12 @@ body {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
+/* Rangée d'actions de la modale de score (issue #225) : « Fermer » et, pour un
+   coup en attente, « Jouer ». Détachée du total par une marge haute. */
+.modale-score-actions {
+    margin-top: 14px;
+}
+
 /* Avertissement avant un « Retour au menu » avec un coup en attente (issue #74).
    Réutilise .modale / .modale-contenu ; message explicatif + deux actions en
    ligne (rester / confirmer). */
