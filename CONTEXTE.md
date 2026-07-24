@@ -31,9 +31,11 @@ table, réglages) puis enchaîne vers l'écran de jeu.
 - **`config.py`** (config auto-réparante `config.json`), `reglages.py`,
   `journal.py` (logs dans `logs/`).
 
-Hérité/non utilisé (ne pas s'y fier) : `src/scrabble/interface/` (stub « non
-implémenté »), `src/scrabble/ia/`, `src/scrabble/generateur/` et le dossier
-racine **`web/`** — vestiges d'une ancienne interface web abandonnée.
+Note : les anciens sous-paquets reliquats `src/scrabble/interface/`,
+`src/scrabble/ia/`, `src/scrabble/generateur/` et le dossier racine `web/`
+(vestiges d'une interface web abandonnée) ont été supprimés (issue #229). Le
+vrai code vit désormais dans `scrabble.moteur.generateur`, `scrabble.moteur.ia`,
+`scrabble.ui.application` et `src/scrabble/ui/web/` respectivement.
 
 `scripts/` = outils hors-jeu (génération d'avatars/icônes, construction du
 dictionnaire de définitions, filtres Wiktionnaire) et `_harness_jeu/`
