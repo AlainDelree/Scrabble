@@ -1139,7 +1139,14 @@ class TestCalculerAvatars:
         # Les avatars distincts saturent la bibliothèque avant les doublons.
         assert len(set(avatars)) == len(AVATARS)
 
-    def test_avatar_expose_dans_etat_public(self):
+    def test_avatar_expose_dans_etat_public(self, monkeypatch):
+        # On isole le test du config.json réel de la machine : etat_public lit
+        # avatar_principal de la config (issue #143) et un poste de dév peut y
+        # avoir un avatar choisi, ce qui ferait diverger l'attribution du calcul
+        # direct par défaut ci-dessous (avatar_principal absent = "").
+        import scrabble.ui.jeu as jeu
+
+        monkeypatch.setattr(jeu, "charger_config", lambda: {})
         joueurs = [
             Joueur(nom="Alice", humain=True),
             Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
