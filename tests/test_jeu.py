@@ -305,7 +305,7 @@ class TestThemePlateau:
     def test_theme_valide_transmis(self, monkeypatch):
         """Un thème reconnu dans la config est renvoyé tel quel."""
         monkeypatch.setattr(
-            "scrabble.ui.jeu.charger_config", lambda: {"theme_plateau": "vert"}
+            "scrabble.ui.api_tirage_ordre.charger_config", lambda: {"theme_plateau": "vert"}
         )
         api = ApiJeu(_partie_simple(), id_partie=1)
         assert api.obtenir_theme_plateau() == "vert"
@@ -313,14 +313,14 @@ class TestThemePlateau:
     def test_theme_inconnu_retombe_sur_classique(self, monkeypatch):
         """Une valeur imprévue (config trafiquée) est ramenée à « classique »."""
         monkeypatch.setattr(
-            "scrabble.ui.jeu.charger_config", lambda: {"theme_plateau": "n_importe_quoi"}
+            "scrabble.ui.api_tirage_ordre.charger_config", lambda: {"theme_plateau": "n_importe_quoi"}
         )
         api = ApiJeu(_partie_simple(), id_partie=1)
         assert api.obtenir_theme_plateau() == "classique"
 
     def test_theme_absent_retombe_sur_classique(self, monkeypatch):
         """Clé absente de la config : défaut « classique »."""
-        monkeypatch.setattr("scrabble.ui.jeu.charger_config", lambda: {})
+        monkeypatch.setattr("scrabble.ui.api_tirage_ordre.charger_config", lambda: {})
         api = ApiJeu(_partie_simple(), id_partie=1)
         assert api.obtenir_theme_plateau() == "classique"
 
@@ -2504,7 +2504,7 @@ class TestApiJeuTirageOrdre:
         assert api._tirage_termine is True
 
     def test_annuler_tirage_supprime_la_partie_et_ferme(self, monkeypatch):
-        from scrabble.ui import jeu as mod
+        from scrabble.ui import api_tirage_ordre as mod
 
         supprimees: list = []
         monkeypatch.setattr(
@@ -2587,7 +2587,7 @@ class TestApiJeuHelpersCoquilleUnifiee:
         assert infos is not None
 
     def test_supprimer_partie_annulee_supprime_via_persistance(self, monkeypatch):
-        from scrabble.ui import jeu as mod
+        from scrabble.ui import api_tirage_ordre as mod
 
         supprimees: list = []
         monkeypatch.setattr(
@@ -2601,7 +2601,7 @@ class TestApiJeuHelpersCoquilleUnifiee:
         assert supprimees == [42]
 
     def test_supprimer_partie_annulee_mode_demo_ne_supprime_rien(self, monkeypatch):
-        from scrabble.ui import jeu as mod
+        from scrabble.ui import api_tirage_ordre as mod
 
         supprimees: list = []
         monkeypatch.setattr(

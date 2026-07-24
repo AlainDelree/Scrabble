@@ -405,7 +405,7 @@ class TestTransitionsJeuAccueil:
         assert routeur._api_jeu._recommencer is False
 
     def test_annuler_tirage_accueil_supprime_puis_retourne(self, monkeypatch):
-        from scrabble.ui import jeu as mod
+        from scrabble.ui import api_tirage_ordre as mod
 
         supprimees: list = []
         monkeypatch.setattr(
@@ -438,7 +438,7 @@ class TestTransitionsJeuAccueil:
             journal, "cloturer_session", lambda *a, **k: cloturees.append(1)
         )
         monkeypatch.setattr(
-            "scrabble.ui.jeu.supprimer_partie", lambda id_p, chemin: True
+            "scrabble.ui.api_tirage_ordre.supprimer_partie", lambda id_p, chemin: True
         )
 
         routeur, _fenetre, partie, _appels = self._routeur_en_jeu(
