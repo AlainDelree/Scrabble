@@ -90,9 +90,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // fenêtre chevalet, désormais réparties de part et d'autre de la fiche du joueur
     // humain (gauche : échange + passer ; droite : annuler + vérifier + jouer). Les
     // deux zones ne sont visibles/actives que pendant le tour du joueur humain (voir
-    // majActionsTour). Le message de retour dédié (#message-coup) s'affiche en
-    // surimpression au-dessus des boutons de droite, distinct du message éphémère de
-    // pose (#message-plateau). L'ancien cadre d'attente d'un tour d'ordinateur
+    // majActionsTour). Le message de retour dédié (#message-coup) est rattaché à la
+    // SECTION parente, hors des zones masquées (issue #243), pour rester visible même
+    // pendant le tour de l'ordinateur ; il s'affiche en surimpression au-dessus des
+    // boutons, distinct du message éphémère de pose (#message-plateau). L'ancien cadre d'attente d'un tour d'ordinateur
     // (#zone-attente-ia et son message) est supprimé (issue #160) : le tour d'un
     // ordinateur se déclenche via le bouton « ▶ Jouer » de sa fiche (issue #149).
     const zoneActionsGauche = document.getElementById('zone-actions-gauche');
@@ -1484,7 +1485,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         if (res && res.succes) {
-            afficherMessageCoup('Tour passé.', 'succes');
+            // Auto-effacement (issue #243, cohérent avec #226) : le message est posé
+            // APRÈS le push d'état (passé au tour de l'ordinateur, majActionsTour a
+            // masqué les boutons et vidé la zone). Sans minuterie il resterait figé
+            // jusqu'au prochain clic. Il vit désormais hors du conteneur masqué
+            // (#message-coup remonté sur la section, cf. jeu.html) : il est donc
+            // visible immédiatement, puis disparaît de lui-même.
+            afficherMessageCoup('Tour passé.', 'succes', 4000);
             // Python rediffuse l'état (tour suivant ou fin de partie) : le rendu
             // suit via le push.
         } else {
@@ -1512,7 +1519,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         if (res && res.succes) {
-            afficherMessageCoup('Toutes vos lettres ont été remises dans le sac. Tour passé.', 'succes');
+            // Idem « Tour passé » : visible tout de suite (message hors du conteneur
+            // masqué) puis auto-effacé (issue #243).
+            afficherMessageCoup('Toutes vos lettres ont été remises dans le sac. Tour passé.', 'succes', 4000);
         } else {
             afficherMessageCoup((res && res.erreur) || 'Échange impossible.', 'erreur');
             majActionsTour();
@@ -1553,7 +1562,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         if (res && res.succes) {
-            afficherMessageCoup('Lettres échangées. Tour passé.', 'succes');
+            // Idem « Tour passé » : visible tout de suite (message hors du conteneur
+            // masqué) puis auto-effacé (issue #243).
+            afficherMessageCoup('Lettres échangées. Tour passé.', 'succes', 4000);
         } else {
             afficherMessageCoup((res && res.erreur) || 'Échange impossible.', 'erreur');
             majActionsTour();

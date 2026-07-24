@@ -220,8 +220,7 @@
                  bascule leur attribut [hidden] pendant le seul tour humain. -->
             <section class="zone-gauche zone-actions-humain" aria-label="Vos actions">
                 <!-- Groupe « pose » (ex-zone de droite, issue #160) : Annuler /
-                     Vérifier et calculer / Jouer. Le message de retour dédié
-                     (#message-coup) reste ancré à cette zone (voir jeu.css). -->
+                     Vérifier et calculer / Jouer. -->
                 <div id="zone-actions-droite" class="zone-actions zone-actions-droite" hidden>
                     <button id="btn-annuler" class="btn btn-secondaire" disabled>
                         ✗ Annuler
@@ -233,7 +232,6 @@
                     <button id="btn-valider" class="btn btn-primaire" disabled>
                         ✓ Jouer
                     </button>
-                    <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
                 </div>
 
                 <!-- Groupe « échange / passe » (ex-zone de gauche, issue #160) :
@@ -263,6 +261,16 @@
                         ⏭ Passer son tour
                     </button>
                 </div>
+
+                <!-- Message de retour dédié (#message-coup, issue #101). Il est
+                     rattaché à la SECTION (et non plus au groupe « pose »
+                     #zone-actions-droite) : ce dernier est masqué (hidden) pendant
+                     le tour de l'ordinateur, ce qui rendait le message d'échange /
+                     de passe invisible jusqu'au tour humain suivant (issue #243,
+                     même phénomène que #226). Placé ici, hors des zones masquées,
+                     il s'affiche immédiatement. Reste ancré en surimpression au
+                     bord haut de la zone d'actions (voir .message-coup, jeu.css). -->
+                <p id="message-coup" class="message-coup" role="status" aria-live="polite"></p>
             </section>
 
         </aside>

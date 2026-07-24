@@ -345,6 +345,11 @@ body {
 .zone-actions-humain {
     gap: 10px;
     flex: 0 0 auto;
+    /* Contexte de positionnement du message de retour (#message-coup), issue #243.
+       Le message est désormais un enfant direct de cette section (et non plus du
+       groupe « pose » #zone-actions-droite, masqué pendant le tour de l'ordinateur) :
+       il s'ancre en surimpression au bord haut de la section, jamais masquée. */
+    position: relative;
 }
 
 /* --------------------------------------------------------------------------- */
@@ -1776,12 +1781,10 @@ body {
     display: none;
 }
 
-/* Zone de DROITE (issue #160) : contexte de positionnement du message de retour
-   (#message-coup), sorti du flux et ancré en surimpression au-dessus des boutons
-   « Vérifier et calculer » / « Jouer » (voir .message-coup ci-dessous). */
-.zone-actions-droite {
-    position: relative;
-}
+/* Zone de DROITE (issue #160) : groupe « pose » (Annuler / Vérifier / Jouer).
+   Le contexte de positionnement du message de retour (#message-coup) a été
+   remonté sur .zone-actions-humain (issue #243) : ce groupe est masqué pendant
+   le tour de l'ordinateur, ce qui emportait le message avec lui. */
 
 /* Flux d'échange partiel (issue #138) : les deux boutons (valider / annuler)
    apparaissent côte à côte à la place de l'échange complet pendant la sélection. */
@@ -1799,8 +1802,9 @@ body {
    collé au bord bas de la fenêtre plateau maximisée : à la résolution cible du
    portable de test (~1280×728), il débordait sous le bord visible et était
    partiellement coupé (le pied de page + le plateau saturaient déjà la hauteur).
-   On le sort du flux et on l'ancre juste AU-DESSUS de la zone d'actions de droite
-   (issue #160), aligné à droite sur « Vérifier et calculer »/« Jouer » : il reste
+   On le sort du flux et on l'ancre juste AU-DESSUS de la zone d'actions humaine
+   (issue #160 ; ancrage remonté du groupe « pose » à la section entière en #243),
+   aligné à droite sur « Vérifier et calculer »/« Jouer » : il reste
    clairement associé à ces boutons, n'allonge plus le pied de page (donc ne pousse
    plus rien sous le bord) et reste entièrement visible sans redimensionner ni
    défiler. Un message
