@@ -525,25 +525,6 @@ section h2 {
     margin-top: 20px;
 }
 
-/* Modale transition */
-.modale-transition {
-    text-align: center;
-}
-
-.modale-transition p {
-    margin-bottom: 12px;
-}
-
-.modale-transition .info-dev {
-    font-size: 0.9rem;
-    color: #666;
-    font-style: italic;
-}
-
-.modale-transition button {
-    margin-top: 8px;
-}
-
 /* Message désactivé */
 .message-limite {
     /* Message d'alerte posé sur le tapis vert (issue #77) : le rouge foncé

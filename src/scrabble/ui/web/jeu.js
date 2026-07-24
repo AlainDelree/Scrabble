@@ -167,8 +167,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Placements en attente déjà posés sur le plateau (copie locale du payload,
     // pour le rendu et pour savoir si « Retour au menu » doit avertir).
     let enAttente = [];
-    // Thème visuel actif et jeu de libellés affichés dans les cases.
-    let themePlateau = 'classique';
+    // Jeu de libellés affichés dans les cases.
     let labelVisible = C.LABEL_COMPLET;
     // Détection d'un coup nouvellement joué pour l'animer (issue #62). On mémorise
     // l'index du coup en tête d'historique ; à la première application on ne fait
@@ -2068,7 +2067,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!THEMES.includes(theme)) {
             theme = 'classique';
         }
-        themePlateau = theme;
         labelVisible = (theme === 'abrege') ? C.LABEL_ABREGE : C.LABEL_COMPLET;
         THEMES.forEach((t) => plateauEl.classList.remove(`theme-${t}`));
         plateauEl.classList.add(`theme-${theme}`);
