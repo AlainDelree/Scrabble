@@ -22,6 +22,7 @@ config.json
 # manuellement, jamais commités (licence floue). On garde uniquement le README.
 data/dictionnaire/*
 !data/dictionnaire/README.md
+!data/dictionnaire/belgicismes_a_revoir.csv
 
 # Base SQLite des parties (persistance : historique + reprise) — jamais commitée
 data/parties.db
