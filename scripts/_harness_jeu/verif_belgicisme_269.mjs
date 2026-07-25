@@ -1,12 +1,15 @@
-// Vérification issue #269 : cercles-drapeaux France/Belgique de l'accueil.
+// Vérification issues #269 + #270 : cercles-drapeaux France/Belgique de
+// l'accueil, et bandeau tricolore du mode Belgicisme.
 //
-// Contrôle en headless Playwright (le rendu réel WebKitGTK reste à vérifier
-// manuellement, cf. CONTEXTE.md) :
+// Contrôle en headless Playwright — le rendu réel WebKitGTK a été vérifié
+// manuellement par capture GTK+WebKit2 (issue #270, cf. accueil.css) :
 //   1. France actif par défaut, Belgique inactif.
 //   2. Clic sur le drapeau belge -> classe .actif bascule, aria-checked
 //      correct, body.mode-belgicisme posé, api.definir_mode_belgicisme(true)
 //      appelée.
-//   3. Contraste texte blanc / fond en mode belge suffisant (>= 4.5:1, WCAG AA).
+//   3. Bandeau tricolore noir/jaune/rouge opaque (6px, haut de page) présent
+//      en mode belge — remplace depuis #270 le voile rgba() à 12% sur toute
+//      la page (invisible à l'œil sur fond vert saturé, cf. accueil.css).
 //   4. Plusieurs allers-retours France <-> Belgique : aucun résidu visuel
 //      (retour exact au fond normal, un seul cercle actif à la fois).
 import pw from '/home/alain/.npm-global/lib/node_modules/playwright/index.js';
@@ -48,19 +51,6 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
   .replace('<script src="accueil.js"></script>',
     `<script>${mock}</script><script>${js}</script>`);
 
-function relLuminance([r, g, b]) {
-  const chan = (c) => {
-    c /= 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  };
-  const [R, G, B] = [chan(r), chan(g), chan(b)];
-  return 0.2126 * R + 0.7152 * G + 0.0722 * B;
-}
-function contrastRatio(rgbA, rgbB) {
-  const [L1, L2] = [relLuminance(rgbA), relLuminance(rgbB)].sort((a, b) => b - a);
-  return (L1 + 0.05) / (L2 + 0.05);
-}
-
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 700, height: 780 } });
@@ -93,21 +83,19 @@ function contrastRatio(rgbA, rgbB) {
   }));
   await page.screenshot({ path: path.join(here, 'i269_accueil_belgique.png') });
 
-  // Contraste : couleur du texte du titre (blanc) vs couleur de fond réellement
-  // peinte sous le titre (échantillon de pixel au centre du <h1>).
-  const contraste = await page.evaluate(() => {
-    const h1 = document.querySelector('header h1');
-    const rect = h1.getBoundingClientRect();
-    return { x: Math.round(rect.left + 5), y: Math.round(rect.top + rect.height / 2) };
+  // Bandeau tricolore (issue #270) : couleurs opaques du drapeau belge
+  // présentes dans le background-image, limitées à une bande fine en haut
+  // (background-size 6px de haut) — donc jamais sous le texte, aucune
+  // contrainte de contraste à vérifier ici.
+  const bandeau = await page.evaluate(() => {
+    const style = getComputedStyle(document.body);
+    return { backgroundImage: style.backgroundImage, backgroundSize: style.backgroundSize };
   });
-  // Échantillon de pixel via canvas (capture d'écran rognée).
-  const buffer = await page.screenshot();
-  // On utilise un point dans la bande jaune (le plus défavorable) : le titre
-  // est centré, donc on échantillonne aussi le centre horizontal de l'écran.
-  const pixelJaune = await page.evaluate(() => {
-    const bodyStyle = getComputedStyle(document.body);
-    return bodyStyle.backgroundImage;
-  });
+  const bandeauOk =
+    bandeau.backgroundImage.includes('rgb(0, 0, 0)') &&
+    bandeau.backgroundImage.includes('rgb(250, 224, 66)') &&
+    bandeau.backgroundImage.includes('rgb(237, 41, 57)') &&
+    /\b6px\b/.test(bandeau.backgroundSize);
 
   // Plusieurs allers-retours pour détecter un résidu visuel.
   const historique = [];
@@ -128,17 +116,6 @@ function contrastRatio(rgbA, rgbB) {
     backgroundImage: getComputedStyle(document.body).backgroundImage,
   }));
 
-  // Contraste calculé analytiquement (méthode documentée dans accueil.css) :
-  // blanc (255,255,255) vs bande jaune (250,224,66) à 12% mélangée à la zone
-  // la plus claire du tapis (--tapis-vert-clair = #3f7359 = 63,115,89).
-  const alpha = 0.12;
-  const jauneMelange = [
-    alpha * 250 + (1 - alpha) * 63,
-    alpha * 224 + (1 - alpha) * 115,
-    alpha * 66 + (1 - alpha) * 89,
-  ];
-  const ratio = contrastRatio([255, 255, 255], jauneMelange);
-
   const ok =
     etatInitial.franceActif === true &&
     etatInitial.belgiqueActif === false &&
@@ -151,21 +128,20 @@ function contrastRatio(rgbA, rgbB) {
     apresBelgique.belgiqueChecked === 'true' &&
     apresBelgique.bodyModeBelge === true &&
     JSON.stringify(apresBelgique.appels) === JSON.stringify([true]) &&
-    ratio >= 4.5 &&
+    bandeauOk &&
     etatFinal.bodyModeBelge === false &&
     etatFinal.franceActif === true &&
     etatFinal.belgiqueActif === false &&
-    !etatFinal.backgroundImage.includes('rgba(250, 224, 66') &&
+    !etatFinal.backgroundImage.includes('rgb(250, 224, 66)') &&
     errs.length === 0;
 
   console.log('État initial :', JSON.stringify(etatInitial));
   console.log('Après clic Belgique :', JSON.stringify(apresBelgique));
   console.log('Historique bascules (mode belge actif ?) :', historique);
   console.log('État final (retour France) :', JSON.stringify(etatFinal));
-  console.log('Contraste blanc/bande-jaune-mélangée (zone la plus claire) :', ratio.toFixed(2) + ':1',
-    ratio >= 4.5 ? '(>= 4.5:1 WCAG AA, OK)' : '(INSUFFISANT)');
+  console.log('Bandeau tricolore (issue #270) :', JSON.stringify(bandeau), bandeauOk ? '(OK)' : '(INSUFFISANT)');
   console.log('Erreurs JS :', errs.length ? errs : 'aucune');
-  console.log(ok ? 'OK — cercles-drapeaux fonctionnels, contraste suffisant, aucun résidu visuel'
+  console.log(ok ? 'OK — cercles-drapeaux fonctionnels, bandeau tricolore visible, aucun résidu visuel'
                  : 'ECHEC');
   await browser.close();
   process.exit(ok ? 0 : 1);
