@@ -1,6 +1,7 @@
 """Garde-fou : vérifie que la docstring de test_jeu.py liste exactement les fichiers test_jeu_*.py existants (issue #265)."""
 
 import glob
+import os
 import re
 
 
@@ -11,7 +12,7 @@ def test_docstring_liste_fichiers_coherente():
     mentionnes = set(re.findall(r"(test_jeu_\w+\.py)", docstring))
 
     existants = {
-        f.split("/")[-1]
+        os.path.basename(f)
         for f in glob.glob("tests/test_jeu_*.py")
         if not f.endswith("test_jeu_docstring.py")
     }
