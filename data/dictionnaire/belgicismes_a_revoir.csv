@@ -13,7 +13,7 @@ afonner,Boire un verre de bière cul sec (en une seule fois).,non,non
 agréation,"Action d’agréer, de donner un agrément.",non,non
 ainsi,Comme ça.,non,oui
 ajoute,"Annexe, supplément, quelque chose que l’on rajoute après coup.",non,oui
-alloux,"Dans les régions belges, les tribunaux allodiaux ont encore été actifs jusqu’au début du.",non,oui
+alloux,"Dans les régions belges, les tribunaux allodiaux ont encore été actifs jusqu’au début du.  DEF à préciser",non,oui
 amigo,"Prison, cachot.",non,oui
 amiteux,"Affectueux, aimable, doux, caressant.",non,oui
 amitieux,"Affectueux, aimable, doux, caressant. Qui fait montre d'une affection candide et naturelle. Se dit des animaux de compagnie et des jeunes enfants.",non,oui
@@ -33,7 +33,7 @@ armeur,Personne chargée de placer des éperons de métal ou de cuir dur sur les
 arsouille,Enfant espiègle.,non,oui
 athénée,Établissement public d’enseignement secondaire officiel.,non,oui
 attache-tout,"Trombone, dans le sens de fil métallique replié et destiné à joindre des feuilles de papier.",non,non
-aubette,Kiosque.,non,oui
+aubette,"Kiosque, petit magasin",non,oui
 auditoire,Grande salle de cours à l’université ; amphithéâtre.,non,oui
 auflette,"Petite gaufre que l'on confectionne plus spécialement à la période de Noël, elle est généralement de forme circulaire.",non,non
 augmenté,Majoré.,non,oui
@@ -99,7 +99,7 @@ biesserie,"Bêtise, chose sans importance.",non,non
 bihoraire,"Qualifie un compteur, un relevé, un tarif, considérant séparément la consommation d’électricité en heures dites pleines et celle en heures dites creuses.",non,non
 bille,Traverse de chemin de fer.,non,oui
 biloque,Prune.,non,oui
-binamé,"Personne ridicule, qui se tourne elle-même en dérision.",non,non
+binamé,"Personne ridicule, qui se tourne elle-même en dérision. | Personne un peu bête mais pas méchante(C’est un gentil)",non,non
 biquer,Rebiquer.,non,oui
 bisbrouille,Petite querelle futile entre deux personnes.,non,non
 bisquer,Avoir du dépit ou de l’humeur.,non,oui
@@ -127,28 +127,30 @@ bonbon,"Sucrerie, friandise faite avec du sucre. Dans le langage des enfants, ce
 bonne-maman,Appellation affectueuse pour la grand-mère.,non,non
 bonnier,Borne ou pierre servant de limite.,non,oui
 borin,Ouvrier des mines de charbon du Nord de la France et de la province de Belgique directement limitrophe.,non,oui
+Borinage,"1. Il désigne historiquement une région industrielle belge de la province de Hainaut, à l'ouest et au sud-ouest de Mons, façonnée par l'extraction du charbon. | 2. En langage technique ou littéraire, il fait référence à l'ensemble des ouvriers mineurs ou au travail des houillères.",,
 botteresse,Colporteuse qui transportait ses marchandises dans une hotte en osier.,non,non
 boudet,"Panier de griveleux, fabriqué des bois tressé.",non,oui
 boudin,Traversin.,non,oui
 boudine,Ventre.,non,oui
 bouffon,"Gourmand, personne qui ne pense qu’à manger.",non,oui
 boule,"Bonbon, friandise. | Chapeau melon.",non,oui
-boulet,"Dans le pays de Liège, sorte de boulette de viande servie en sauce.",non,oui
+boulet,"Dans le pays de Liège, un plat de boulette de viande servie en sauce.",non,oui
 bourgmestre,"Titre du premier magistrat des villes de Belgique, du Luxembourg, des Pays-Bas, d’Allemagne, etc.",non,oui
-bourlette,"Boule, tête, tumeur arrondie, renflement au bout d’un bâton ^([1]).",non,oui
-bourlotte,Variante de bourlette; renflement au bout d'un bâton. ^([3]),non,oui
+bourrelet,coussin ou pli de graisse,,
+bourlette,"Boule, tête, tumeur arrondie, renflement au bout d’un bâton.",non,oui
+bourlotte,Variante de bourlette; renflement au bout d'un bâton.,non,oui
 bourré,Rassasié.,non,oui
 boustringue,Hareng saur.,non,non
 bouter,"(Vieilli, encore courant en Suisse romande et en Belgique) bouter le feu : Mettre le feu.",non,oui
 boutroulle,Nombril.,non,non
 boyard,"Personne mal habillée, vulgaire ; synonyme de baraki.",non,oui
-braderie,Marché occasionnel souvent dans la rue où les particuliers et les professionnels vendent ce qu’ils veulent..,non,oui
+braderie,Marché occasionnel souvent dans la rue où les particuliers et les professionnels vendent ce qu’ils veulent,non,oui
 branchouille,Relatif à une personne branchée ou aux personnes branchées.,non,oui
 brette,Sorte de querelle ou dispute.,non,oui
 briquet,Collation que l’on emportait pour aller travailler.,non,oui
 broebeler,"Variante orthographique de broubeler (bredouiller). | Bavarder, raconter des histoires, se vanter.",non,non
 brol,"Désordre, bazar. | Camelote, objet sans valeur.",non,oui
-broquer,"Se précipiter, souvent avec de mauvaises intentions.  ^([5])",non,oui
+broquer,"Se précipiter, souvent avec de mauvaises intentions.",non,oui
 brosser,"Ne pas assister aux cours, ne pas aller à l’école.",non,oui
 brosseur,Élève qui sèche les cours.,non,oui
 brosseuse,Élève qui sèche les cours.,non,oui
@@ -162,7 +164,7 @@ buse,"Échec à une élection, à un examen etc.",non,oui
 buselure,"Pièce en forme d’anneau, destinée à absorber les chocs et les vibrations dans certains organes mécaniques, ou à assurer l'étanchéité. Silent-Bloc.",non,non
 buser,Faire échouer un étudiant.,non,oui
 busé,En échec dans une branche scolaire.,non,oui
-buumdroeger,"Personne portant le Meyboom, arbre planté lors d’une cérémonie à Bruxelles.",non,non
+buumdroeger,Porteur d’arbre. Personne portant le Meyboom(arbre planté lors d’une cérémonie à Bruxelles).,non,non
 bâchire,Cloison de planches clouées dans une bure de houillère.,non,non
 bâtissable,Qualifie une surface sur laquelle on peut bâtir.,non,oui
 béton,Colostrum.,non,oui
@@ -176,21 +178,21 @@ calcareux,Calcaire.,non,oui
 calebasse,"Petit appareil, proche du cubilot, utilisé pour fondre des métaux en petite quantité.",non,oui
 calebasserie,"Atelier de fonderie, parfois itinérant, où l’on utilise la calebasse pour couler du métal en petite quantité.",non,non
 calebassier,"Fondeur, parfois itinérant, utilisant l’appareil nommé calebasse pour couler des métaux.",non,oui
-calepin,Cartable.,non,oui
+calepin,"En Belgique, un calepin désigne un cartable ou un sac d'écolier, un sens spécifique qui s'écarte de la définition française",non,oui
 caliche,Réglisse (la confiserie).,non,oui
 calotte,Bonnet traditionnel des étudiants des universités catholiques par opposition avec la penne des étudiants des institutions non confessionnelles.,non,oui
 campénaire,Nom qui fut donné aux colporteurs de la région de Stambruges.,non,non
 canard,Petit bisou sur les lèvres.,non,oui
 candidat,Grade attribué à la fin du premier cycle d’un cursus d’enseignement supérieur long.,non,oui
 candidature,Premier grade universitaire qui s'effectue en deux ou trois ans.,non,oui
-cannasser,"Verrouiller, cadenasser, en particulier en parlant de quelque chose qu’on veut cacher, qu’on ne veut pas divulguer. Définition manquante ou à compléter. (Ajouter)",non,non
+cannasser,"belgicisme verbal peu courant qui signifie verrouiller, cadenasser ou, par extension, dissimuler une information pour empêcher sa divulgation",non,non
 cannibale,Toast nappé de filet américain (nom belge du steak tartare).,non,oui
 carabibi,Petits caramels spécifiques à la ville de Soignies en Belgique et distribués à la foule lors de la fête traditionnelle de la Simpélourd.,non,non
 carabistouille,"Blague, galéjade. | Mensonges, tromperie.",non,non
 carabouilla,Bonbon à la réglisse et à l’anis de couleur noire.,non,non
 caraboutcha,Gribouillis.,non,non
 carabouya,Bonbon à la réglisse et à l’anis de couleur noire.,non,non
-carnavaleuse,"(Dunkerquois), , Participante à un carnaval.",non,non
+carnavaleuse,(Dunkerquois) Participante à un carnaval.,non,non
 carnavaleux,Participant à un carnaval.,non,non
 carnet,Livret d’épargne.,non,oui
 carrousel,Manège de chevaux de bois.,non,oui
@@ -206,7 +208,7 @@ castarde,Variante de castar.,non,oui
 cavitche,"Café, bistro.",non,non
 cavitje,"Café, bistro.",non,non
 cenne,Pièce de deux centimes.,non,oui
-cense,"ou prononciation : cinse Métairie, ferme.",non,non
+cense,"Métairie, ferme. Prononciation : cinse",non,non
 cercle,"Endroit où se retrouvent des étudiants dans un but festif, bibitif et culturel.",non,oui
 cercueil,Bière légère à laquelle on ajoute un peu de coca.,non,oui
 chaisard,Personne se déplaçant en chaise roulante.,non,non
@@ -218,7 +220,7 @@ chapelle,Coffret électrique de chantier.,non,oui
 charbonnier,Mineur qui travaille aux mines de houille.,non,oui
 charbonnière,Seau à charbon.,non,oui
 charriable,Qualifie une voie sur la quelle l'on peut faire rouler un charriot.,non,oui
-chasser,"Souffler, en parlant de courant d'air dans une maison. ^([1])",non,oui
+chasser,"Souffler, en parlant de courant d'air dans une maison.",non,oui
 chaude-hoie,Nom ancien de la houille grasse.,non,non
 chaussée,"Voie de circulation reliant généralement deux villes, deux bourgs.",non,oui
 chavée,"Dépression allongée creusée dans le calcaire, vallée.",non,non
@@ -283,7 +285,7 @@ cougner,Faire l'amour férocement.,non,oui
 cougnole,Brioche consommée durant la période de la Saint-Nicolas et de Noël. Sa forme rappelle celle d’un bébé emmailloté et fait ainsi référence à l’enfant Jésus.,non,non
 cougnolle,Brioche consommée durant la période de la Saint-Nicolas et de Noël. Sa forme rappelle celle d’un bébé emmailloté et fait ainsi référence à l’enfant Jésus.,non,non
 cougnou,Brioche consommée durant la période de la Saint-Nicolas et de Noël. Sa forme rappelle celle d’un bébé emmailloté et fait ainsi référence à l’enfant Jésus.,non,non
-couillon,Jeu de cartes proche du poker.,non,oui
+couillon,Jeu de cartes proche du poker. Personne naïve,non,oui
 coulon,Pigeon voyageur.,non,non
 coulonneux,Colombophile.,non,non
 couque,"Brioche, petit pistolet, biscuit, pain d'épice ou viennoiserie, nom générique donné aux pâtisseries. | Biscuit, de différentes formes (sapins et père Noël, fleurs, etc.) que l’on déguste surtout au temps des fêtes.",non,oui
@@ -348,14 +350,14 @@ décauser,"Parler en mal de, dénigrer.",non,non
 décolloquer,Sortir un patient d’un service psychiatrique fermé.,non,oui
 décret,"Acte législatif pris par une des entités fédérées (communauté linguistique ou région), excepté la région de Bruxelles-Capitale.",non,oui
 décumul,Synonyme de « décumul des mandats ». | Synonyme de « décumul des revenus des époux » (séparation des revenus d’un couple en vue de l’imposition fiscale).,non,oui
-décumuler,Supprimer le cumul de.,non,non
+décumuler,Supprimer le cumul,non,non
 déforcer,"Faire perdre ses forces à, affaiblir, diminuer le pouvoir de quelqu'un.",non,non
 défranchir,"Faire perdre son assurance, sa confiance, à quelqu’un.",non,oui
 dégrogner,"Râler, grogner.",non,oui
 déjeter,Gaspiller.,non,oui
-déjeuner,", , , Prendre le repas du matin.",non,oui
+déjeuner,Petit-déjeuner. Prendre le repas du matin.,non,oui
 déloger,Découcher.,non,oui
-dîner,", ou Prendre le repas de midi. | , ou Repas de midi.",non,oui
+dîner,Prendre le repas de midi.  Repas de midi.,non,oui
 elbot,"Grand poisson plat de l’Atlantique nord, consommé pour sa chair.",non,non
 emmacraler,"Ensorceler. | Embrouiller, emmêler, mettre de la confusion.",non,non
 empocheter,"Mettre en poche (ou en pochette), empocher.",non,non
@@ -378,7 +380,7 @@ farde,"Classeur, dossier contenant une liasse de papier. | Cartouche de cigarett
 faude,Fosse ou silo pour faire le charbon de bois.,non,oui
 fauder,Consumer comme un charbon de bois dans son four.,non,oui
 faux-grenier,"Grenier qui, sous la toiture, sert de débarras.",non,non
-fieu,"(toujours au vocatif) Gars, garçon, vieux.",non,oui
+fieu,"Gars, garçon, vieux. (toujours au vocatif) ",non,oui
 filet-poubelle,"Poubelle sous forme de filet ou de réceptacle grillagé placé sur un support, située le long d’une route, permettant de se débarrasser de détritus divers depuis un véhicule.",non,non
 fisquemalle,Brioche consommée durant la période de la Saint-Nicolas et de Noël. Sa forme rappelle celle d’un bébé emmailloté et fait ainsi référence à l’enfant Jésus.,non,non
 flamin,Flamand.,non,non
@@ -401,7 +403,7 @@ fourche,Heure libre entre deux heures de cours.,non,oui
 fransquillonner,"Parler le français de façon affectée, en évitant de montrer son accent.",non,non
 frigolite,"Mousse blanche et compacte, constituée de polystyrène expansé, utilisée le plus souvent comme isolant thermique et comme emballage.",non,non
 frigotartinable,"Que l'on peut tartiner dès la sortie du réfrigérateur, qui est assez tendre même froid.",non,non
-frisco,(Par antonomase) Crème glacée de type esquimau.,non,non
+frisco,Crème glacée de type esquimau.,non,non
 fritabilité,Aptitude des différents cultivars de pommes de terre à être transformés en frites.,non,non
 fritkot,Friterie.,non,non
 friture,Friterie.,non,oui
@@ -411,7 +413,6 @@ frotte-manche,"Flatteur, lèchecul, lèche-botte.",non,non
 frotteur,Petite brosse pour tableau noir.,non,oui
 froucheler,"Tripoter, peloter, faire des papouilles.",non,non
 froumagire,Mélange de fromage blanc avec de la crème fraîche.,non,non
-Frouze,Français ; citoyen français.,non,non
 frouze,Français.,non,non
 frœbélien,"Enseignant dans une école maternelle, un jardin d’enfants.",non,oui
 gadot,Déambulateur.,non,oui
@@ -425,9 +426,9 @@ gletter,"Saliver, baver.",non,non
 godferdek,Nom de Dieu.,non,non
 gosette,"Chausson (spécialité pâtissière faite d’une feuille de pâte à tarte repliée sur des fruits cuits : pommes, abricots, cerises).",non,non
 gougouille,Friandise ; sucrerie.,non,non
-goulaf,"(Nord-Est de la France) Goinfre, glouton.",non,non
-goulafe,"(Nord-Est de la France) Goinfre, glouton.",non,non
-goulafre,"(Nord-Est de la France) Goinfre, glouton.",non,non
+goulaf,"Goinfre, glouton. Belgique et Nord-Est de la France",non,non
+goulafe,"Goinfre, glouton. Belgique et Nord-Est de la France",non,non
+goulafre,"Goinfre, glouton. Belgique et Nord-Est de la France",non,non
 gouttiner,Pleuvoir un petit peu.,non,non
 goûter,"Avoir le goût de, avoir goût à.",non,oui
 graduat,Études supérieures réalisées généralement en trois ans jusqu'à l'application de la réforme de Bologne dans l'enseignement belge. Le terme de graduat a été remplacé depuis septembre 2004 par baccalauréat. Ce changement s'est souvent accompagné d'une modification du contenu des formations.,non,oui
@@ -500,13 +501,13 @@ lettré,Qui sait lire et écrire.,non,oui
 liards,Argent (Toujours au pluriel).,non,oui
 lichette,"Petite attache, faite de tissu, d’une serviette ou chaînette métallique dans le col d’un vêtement (de pluie), servant à les suspendre.",non,oui
 lift,"Auto-stop et, comme en québécois, transport fourni, généralement en voiture.",non,oui
-locher,"Secouer, branler. Se disait souvent du fer d’un cheval. | Secouer, branler. Se disait souvent du fer d’un cheval.; Avoir un fer qui loche : Être incommodé.",non,oui
+locher,"Secouer, branler. Se disait souvent du fer d’un cheval. Avoir un fer qui loche : Être incommodé.",non,oui
 loempia,Variante de lumpia.,non,non
 logopède,"Professionnel de la logopédie ou orthophonie, la thérapie du langage.",non,non
 logopédie,"Art de prononcer correctement, de corriger les défauts de prononciation.",non,non
 loque,"Serpillière, chiffon.",non,oui
 loverboy,Proxénète débutant une relation amoureuse avec une femme pour ensuite l’obliger à se prostituer.,non,oui
-lumer,"Approcher de la lumière, éclairer un objet.  ^([1])",non,oui
+lumer,"Approcher de la lumière, éclairer un objet. ",non,oui
 lumerotte,Lampe qui diffuse une faible lumière. | Betterave évidée garnie d'une bougie. | Feu follet.,non,non
 lumpen,Nom donné à Anvers au poisson appelé lompe.,non,oui
 légumier,Marchand ou vendeur de légumes.,non,oui
@@ -527,9 +528,8 @@ marollien,Français argotique parlé à Bruxelles.,non,oui
 maroxellois,Homme d’origine marocaine ayant grandi dans la Région de Bruxelles-Capitale.,non,oui
 marquoir,"Tableau d’affichage des scores dans les sports collectifs. | ou Système de marquage des points au billard français, initialement sous la forme d’un boulier accroché à un mur, puis électrique et enfin électronique.",non,oui
 masterisation,"Dans l'enseignement, le fait de mettre (une formation, un diplôme,...) au niveau de master.",non,oui
-mastérisation,Fait de mettre au niveau de master.,non,oui
 masuir,"Membre d'une communauté villageoise propriétaire de biens ou de droits d'usage, communaux ou collectifs.",non,non
-matante,Dame référence nécessaire (résoudre le problème). | Tante d'un des parents référence nécessaire (résoudre le problème).,non,oui
+matante,"Terme surtout connu comme un canadianisme (au Québec), mais il possède aussi un usage populaire et régional en Belgique (notamment dans le Hainaut). Il signifie simplement « ma tante », souvent soudé en un seul mot par affection ou habitude de langage.",non,oui
 maturité,"Baccalauréat, certificat attribué à la fin des études secondaires. | Ce diplôme lui-même.",non,oui
 mauve,"Violet (les couleurs mauve et violet y sont parfois distinctes, souvent pas). #8806CE",non,oui
 maxidiscompte,"Magasin libre-service à prédominance alimentaire qui se caractérise par des prix très bas, une petite surface de vente et un assortiment de produits restreint.",non,oui
@@ -561,7 +561,7 @@ moffler,"Recaler, en parlant d’un candidat à un examen.",non,non
 mofler,Recaler (un candidat à un examen).,non,oui
 molière,Richelieu (type de chaussure).,non,oui
 moniteur,Journal officiel qui édite la législation nouvelle.,non,oui
-mononcle,Désigne l’oncle d’un de ses parents référence nécessaire (résoudre le problème).,non,oui
+mononcle,"Terme familier issu de l'influence du wallon (mi mononke) qui désigne l'oncle, tout comme l'expression semblable ma matante pour la tante.",non,oui
 moscovite,Relatif au quartier Moscou de Gand.,non,oui
 mouchette,Petite mouche.,non,oui
 mousiner,Pleuvoir d’une pluie fine.,non,non
@@ -569,7 +569,7 @@ moutonnerie,Boucherie spécialisée en viande de mouton.,non,oui
 myrtillier,Arbrisseau de petite taille sur lequel poussent les myrtilles.,non,non
 méconduire,Se conduire mal.,non,non
 méconduite,Mauvaise conduite.,non,oui
-médian,jouer milieu de terrain,non,oui
+médian,Jouer milieu de terrain au foot,non,oui
 mêle-tout,Personne qui s’occupe de ce qui ne la regarde pas.,non,non
 mêletout,Personne qui s’occupe de ce qui ne la regarde pas.,non,non
 nareux,"Qui ressent un dégoût compulsif à l’idée d’une saleté ou d’un manque d’hygiène de ce qui entre en contact avec la nourriture, vaisseaux, ustensiles et cuisiniers.",non,non
@@ -580,7 +580,7 @@ nonantaine,"Nombre d’environ nonante, quatre-vingt-dix. | Âge d’environ non
 nonante,"Quatre-vingt-neuf/huitante-neuf plus un, soit neuf fois dix, adjectif numéral cardinal correspondant au nombre 90. | ou ou pour des raisons pratiques (Mathématiques, Bourse). Le nombre 90, entier naturel après quatre-vingt-neuf/huitante-neuf. | Chose portant le numéro 90. | Année qui se termine par 90, par exemple 1990.",non,oui
 nonante-cinq,"quatre-vingt-quinze. | 95, quatre-vingt-quinze.",non,non
 nonante-deux,92.,non,non
-nonante-et-un,"Quatre-vingt-onze, le nombre 91. | 91, nonante plus un.",non,non
+nonante-et-un,91.,non,non
 nonante-huit,98.,non,non
 nonante-neuf,99.,non,non
 nonante-quatre,94.,non,oui
@@ -604,7 +604,7 @@ pachis,"Terrain clos, où paissent les bêtes.",non,non
 pachî,Variante de pachis.,non,non
 Paki,Night-shop.,non,oui
 panade,"Repas pour bébé, composé de fruits ou de légumes écrasés.",non,oui
-panner,Saisir un meuble pour sûreté de paiement.  ^([3])  ^([4]),non,oui
+panner,Saisir un meuble pour sûreté de paiement.,non,oui
 parastatal,Paraétatique.,non,non
 parlophone,"Dispositif acoustique électronique interne à un immeuble, placé à l’entrée et dans une ou plusieurs pièces de celui-ci, afin d’en contrôler l’accès à l’aide d’un ouvre-porte.",non,non
 parson,Part de propriété dans une mine de houille.,non,oui
@@ -638,13 +638,12 @@ plumier,"Trousse, étui en général.",non,oui
 pluxer,"Aller boire un verre entre collègues de travail à la Place du Luxembourg (Plux) à Bruxelles, le plus souvent le jeudi soir.",non,non
 poeppers,Peur.,non,non
 poil,Étudiant ayant passé le rite du baptême qui bizute les bleus ; équivalent masculin de la plume.,non,oui
-polar,", Polaire.",non,oui
+polar,Polaire.,non,oui
 pomérance,"Procédé, bout en cuir de queue de billard.",non,non
-poque,"Coup, blessure, marque sur un fruit ou un objet ^([3]) ^([4]).",non,oui
+poque,"Coup, blessure, marque sur un fruit ou un objet.",non,oui
 postainier,Étainier.,non,non
 postposer,Remettre quelque chose à plus tard.,non,oui
 posture,Statue.,non,oui
-potager,", XVIIIe siècle, , Sorte de fourneau en maçonnerie, garni des braises, pour mijoter ou réchauffer des plats.",non,oui
 potale,Trou dans le sol.,non,oui
 poter,Boire un pot.,non,oui
 potiquet,Petit récipient.,non,oui
@@ -652,12 +651,12 @@ potopote,"Boue, gadoue",non,oui
 potstainiers,Pluriel de potstainier.,non,non
 poucave,"Prostitué, prostituée.",non,oui
 pouercht,"Synonyme de baraki. Utilisé beaucoup dans la région du Centre, province de Hainaut.",non,non
-pouf,ou Dette.,non,oui
+pouf,"Au hasard, au jugé ou sans réfléchir",non,oui
 pougner,Tirer au sort à l’aide d’un bâton.,non,oui
 pouhon,Source d’eau gazeuse contenant du fer.,non,non
 poujain,"Personne dégoûtante, porc. | Personne qui ne respecte pas la bienséance.",non,non
 poupa,Papa.,non,oui
-poupouille,Chat ; terme affectueux utilisé en Wallonie pour parler d'un chat domestique.,non,non
+poupouille,Chat.  Terme affectueux utilisé en Wallonie pour parler d'un chat domestique.,non,non
 poésie,"Classe de cinquième secondaire, équivalente à la première française, où l’on enseigne la poésie.",non,oui
 poêlon,Casserole à manche.,non,oui
 praline,"Petite friandise au chocolat fourré vendue dans des ballotins, prisées en Belgique.",non,oui
@@ -685,7 +684,7 @@ quetter,Copuler.,non,oui
 quimper,Se mettre sur son trente-et-un.,non,oui
 rabiner,Couper l'arbre le plus près possible de terre et arracher soigneusement les racines.,non,oui
 rabote,Pomme en croûte.,non,oui
-racagnac,"Crécelle.  ^([1])  ^([2]) | Tire-fort, cric.  ^([1]) | Râleur, généralement précédé de vieux. ^([2]) ^([3])",non,oui
+racagnac,"Crécelle, Tire-fort, cric.   Râleur, généralement précédé de vieux. ",non,oui
 raccuser,"Rapporter, dénoncer, venir se plaindre de l'action d'autres enfants (auprès des parents, de l'institutrice).",non,non
 racrapoter,Se recroqueviller.,non,non
 racrapoté,Recroquevillé.,non,oui
@@ -739,7 +738,7 @@ réviseur,Expert indépendant chargé de contrôler les comptes annuels des entr
 salaire-poche,"Salaire perçu par le salarié, après prélèvement des cotisations.",non,non
 salukes,Salut.,non,non
 sartable,Qualifie un terrain qui est susceptible d’être essarté.,non,non
-sartager,Essarter ; sarter.,non,non
+sartager,"Essarter, sarter.",non,non
 savoir,Pouvoir,non,oui
 savonnade,Eau savonneuse.,non,oui
 scabinal,Relatif à la fonction des échevins.,non,oui
@@ -776,17 +775,17 @@ slache,"Sandale, pantoufle souvent usée.",non,non
 slash,"Tong, sandale.",non,oui
 smogler,Faire de la contrebande.,non,non
 smoutebolle,Beignet.,non,non
-sonner,Téléphoner à.,non,oui
+sonner,Téléphoner.,non,oui
 sorteur,Videur de boite de nuit.,non,oui
 sorteux,Terme du métier de filtier. Individu chargé par ses camarades d'aller chercher des provisions pour le déjeuner et le rechenner.,non,oui
 sottais,"Nain ou lutin de légendes wallonnes, en particulier en pays minier.",non,oui
 souche,Ticket mentionnant les données d’un achat.,non,oui
 soumonce,"Journée de fête, préliminaire au carnaval, propre au Hainaut.",non,non
-souper,", , , Prendre le repas du soir. | , , , , Repas du soir.",non,oui
+souper,Prendre le repas du soir. Repas du soir.,non,oui
 speedgun,Outil de mesure de vitesse utilisé dans certains pays européens.,non,non
 sperman,Surnom humoristique des donneurs de sperme du Centre de la Reproduction Humaine,non,non
 spiringue,Échine de porc issue de la partie antérieure de la longe.,non,non
-spitant,"Qui pétille, qui éclabousse. | Plein d’énergie, vif",non,oui
+spitant,"Qui pétille, qui éclabousse. Plein d’énergie, vif",non,oui
 spitter,Éclabousser.,non,oui
 spiture,Éclaboussure.,non,oui
 splitser,"Diviser, découper en deux.",non,non
