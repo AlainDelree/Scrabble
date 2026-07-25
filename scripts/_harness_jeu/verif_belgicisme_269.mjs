@@ -1,19 +1,21 @@
-// Vérification issues #269 + #270 + #271 : cercles-drapeaux France/Belgique
-// de l'accueil, et fond du mode Belgicisme.
+// Vérification issues #269 + #270 + #271 + #272 : cercles-drapeaux
+// France/Belgique de l'accueil, et fond du mode Belgicisme.
 //
 // Contrôle en headless Playwright — le rendu réel WebKitGTK a été vérifié
-// manuellement par capture GTK+WebKit2 (issues #270 et #271, cf.
+// manuellement par capture GTK+WebKit2 (issues #270/#271/#272, cf.
 // verif_belgicisme_270_webkitgtk.py et accueil.css) :
 //   1. France actif par défaut, Belgique inactif.
 //   2. Clic sur le drapeau belge -> classe .actif bascule, aria-checked
 //      correct, body.mode-belgicisme posé, api.definir_mode_belgicisme(true)
 //      appelée.
-//   3. Fond blanc + voile tricolore noir/jaune/rouge translucide sur TOUTE
-//      la surface (issue #271, remplace le bandeau opaque 6px de #270, qui
-//      remplaçait lui-même le voile 12% invisible sur fond vert de #269).
-//   4. Titre, sous-titre et légendes des drapeaux passés en texte noir sur
-//      plaque de fond blanche en mode Belgicisme (issue #271) — inchangés
-//      (texte blanc, pas de plaque) en mode France.
+//   3. Fond blanc + voile tricolore noir/jaune/rouge quasi-opaque (alpha
+//      0.95, issue #272 — remplace l'alpha 0.22/0.32/0.26 trop pâle de #271,
+//      qui remplaçait le bandeau opaque 6px de #270, qui remplaçait lui-même
+//      le voile 12% invisible sur fond vert de #269) sur TOUTE la surface.
+//   4. Titre, sous-titre et légendes des drapeaux en texte noir uniforme
+//      (#1a1a1a), SANS plaque de fond (issue #272 — supprime le système de
+//      plaques blanches de #271) en mode Belgicisme — inchangés (texte
+//      blanc, pas de plaque) en mode France.
 //   5. Plusieurs allers-retours France <-> Belgique : aucun résidu visuel
 //      (retour exact au fond normal, un seul cercle actif à la fois).
 import pw from '/home/alain/.npm-global/lib/node_modules/playwright/index.js';
@@ -87,10 +89,10 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
   }));
   await page.screenshot({ path: path.join(here, 'i269_accueil_belgique.png') });
 
-  // Fond blanc + voile tricolore sur toute la surface (issue #271) :
-  // fond blanc uni + les trois couleurs (translucides) du drapeau belge
-  // présentes dans le background-image, étalées sur 100% de la surface
-  // (plus une bande de 6px comme en #270).
+  // Fond blanc + voile tricolore quasi-opaque sur toute la surface
+  // (issue #272, alpha 0.95 — remplace l'alpha 0.22/0.32/0.26 trop pâle de
+  // #271) : fond blanc uni + les trois couleurs franches du drapeau belge
+  // présentes dans le background-image, étalées sur 100% de la surface.
   const fond = await page.evaluate(() => {
     const style = getComputedStyle(document.body);
     return {
@@ -101,14 +103,15 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
   });
   const fondOk =
     fond.backgroundColor === 'rgb(255, 255, 255)' &&
-    fond.backgroundImage.includes('rgba(0, 0, 0,') &&
-    fond.backgroundImage.includes('rgba(250, 224, 66,') &&
-    fond.backgroundImage.includes('rgba(237, 41, 57,') &&
+    fond.backgroundImage.includes('rgba(0, 0, 0, 0.95)') &&
+    fond.backgroundImage.includes('rgba(250, 224, 66, 0.95)') &&
+    fond.backgroundImage.includes('rgba(237, 41, 57, 0.95)') &&
     /100%\s*100%/.test(fond.backgroundSize);
 
-  // Titre/sous-titre/légendes sur plaque de fond blanche, texte noir
-  // (issue #271) : jamais directement sur le voile tricolore.
-  const plaques = await page.evaluate(() => {
+  // Titre/sous-titre/légendes en texte noir uniforme, SANS plaque de fond
+  // (issue #272 — supprime le système de plaques blanches ciblées de #271 :
+  // tout le contenu repose sur la bande jaune, un texte sombre y suffit).
+  const textes = await page.evaluate(() => {
     const lire = (sel) => {
       const el = document.querySelector(sel);
       const style = getComputedStyle(el);
@@ -121,13 +124,14 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
       legendeBelgique: lire('.drapeau-choix:nth-child(2) .drapeau-legende'),
     };
   });
-  const noirOpaqueBlanc = (v) =>
-    v.color === 'rgb(26, 26, 26)' && /^rgba\(255, 255, 255, 0\.9/.test(v.backgroundColor);
-  const plaquesOk =
-    noirOpaqueBlanc(plaques.titre) &&
-    noirOpaqueBlanc(plaques.sousTitre) &&
-    noirOpaqueBlanc(plaques.legendeFrance) &&
-    noirOpaqueBlanc(plaques.legendeBelgique);
+  const noirSansPlaque = (v) =>
+    v.color === 'rgb(26, 26, 26)' &&
+    (v.backgroundColor === 'rgba(0, 0, 0, 0)' || v.backgroundColor === 'transparent');
+  const textesOk =
+    noirSansPlaque(textes.titre) &&
+    noirSansPlaque(textes.sousTitre) &&
+    noirSansPlaque(textes.legendeFrance) &&
+    noirSansPlaque(textes.legendeBelgique);
 
   // Plusieurs allers-retours pour détecter un résidu visuel.
   const historique = [];
@@ -156,7 +160,7 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
   });
 
   // Mode France (initial et après retour) : texte blanc, aucune plaque —
-  // strictement inchangé par le mode Belgicisme (issue #271).
+  // strictement inchangé par le mode Belgicisme (issues #271/#272).
   const franceInchange = (etat) =>
     etat.titreCouleur === 'rgb(255, 255, 255)' &&
     (etat.titreFond === 'rgba(0, 0, 0, 0)' || etat.titreFond === 'transparent');
@@ -179,7 +183,7 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
     apresBelgique.bodyModeBelge === true &&
     JSON.stringify(apresBelgique.appels) === JSON.stringify([true]) &&
     fondOk &&
-    plaquesOk &&
+    textesOk &&
     etatFinal.bodyModeBelge === false &&
     etatFinal.franceActif === true &&
     etatFinal.belgiqueActif === false &&
@@ -190,12 +194,12 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
 
   console.log('État initial :', JSON.stringify(etatInitial));
   console.log('Après clic Belgique :', JSON.stringify(apresBelgique));
-  console.log('Fond blanc + voile tricolore (issue #271) :', JSON.stringify(fond), fondOk ? '(OK)' : '(INSUFFISANT)');
-  console.log('Plaques titre/sous-titre/légendes (issue #271) :', JSON.stringify(plaques), plaquesOk ? '(OK)' : '(INSUFFISANT)');
+  console.log('Fond blanc + voile tricolore quasi-opaque (issue #272) :', JSON.stringify(fond), fondOk ? '(OK)' : '(INSUFFISANT)');
+  console.log('Titre/sous-titre/légendes texte noir sans plaque (issue #272) :', JSON.stringify(textes), textesOk ? '(OK)' : '(INSUFFISANT)');
   console.log('Historique bascules (mode belge actif ?) :', historique);
   console.log('État final (retour France) :', JSON.stringify(etatFinal));
   console.log('Erreurs JS :', errs.length ? errs : 'aucune');
-  console.log(ok ? 'OK — cercles-drapeaux fonctionnels, fond blanc+tricolore et plaques visibles, aucun résidu visuel'
+  console.log(ok ? 'OK — cercles-drapeaux fonctionnels, fond blanc+tricolore franc, texte sans plaque, aucun résidu visuel'
                  : 'ECHEC');
   await browser.close();
   process.exit(ok ? 0 : 1);

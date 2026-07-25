@@ -1,4 +1,4 @@
-"""Vérification issues #270/#271 : rendu réel du mode Belgicisme sous
+"""Vérification issues #270/#271/#272 : rendu réel du mode Belgicisme sous
 WebKitGTK (le moteur utilisé par pywebview sous Linux, cf. CONTEXTE.md — le
 harnais Playwright habituel de _harness_jeu ne teste que Chromium et n'aurait
 pas détecté l'écart de rendu constaté en #270).
@@ -6,6 +6,9 @@ pas détecté l'écart de rendu constaté en #270).
 #271 remplace le bandeau opaque 6px de #270 par un fond blanc + voile
 tricolore translucide sur toute la surface, avec plaques de fond blanches
 ciblées derrière le titre/sous-titre/légendes des drapeaux (texte noir).
+#272 corrige le voile jugé trop pâle en #271 (alpha remontée à 0.95, couleurs
+franches) et supprime le système de plaques (texte noir uniforme #1a1a1a,
+sans fond, puisque tout le contenu repose sur la seule bande jaune).
 Ce harnais (créé en #270) est réutilisé tel quel : il ne fait qu'une
 capture générique de l'écran, sans assertion sur le rendu précis.
 
@@ -132,12 +135,12 @@ if __name__ == "__main__":
     url = str(mock)
 
     print("Capture France (défaut)...")
-    capturer(url, SORTIE / "i271_accueil_france_webkitgtk.png", [])
+    capturer(url, SORTIE / "i272_accueil_france_webkitgtk.png", [])
 
     print("Capture Belgique (après 5 bascules France/Belgique)...")
     capturer(
         url,
-        SORTIE / "i271_accueil_belgique_webkitgtk.png",
+        SORTIE / "i272_accueil_belgique_webkitgtk.png",
         [
             "#drapeau-belgique", "#drapeau-france", "#drapeau-belgique",
             "#drapeau-france", "#drapeau-belgique",
@@ -147,7 +150,7 @@ if __name__ == "__main__":
     print("Capture retour France (après la bascule Belgique, résidu ?)...")
     capturer(
         url,
-        SORTIE / "i271_accueil_retour_france_webkitgtk.png",
+        SORTIE / "i272_accueil_retour_france_webkitgtk.png",
         ["#drapeau-belgique", "#drapeau-france"],
     )
 

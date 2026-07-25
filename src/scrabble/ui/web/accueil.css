@@ -55,37 +55,25 @@ body {
     transition: background-image 0.2s ease;
 }
 
-/* Mode Belgicisme (issue #269, bandeau opaque #270, refonte #271) : le
-   bandeau 6px opaque de #270 réglait le problème de visibilité (le voile
-   translucide de #269 se fondait dans le vert saturé sous WebKitGTK réel),
-   mais Alain l'a jugé trop discret : il voulait un vrai "fond d'écran"
-   tricolore, pas un simple liseré.
-   #271 change donc de stratégie sur le fond lui-même plutôt que sur
-   l'opacité : on abandonne le tapis vert (radial-gradient) en mode
-   Belgicisme au profit d'un fond blanc uni, sur lequel un voile tricolore
-   noir-jaune-rouge translucide est posé sur TOUTE la surface (plus
-   seulement une bande). Un fond neutre blanc laisse beaucoup plus de marge
-   qu'un vert saturé : même à une opacité qui rend les trois couleurs bien
-   identifiables, le résultat reste un fond globalement clair.
-   Cela dit, un fond clair change la contrainte de contraste : le texte
-   blanc du mode France (pensé pour un tapis vert sombre) ne peut plus
-   reposer nulle part directement sur ce fond. Deux traitements différents
-   selon le texte concerné (voir plus bas, sections "Textes sur plaque" et
-   "Textes en noir direct") :
-   - titre, sous-titre, légendes des drapeaux : passent en texte noir sur
-     une PLAQUE de fond blanc quasi-opaque, ciblée sur le bloc de texte
-     (jamais un unique fond blanc géant qui masquerait le voile) — ainsi
-     leur contraste ne dépend jamais de la bande tricolore présente dessous
-     (option d'adapter la couleur du texte à la bande écartée par Alain,
-     trop complexe). Cohérent avec le traitement déjà en place ailleurs
-     (cartes blanches des joueurs, etc.).
-   - les autres textes déjà présents sur le fond (titres de section,
-     compteur, état vide des listes, bouton réglages) : simplement
-     repassés en noir/sombre (sans plaque) — le fond tricolore reste assez
-     clair, à l'opacité choisie, pour qu'un texte noir y garde un contraste
-     confortable quelle que soit la bande dessous (contrairement au blanc,
-     qui échouait spécifiquement sur les bandes claires jaune/rouge). Ce
-     sont des ajustements de couleur mécaniques, pas des plaques.
+/* Mode Belgicisme (issue #269, bandeau opaque #270, fond tricolore #271,
+   couleurs franches + suppression des plaques #272) : Alain a vérifié le
+   rendu réel WebKitGTK de #271 par capture et constaté deux problèmes.
+   1. Le voile tricolore (alpha 0.22/0.32/0.26 sur fond blanc) restait trop
+      pâle pour être identifié comme noir/jaune/rouge francs — gris clair,
+      jaune délavé, rose pastel. On remonte l'alpha à 0.95 sur les trois
+      bandes : quasi opaque, le blanc dessous ne transparaît quasiment plus,
+      d'où des couleurs franches (~#0d0d0d, ~#fae24b, ~#ee3443 une fois
+      mélangées, contre le blanc à 5%).
+   2. Tout le contenu (titre, cartes, boutons...) repose exclusivement sur
+      la bande centrale jaune — les bandes noire et rouge ne portent jamais
+      de texte. Le système de "plaques" blanches ciblées derrière le
+      titre/sous-titre/légendes (#271, pensé pour un contraste indépendant
+      de la bande dessous) est donc une complexité inutile : supprimé au
+      profit d'une seule couleur de texte sombre (#1a1a1a), appliquée
+      uniformément à tous les textes du mode Belgicisme. Cette couleur
+      contraste ~15:1 sur le jaune franc du voile (bien au-delà du seuil
+      WCAG AA 4.5:1) — seule bande qui compte puisqu'aucun texte ne repose
+      sur le noir ou le rouge.
    Le mode France reste strictement inchangé (aucune de ces règles n'existe
    hors de `body.mode-belgicisme`). */
 body.mode-belgicisme {
@@ -93,9 +81,9 @@ body.mode-belgicisme {
     background-image:
         linear-gradient(
             90deg,
-            rgba(0, 0, 0, 0.22) 0%, rgba(0, 0, 0, 0.22) 33.33%,
-            rgba(250, 224, 66, 0.32) 33.33%, rgba(250, 224, 66, 0.32) 66.66%,
-            rgba(237, 41, 57, 0.26) 66.66%, rgba(237, 41, 57, 0.26) 100%
+            rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.95) 33.33%,
+            rgba(250, 224, 66, 0.95) 33.33%, rgba(250, 224, 66, 0.95) 66.66%,
+            rgba(237, 41, 57, 0.95) 66.66%, rgba(237, 41, 57, 0.95) 100%
         );
     background-repeat: no-repeat;
     background-size: 100% 100%;
@@ -103,72 +91,33 @@ body.mode-belgicisme {
     background-attachment: fixed;
 }
 
-/* Textes sur plaque (issue #271) : titre, sous-titre, légendes des
-   drapeaux. `width: fit-content` + `margin: 0 auto` gardent le titre et le
-   sous-titre sur leur propre ligne, centrés, avec une plaque ajustée au
-   texte plutôt qu'à toute la largeur du bloc (h1/p sont des éléments de
-   bloc ; les passer en inline-block les aurait mis côte à côte). La
-   légende reste un <span> inline-block classique : seule dans sa colonne
-   flex (.drapeau-choix), pas de risque de réagencement en ligne. */
-body.mode-belgicisme header h1 {
-    display: block;
-    width: fit-content;
-    margin: 0 auto 4px;
-    padding: 4px 16px;
+/* Texte uniforme sombre, sans plaque (issue #272 — remplace le système de
+   plaques blanches de #271, cf. commentaire de body.mode-belgicisme
+   ci-dessus). Tous ces textes reposent sur la bande jaune, seule bande qui
+   porte du contenu. */
+body.mode-belgicisme header h1,
+body.mode-belgicisme .subtitle,
+body.mode-belgicisme .drapeau-legende,
+body.mode-belgicisme section h2,
+body.mode-belgicisme .compteur,
+body.mode-belgicisme .liste-joueurs .vide,
+body.mode-belgicisme .parties-en-cours .vide {
     color: #1a1a1a;
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 8px;
     text-shadow: none;
 }
 
-body.mode-belgicisme .subtitle {
-    display: block;
-    width: fit-content;
-    margin: 0 auto;
-    padding: 2px 12px;
-    color: #1a1a1a;
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 6px;
-    text-shadow: none;
-}
-
-body.mode-belgicisme .drapeau-legende {
-    display: inline-block;
-    padding: 1px 10px;
-    color: #1a1a1a;
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 6px;
-    text-shadow: none;
-}
-
-/* Textes en noir direct, sans plaque (issue #271) : le fond tricolore reste
-   assez clair pour qu'un texte noir y garde un contraste confortable, sur
-   les trois bandes — voir le commentaire de body.mode-belgicisme ci-dessus. */
 body.mode-belgicisme .btn-reglages {
     background: rgba(0, 0, 0, 0.4);
 }
 
 body.mode-belgicisme section h2 {
-    color: #1a1a1a;
     border-bottom-color: rgba(0, 0, 0, 0.2);
-    text-shadow: none;
-}
-
-body.mode-belgicisme .compteur {
-    color: rgba(0, 0, 0, 0.75);
-    text-shadow: none;
 }
 
 body.mode-belgicisme .liste-joueurs:has(.vide),
 body.mode-belgicisme .parties-en-cours:has(.vide) {
     background: rgba(255, 255, 255, 0.55);
     border-color: rgba(0, 0, 0, 0.25);
-}
-
-body.mode-belgicisme .liste-joueurs .vide,
-body.mode-belgicisme .parties-en-cours .vide {
-    color: rgba(0, 0, 0, 0.75);
-    text-shadow: none;
 }
 
 .container {
