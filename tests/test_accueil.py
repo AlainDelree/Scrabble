@@ -1130,3 +1130,31 @@ class TestReinitialiserPourRetourAccueil:
         # La fenêtre partagée n'est pas touchée ; aucune session ouverte/fermée.
         assert api._window is sentinelle
         assert appels_session == []
+
+    def test_conserve_le_mode_belgicisme(self):
+        """Le mode Belgicisme actif survit à un retour au menu (issue #279).
+
+        Seul un clic explicite sur un des deux drapeaux
+        (``definir_mode_belgicisme``) doit changer le mode : un retour au menu
+        en cours de session ne doit pas le remettre à ``False``.
+        """
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.definir_mode_belgicisme(True)
+
+        api.reinitialiser_pour_retour_accueil()
+
+        assert api.config_partie.mode_belgicisme is True
+        assert api.obtenir_etat()["mode_belgicisme"] is True
+
+    def test_mode_belgicisme_absent_reste_a_false(self):
+        """Sans activation préalable, le retour au menu conserve le défaut France."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+
+        api.reinitialiser_pour_retour_accueil()
+
+        assert api.config_partie.mode_belgicisme is False
+        assert api.obtenir_etat()["mode_belgicisme"] is False

@@ -318,7 +318,13 @@ class ApiAccueil:
 
         On restaure donc à la main l'état d'un accueil fraîchement construit :
 
-        * ``config_partie`` remis à une :class:`ConfigPartie` vierge ;
+        * ``config_partie`` remis à une :class:`ConfigPartie` vierge, à
+          l'exception de ``mode_belgicisme`` qui est reporté tel quel (issue
+          #279) : ce réglage n'est pas propre à une partie en préparation mais
+          un choix de session, au même titre qu'un futur réglage persistant
+          similaire — seul un clic explicite sur un des deux drapeaux
+          (:meth:`definir_mode_belgicisme`) doit le faire changer, jamais un
+          simple retour au menu en cours de session ;
         * ``_partie``/``_id_partie``/``_infos_tirage`` remis à ``None`` (aucune
           partie préparée ne doit fuiter dans un futur ``demarrer_jeu``) ;
         * joueur humain de référence re-seedé (:meth:`initialiser_joueur_humain`,
@@ -334,7 +340,8 @@ class ApiAccueil:
         session de journalisation (une seule couvre toute la coquille unifiée,
         issue #179) : cette méthode ne fait que réinitialiser l'état métier.
         """
-        self.config_partie = ConfigPartie()
+        mode_belgicisme = self.config_partie.mode_belgicisme
+        self.config_partie = ConfigPartie(mode_belgicisme=mode_belgicisme)
         self._partie = None
         self._id_partie = None
         self._infos_tirage = None
