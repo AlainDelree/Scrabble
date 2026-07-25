@@ -1885,6 +1885,28 @@ body {
     font-style: italic;
 }
 
+/* Pastille-drapeau belge miniature (issue #276) : préfixe une glose belge
+   non dupliquée dans la liste, pour la distinguer des gloses standards sans
+   dépendre du mode Belgicisme de la partie en cours. Même dégradé tricolore
+   CSS que .drapeau-belgique (accueil.css) — pas d'asset image, juste un
+   cercle en aplat de couleurs ; dupliqué plutôt que factorisé, les deux
+   fichiers CSS restant scopés chacun à leur écran (convention du projet). */
+.definition-brouillon .drapeau-mini {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 4px;
+    border-radius: 50%;
+    vertical-align: middle;
+    flex: 0 0 auto;
+    background: linear-gradient(
+        90deg,
+        #000000 0%, #000000 33.33%,
+        #fae042 33.33%, #fae042 66.66%,
+        #ed2939 66.66%, #ed2939 100%
+    );
+}
+
 /* Modale de détail du score « moins intrusive » (issue #128). Ouverte depuis
    « Derniers coups », elle recouvrait auparavant une grande partie du plateau
    (fond plein écran assombri + panneau large centré), masquant précisément la

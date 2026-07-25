@@ -1592,10 +1592,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Affiche la définition sous le verdict (issue #124). ``definition`` est la
-    // liste de gloses ODS8 (ou null/absente). On n'appelle cette fonction que
-    // pour un mot VALIDE : une liste vide/nulle signifie « pas de définition
-    // dans l'index » (mot Hunspell uniquement) et affiche un message clair,
-    // cohérent avec l'onglet Dictionnaire des réglages (issue #111).
+    // liste de gloses (ou null/absente). On n'appelle cette fonction que pour
+    // un mot VALIDE : une liste vide/nulle signifie « pas de définition dans
+    // l'index » (mot Hunspell uniquement) et affiche un message clair,
+    // cohérent avec l'onglet Dictionnaire des réglages (issue #111). Depuis
+    // l'issue #276, chaque glose est soit une chaîne brute (rétrocompatibilité
+    // si ``definition`` reste un tableau de chaînes dans un cas limite), soit
+    // un objet ``{texte, origine}`` — les gloses d'origine belge affichent une
+    // pastille-drapeau ``.drapeau-mini`` en préfixe, en permanence, quel que
+    // soit le mode Belgicisme de la partie en cours.
     function afficherDefinitionBrouillon(definition) {
         if (!definitionBrouillon) return;
         definitionBrouillon.innerHTML = '';
@@ -1603,8 +1608,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             const ol = document.createElement('ol');
             ol.className = 'definition-gloses';
             definition.forEach((glose) => {
+                const estObjet = glose && typeof glose === 'object';
+                const texte = estObjet ? glose.texte : glose;
+                const origine = estObjet ? glose.origine : 'standard';
                 const li = document.createElement('li');
-                li.textContent = glose;
+                if (origine === 'belge') {
+                    const drapeau = document.createElement('span');
+                    drapeau.className = 'drapeau-mini';
+                    drapeau.title = 'Définition belge';
+                    li.appendChild(drapeau);
+                }
+                li.appendChild(document.createTextNode(texte));
                 ol.appendChild(li);
             });
             definitionBrouillon.appendChild(ol);

@@ -438,19 +438,21 @@ class MixinPose:
         l'ordre affiché). Le test est en **lecture seule** : il ne pose aucun
         coup, ne consomme aucun tour et ne modifie en rien l'état de la partie.
         Renvoie ``{"succes": True, "mot": <MOT>, "valide": bool, "definition":
-        [gloses] | None}`` ou, si le brouillon est vide, ``{"succes": False,
-        "erreur": <message>}``. La ``definition`` (ODS8 uniquement, issue #124)
-        est ``None`` quand le mot est invalide ou absent de l'index — l'UI
-        affiche alors « définition indisponible ».
+        [{"texte": ..., "origine": "standard"|"belge"}, ...] | None}`` ou, si
+        le brouillon est vide, ``{"succes": False, "erreur": <message>}``. La
+        ``definition`` est ``None`` quand le mot est invalide ou sans aucune
+        glose — l'UI affiche alors « définition indisponible ».
 
-        Restriction à la source active (issue #127) : la définition n'est
-        renvoyée que si la partie est jouée avec ``"ods"`` comme source de
-        dictionnaire (``config["source_dictionnaire"]``, seule source de vérité
-        de la source active — ni ``Partie`` ni ``Dictionnaire`` ne la
-        mémorisent). En source ``"hunspell"``, ``definition`` vaut toujours
-        ``None``, même pour un mot par ailleurs présent dans l'index ODS8, pour
-        rester strictement cohérent avec ce qui valide réellement les coups sur
-        le plateau.
+        Restriction à la source active (issue #127) : les gloses **standards**
+        (ODS8, issue #124) ne sont renvoyées que si la partie est jouée avec
+        ``"ods"`` comme source de dictionnaire (``config["source_dictionnaire"]``,
+        seule source de vérité de la source active — ni ``Partie`` ni
+        ``Dictionnaire`` ne la mémorisent) ; en source ``"hunspell"``, elles
+        sont toujours absentes, pour rester strictement cohérent avec ce qui
+        valide réellement les coups sur le plateau. Les gloses **belges**
+        (issue #276) échappent à cette restriction : elles sont renvoyées dès
+        qu'elles existent, quelle que soit la source active ou le mode
+        Belgicisme de la partie en cours.
         """
         from scrabble.ui import jeu as mod_jeu
         from scrabble.ui.jeu import verifier_mot_dictionnaire

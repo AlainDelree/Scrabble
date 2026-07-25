@@ -302,6 +302,87 @@ def definition_mot(
     return gloses
 
 
+# Cache mémoire des définitions belges, chargé paresseusement (issue #276).
+_DEFINITIONS_BELGES_CACHE: dict[str, list[str]] | None = None
+
+
+def charger_definitions_belges(
+    chemin: Path = CHEMIN_BELGICISMES,
+) -> dict[str, list[str]]:
+    """Charge l'index mot → liste de gloses belges (loupe, issue #276).
+
+    Contrairement à :func:`charger_belgicismes`, lit **toutes** les lignes du
+    CSV sans filtrer sur ``existe_sens_standard`` : la loupe doit pouvoir
+    afficher une glose belge même pour un mot qui existe déjà en français
+    standard (ex. ``académique``), la déduplication avec les gloses standards
+    étant faite séparément par :func:`definitions_annotees`. La colonne
+    ``définition(s) belge(s)`` est découpée sur `` | `` pour obtenir la liste
+    des gloses de chaque mot. Clé désaccentuée, même convention que
+    ``definitions.json`` (:func:`desaccentuer`). Mise en cache mémoire à
+    l'image de :func:`charger_definitions`. Fichier absent toléré (``{}``).
+    """
+    global _DEFINITIONS_BELGES_CACHE
+    if chemin == CHEMIN_BELGICISMES and _DEFINITIONS_BELGES_CACHE is not None:
+        return _DEFINITIONS_BELGES_CACHE
+    definitions: dict[str, list[str]] = {}
+    try:
+        with open(chemin, "r", encoding="utf-8", newline="") as fichier:
+            lecteur = csv.DictReader(fichier)
+            for ligne in lecteur:
+                mot = desaccentuer(normaliser_mot(ligne.get("mot") or ""))
+                if not mot:
+                    continue
+                brut = (ligne.get("définition(s) belge(s)") or "").strip()
+                if not brut:
+                    continue
+                gloses = [glose.strip() for glose in brut.split(" | ") if glose.strip()]
+                if gloses:
+                    definitions[mot] = gloses
+    except (FileNotFoundError, IsADirectoryError, OSError):
+        definitions = {}
+    if chemin == CHEMIN_BELGICISMES:
+        _DEFINITIONS_BELGES_CACHE = definitions
+    return definitions
+
+
+def _cle_dedup_glose(glose: str) -> str:
+    """Normalise une glose pour comparaison de doublon (casse/espaces/ponctuation)."""
+    sans_ponctuation_finale = glose.strip().rstrip(".!?;: ")
+    return " ".join(sans_ponctuation_finale.split()).lower()
+
+
+def definitions_annotees(
+    mot: str,
+    chemin_definitions: Path = CHEMIN_DEFINITIONS,
+    chemin_belges: Path = CHEMIN_BELGICISMES,
+) -> list[dict[str, str]] | None:
+    """Fusionne gloses standards et gloses belges d'un mot (loupe, issue #276).
+
+    Retourne une liste de ``{"texte": ..., "origine": "standard"|"belge"}`` :
+    les gloses standards d'abord (via :func:`definition_mot`), puis les gloses
+    belges (via :func:`charger_definitions_belges`) qui ne dupliquent pas déjà
+    une glose standard présente (comparaison normalisée insensible à la
+    casse/aux espaces/à la ponctuation finale — voir :func:`_cle_dedup_glose`,
+    cas ``académique`` dont les deux gloses belges existent déjà mot pour mot
+    dans le Wiktionnaire filtré). Renvoie ``None`` si le mot n'a ni définition
+    standard ni définition belge (même contrat que :func:`definition_mot`).
+    """
+    norme = normaliser_mot(mot)
+    if not norme:
+        return None
+    standards = definition_mot(norme, chemin_definitions) or []
+    cles_standards = {_cle_dedup_glose(glose) for glose in standards}
+    belges = charger_definitions_belges(chemin_belges).get(desaccentuer(norme), [])
+    annotees = [{"texte": glose, "origine": "standard"} for glose in standards]
+    for glose in belges:
+        if _cle_dedup_glose(glose) in cles_standards:
+            continue
+        annotees.append({"texte": glose, "origine": "belge"})
+    if not annotees:
+        return None
+    return annotees
+
+
 def assurer_fichiers_modifs(
     chemin_ajoutes: Path,
     chemin_retires: Path,

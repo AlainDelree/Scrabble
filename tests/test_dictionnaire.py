@@ -25,12 +25,14 @@ from scrabble.dictionnaire.dictionnaire import (
     assurer_fichiers_modifs,
     charger_belgicismes,
     charger_definitions,
+    charger_definitions_belges,
     charger_ods,
     chemins_modifs,
     construire_ensemble_ia,
     construire_ensemble_mots,
     construire_trie,
     definition_mot,
+    definitions_annotees,
     desaccentuer,
     ensemble_classiques,
     est_mot_scrabble,
@@ -664,6 +666,149 @@ def test_obtenir_trie_cache_ancien_sans_champ_belge_reste_valide_en_mode_france(
     )
     assert chemin_cache.stat().st_mtime_ns == mtime_cache  # pas régénéré
     assert "CHAT" in trie_relu
+
+
+# --------------------------------------------------------------------------- #
+# Définitions belges + fusion annotée (loupe), issue #276
+# --------------------------------------------------------------------------- #
+
+def _ecrire_csv_definitions_belges(chemin, lignes):
+    """Écrit un CSV belgicismes factice avec définition personnalisée.
+
+    ``lignes`` : liste de ``(mot, definition_brute, existe_sens_standard)``.
+    """
+    with open(chemin, "w", encoding="utf-8", newline="") as fichier:
+        ecrivain = csv.writer(fichier)
+        ecrivain.writerow(
+            ["mot", "définition(s) belge(s)", "origine_wallonne", "existe_sens_standard"]
+        )
+        for mot, definition, existe in lignes:
+            ecrivain.writerow([mot, definition, "non", existe])
+
+
+def test_charger_definitions_belges_ne_filtre_pas_existe_sens_standard(tmp_path):
+    """Contrairement à charger_belgicismes, TOUTES les lignes sont chargées, y
+    compris ``existe_sens_standard=oui`` (cas ``académique``, issue #276)."""
+    chemin = tmp_path / "belgicismes.csv"
+    _ecrire_csv_definitions_belges(
+        chemin,
+        [
+            ("academique", "Universitaire. | Relatif à un retard toléré.", "oui"),
+            ("sketter", "Casser, fatiguer.", "non"),
+        ],
+    )
+
+    definitions = charger_definitions_belges(chemin)
+
+    assert definitions["ACADEMIQUE"] == [
+        "Universitaire.",
+        "Relatif à un retard toléré.",
+    ]
+    assert definitions["SKETTER"] == ["Casser, fatiguer."]
+
+
+def test_charger_definitions_belges_fichier_absent(tmp_path):
+    """Fichier absent : dict vide, sans erreur (comme charger_definitions)."""
+    assert charger_definitions_belges(tmp_path / "absent.csv") == {}
+
+
+def test_definitions_annotees_mot_belge_sans_equivalent_standard(tmp_path):
+    """« sketter » : aucune glose standard, toutes les gloses sont belges."""
+    chemin_defs = tmp_path / "definitions.json"
+    chemin_defs.write_text(json.dumps({}), encoding="utf-8")
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_definitions_belges(chemin_belges, [("sketter", "Casser, fatiguer.", "non")])
+
+    annotees = definitions_annotees("sketter", chemin_defs, chemin_belges)
+
+    assert annotees == [{"texte": "Casser, fatiguer.", "origine": "belge"}]
+
+
+def test_definitions_annotees_mot_avec_glose_belge_non_dupliquee(tmp_path):
+    """Une glose standard suivie d'une glose belge non dupliquée (drapeau)."""
+    chemin_defs = tmp_path / "definitions.json"
+    chemin_defs.write_text(
+        json.dumps({"CHAT": ["Petit félin domestique."]}), encoding="utf-8"
+    )
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_definitions_belges(chemin_belges, [("chat", "Loquet de porte.", "non")])
+
+    annotees = definitions_annotees("chat", chemin_defs, chemin_belges)
+
+    assert annotees == [
+        {"texte": "Petit félin domestique.", "origine": "standard"},
+        {"texte": "Loquet de porte.", "origine": "belge"},
+    ]
+
+
+def test_definitions_annotees_academique_deduplique_sans_doublon(tmp_path):
+    """Cas ``académique`` (issue #276) : les deux gloses belges existent déjà
+    mot pour mot dans le Wiktionnaire filtré — aucun doublon, aucune glose
+    belge ajoutée, pas de drapeau sur les gloses partagées."""
+    chemin_defs = tmp_path / "definitions.json"
+    chemin_defs.write_text(
+        json.dumps(
+            {
+                "ACADEMIQUE": [
+                    "Qui se rapporte aux académies.",
+                    "Universitaire.",
+                    "Relatif à un retard toléré.",
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_definitions_belges(
+        chemin_belges,
+        [("academique", "Universitaire. | Relatif à un retard toléré.", "oui")],
+    )
+
+    annotees = definitions_annotees("academique", chemin_defs, chemin_belges)
+
+    assert annotees == [
+        {"texte": "Qui se rapporte aux académies.", "origine": "standard"},
+        {"texte": "Universitaire.", "origine": "standard"},
+        {"texte": "Relatif à un retard toléré.", "origine": "standard"},
+    ]
+    assert all(glose["origine"] == "standard" for glose in annotees)
+
+
+def test_definitions_annotees_dedup_insensible_casse_espaces_ponctuation(tmp_path):
+    """La déduplication ignore casse, espaces superflus et ponctuation finale."""
+    chemin_defs = tmp_path / "definitions.json"
+    chemin_defs.write_text(json.dumps({"MOT": ["Une   glose.  "]}), encoding="utf-8")
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_definitions_belges(chemin_belges, [("mot", "une glose", "non")])
+
+    annotees = definitions_annotees("mot", chemin_defs, chemin_belges)
+
+    assert annotees == [{"texte": "Une   glose.  ", "origine": "standard"}]
+
+
+def test_definitions_annotees_mot_sans_definition_belge_comportement_inchange(tmp_path):
+    """Un mot sans entrée dans le CSV belge : uniquement les gloses standards,
+    comportement strictement inchangé (mêmes gloses, simplement annotées)."""
+    chemin_defs = tmp_path / "definitions.json"
+    chemin_defs.write_text(
+        json.dumps({"CHIEN": ["Mammifère domestique."]}), encoding="utf-8"
+    )
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_definitions_belges(chemin_belges, [("sketter", "Casser, fatiguer.", "non")])
+
+    annotees = definitions_annotees("chien", chemin_defs, chemin_belges)
+
+    assert annotees == [{"texte": "Mammifère domestique.", "origine": "standard"}]
+
+
+def test_definitions_annotees_mot_totalement_absent_renvoie_none(tmp_path):
+    """Ni définition standard ni définition belge : None (comme definition_mot)."""
+    chemin_defs = tmp_path / "definitions.json"
+    chemin_defs.write_text(json.dumps({}), encoding="utf-8")
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_definitions_belges(chemin_belges, [("sketter", "Casser, fatiguer.", "non")])
+
+    assert definitions_annotees("zorglub", chemin_defs, chemin_belges) is None
 
 
 # --------------------------------------------------------------------------- #

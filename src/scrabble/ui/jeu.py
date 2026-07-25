@@ -45,9 +45,10 @@ import webview
 from scrabble import journal
 from scrabble.config import AVATARS_DISPONIBLES, THEMES_PLATEAU, charger_config
 from scrabble.dictionnaire.dictionnaire import (
+    CHEMIN_BELGICISMES,
     CHEMIN_DEFINITIONS,
     Trie,
-    definition_mot,
+    definitions_annotees,
     normaliser_mot,
 )
 from scrabble.moteur.ia import Niveau
@@ -866,6 +867,7 @@ def verifier_mot_dictionnaire(
     lettres: Any,
     chemin_definitions: Path = CHEMIN_DEFINITIONS,
     source: str = "ods",
+    chemin_belgicismes: Path = CHEMIN_BELGICISMES,
 ) -> dict[str, Any]:
     """Teste l'appartenance au dictionnaire du mot formé par ``lettres``.
 
@@ -876,25 +878,26 @@ def verifier_mot_dictionnaire(
     partie ni du dictionnaire.
 
     Renvoie ``{"succes": True, "mot": <MOT>, "valide": bool, "definition":
-    [gloses] | None}`` ; si la suite est vide (après normalisation),
-    ``{"succes": False, "erreur": <message>}``. Un joker (``*``) laissé dans le
-    brouillon n'est pas une lettre fixe : il empêche tout mot d'être trouvé (le
-    test renverra ``valide`` faux), ce qui est le comportement attendu d'un
-    simple test d'appartenance.
+    [{"texte": ..., "origine": "standard"|"belge"}, ...] | None}`` ; si la
+    suite est vide (après normalisation), ``{"succes": False, "erreur":
+    <message>}``. Un joker (``*``) laissé dans le brouillon n'est pas une
+    lettre fixe : il empêche tout mot d'être trouvé (le test renverra
+    ``valide`` faux), ce qui est le comportement attendu d'un simple test
+    d'appartenance.
 
-    La définition n'est calculée que si le mot est valide **et** que la source
-    active de la partie (``source``) est ``"ods"``, en réutilisant
-    :func:`~scrabble.dictionnaire.dictionnaire.definition_mot` (ODS8 uniquement,
-    même source que l'onglet Dictionnaire des réglages, issue #111). Quand la
-    partie est jouée avec ``"hunspell"`` comme source active (issue #127), la
-    définition est **systématiquement** ``None``, même si le mot valide se
-    trouve, par coïncidence, présent dans l'index ODS8 : « Vérification
-    dictionnaire » reste ainsi strictement cohérent avec ce qui valide les coups
-    sur le plateau et ne laisse pas croire que l'ODS8 joue un rôle dans cette
-    partie. En source ODS, un mot présent seulement dans Hunspell — ou absent de
-    l'index — renvoie aussi ``"definition": None`` : à l'UI d'afficher
-    « définition indisponible ». Un mot invalide renvoie toujours ``None``
-    (aucune définition n'a de sens).
+    Les gloses sont calculées, pour un mot valide, via
+    :func:`~scrabble.dictionnaire.dictionnaire.definitions_annotees` (issue
+    #276), qui fusionne gloses standards et gloses belges (dédupliquées mot
+    pour mot, cas ``académique``). La source active de la partie (``source``)
+    continue de filtrer les gloses **standards** uniquement, comme avant
+    l'issue #276 : quand la partie est jouée avec ``"hunspell"`` (issue #127),
+    les gloses standards (ODS8) sont retirées du résultat, cohérent avec ce qui
+    valide les coups sur le plateau. Les gloses **belges**, elles, restent
+    toujours affichées quand elles existent, indépendamment de la source et du
+    mode Belgicisme de la partie (permanent, hors périmètre du filtre
+    ``source``). Un mot invalide, ou sans aucune glose (standard ou belge),
+    renvoie ``"definition": None`` : à l'UI d'afficher « définition
+    indisponible ».
     """
     mot = normaliser_mot(_concatener_lettres(lettres))
     if not mot:
@@ -903,11 +906,12 @@ def verifier_mot_dictionnaire(
             "erreur": "La zone de brouillon ne contient aucune lettre à vérifier.",
         }
     valide = bool(dictionnaire.contient(mot))
-    definition = (
-        definition_mot(mot, chemin_definitions)
-        if valide and source == "ods"
-        else None
-    )
+    definition = None
+    if valide:
+        annotees = definitions_annotees(mot, chemin_definitions, chemin_belgicismes)
+        if annotees and source != "ods":
+            annotees = [glose for glose in annotees if glose["origine"] != "standard"]
+        definition = annotees or None
     return {
         "succes": True,
         "mot": mot,
