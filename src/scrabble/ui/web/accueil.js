@@ -55,6 +55,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Bouton réglages (issue #111)
     const btnReglages = document.getElementById('btn-reglages');
 
+    // Cercles-drapeaux du mode dictionnaire (issue #269)
+    const drapeauFrance = document.getElementById('drapeau-france');
+    const drapeauBelgique = document.getElementById('drapeau-belgique');
+
     // État
     let premierHumainAjoute = false;
 
@@ -333,6 +337,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     function cacherModale(modale) {
         modale.hidden = true;
     }
+
+    /**
+     * Mode dictionnaire régional (issue #269) : cercles-drapeaux France/
+     * Belgique, choix exclusif (France par défaut). Le clic sur le drapeau
+     * belge teinte légèrement le fond de l'écran (voir .mode-belgicisme dans
+     * accueil.css) ; recliquer sur le drapeau français y ramène. L'état est
+     * transmis à Python (``api.definir_mode_belgicisme``) pour être stocké
+     * dans la configuration de la partie en cours — aucune logique de
+     * dictionnaire n'est câblée ici, c'est un chantier séparé à venir.
+     */
+    function syncModeDictionnaire(modeBelgicisme) {
+        drapeauFrance.classList.toggle('actif', !modeBelgicisme);
+        drapeauFrance.setAttribute('aria-checked', String(!modeBelgicisme));
+        drapeauBelgique.classList.toggle('actif', modeBelgicisme);
+        drapeauBelgique.setAttribute('aria-checked', String(modeBelgicisme));
+        document.body.classList.toggle('mode-belgicisme', modeBelgicisme);
+    }
+
+    async function choisirModeDictionnaire(modeBelgicisme) {
+        syncModeDictionnaire(modeBelgicisme);
+        await api.definir_mode_belgicisme(modeBelgicisme);
+    }
+
+    drapeauFrance.addEventListener('click', () => choisirModeDictionnaire(false));
+    drapeauBelgique.addEventListener('click', () => choisirModeDictionnaire(true));
 
     // --- Gestionnaires d'événements ---
 
@@ -948,6 +977,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Initialisation ---
     const etatInitial = await api.obtenir_etat();
     mettreAJourAffichage(etatInitial);
+    syncModeDictionnaire(Boolean(etatInitial.mode_belgicisme));
     await chargerNiveaux();
     await chargerPartiesEnCours();
 });

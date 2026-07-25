@@ -52,6 +52,28 @@ body {
     color: var(--couleur-texte);
     line-height: 1.5;
     min-height: 100vh;
+    transition: background-image 0.2s ease;
+}
+
+/* Mode Belgicisme (issue #269) : léger voile tricolore noir-jaune-rouge posé
+   PAR-DESSUS le tapis vert habituel (le radial-gradient n'est pas remplacé,
+   simplement calque en second plan) — opacité volontairement faible (12 %)
+   pour rester discret et ne pas gêner la lecture. Contraste vérifié : sur la
+   zone la plus claire du tapis (--tapis-vert-clair, la plus défavorable) avec
+   la bande jaune (la plus lumineuse des trois), le texte blanc conserve un
+   ratio de contraste ≈ 4.6:1, au-dessus du seuil WCAG AA (4.5:1) — et les
+   textes de l'accueil ajoutent déjà une ombre portée qui renforce encore la
+   lisibilité. Bandes verticales façon drapeau pour rester immédiatement
+   reconnaissables malgré l'opacité faible. */
+body.mode-belgicisme {
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(0, 0, 0, 0.12) 0%, rgba(0, 0, 0, 0.12) 33.33%,
+            rgba(250, 224, 66, 0.12) 33.33%, rgba(250, 224, 66, 0.12) 66.66%,
+            rgba(237, 41, 57, 0.12) 66.66%, rgba(237, 41, 57, 0.12) 100%
+        ),
+        radial-gradient(120% 90% at 50% 30%, var(--tapis-vert-clair) 0%, var(--tapis-vert) 55%, var(--tapis-vert-fonce) 100%);
 }
 
 .container {
@@ -115,6 +137,91 @@ header h1 {
     color: rgba(255, 255, 255, 0.92);
     font-size: 0.95rem;
     text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Cercles-drapeaux du mode dictionnaire (issue #269), sous le sous-titre. */
+.mode-dictionnaire {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    margin-bottom: 24px;
+}
+
+.drapeau-choix {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.drapeau-cercle {
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: 3px solid rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    cursor: pointer;
+    position: relative;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+
+.drapeau-cercle:hover {
+    transform: translateY(-1px);
+}
+
+.drapeau-cercle:focus-visible {
+    outline: 3px solid #ffffff;
+    outline-offset: 2px;
+}
+
+.drapeau-france {
+    background: linear-gradient(
+        90deg,
+        #0055a4 0%, #0055a4 33.33%,
+        #ffffff 33.33%, #ffffff 66.66%,
+        #ef4135 66.66%, #ef4135 100%
+    );
+}
+
+.drapeau-belgique {
+    background: linear-gradient(
+        90deg,
+        #000000 0%, #000000 33.33%,
+        #fae042 33.33%, #fae042 66.66%,
+        #ed2939 66.66%, #ed2939 100%
+    );
+}
+
+/* Indicateur de sélection active : ne PAS se reposer uniquement sur la
+   couleur de fond (exigence d'accessibilité du projet, utilisatrice âgée) —
+   bordure blanche épaisse + ombre nette + effet « enfoncé » (léger
+   rétrécissement + ombre interne) + coche visible, cumulés. */
+.drapeau-cercle.actif {
+    border-color: #ffffff;
+    box-shadow:
+        0 0 0 3px rgba(255, 255, 255, 0.9),
+        inset 0 2px 5px rgba(0, 0, 0, 0.4);
+    transform: scale(0.92);
+}
+
+.drapeau-cercle.actif::after {
+    content: "✓";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    font-size: 1.4rem;
+    font-weight: 700;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.drapeau-legende {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.8rem;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* Sections */

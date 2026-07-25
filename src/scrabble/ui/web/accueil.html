@@ -19,6 +19,31 @@
             <p class="subtitle">Configuration de la partie</p>
         </header>
 
+        <!-- Mode dictionnaire régional (issue #269) : choix exclusif entre le
+             dictionnaire France (par défaut) et le mode Belgicisme, via deux
+             cercles aux couleurs des drapeaux. Le choix change légèrement le
+             fond de l'écran (voir accueil.css, .mode-belgicisme) et stocke
+             son état côté Python (voir accueil.js, api.definir_mode_belgicisme)
+             pour un futur chantier de chargement du dictionnaire belge — non
+             couvert ici. -->
+        <div class="mode-dictionnaire" role="radiogroup"
+             aria-label="Mode de dictionnaire, France ou Belgique">
+            <div class="drapeau-choix">
+                <button type="button" class="drapeau-cercle drapeau-france actif"
+                        id="drapeau-france" role="radio" aria-checked="true"
+                        aria-label="Dictionnaire France (choix par défaut)"
+                        title="Dictionnaire France"></button>
+                <span class="drapeau-legende">France</span>
+            </div>
+            <div class="drapeau-choix">
+                <button type="button" class="drapeau-cercle drapeau-belgique"
+                        id="drapeau-belgique" role="radio" aria-checked="false"
+                        aria-label="Mode Belgicisme (Belgique)"
+                        title="Mode Belgicisme"></button>
+                <span class="drapeau-legende">Belgique</span>
+            </div>
+        </div>
+
         <main>
             <section class="table-joueurs">
                 <h2>Joueurs autour de la table</h2>

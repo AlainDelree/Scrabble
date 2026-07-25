@@ -126,6 +126,13 @@ class ConfigPartie:
     """Configuration complète de la partie à créer."""
 
     joueurs: list[JoueurConfig] = field(default_factory=list)
+    # Mode dictionnaire régional (issue #269) : bascule facultative entre le
+    # dictionnaire standard (France, choix par défaut) et un futur
+    # dictionnaire belge additionnel. Cette issue ne couvre QUE l'interface
+    # (cercles-drapeaux) et le stockage de ce choix — le chargement effectif
+    # du dictionnaire belge et l'affichage de ses définitions restent un
+    # chantier séparé, à venir.
+    mode_belgicisme: bool = False
 
     @property
     def nb_humains(self) -> int:
@@ -381,6 +388,7 @@ class ApiAccueil:
             "nb_humains": self.config_partie.nb_humains,
             "nb_ordinateurs": self.config_partie.nb_ordinateurs,
             "nb_total": self.config_partie.nb_total,
+            "mode_belgicisme": self.config_partie.mode_belgicisme,
         }
 
     def ajouter_humain(self, nom: str, sauvegarder: bool = False) -> dict[str, Any]:
@@ -426,6 +434,28 @@ class ApiAccueil:
             return {"succes": False, "erreur": "Index invalide."}
         journal.info(f"Accueil : joueur retiré (index {index}).")
         return {"succes": True, "etat": self.obtenir_etat()}
+
+    def definir_mode_belgicisme(self, actif: bool) -> dict[str, Any]:
+        """Enregistre le choix France/Belgique des cercles-drapeaux (issue #269).
+
+        Se contente de stocker le booléen dans la configuration de la partie
+        en cours de création (``config_partie.mode_belgicisme``), pour qu'un
+        futur chantier (chargement du dictionnaire belge) puisse le lire
+        facilement au lancement de la partie via ``self.config_partie.
+        mode_belgicisme``. Aucune logique de dictionnaire n'est implémentée
+        ici — le choix France reste sans effet tant que ce chantier n'existe
+        pas.
+        """
+        self.config_partie.mode_belgicisme = bool(actif)
+        journal.info(
+            "Accueil : mode dictionnaire = "
+            + ("Belgique" if self.config_partie.mode_belgicisme else "France")
+            + "."
+        )
+        return {
+            "succes": True,
+            "mode_belgicisme": self.config_partie.mode_belgicisme,
+        }
 
     @staticmethod
     def _construire_trie_ia(source: str) -> Any:
