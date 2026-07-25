@@ -326,7 +326,7 @@ class TestApiAccueilLancement:
         # désormais la source lue dans la config (issue #210), d'où ``source``.
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda source="ods": Trie.depuis_iterable(["MAISON", "TEST"]),
+            lambda source="ods", **_: Trie.depuis_iterable(["MAISON", "TEST"]),
         )
         # Stub de la persistance pour éviter d'écrire sur disque
         monkeypatch.setattr(
@@ -359,7 +359,7 @@ class TestApiAccueilLancement:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda source="ods": Trie.depuis_iterable(["TEST"]),
+            lambda source="ods", **_: Trie.depuis_iterable(["TEST"]),
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.reprendre_partie",
@@ -394,7 +394,7 @@ class TestApiAccueilLancement:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda source="ods": Trie.depuis_iterable(["TEST"]),
+            lambda source="ods", **_: Trie.depuis_iterable(["TEST"]),
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.reprendre_partie",
@@ -478,7 +478,7 @@ class TestSourceDictionnaireAppliquee:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda source="ods": appels.append(source)
+            lambda source="ods", **_: appels.append(source)
             or Trie.depuis_iterable(["TEST"]),
         )
         monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: 7)
@@ -509,7 +509,7 @@ class TestSourceDictionnaireAppliquee:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda source="ods": appels.append(source)
+            lambda source="ods", **_: appels.append(source)
             or Trie.depuis_iterable(["TEST"]),
         )
         monkeypatch.setattr(
@@ -532,7 +532,7 @@ class TestSourceDictionnaireAppliquee:
         monkeypatch.setattr("scrabble.ui.accueil.charger_config", lambda: {})
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda source="ods": appels.append(source)
+            lambda source="ods", **_: appels.append(source)
             or Trie.depuis_iterable(["TEST"]),
         )
         monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: 1)
@@ -556,7 +556,7 @@ class TestSourceDictionnaireAppliquee:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie_ia",
-            lambda source="ods": appels.append(source)
+            lambda source="ods", **_: appels.append(source)
             or Trie.depuis_iterable(["TEST"]),
         )
 
@@ -575,7 +575,7 @@ class TestSourceDictionnaireAppliquee:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie_ia",
-            lambda source="ods": appels.append(source),
+            lambda source="ods", **_: appels.append(source),
         )
 
         assert ApiAccueil._construire_trie_ia("hunspell") is None
@@ -604,7 +604,7 @@ class TestSourceDictionnaireAppliquee:
             lambda: {"source_dictionnaire": "hunspell"},
         )
         monkeypatch.setattr(
-            "scrabble.ui.accueil.obtenir_trie", lambda source="ods": tries[source]
+            "scrabble.ui.accueil.obtenir_trie", lambda source="ods", **_: tries[source]
         )
         monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: 1)
 
@@ -814,7 +814,7 @@ class TestApiAccueilInfosTirage:
 
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda source="ods": Trie.depuis_iterable(["MAISON", "TEST"]),
+            lambda source="ods", **_: Trie.depuis_iterable(["MAISON", "TEST"]),
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.demarrer_suivi",

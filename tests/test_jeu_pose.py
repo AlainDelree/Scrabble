@@ -614,7 +614,7 @@ class TestSourceDictionnaireValidationCoup:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
-            lambda s="ods": self._TRIES[s],
+            lambda s="ods", **_: self._TRIES[s],
         )
         # Pas de persistance en base pendant le test : id_partie reste None,
         # ce qui neutralise aussi ``_persister_entrees`` côté ApiJeu.

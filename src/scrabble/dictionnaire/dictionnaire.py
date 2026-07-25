@@ -39,6 +39,7 @@ configurée change.
 
 from __future__ import annotations
 
+import csv
 import json
 import pickle
 import re
@@ -95,6 +96,12 @@ CHEMINS_CLASSIQUES: tuple[Path, Path] = (
 # vocabulaire se rabat alors sur les seuls classiques du jeu, avec un
 # avertissement journalisé — voir :func:`construire_ensemble_ia`.
 CHEMIN_MOTS_COURANTS = DOSSIER_DICO / "mots_courants.txt"
+
+# Belgicismes à revoir (issue #274) : CSV colonnes ``mot`` /
+# ``définition(s) belge(s)`` / ``origine_wallonne`` / ``existe_sens_standard``,
+# maintenu manuellement. Chargé uniquement quand le mode Belgicisme est actif
+# (``ConfigPartie.mode_belgicisme``) — voir :func:`charger_belgicismes`.
+CHEMIN_BELGICISMES = DOSSIER_DICO / "belgicismes_a_revoir.csv"
 
 CHEMIN_CACHE = DOSSIER_DICO / "trie_cache.pkl"
 # Cache disque du Trie restreint de l'IA (issue #206), distinct du cache du Trie
@@ -193,6 +200,36 @@ def lire_liste_mots(chemin: Path) -> set[str]:
 def charger_ods(chemin: Path = CHEMIN_ODS) -> set[str]:
     """Charge la liste ODS8 (un mot par ligne) normalisée."""
     return lire_liste_mots(chemin)
+
+
+def charger_belgicismes(chemin: Path = CHEMIN_BELGICISMES) -> set[str]:
+    """Charge les belgicismes sans équivalent standard (mode Belgicisme, issue #274).
+
+    Lit ``belgicismes_a_revoir.csv`` (colonnes ``mot``, ``définition(s) belge(s)``,
+    ``origine_wallonne``, ``existe_sens_standard``) et ne retient que les lignes
+    où ``existe_sens_standard`` (normalisé, insensible à la casse/espaces) est
+    différent de ``"oui"`` : les mots déjà notés ``oui`` existent déjà en
+    français standard, donc déjà dans le dictionnaire via sa source normale — ne
+    pas les réajouter ici évite tout doublon. Leurs définitions belges
+    additionnelles relèvent d'un futur chantier (la loupe), hors périmètre.
+
+    Fichier absent toléré (``set()``, aucune exception), comme
+    :func:`lire_liste_mots`.
+    """
+    mots: set[str] = set()
+    try:
+        with open(chemin, "r", encoding="utf-8", newline="") as fichier:
+            lecteur = csv.DictReader(fichier)
+            for ligne in lecteur:
+                existe = (ligne.get("existe_sens_standard") or "").strip().lower()
+                if existe == "oui":
+                    continue
+                mot = normaliser_mot(ligne.get("mot") or "")
+                if mot:
+                    mots.add(mot)
+    except (FileNotFoundError, IsADirectoryError, OSError):
+        return set()
+    return mots
 
 
 # --------------------------------------------------------------------------- #
@@ -773,6 +810,8 @@ def _sources_pertinentes(
     base_hunspell: Path,
     chemin_ajoutes: Path,
     chemin_retires: Path,
+    mode_belgicisme: bool = False,
+    chemin_belgicismes: Path = CHEMIN_BELGICISMES,
 ) -> list[Path]:
     """Liste des fichiers dont la modification doit invalider le cache."""
     if source == "hunspell":
@@ -783,11 +822,18 @@ def _sources_pertinentes(
     else:
         fichiers = [chemin_ods]
     fichiers += [chemin_ajoutes, chemin_retires]
+    if mode_belgicisme:
+        fichiers.append(chemin_belgicismes)
     return fichiers
 
 
-def _cache_valide(chemin_cache: Path, source: str, sources: list[Path]) -> bool:
-    """Vrai si le cache existe, cible la bonne source et n'est pas périmé."""
+def _cache_valide(
+    chemin_cache: Path,
+    source: str,
+    sources: list[Path],
+    mode_belgicisme: bool = False,
+) -> bool:
+    """Vrai si le cache existe, cible la bonne source/mode et n'est pas périmé."""
     if not chemin_cache.exists():
         return False
     try:
@@ -797,7 +843,11 @@ def _cache_valide(chemin_cache: Path, source: str, sources: list[Path]) -> bool:
         return False
     if not isinstance(entete, dict):
         return False
-    if entete.get("version") != VERSION_CACHE or entete.get("source") != source:
+    if (
+        entete.get("version") != VERSION_CACHE
+        or entete.get("source") != source
+        or entete.get("belge", False) != mode_belgicisme
+    ):
         return False
     mtime_cache = chemin_cache.stat().st_mtime
     for chemin in sources:
@@ -819,10 +869,12 @@ def _lire_trie_cache(chemin_cache: Path) -> Trie | None:
     return None
 
 
-def _ecrire_trie_cache(chemin_cache: Path, source: str, trie: Trie) -> None:
-    """Sérialise le Trie et son en-tête (version + source) dans le cache."""
+def _ecrire_trie_cache(
+    chemin_cache: Path, source: str, trie: Trie, mode_belgicisme: bool = False
+) -> None:
+    """Sérialise le Trie et son en-tête (version + source + mode) dans le cache."""
     chemin_cache.parent.mkdir(parents=True, exist_ok=True)
-    entete = {"version": VERSION_CACHE, "source": source}
+    entete = {"version": VERSION_CACHE, "source": source, "belge": mode_belgicisme}
     with open(chemin_cache, "wb") as fichier:
         pickle.dump(entete, fichier, protocol=pickle.HIGHEST_PROTOCOL)
         pickle.dump(trie, fichier, protocol=pickle.HIGHEST_PROTOCOL)
@@ -834,12 +886,19 @@ def construire_trie(
     base_hunspell: Path = BASE_HUNSPELL,
     chemin_ajoutes: Path | None = None,
     chemin_retires: Path | None = None,
+    mode_belgicisme: bool = False,
+    chemin_belgicismes: Path = CHEMIN_BELGICISMES,
 ) -> Trie:
     """Construit le Trie du dictionnaire final (sans passer par le cache).
 
     Les fichiers d'ajouts/retraits par défaut sont ceux **propres à la source**
     (voir :func:`chemins_modifs`) ; ``chemin_ajoutes``/``chemin_retires``
     explicites restent prioritaires (utile en test).
+
+    ``mode_belgicisme`` (issue #274) étend la formule à ``(source ∪ ajoutés ∪
+    belges) − retirés`` : les belgicismes sans équivalent standard
+    (:func:`charger_belgicismes`) rejoignent l'ensemble avant construction du
+    Trie. Défaut ``False`` : comportement strictement inchangé.
     """
     defaut_ajoutes, defaut_retires = chemins_modifs(source)
     if chemin_ajoutes is None:
@@ -847,9 +906,12 @@ def construire_trie(
     if chemin_retires is None:
         chemin_retires = defaut_retires
     assurer_fichiers_modifs(chemin_ajoutes, chemin_retires)
+    mots_ajoutes = lire_liste_mots(chemin_ajoutes)
+    if mode_belgicisme:
+        mots_ajoutes = mots_ajoutes | charger_belgicismes(chemin_belgicismes)
     mots = construire_ensemble_mots(
         charger_source(source, chemin_ods, base_hunspell),
-        lire_liste_mots(chemin_ajoutes),
+        mots_ajoutes,
         lire_liste_mots(chemin_retires),
     )
     return Trie.depuis_iterable(mots)
@@ -862,14 +924,21 @@ def obtenir_trie(
     chemin_ajoutes: Path | None = None,
     chemin_retires: Path | None = None,
     chemin_cache: Path = CHEMIN_CACHE,
+    mode_belgicisme: bool = False,
+    chemin_belgicismes: Path = CHEMIN_BELGICISMES,
 ) -> Trie:
     """Retourne le Trie du dictionnaire, en s'appuyant sur le cache disque.
 
-    Le cache est rechargé s'il est présent, cible la même source et est plus
-    récent que tous les fichiers sources ; sinon il est reconstruit puis
-    réécrit. Les fichiers d'ajouts/retraits par défaut sont ceux **propres à la
-    source** (voir :func:`chemins_modifs`) ; des chemins explicites restent
-    prioritaires (utile en test).
+    Le cache est rechargé s'il est présent, cible la même source et le même
+    mode, et est plus récent que tous les fichiers sources ; sinon il est
+    reconstruit puis réécrit. Les fichiers d'ajouts/retraits par défaut sont
+    ceux **propres à la source** (voir :func:`chemins_modifs`) ; des chemins
+    explicites restent prioritaires (utile en test).
+
+    ``mode_belgicisme`` (issue #274, défaut ``False``) : voir
+    :func:`construire_trie`. Un changement de mode invalide le cache (en-tête
+    ``"belge"``) ; le CSV des belgicismes est surveillé par mtime quand le mode
+    est actif (:func:`_sources_pertinentes`).
     """
     defaut_ajoutes, defaut_retires = chemins_modifs(source)
     if chemin_ajoutes is None:
@@ -878,17 +947,29 @@ def obtenir_trie(
         chemin_retires = defaut_retires
     assurer_fichiers_modifs(chemin_ajoutes, chemin_retires)
     sources = _sources_pertinentes(
-        source, chemin_ods, base_hunspell, chemin_ajoutes, chemin_retires
+        source,
+        chemin_ods,
+        base_hunspell,
+        chemin_ajoutes,
+        chemin_retires,
+        mode_belgicisme,
+        chemin_belgicismes,
     )
-    if _cache_valide(chemin_cache, source, sources):
+    if _cache_valide(chemin_cache, source, sources, mode_belgicisme):
         trie = _lire_trie_cache(chemin_cache)
         if trie is not None:
             return trie
     trie = construire_trie(
-        source, chemin_ods, base_hunspell, chemin_ajoutes, chemin_retires
+        source,
+        chemin_ods,
+        base_hunspell,
+        chemin_ajoutes,
+        chemin_retires,
+        mode_belgicisme,
+        chemin_belgicismes,
     )
     try:
-        _ecrire_trie_cache(chemin_cache, source, trie)
+        _ecrire_trie_cache(chemin_cache, source, trie, mode_belgicisme)
     except OSError:
         pass  # Un cache non écrit n'empêche pas de fonctionner.
     return trie
@@ -917,6 +998,8 @@ def construire_ensemble_ia(
     chemin_ajoutes: Path | None = None,
     chemin_retires: Path | None = None,
     chemin_mots_courants: Path = CHEMIN_MOTS_COURANTS,
+    mode_belgicisme: bool = False,
+    chemin_belgicismes: Path = CHEMIN_BELGICISMES,
 ) -> set[str]:
     """Construit l'ensemble restreint de vocabulaire de l'IA (issue #206).
 
@@ -939,15 +1022,26 @@ def construire_ensemble_ia(
     script #205), on se rabat sur les seuls mots classiques avec un avertissement
     journalisé, plutôt que de planter. Un fichier présent mais vide est traité
     comme « aucun mot courant » sans avertissement (cas légitime).
+
+    ``mode_belgicisme`` (issue #274, défaut ``False``) : le dictionnaire complet
+    interne inclut aussi les belgicismes sans équivalent standard, pour rester
+    cohérent en sur-ensemble avec le Trie complet du jeu (voir
+    :func:`construire_trie`). Les mots belges restent toutefois hors du Trie IA
+    restreint, sauf s'ils figurent aussi dans ``mots_courants.txt`` ou
+    ``classiques_ajoutes.txt`` — comportement voulu, cohérent avec la philosophie
+    actuelle du filtre de vocabulaire de l'IA.
     """
     defaut_ajoutes, defaut_retires = chemins_modifs(source)
     if chemin_ajoutes is None:
         chemin_ajoutes = defaut_ajoutes
     if chemin_retires is None:
         chemin_retires = defaut_retires
+    mots_ajoutes = lire_liste_mots(chemin_ajoutes)
+    if mode_belgicisme:
+        mots_ajoutes = mots_ajoutes | charger_belgicismes(chemin_belgicismes)
     complet = construire_ensemble_mots(
         charger_source(source, chemin_ods, base_hunspell),
-        lire_liste_mots(chemin_ajoutes),
+        mots_ajoutes,
         lire_liste_mots(chemin_retires),
     )
     if not chemin_mots_courants.exists():
@@ -969,6 +1063,8 @@ def _sources_pertinentes_ia(
     chemin_ajoutes: Path,
     chemin_retires: Path,
     chemin_mots_courants: Path,
+    mode_belgicisme: bool = False,
+    chemin_belgicismes: Path = CHEMIN_BELGICISMES,
 ) -> list[Path]:
     """Fichiers dont la modification doit invalider le cache du Trie IA.
 
@@ -977,7 +1073,13 @@ def _sources_pertinentes_ia(
     évolution de l'une de ces listes doit reconstruire le vocabulaire restreint.
     """
     fichiers = _sources_pertinentes(
-        source, chemin_ods, base_hunspell, chemin_ajoutes, chemin_retires
+        source,
+        chemin_ods,
+        base_hunspell,
+        chemin_ajoutes,
+        chemin_retires,
+        mode_belgicisme,
+        chemin_belgicismes,
     )
     chemin_classiques_ajoutes, chemin_classiques_retires = chemins_classiques()
     fichiers += [
@@ -996,16 +1098,21 @@ def obtenir_trie_ia(
     chemin_retires: Path | None = None,
     chemin_mots_courants: Path = CHEMIN_MOTS_COURANTS,
     chemin_cache: Path = CHEMIN_CACHE_IA,
+    mode_belgicisme: bool = False,
+    chemin_belgicismes: Path = CHEMIN_BELGICISMES,
 ) -> Trie:
     """Retourne le Trie restreint de l'IA (issue #206), via le cache disque.
 
     Construit :func:`construire_ensemble_ia` puis le met en cache sur le modèle
-    exact d':func:`obtenir_trie` (en-tête version + source, invalidation par
-    mtime), dans un fichier distinct (:data:`CHEMIN_CACHE_IA`). Les sources
+    exact d':func:`obtenir_trie` (en-tête version + source + mode, invalidation
+    par mtime), dans un fichier distinct (:data:`CHEMIN_CACHE_IA`). Les sources
     surveillées incluent en plus ``mots_courants.txt`` et la paire des classiques
     (:func:`_sources_pertinentes_ia`). Les chemins d'ajouts/retraits par défaut
     sont ceux propres à la source ; des chemins explicites restent prioritaires
     (utile en test).
+
+    ``mode_belgicisme`` (issue #274, défaut ``False``) : voir
+    :func:`construire_ensemble_ia`.
     """
     defaut_ajoutes, defaut_retires = chemins_modifs(source)
     if chemin_ajoutes is None:
@@ -1020,8 +1127,10 @@ def obtenir_trie_ia(
         chemin_ajoutes,
         chemin_retires,
         chemin_mots_courants,
+        mode_belgicisme,
+        chemin_belgicismes,
     )
-    if _cache_valide(chemin_cache, source, sources):
+    if _cache_valide(chemin_cache, source, sources, mode_belgicisme):
         trie = _lire_trie_cache(chemin_cache)
         if trie is not None:
             return trie
@@ -1032,10 +1141,12 @@ def obtenir_trie_ia(
         chemin_ajoutes,
         chemin_retires,
         chemin_mots_courants,
+        mode_belgicisme,
+        chemin_belgicismes,
     )
     trie = Trie.depuis_iterable(ensemble)
     try:
-        _ecrire_trie_cache(chemin_cache, source, trie)
+        _ecrire_trie_cache(chemin_cache, source, trie, mode_belgicisme)
     except OSError:
         pass  # Un cache non écrit n'empêche pas de fonctionner.
     return trie

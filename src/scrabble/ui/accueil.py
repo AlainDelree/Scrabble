@@ -127,11 +127,11 @@ class ConfigPartie:
 
     joueurs: list[JoueurConfig] = field(default_factory=list)
     # Mode dictionnaire régional (issue #269) : bascule facultative entre le
-    # dictionnaire standard (France, choix par défaut) et un futur
-    # dictionnaire belge additionnel. Cette issue ne couvre QUE l'interface
-    # (cercles-drapeaux) et le stockage de ce choix — le chargement effectif
-    # du dictionnaire belge et l'affichage de ses définitions restent un
-    # chantier séparé, à venir.
+    # dictionnaire standard (France, choix par défaut) et le dictionnaire
+    # étendu aux belgicismes sans équivalent standard (issue #274, lu par
+    # ``ApiAccueil.lancer_partie``). L'affichage de définitions belges
+    # additionnelles pour les mots existant déjà en français standard reste un
+    # chantier séparé (la loupe), à venir.
     mode_belgicisme: bool = False
 
     @property
@@ -439,12 +439,10 @@ class ApiAccueil:
         """Enregistre le choix France/Belgique des cercles-drapeaux (issue #269).
 
         Se contente de stocker le booléen dans la configuration de la partie
-        en cours de création (``config_partie.mode_belgicisme``), pour qu'un
-        futur chantier (chargement du dictionnaire belge) puisse le lire
-        facilement au lancement de la partie via ``self.config_partie.
-        mode_belgicisme``. Aucune logique de dictionnaire n'est implémentée
-        ici — le choix France reste sans effet tant que ce chantier n'existe
-        pas.
+        en cours de création (``config_partie.mode_belgicisme``). C'est
+        :meth:`lancer_partie` qui le lit pour construire le dictionnaire de
+        validation (issue #274, :func:`~scrabble.dictionnaire.dictionnaire.
+        obtenir_trie`) — cette méthode-ci ne fait qu'enregistrer le choix.
         """
         self.config_partie.mode_belgicisme = bool(actif)
         journal.info(
@@ -458,7 +456,7 @@ class ApiAccueil:
         }
 
     @staticmethod
-    def _construire_trie_ia(source: str) -> Any:
+    def _construire_trie_ia(source: str, mode_belgicisme: bool = False) -> Any:
         """Trie restreint de l'IA si « vocabulaire humain » est actif, sinon ``None``.
 
         Réglage global unique (issue #206), indépendant du niveau de difficulté :
@@ -472,10 +470,14 @@ class ApiAccueil:
         ici via un second ``charger_config()`` qui pourrait en théorie diverger.
         On garantit ainsi que le vocabulaire de l'IA reste un sous-ensemble strict
         du dictionnaire de validation effectivement utilisé pour la partie.
+
+        ``mode_belgicisme`` (issue #274, défaut ``False``) est transmis de la
+        même façon, pour la même raison : il doit correspondre exactement au
+        mode utilisé pour le Trie complet de la partie.
         """
         if not bool(charger_config().get("vocabulaire_humain", False)):
             return None
-        return obtenir_trie_ia(source)
+        return obtenir_trie_ia(source, mode_belgicisme=mode_belgicisme)
 
     def lancer_partie(self) -> dict[str, Any]:
         """Crée et démarre la partie avec la configuration actuelle.
@@ -529,13 +531,17 @@ class ApiAccueil:
             # transmet la même source au Trie complet et au Trie restreint de l'IA.
             config = charger_config()
             source = config.get("source_dictionnaire", "ods")
-            trie = obtenir_trie(source)
+            # Mode Belgicisme (issue #269) choisi pour cette partie : ajoute au
+            # dictionnaire les belgicismes sans équivalent standard (issue #274).
+            mode_belgicisme = self.config_partie.mode_belgicisme
+            trie = obtenir_trie(source, mode_belgicisme=mode_belgicisme)
             # Réglage du bonus officiel au finisseur (issue #134), câblé dans le
             # moteur via creer_partie.
             bonus_fin_partie = bool(config.get("bonus_fin_partie", False))
             # Réglage « vocabulaire humain » (issue #206) : Trie restreint de l'IA,
-            # construit sur la même source que le Trie complet (issue #210).
-            trie_ia = self._construire_trie_ia(source)
+            # construit sur la même source et le même mode que le Trie complet
+            # (issues #210, #274).
+            trie_ia = self._construire_trie_ia(source, mode_belgicisme)
             self._partie = creer_partie(
                 noms_humains=noms_humains,
                 dictionnaire=trie,

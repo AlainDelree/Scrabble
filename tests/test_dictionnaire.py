@@ -9,8 +9,10 @@ et la normalisation sont testées de façon déterministe et rapide.
 
 from __future__ import annotations
 
+import csv
 import json
 import os
+import pickle
 import time
 
 import pytest
@@ -21,6 +23,7 @@ from scrabble.dictionnaire.dictionnaire import (
     Dictionnaire,
     Trie,
     assurer_fichiers_modifs,
+    charger_belgicismes,
     charger_definitions,
     charger_ods,
     chemins_modifs,
@@ -464,6 +467,203 @@ def test_cache_invalide_si_source_configuree_change(tmp_path):
     assert _cache_valide(chemin_cache, "ods", sources_ods) is True
     # Même cache, source demandée différente → invalide.
     assert _cache_valide(chemin_cache, "hunspell", sources_ods) is False
+
+
+# --------------------------------------------------------------------------- #
+# Belgicismes (mode Belgicisme), issue #274
+# --------------------------------------------------------------------------- #
+
+def _ecrire_csv_belgicismes(chemin, lignes):
+    """Écrit un CSV belgicismes factice. ``lignes`` : liste de (mot, existe)."""
+    with open(chemin, "w", encoding="utf-8", newline="") as fichier:
+        ecrivain = csv.writer(fichier)
+        ecrivain.writerow(
+            ["mot", "définition(s) belge(s)", "origine_wallonne", "existe_sens_standard"]
+        )
+        for mot, existe in lignes:
+            ecrivain.writerow([mot, "Une définition.", "non", existe])
+
+
+def test_charger_belgicismes_ne_retient_que_les_mots_sans_equivalent_standard(tmp_path):
+    """Seuls les mots ``existe_sens_standard`` != "oui" (normalisé) sont chargés."""
+    chemin = tmp_path / "belgicismes.csv"
+    _ecrire_csv_belgicismes(
+        chemin,
+        [
+            ("sketter", "non"),
+            ("abaisser", "oui"),
+            ("abiye", " Non "),
+            ("dringuelle", "NON"),
+        ],
+    )
+    mots = charger_belgicismes(chemin)
+    assert mots == {"SKETTER", "ABIYE", "DRINGUELLE"}
+    assert "ABAISSER" not in mots
+
+
+def test_charger_belgicismes_fichier_absent(tmp_path):
+    """Fichier absent : ensemble vide, sans erreur (comme lire_liste_mots)."""
+    assert charger_belgicismes(tmp_path / "absent.csv") == set()
+
+
+def test_construire_trie_mode_belgicisme_ajoute_mot_belge(tmp_path):
+    """Un mot belge (existe_sens_standard=non) est valide en mode Belgicisme et
+    invalide en mode France (issue #274) — ex. « sketter », absent de l'ODS."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=["chat"]
+    )
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_belgicismes(chemin_belges, [("sketter", "non")])
+
+    trie_france = construire_trie(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+        mode_belgicisme=False,
+        chemin_belgicismes=chemin_belges,
+    )
+    trie_belgique = construire_trie(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+        mode_belgicisme=True,
+        chemin_belgicismes=chemin_belges,
+    )
+
+    assert "SKETTER" not in trie_france
+    assert "SKETTER" in trie_belgique
+    assert "CHAT" in trie_france and "CHAT" in trie_belgique
+
+
+def test_construire_trie_mode_belgicisme_pas_de_doublon_mot_standard(tmp_path):
+    """Un mot ``existe_sens_standard=oui`` n'est pas réinjecté par le chargement
+    belge : il est déjà présent via la source standard, comportement inchangé."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=["academique"]
+    )
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_belgicismes(chemin_belges, [("academique", "oui")])
+
+    trie = construire_trie(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+        mode_belgicisme=True,
+        chemin_belgicismes=chemin_belges,
+    )
+
+    assert "ACADEMIQUE" in trie
+    assert len(trie) == 1  # un seul mot : pas de doublon via le CSV belge
+
+
+def test_construire_trie_mode_belgicisme_mot_oui_absent_de_la_source_reste_absent(
+    tmp_path,
+):
+    """Un mot ``oui`` absent de la source standard n'est pas ajouté via le CSV
+    belge (seuls les mots ``!= oui`` sont chargés, voir :func:`charger_belgicismes`)."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=["chat"]
+    )
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_belgicismes(chemin_belges, [("zorglub", "oui")])
+
+    trie = construire_trie(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+        mode_belgicisme=True,
+        chemin_belgicismes=chemin_belges,
+    )
+    assert "ZORGLUB" not in trie
+
+
+def test_obtenir_trie_cache_mode_defaut_false_comportement_inchange(tmp_path):
+    """Non-régression (issue #274) : mode par défaut (``False``), le cache se
+    comporte strictement comme avant cette issue (écrit puis relu sans
+    reconstruction superflue)."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=["chat"]
+    )
+    chemin_cache = tmp_path / "trie_cache.pkl"
+    kwargs = dict(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+        chemin_cache=chemin_cache,
+    )
+
+    trie1 = obtenir_trie(**kwargs)
+    assert chemin_cache.exists()
+    mtime_cache = chemin_cache.stat().st_mtime_ns
+
+    trie2 = obtenir_trie(**kwargs)
+    assert chemin_cache.stat().st_mtime_ns == mtime_cache  # non réécrit
+    assert "CHAT" in trie1 and "CHAT" in trie2
+
+
+def test_obtenir_trie_cache_invalide_si_mode_belgicisme_change(tmp_path):
+    """Basculer le mode Belgicisme invalide le cache existant (en-tête ``belge``)."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=["chat"]
+    )
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_belgicismes(chemin_belges, [("sketter", "non")])
+    chemin_cache = tmp_path / "trie_cache.pkl"
+    kwargs = dict(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+        chemin_cache=chemin_cache,
+        chemin_belgicismes=chemin_belges,
+    )
+
+    trie_france = obtenir_trie(mode_belgicisme=False, **kwargs)
+    assert "SKETTER" not in trie_france
+
+    trie_belgique = obtenir_trie(mode_belgicisme=True, **kwargs)
+    assert "SKETTER" in trie_belgique
+
+    # Rebasculer en France reconstruit aussi (le cache belge ne doit pas fuiter).
+    trie_france_2 = obtenir_trie(mode_belgicisme=False, **kwargs)
+    assert "SKETTER" not in trie_france_2
+
+
+def test_obtenir_trie_cache_ancien_sans_champ_belge_reste_valide_en_mode_france(
+    tmp_path,
+):
+    """Un cache écrit avant l'issue #274 (en-tête sans clé ``belge``) reste
+    valide en mode France par défaut, sans reconstruction (repli
+    ``entete.get("belge", False)``)."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=["chat"]
+    )
+    chemin_cache = tmp_path / "trie_cache.pkl"
+    trie = construire_trie(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+    )
+    with open(chemin_cache, "wb") as fichier:
+        pickle.dump({"version": d.VERSION_CACHE, "source": "ods"}, fichier)
+        pickle.dump(trie, fichier)
+    mtime_cache = chemin_cache.stat().st_mtime_ns
+
+    trie_relu = obtenir_trie(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+        chemin_cache=chemin_cache,
+    )
+    assert chemin_cache.stat().st_mtime_ns == mtime_cache  # pas régénéré
+    assert "CHAT" in trie_relu
 
 
 # --------------------------------------------------------------------------- #
@@ -941,3 +1141,48 @@ def test_obtenir_trie_ia_cache_invalide_si_classiques_change(tmp_path, monkeypat
 
     trie2 = obtenir_trie_ia(**kwargs)
     assert "WU" in trie2                          # cache invalidé
+
+
+def test_construire_ensemble_ia_mode_belgicisme_hors_courants_reste_exclu(
+    tmp_path, monkeypatch
+):
+    """Le ``complet`` interne inclut les belges actifs (sur-ensemble cohérent
+    avec le Trie complet, issue #274), mais le Trie IA restreint ne les retient
+    que s'ils sont aussi mots courants/classiques — sinon ils restent exclus."""
+    ods, aj, re_, co, *_ = _preparer_ia(
+        tmp_path, monkeypatch, source_mots=["chat"], courants=["chat"]
+    )
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_belgicismes(chemin_belges, [("sketter", "non")])
+
+    ensemble = construire_ensemble_ia(
+        chemin_ods=ods,
+        chemin_ajoutes=aj,
+        chemin_retires=re_,
+        chemin_mots_courants=co,
+        mode_belgicisme=True,
+        chemin_belgicismes=chemin_belges,
+    )
+    assert ensemble == {"CHAT"}
+    assert "SKETTER" not in ensemble
+
+
+def test_construire_ensemble_ia_mode_belgicisme_mot_courant_est_inclus(
+    tmp_path, monkeypatch
+):
+    """Un mot belge aussi présent dans ``mots_courants.txt`` rejoint le Trie IA."""
+    ods, aj, re_, co, *_ = _preparer_ia(
+        tmp_path, monkeypatch, source_mots=["chat"], courants=["chat", "sketter"]
+    )
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_belgicismes(chemin_belges, [("sketter", "non")])
+
+    ensemble = construire_ensemble_ia(
+        chemin_ods=ods,
+        chemin_ajoutes=aj,
+        chemin_retires=re_,
+        chemin_mots_courants=co,
+        mode_belgicisme=True,
+        chemin_belgicismes=chemin_belges,
+    )
+    assert ensemble == {"CHAT", "SKETTER"}
