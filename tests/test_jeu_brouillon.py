@@ -219,6 +219,14 @@ class TestVerifierMotDictionnaire:
         assert res["valide"] is True
         assert res["definition"] == [{"texte": "Casser, fatiguer.", "origine": "belge"}]
 
+    def test_mot_tape_avec_accent_reconnu_valide(self):
+        # Issue #281 : le Trie de validation contient des entrées désaccentuées
+        # (ici « ACADEMIQUE », comme le stocke réellement l'ODS8) — un mot tapé
+        # avec accent dans la loupe doit être désaccentué avant le test
+        # d'appartenance, cohérent avec l'insertion.
+        res = verifier_mot_dictionnaire(_DicoMots("ACADEMIQUE"), "académique")
+        assert res["valide"] is True
+
     def test_accepte_chaine_deja_assemblee(self):
         res = verifier_mot_dictionnaire(_DicoMots("CHAT"), "chat")
         assert res["mot"] == "CHAT"

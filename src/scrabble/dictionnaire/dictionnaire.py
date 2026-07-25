@@ -19,8 +19,27 @@ personnalisation faite en mode ODS ne s'applique pas au mode Hunspell et
 inversement. La sélection de la paire se fait via :func:`chemins_modifs`.
 
 Normalisation systématique de chaque mot au chargement : passage en MAJUSCULES
-(les accents sont conservés — le Scrabble francophone distingue ``ELEVE`` de
-``ÉLÈVE``) et suppression des espaces superflus.
+(les accents sont conservés par :func:`normaliser_mot` — inchangé, utilisé tel
+quel par ``definitions.json``/Hunspell/le Wiktionnaire ailleurs dans le module)
+et suppression des espaces superflus.
+
+Désaccentuation du Trie de validation (issue #281)
+---------------------------------------------------
+L'ODS8 est stocké **sans aucun accent** (cohérent avec les lettres physiques du
+jeu, elles-mêmes non accentuées), alors que Hunspell contient légitimement des
+entrées accentuées. Pour qu'un mot valide soit reconnu de façon identique qu'il
+soit tapé avec ou sans accent — quelle que soit la source — :func:`desaccentuer`
+est appliquée à **toutes** les entrées juste avant leur insertion dans le Trie
+(:func:`construire_trie`, :func:`construire_ensemble_ia`), et symétriquement au
+mot recherché juste avant le test d'appartenance (:meth:`Dictionnaire.mot_valide`,
+``verifier_mot_dictionnaire`` dans ``scrabble.ui.jeu``). Un Trie destiné à la
+validation doit donc toujours contenir des entrées désaccentuées ; l'éventuelle
+« collision » entre deux mots distincts qui se désaccentuent à l'identique (ex.
+« jeune »/« jeûne ») n'est pas un défaut à corriger : sur un plateau réel, les
+lettres ne portent elles-mêmes aucun accent, donc les deux mots sont déjà un
+seul et même mot jouable. Seul l'affichage des définitions (``definition_mot``/
+``definitions_annotees``, inchangé) doit continuer à lister les gloses des deux
+mots à la suite sous la même clé désaccentuée.
 
 Dépliage Hunspell
 -----------------
@@ -114,7 +133,8 @@ CHEMIN_CACHE_IA = DOSSIER_DICO / "trie_ia_cache.pkl"
 CHEMIN_DEFINITIONS = DOSSIER_DICO / "definitions.json"
 
 # Version du format de cache : incrémenter invalide tous les caches existants.
-VERSION_CACHE = 1
+# 2 (issue #281) : le Trie contient désormais des entrées désaccentuées.
+VERSION_CACHE = 2
 
 
 # --------------------------------------------------------------------------- #
@@ -880,8 +900,15 @@ class Dictionnaire:
         self.trie = trie
 
     def mot_valide(self, mot: str) -> bool:
-        """Indique si ``mot`` est valide (après normalisation)."""
-        return normaliser_mot(mot) in self.trie
+        """Indique si ``mot`` est valide (après normalisation et désaccentuation).
+
+        Le Trie de validation contient des entrées désaccentuées (issue #281,
+        cohérent avec toutes les sources — ODS8/Hunspell/belgicismes — voir le
+        docstring du module) : on désaccentue donc ``mot`` avant le test
+        d'appartenance, sinon un mot valide tapé avec accent (ex. « académique »)
+        serait à tort signalé invalide.
+        """
+        return desaccentuer(normaliser_mot(mot)) in self.trie
 
     def __len__(self) -> int:
         return len(self.trie)
@@ -986,6 +1013,12 @@ def construire_trie(
     belges) − retirés`` : les belgicismes sans équivalent standard
     (:func:`charger_belgicismes`) rejoignent l'ensemble avant construction du
     Trie. Défaut ``False`` : comportement strictement inchangé.
+
+    Chaque entrée est **désaccentuée** (:func:`desaccentuer`) juste avant
+    l'insertion dans le Trie (issue #281), quelle que soit la source d'origine
+    (ODS8, dépliage Hunspell, belgicismes, ajouts/retraits manuels) : un mot
+    valide est ainsi reconnu de façon identique qu'il soit tapé avec ou sans
+    accent. Voir :meth:`Dictionnaire.mot_valide`, symétrique côté recherche.
     """
     defaut_ajoutes, defaut_retires = chemins_modifs(source)
     if chemin_ajoutes is None:
@@ -1001,7 +1034,7 @@ def construire_trie(
         mots_ajoutes,
         lire_liste_mots(chemin_retires),
     )
-    return Trie.depuis_iterable(mots)
+    return Trie.depuis_iterable(desaccentuer(mot) for mot in mots)
 
 
 def obtenir_trie(
@@ -1117,6 +1150,11 @@ def construire_ensemble_ia(
     restreint, sauf s'ils figurent aussi dans ``mots_courants.txt`` ou
     ``classiques_ajoutes.txt`` — comportement voulu, cohérent avec la philosophie
     actuelle du filtre de vocabulaire de l'IA.
+
+    Toutes les entrées (dictionnaire complet, mots courants, classiques) sont
+    **désaccentuées** (:func:`desaccentuer`) avant l'union/intersection (issue
+    #281), pour rester un sous-ensemble cohérent du Trie complet désaccentué
+    construit par :func:`construire_trie`.
     """
     defaut_ajoutes, defaut_retires = chemins_modifs(source)
     if chemin_ajoutes is None:
@@ -1131,6 +1169,7 @@ def construire_ensemble_ia(
         mots_ajoutes,
         lire_liste_mots(chemin_retires),
     )
+    complet = {desaccentuer(mot) for mot in complet}
     if not chemin_mots_courants.exists():
         journal.info(
             "Vocabulaire IA (issue #206) : fichier des mots courants absent "
@@ -1138,8 +1177,9 @@ def construire_ensemble_ia(
             "Déposez « Lexique383.tsv » puis lancez "
             "« scripts/generer_mots_courants.py » pour l'enrichir."
         )
-    mots_courants = lire_liste_mots(chemin_mots_courants)
-    restreint = (mots_courants | ensemble_classiques()) & complet
+    mots_courants = {desaccentuer(mot) for mot in lire_liste_mots(chemin_mots_courants)}
+    classiques = {desaccentuer(mot) for mot in ensemble_classiques()}
+    restreint = (mots_courants | classiques) & complet
     return restreint
 
 

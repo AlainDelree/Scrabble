@@ -249,13 +249,16 @@ def test_trie_mot_vide_ignore():
 
 
 def test_dictionnaire_mot_valide_normalise_l_entree():
-    """``mot_valide`` normalise l'entrée avant de consulter le Trie."""
-    dico = Dictionnaire(Trie.depuis_iterable(["CHAT", "ÉLÈVE"]))
+    """``mot_valide`` normalise PUIS désaccentue l'entrée avant de consulter le
+    Trie (issue #281) : un Trie de validation contient toujours des entrées
+    déjà désaccentuées (voir :func:`construire_trie`), donc « ELEVE » ici,
+    reconnu qu'on tape « élève » ou « eleve » — accents ou non, même mot."""
+    dico = Dictionnaire(Trie.depuis_iterable(["CHAT", "ELEVE"]))
 
     assert dico.mot_valide("chat")
     assert dico.mot_valide("  Chat ")
     assert dico.mot_valide("élève")
-    assert not dico.mot_valide("eleve")   # accents distincts
+    assert dico.mot_valide("eleve")       # accents désormais indifférents
     assert not dico.mot_valide("zzz")
 
 
@@ -376,6 +379,43 @@ def test_charger_definitions_mot_ascii_sans_accent(tmp_path):
         "Personne qui reçoit un enseignement.",
         "Nourri, engraissé.",
     ]
+
+
+def test_definition_mot_jeune_jeune_circonflexe_meme_cle_desaccentuee(tmp_path):
+    """« jeune » et « jeûne » partagent la clé désaccentuée JEUNE (issue #281).
+
+    C'est le scénario de « collision » évoqué par Alain : les lettres du
+    Scrabble n'ayant elles-mêmes aucun accent, les deux mots sont déjà un seul
+    et même mot jouable — pas un bug à corriger. Le point à vérifier est que
+    l'affichage combine bien les gloses des DEUX mots sous cette clé unique,
+    sans que l'une masque l'autre. ``definition_mot``/``definitions_annotees``
+    ne sont pas modifiées par cette issue : elles utilisaient déjà
+    ``desaccentuer(normaliser_mot(mot))`` pour retrouver la clé, et le
+    contenu de la clé (une simple liste) affiche déjà toutes les gloses
+    à la suite — comportement confirmé ici, aucun correctif requis.
+    """
+    fichier = tmp_path / "definitions.json"
+    fichier.write_text(
+        json.dumps(
+            {
+                "JEUNE": [
+                    "Qui est dans une phase au commencement de sa vie.",  # jeune
+                    "Abstention totale d'aliments.",                     # jeûne
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    attendu = [
+        "Qui est dans une phase au commencement de sa vie.",
+        "Abstention totale d'aliments.",
+    ]
+    # Les deux graphies (avec et sans accent circonflexe) retrouvent la même
+    # liste combinée : aucune des deux définitions n'est masquée par l'autre.
+    assert definition_mot("jeûne", fichier) == attendu
+    assert definition_mot("jeune", fichier) == attendu
 
 
 def test_charger_definitions_json_invalide(tmp_path):
@@ -581,6 +621,82 @@ def test_construire_trie_mode_belgicisme_mot_oui_absent_de_la_source_reste_absen
         chemin_belgicismes=chemin_belges,
     )
     assert "ZORGLUB" not in trie
+
+
+# --------------------------------------------------------------------------- #
+# Désaccentuation cohérente insertion + recherche (issue #281)
+# --------------------------------------------------------------------------- #
+
+def test_construire_trie_ods_reconnait_les_mots_tapes_avec_accent(tmp_path):
+    """L'ODS8 est stocké sans accent : un mot valide tapé AVEC accent (ex.
+    « académique », « école », « été ») doit être reconnu, la comparaison
+    d'appartenance étant elle aussi désaccentuée (:meth:`Dictionnaire.mot_valide`)."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=["academique", "ecole", "ete"]
+    )
+    trie = construire_trie(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+    )
+    dico = Dictionnaire(trie)
+
+    assert dico.mot_valide("académique")
+    assert dico.mot_valide("école")
+    assert dico.mot_valide("été")
+    # La forme sans accent reste bien sûr valide aussi (non-régression).
+    assert dico.mot_valide("ACADEMIQUE")
+
+
+def test_construire_trie_hunspell_mot_accentue_reste_valide(tmp_path, monkeypatch):
+    """Non-régression : Hunspell contient légitimement des entrées accentuées
+    (ex. « ACADÉMIQUE »). La désaccentuation à l'insertion et à la recherche
+    étant symétrique, ce mot reste reconnu — tapé avec ou sans accent."""
+    monkeypatch.setattr(
+        d,
+        "charger_source",
+        lambda source, chemin_ods, base_hunspell: {"ACADÉMIQUE", "ÉCOLE"},
+    )
+    chemin_ajoutes = tmp_path / "mots_ajoutes.txt"
+    chemin_ajoutes.touch()
+    chemin_retires = tmp_path / "mots_retires.txt"
+    chemin_retires.touch()
+
+    trie = construire_trie(
+        source="hunspell",
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+    )
+    dico = Dictionnaire(trie)
+
+    assert dico.mot_valide("académique")
+    assert dico.mot_valide("ACADEMIQUE")
+    assert dico.mot_valide("école")
+
+
+def test_construire_trie_belgicisme_accentue_sans_equivalent_standard(tmp_path):
+    """Un belgicisme accentué sans équivalent standard (ex. « agréation »,
+    ``existe_sens_standard=non``) est valide en mode Belgicisme, reconnu qu'on
+    le tape avec ou sans accent (issue #281)."""
+    chemin_ods, chemin_ajoutes, chemin_retires = _preparer_dico(
+        tmp_path, source_mots=["chat"]
+    )
+    chemin_belges = tmp_path / "belgicismes.csv"
+    _ecrire_csv_belgicismes(chemin_belges, [("agréation", "non")])
+
+    trie = construire_trie(
+        source="ods",
+        chemin_ods=chemin_ods,
+        chemin_ajoutes=chemin_ajoutes,
+        chemin_retires=chemin_retires,
+        mode_belgicisme=True,
+        chemin_belgicismes=chemin_belges,
+    )
+    dico = Dictionnaire(trie)
+
+    assert dico.mot_valide("agréation")
+    assert dico.mot_valide("AGREATION")
 
 
 def test_obtenir_trie_cache_mode_defaut_false_comportement_inchange(tmp_path):

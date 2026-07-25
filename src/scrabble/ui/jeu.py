@@ -49,6 +49,7 @@ from scrabble.dictionnaire.dictionnaire import (
     CHEMIN_DEFINITIONS,
     Trie,
     definitions_annotees,
+    desaccentuer,
     normaliser_mot,
 )
 from scrabble.moteur.ia import Niveau
@@ -873,7 +874,11 @@ def verifier_mot_dictionnaire(
 
     ``lettres`` est la suite de jetons arrangés dans la zone de brouillon (dans
     l'ordre affiché), soit sous forme de liste, soit déjà concaténée. Le mot est
-    normalisé (majuscules, NFC) comme le Trie ODS8 l'attend, puis testé via
+    normalisé (majuscules, NFC) puis **désaccentué** (:func:`desaccentuer`,
+    issue #281) juste avant le test d'appartenance, cohérent avec le Trie de
+    validation qui contient lui-même des entrées désaccentuées (voir le
+    docstring du module ``dictionnaire``) — un mot valide tapé avec accent (ex.
+    « académique ») doit être reconnu comme un mot tapé sans accent. Testé via
     :meth:`dictionnaire.contient`. **Lecture seule** : aucune mutation de la
     partie ni du dictionnaire.
 
@@ -905,7 +910,7 @@ def verifier_mot_dictionnaire(
             "succes": False,
             "erreur": "La zone de brouillon ne contient aucune lettre à vérifier.",
         }
-    valide = bool(dictionnaire.contient(mot))
+    valide = bool(dictionnaire.contient(desaccentuer(mot)))
     definition = None
     if valide:
         annotees = definitions_annotees(mot, chemin_definitions, chemin_belgicismes)
