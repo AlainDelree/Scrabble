@@ -12,6 +12,10 @@ sessions.
 -Quand vérifier dictionnaire perd le focus il se referme, il faut que derniers coups fasse de meme.
 -Afficher tous les coups du jeu dans derniers coups(les coups les plus récent en haut)
 
+##Creer un fichier meilleurs score
+Creer un fichiers meilleur score répartis en 3 catégories(1vs1, 1vs2, 1vs3) et par niveaux(Débutant, facile, Intermédiaire, Avancé, Expert)
+Garder les 10 meilleurs score par combinaison catégorie/niveau
+
 ## Creer TextField constemment visible pourle dictionnaire
 
 Vu la fréquence d'utilisation du dictionnaire dans l'écran de jeu observée, il faut remplacer le bouton loupe, ouvrant un textfield pour chercher la définition d'un mot par le textefield accessible directement dans l'ecran
