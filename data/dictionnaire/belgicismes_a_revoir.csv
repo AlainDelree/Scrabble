@@ -577,8 +577,8 @@ national-royalisme,"Idéologie politique de droite radicale mêlant nationalisme
 nenni,ou Expression négative qu’on emploie pour marquer un refus catégorique ou encore par plaisanterie dans les réponses.,non,oui
 nominette,Étiquette nominative.,non,non
 nonantaine,"Nombre d’environ nonante, quatre-vingt-dix. | Âge d’environ nonante ans.",non,non
-nonante,"Quatre-vingt-neuf/huitante-neuf plus un, soit neuf fois dix, adjectif numéral cardinal correspondant au nombre 90. | ou ou pour des raisons pratiques (Mathématiques, Bourse). Le nombre 90, entier naturel après quatre-vingt-neuf/huitante-neuf. | Chose portant le numéro 90. | Année qui se termine par 90, par exemple 1990.",non,oui
-nonante-cinq,"quatre-vingt-quinze. | 95, quatre-vingt-quinze.",non,non
+nonante,90.,non,oui
+nonante-cinq,95.,non,non
 nonante-deux,92.,non,non
 nonante-et-un,91.,non,non
 nonante-huit,98.,non,non
@@ -755,12 +755,12 @@ scribain,"Coffre sur console, au milieu duquel est une espèce de tabernacle int
 section,Subdivision des communes correspondant aux anciennes communes avant la fusion des communes.,non,oui
 septantaine,"ou Nombre d’environ septante, soixante-dix. | ou Âge de septante ans, ou allant de septante à quatre-vingts ans.",non,non
 septantaines,Pluriel de septantaine.,non,non
-septante,"Soixante-neuf plus un, soit sept fois dix, adjectif numéral cardinal correspondant au nombre 70. | ou pour des raisons pratiques (Mathématiques, Bourse). Le nombre 70.",non,oui
+septante,70.,non,oui
 septante-cinq,75.,non,non
 septante-deux,72.,non,non
-septante-et-un,ou Le nombre 71.,non,oui
+septante-et-un,71.,non,oui
 septante-huit,78.,non,non
-septante-neuf,"79, soixante-dix-neuf.",non,non
+septante-neuf,79.,non,non
 septante-quatre,74.,non,non
 septante-sept,77.,non,non
 septante-six,76.,non,non

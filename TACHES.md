@@ -12,18 +12,9 @@ sessions.
 -Quand vérifier dictionnaire perd le focus il se referme, il faut que derniers coups fasse de meme.
 -Afficher tous les coups du jeu dans derniers coups(les coups les plus récent en haut)
 
-## Fenêtre de réglages avec onglets (dictionnaire)
+## Creer TextField constemment visible pourle dictionnaire
 
-Nouvelle fenêtre graphique de réglages (pywebview, séparée de l'écran de
-jeu), avec au moins 2 onglets :
-- **Général** : réglages existants (prénom, thème, mode de saisie...)
-- **Dictionnaire** : recherche d'un mot, affichage par source (ODS /
-  Hunspell) avec statut présent/absent + bouton Ajouter/Supprimer +
-  définition
-
-Prérequis : séparer `mots_ajoutes.txt`/`mots_retires.txt` par source (une
-paire par source : ODS et Hunspell) pour que les personnalisations
-restent indépendantes entre les deux sources.
+Vu la fréquence d'utilisation du dictionnaire dans l'écran de jeu observée, il faut remplacer le bouton loupe, ouvrant un textfield pour chercher la définition d'un mot par le textefield accessible directement dans l'ecran
 
 ## Point de vigilance : gestion d'erreurs dans accueil.py
 
