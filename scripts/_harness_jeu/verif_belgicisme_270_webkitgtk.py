@@ -1,7 +1,13 @@
-"""Vérification issue #270 : rendu réel du bandeau tricolore du mode
-Belgicisme sous WebKitGTK (le moteur utilisé par pywebview sous Linux, cf.
-CONTEXTE.md — le harnais Playwright habituel de _harness_jeu ne teste que
-Chromium et n'aurait pas détecté le rendu réel visé par cette issue).
+"""Vérification issues #270/#271 : rendu réel du mode Belgicisme sous
+WebKitGTK (le moteur utilisé par pywebview sous Linux, cf. CONTEXTE.md — le
+harnais Playwright habituel de _harness_jeu ne teste que Chromium et n'aurait
+pas détecté l'écart de rendu constaté en #270).
+
+#271 remplace le bandeau opaque 6px de #270 par un fond blanc + voile
+tricolore translucide sur toute la surface, avec plaques de fond blanches
+ciblées derrière le titre/sous-titre/légendes des drapeaux (texte noir).
+Ce harnais (créé en #270) est réutilisé tel quel : il ne fait qu'une
+capture générique de l'écran, sans assertion sur le rendu précis.
 
 Charge accueil.html/css/js (avec la même API pywebview mockée que
 verif_belgicisme_269.mjs) dans un vrai WebKit2.WebView, bascule France <->
@@ -10,10 +16,12 @@ webkit_web_view_get_snapshot (pas un screenshot X11 : un rendu direct de la
 page, indépendant du gestionnaire de fenêtres).
 
 Prérequis système (déjà présents sur cette machine) : gir1.2-webkit2-4.1,
-python3-gi, un DISPLAY X11 valide (le WebView a besoin d'un GtkWindow réel ;
-pas de Xvfb installé ici, mais le DISPLAY existant a suffi).
+python3-gi (paquets système — utiliser /usr/bin/python3, pas un venv qui ne
+voit pas les dist-packages système), un DISPLAY X11 valide (le WebView a
+besoin d'un GtkWindow réel ; pas de Xvfb installé ici, mais le DISPLAY
+existant a suffi).
 
-Usage : python3 verif_belgicisme_270_webkitgtk.py [dossier_sortie]
+Usage : /usr/bin/python3 verif_belgicisme_270_webkitgtk.py [dossier_sortie]
 """
 import pathlib
 import sys
@@ -84,7 +92,13 @@ def capturer(url, sortie_png, sequence_clics):
 
     def jouer_sequence(i):
         if i >= len(sequence_clics):
-            GLib.timeout_add(300, prendre_snapshot)
+            # #271 : le fond passe désormais du vert au blanc+tricolore (au
+            # lieu de deux verts proches en #270), un contraste bien plus
+            # marqué pour la transition CSS `background-image 0.2s ease` du
+            # body — 700ms de marge (au lieu de 300ms) pour être sûr que la
+            # capture ne tombe jamais en plein milieu du fondu et ne soit
+            # prise pour un résidu visuel.
+            GLib.timeout_add(700, prendre_snapshot)
             return False
         webview.run_javascript(
             f"document.querySelector('{sequence_clics[i]}').click();",
@@ -104,6 +118,7 @@ def capturer(url, sortie_png, sequence_clics):
     def snapshot_pret(view, result, data):
         surface = webview.get_snapshot_finish(result)
         surface.write_to_png(str(sortie_png))
+        win.destroy()
         Gtk.main_quit()
 
     webview.connect("load-changed", apres_chargement)
@@ -117,16 +132,23 @@ if __name__ == "__main__":
     url = str(mock)
 
     print("Capture France (défaut)...")
-    capturer(url, SORTIE / "i270_accueil_france_webkitgtk.png", [])
+    capturer(url, SORTIE / "i271_accueil_france_webkitgtk.png", [])
 
     print("Capture Belgique (après 5 bascules France/Belgique)...")
     capturer(
         url,
-        SORTIE / "i270_accueil_belgique_webkitgtk.png",
+        SORTIE / "i271_accueil_belgique_webkitgtk.png",
         [
             "#drapeau-belgique", "#drapeau-france", "#drapeau-belgique",
             "#drapeau-france", "#drapeau-belgique",
         ],
+    )
+
+    print("Capture retour France (après la bascule Belgique, résidu ?)...")
+    capturer(
+        url,
+        SORTIE / "i271_accueil_retour_france_webkitgtk.png",
+        ["#drapeau-belgique", "#drapeau-france"],
     )
 
     mock.unlink()
