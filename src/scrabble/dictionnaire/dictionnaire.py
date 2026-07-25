@@ -356,26 +356,32 @@ def definitions_annotees(
     chemin_definitions: Path = CHEMIN_DEFINITIONS,
     chemin_belges: Path = CHEMIN_BELGICISMES,
 ) -> list[dict[str, str]] | None:
-    """Fusionne gloses standards et gloses belges d'un mot (loupe, issue #276).
+    """Fusionne gloses standards et gloses belges d'un mot (loupe, issues #276/#278).
 
-    Retourne une liste de ``{"texte": ..., "origine": "standard"|"belge"}`` :
+    Retourne une liste de ``{"texte": ..., "origine": "standard"|"belge", ...}`` :
     les gloses standards d'abord (via :func:`definition_mot`), puis les gloses
-    belges (via :func:`charger_definitions_belges`) qui ne dupliquent pas déjà
-    une glose standard présente (comparaison normalisée insensible à la
-    casse/aux espaces/à la ponctuation finale — voir :func:`_cle_dedup_glose`,
-    cas ``académique`` dont les deux gloses belges existent déjà mot pour mot
-    dans le Wiktionnaire filtré). Renvoie ``None`` si le mot n'a ni définition
-    standard ni définition belge (même contrat que :func:`definition_mot`).
+    belges (via :func:`charger_definitions_belges`) dont le texte ne correspond
+    à aucune glose standard déjà présente (comparaison normalisée insensible à
+    la casse/aux espaces/à la ponctuation finale — voir :func:`_cle_dedup_glose`).
+    Quand une glose belge correspond mot pour mot à une glose standard déjà
+    listée (cas ``académique`` : les deux gloses belges existent déjà dans le
+    Wiktionnaire filtré), le texte n'est jamais dupliqué — la glose standard
+    existante reçoit plutôt ``"aussi_belge": True`` pour continuer à porter le
+    drapeau (issue #278 : le drapeau doit rester visible même sur une définition
+    dupliquée). Renvoie ``None`` si le mot n'a ni définition standard ni
+    définition belge (même contrat que :func:`definition_mot`).
     """
     norme = normaliser_mot(mot)
     if not norme:
         return None
     standards = definition_mot(norme, chemin_definitions) or []
-    cles_standards = {_cle_dedup_glose(glose) for glose in standards}
-    belges = charger_definitions_belges(chemin_belges).get(desaccentuer(norme), [])
     annotees = [{"texte": glose, "origine": "standard"} for glose in standards]
+    index_par_cle = {_cle_dedup_glose(glose): i for i, glose in enumerate(standards)}
+    belges = charger_definitions_belges(chemin_belges).get(desaccentuer(norme), [])
     for glose in belges:
-        if _cle_dedup_glose(glose) in cles_standards:
+        index_standard = index_par_cle.get(_cle_dedup_glose(glose))
+        if index_standard is not None:
+            annotees[index_standard]["aussi_belge"] = True
             continue
         annotees.append({"texte": glose, "origine": "belge"})
     if not annotees:

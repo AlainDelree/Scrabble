@@ -1600,7 +1600,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // si ``definition`` reste un tableau de chaînes dans un cas limite), soit
     // un objet ``{texte, origine}`` — les gloses d'origine belge affichent une
     // pastille-drapeau ``.drapeau-mini`` en préfixe, en permanence, quel que
-    // soit le mode Belgicisme de la partie en cours.
+    // soit le mode Belgicisme de la partie en cours. Depuis l'issue #278, une
+    // glose standard dont le texte est identique à une glose belge (cas
+    // ``académique``) porte aussi le drapeau via ``aussi_belge: true``, sans
+    // jamais dupliquer le texte.
     function afficherDefinitionBrouillon(definition) {
         if (!definitionBrouillon) return;
         definitionBrouillon.innerHTML = '';
@@ -1611,8 +1614,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const estObjet = glose && typeof glose === 'object';
                 const texte = estObjet ? glose.texte : glose;
                 const origine = estObjet ? glose.origine : 'standard';
+                const estBelge = origine === 'belge' || (estObjet && glose.aussi_belge === true);
                 const li = document.createElement('li');
-                if (origine === 'belge') {
+                if (estBelge) {
                     const drapeau = document.createElement('span');
                     drapeau.className = 'drapeau-mini';
                     drapeau.title = 'Définition belge';

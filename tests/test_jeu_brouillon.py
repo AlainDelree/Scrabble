@@ -154,8 +154,9 @@ class TestVerifierMotDictionnaire:
         assert res["definition"] == [{"texte": "Loquet de porte.", "origine": "belge"}]
 
     def test_definition_academique_deduplique_sans_doublon(self, tmp_path):
-        # Cas académique (issue #276) : les deux gloses belges sont déjà mot
-        # pour mot dans le Wiktionnaire filtré — aucun doublon affiché.
+        # Cas académique (issues #276/#278) : les deux gloses belges sont déjà
+        # mot pour mot dans le Wiktionnaire filtré — aucun doublon de texte,
+        # mais les gloses standards partagées portent aussi_belge (drapeau).
         fichier_defs = tmp_path / "definitions.json"
         fichier_defs.write_text(
             json.dumps(
@@ -184,10 +185,19 @@ class TestVerifierMotDictionnaire:
         assert res["valide"] is True
         assert res["definition"] == [
             {"texte": "Qui se rapporte aux académies.", "origine": "standard"},
-            {"texte": "Universitaire.", "origine": "standard"},
-            {"texte": "Relatif à un retard toléré.", "origine": "standard"},
+            {
+                "texte": "Universitaire.",
+                "origine": "standard",
+                "aussi_belge": True,
+            },
+            {
+                "texte": "Relatif à un retard toléré.",
+                "origine": "standard",
+                "aussi_belge": True,
+            },
         ]
         assert all(glose["origine"] == "standard" for glose in res["definition"])
+        assert sum(1 for g in res["definition"] if g.get("aussi_belge")) == 2
 
     def test_definition_mot_belge_sans_equivalent_standard(self, tmp_path):
         # « sketter » : aucune glose standard, uniquement des gloses belges.

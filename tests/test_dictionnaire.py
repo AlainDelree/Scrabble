@@ -742,9 +742,10 @@ def test_definitions_annotees_mot_avec_glose_belge_non_dupliquee(tmp_path):
 
 
 def test_definitions_annotees_academique_deduplique_sans_doublon(tmp_path):
-    """Cas ``académique`` (issue #276) : les deux gloses belges existent déjà
-    mot pour mot dans le Wiktionnaire filtré — aucun doublon, aucune glose
-    belge ajoutée, pas de drapeau sur les gloses partagées."""
+    """Cas ``académique`` (issues #276/#278) : les deux gloses belges existent
+    déjà mot pour mot dans le Wiktionnaire filtré — aucun doublon de texte,
+    mais les gloses standards partagées portent ``aussi_belge`` pour que le
+    drapeau reste visible."""
     chemin_defs = tmp_path / "definitions.json"
     chemin_defs.write_text(
         json.dumps(
@@ -768,14 +769,20 @@ def test_definitions_annotees_academique_deduplique_sans_doublon(tmp_path):
 
     assert annotees == [
         {"texte": "Qui se rapporte aux académies.", "origine": "standard"},
-        {"texte": "Universitaire.", "origine": "standard"},
-        {"texte": "Relatif à un retard toléré.", "origine": "standard"},
+        {"texte": "Universitaire.", "origine": "standard", "aussi_belge": True},
+        {
+            "texte": "Relatif à un retard toléré.",
+            "origine": "standard",
+            "aussi_belge": True,
+        },
     ]
     assert all(glose["origine"] == "standard" for glose in annotees)
 
 
 def test_definitions_annotees_dedup_insensible_casse_espaces_ponctuation(tmp_path):
-    """La déduplication ignore casse, espaces superflus et ponctuation finale."""
+    """La déduplication de texte ignore casse, espaces superflus et ponctuation
+    finale (issue #278 : pas de doublon, mais le drapeau reste porté par la
+    glose standard via ``aussi_belge``)."""
     chemin_defs = tmp_path / "definitions.json"
     chemin_defs.write_text(json.dumps({"MOT": ["Une   glose.  "]}), encoding="utf-8")
     chemin_belges = tmp_path / "belgicismes.csv"
@@ -783,7 +790,9 @@ def test_definitions_annotees_dedup_insensible_casse_espaces_ponctuation(tmp_pat
 
     annotees = definitions_annotees("mot", chemin_defs, chemin_belges)
 
-    assert annotees == [{"texte": "Une   glose.  ", "origine": "standard"}]
+    assert annotees == [
+        {"texte": "Une   glose.  ", "origine": "standard", "aussi_belge": True}
+    ]
 
 
 def test_definitions_annotees_mot_sans_definition_belge_comportement_inchange(tmp_path):
