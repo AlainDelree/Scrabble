@@ -114,7 +114,7 @@ if not exist ".tools\InnoSetup6\ISCC.exe" (
     if "%REBUILD_INTERACTIF%"=="1" pause
     exit /b 1
 )
-call ".tools\InnoSetup6\ISCC.exe" installeur\scrabble.iss
+call ".tools\InnoSetup6\ISCC.exe" /Q installeur\scrabble.iss
 if errorlevel 1 (
     echo.
     echo ERREUR : la compilation Inno Setup a echoue. Voir les messages ci-dessus.
