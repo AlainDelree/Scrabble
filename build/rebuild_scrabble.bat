@@ -1,15 +1,46 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-cd /d C:\CCW\Scrabble
+cd /d "%~dp0.."
 
 echo ============================================
 echo   Rebuild Scrabble.exe
 echo ============================================
 echo.
 
-REM --- 1. Fermer Scrabble.exe s'il tourne encore ---------------------------
-echo [1/4] Fermeture de Scrabble.exe si necessaire...
+REM --- 1. Preparer l'environnement virtuel de build -------------------------
+echo [1/5] Verification de l'environnement virtuel de build...
+if not exist ".venv_build\Scripts\python.exe" (
+    echo .venv_build introuvable : creation en cours...
+    python -m venv .venv_build
+    if errorlevel 1 (
+        echo.
+        echo ERREUR : impossible de creer .venv_build. Verifiez l'installation Python.
+        if "%REBUILD_INTERACTIF%"=="1" pause
+        exit /b 1
+    )
+    call ".venv_build\Scripts\python.exe" -m pip install --upgrade pip >nul
+    call ".venv_build\Scripts\pip.exe" install -r requirements.txt
+    if errorlevel 1 (
+        echo.
+        echo ERREUR : l'installation de requirements.txt a echoue.
+        if "%REBUILD_INTERACTIF%"=="1" pause
+        exit /b 1
+    )
+    call ".venv_build\Scripts\pip.exe" install pyinstaller
+    if errorlevel 1 (
+        echo.
+        echo ERREUR : l'installation de pyinstaller a echoue.
+        if "%REBUILD_INTERACTIF%"=="1" pause
+        exit /b 1
+    )
+) else (
+    echo .venv_build present. OK.
+)
+echo.
+
+REM --- 2. Fermer Scrabble.exe s'il tourne encore ---------------------------
+echo [2/5] Fermeture de Scrabble.exe si necessaire...
 tasklist /fi "imagename eq Scrabble.exe" 2>nul | find /i "Scrabble.exe" >nul
 if not errorlevel 1 (
     echo Scrabble.exe est en cours d'execution : fermeture...
@@ -20,21 +51,21 @@ if not errorlevel 1 (
 )
 echo.
 
-REM --- 2. Lancer le build PyInstaller ---------------------------------------
-echo [2/4] Build PyInstaller en cours (peut prendre plusieurs minutes)...
+REM --- 3. Lancer le build PyInstaller ---------------------------------------
+echo [3/5] Build PyInstaller en cours (peut prendre plusieurs minutes)...
 call ".venv_build\Scripts\pyinstaller.exe" scrabble.spec -y
 if errorlevel 1 (
     echo.
     echo ERREUR : le build PyInstaller a echoue. Voir les messages ci-dessus.
-    pause
+    if "%REBUILD_INTERACTIF%"=="1" pause
     exit /b 1
 )
 echo.
 echo Build termine avec succes.
 echo.
 
-REM --- 3. Verifier le resultat ----------------------------------------------
-echo [3/4] Verification du resultat...
+REM --- 4. Verifier le resultat ----------------------------------------------
+echo [4/5] Verification du resultat...
 if exist "dist\Scrabble\Scrabble.exe" (
     echo.
     echo dist\Scrabble\ genere :
@@ -47,24 +78,24 @@ if exist "dist\Scrabble\Scrabble.exe" (
 ) else (
     echo.
     echo ERREUR : Scrabble.exe introuvable dans dist\Scrabble apres le build.
-    pause
+    if "%REBUILD_INTERACTIF%"=="1" pause
     exit /b 1
 )
 
-REM --- 4. Compiler l'installeur Windows (Inno Setup) ------------------------
-echo [4/4] Compilation de l'installeur Inno Setup...
+REM --- 5. Compiler l'installeur Windows (Inno Setup) ------------------------
+echo [5/5] Compilation de l'installeur Inno Setup...
 if not exist ".tools\InnoSetup6\ISCC.exe" (
     echo.
     echo ERREUR : .tools\InnoSetup6\ISCC.exe introuvable. Verifiez l'installation
     echo portable d'Inno Setup sur cette machine ^(voir installeur\README.md^).
-    pause
+    if "%REBUILD_INTERACTIF%"=="1" pause
     exit /b 1
 )
 call ".tools\InnoSetup6\ISCC.exe" installeur\scrabble.iss
 if errorlevel 1 (
     echo.
     echo ERREUR : la compilation Inno Setup a echoue. Voir les messages ci-dessus.
-    pause
+    if "%REBUILD_INTERACTIF%"=="1" pause
     exit /b 1
 )
 echo.
@@ -77,6 +108,6 @@ echo.
 echo Rappel : lancez Scrabble.exe vous-meme depuis cette session
 echo interactive pour verifier que tout fonctionne bien
 echo ^(WebView2, dictionnaire, interface^).
-
 echo.
-pause
+if "%REBUILD_INTERACTIF%"=="1" pause
+exit /b 0
