@@ -1,17 +1,17 @@
-// Vérification issues #269 + #270 + #271 + #272 + #289 + #290 : cercles-
-// drapeaux France/Belgique de l'accueil, et fond du mode Belgicisme.
+// Vérification issues #269 + #270 + #271 + #272 + #289 + #290 + #291 + #292 :
+// cercles-drapeaux France/Belgique de l'accueil, et fond du mode Belgicisme.
 //
 // Contrôle en headless Playwright — le rendu réel WebKitGTK a été vérifié
-// manuellement par capture GTK+WebKit2 (issues #270/#271/#272/#289/#290, cf.
-// verif_belgicisme_290_webkitgtk.py et accueil.css) :
+// manuellement par capture GTK+WebKit2 (issues #270/#271/#272/#289/#290/#291/
+// #292, cf. verif_belgicisme_292_webkitgtk.py et accueil.css) :
 //   1. France actif par défaut, Belgique inactif.
 //   2. Clic sur le drapeau belge -> classe .actif bascule, aria-checked
 //      correct, body.mode-belgicisme posé, api.definir_mode_belgicisme(true)
 //      appelée.
-//   3. Fond blanc + voile tricolore noir/jaune/rouge quasi-opaque (alpha
-//      0.95, issue #272 — remplace l'alpha 0.22/0.32/0.26 trop pâle de #271,
-//      qui remplaçait le bandeau opaque 6px de #270, qui remplaçait lui-même
-//      le voile 12% invisible sur fond vert de #269) sur TOUTE la surface.
+//   3. Fond en image (`images/drapeau-belge.jpg`, issue #292 — remplace le
+//      voile CSS en `linear-gradient` des issues #271/#272 qui ne rendait
+//      jamais le tissu ondulé voulu par Alain), étiré sur toute la surface
+//      (`background-size: 100% 100%`).
 //   4. Sous-titre et légendes des drapeaux en texte noir uniforme
 //      (#1a1a1a), SANS plaque de fond (issue #272 — supprime le système de
 //      plaques blanches de #271) en mode Belgicisme — inchangés (texte
@@ -19,13 +19,15 @@
 //      n'est PLUS concerné par cette règle depuis #290 : voir point 7.
 //   5. Plusieurs allers-retours France <-> Belgique : aucun résidu visuel
 //      (retour exact au fond normal, un seul cercle actif à la fois).
-//   6. Panneau translucide central (issue #289, opacité réduite à 60% par
-//      #290) : à plusieurs largeurs de fenêtre (700px repli, ~1280px
-//      résolution cible, 1920px pleine largeur), `.container` reste
-//      entièrement contenu dans le panneau de `.container::before` (aucun
-//      débordement sur le voile tricolore), et le panneau laisse toujours
-//      une marge visible avec le bord de la fenêtre (bandes tricolores
-//      toujours visibles, en bordure comme au centre à travers le panneau).
+//   6. Panneau quasi opaque central (issue #289, opacité réduite à 60% par
+//      #290 puis 50% par #291, remontée à 95% par #292 — l'image de fond
+//      n'a plus besoin de transparaître à travers le panneau) : à plusieurs
+//      largeurs de fenêtre (700px repli, ~1280px résolution cible, 1920px
+//      pleine largeur), `.container` reste entièrement contenu dans le
+//      panneau de `.container::before` (aucun débordement sur le fond), et
+//      le panneau laisse toujours une marge visible avec le bord de la
+//      fenêtre (drapeau visible en bordure comme au centre à travers le
+//      panneau, quasiment opaque).
 //   7. Titre en tuiles de Scrabble (issue #290) : en mode Belgicisme, chaque
 //      lettre de "Scrabble" (8 `<span class="lettre-scrabble">`) porte un
 //      fond opaque crème (#f5e6c8) et un contour doré — pas de couleur de
@@ -102,10 +104,8 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
   }));
   await page.screenshot({ path: path.join(here, 'i269_accueil_belgique.png') });
 
-  // Fond blanc + voile tricolore quasi-opaque sur toute la surface
-  // (issue #272, alpha 0.95 — remplace l'alpha 0.22/0.32/0.26 trop pâle de
-  // #271) : fond blanc uni + les trois couleurs franches du drapeau belge
-  // présentes dans le background-image, étalées sur 100% de la surface.
+  // Fond en image de drapeau ondulé, étiré sur toute la surface (issue
+  // #292 — remplace le voile CSS en `linear-gradient` des issues #271/#272).
   const fond = await page.evaluate(() => {
     const style = getComputedStyle(document.body);
     return {
@@ -115,10 +115,7 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
     };
   });
   const fondOk =
-    fond.backgroundColor === 'rgb(255, 255, 255)' &&
-    fond.backgroundImage.includes('rgba(0, 0, 0, 0.95)') &&
-    fond.backgroundImage.includes('rgba(250, 224, 66, 0.95)') &&
-    fond.backgroundImage.includes('rgba(237, 41, 57, 0.95)') &&
+    fond.backgroundImage.includes('drapeau-belge.jpg') &&
     /100%\s*100%/.test(fond.backgroundSize);
 
   // Sous-titre/légendes en texte noir uniforme, SANS plaque de fond (issue
@@ -162,13 +159,13 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
     tuiles.map((t) => t.texte).join('') === 'Scrabble' &&
     tuiles.every((t) => t.backgroundColor === 'rgb(245, 230, 200)' && t.color === 'rgb(74, 52, 24)');
 
-  // Panneau translucide central (issue #289, opacité réduite à 60% par
-  // #290) : à plusieurs largeurs de fenêtre (700px repli, ~1280px résolution
-  // cible, 1920px pleine largeur déjà correcte avant #289 — ne doit pas être
-  // cassée), `.container` doit rester entièrement contenu dans le panneau de
-  // `.container::before`, et le panneau doit toujours laisser une marge
-  // visible avec le bord de fenêtre (bande tricolore visible, en bordure
-  // comme — désormais — en transparence à travers le panneau lui-même).
+  // Panneau quasi opaque central (issue #289, opacité 60% par #290, 50% par
+  // #291, 95% par #292) : à plusieurs largeurs de fenêtre (700px repli,
+  // ~1280px résolution cible, 1920px pleine largeur déjà correcte avant
+  // #289 — ne doit pas être cassée), `.container` doit rester entièrement
+  // contenu dans le panneau de `.container::before`, et le panneau doit
+  // toujours laisser une marge visible avec le bord de fenêtre (drapeau
+  // visible en bordure).
   const largeursPanneau = [700, 1280, 1920];
   const mesuresPanneau = [];
   for (const largeur of largeursPanneau) {
@@ -202,7 +199,7 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
     m.conteneurDroit <= m.panneauDroit + TOLERANCE &&
     m.panneauGauche > 0 &&
     m.panneauDroit < m.largeurFenetre &&
-    m.fondPanneau === 'rgba(255, 255, 255, 0.6)'
+    m.fondPanneau === 'rgba(255, 255, 255, 0.95)'
   );
 
   // Plusieurs allers-retours pour détecter un résidu visuel.
@@ -261,8 +258,8 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
     etatFinal.bodyModeBelge === false &&
     etatFinal.franceActif === true &&
     etatFinal.belgiqueActif === false &&
-    etatFinal.backgroundColor !== 'rgb(255, 255, 255)' &&
-    !etatFinal.backgroundImage.includes('rgba(250, 224, 66,') &&
+    etatFinal.backgroundColor !== 'rgb(13, 13, 13)' &&
+    !etatFinal.backgroundImage.includes('drapeau-belge.jpg') &&
     franceInchange(etatFinal) &&
     errs.length === 0;
 
@@ -275,7 +272,7 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
   console.log('Historique bascules (mode belge actif ?) :', historique);
   console.log('État final (retour France) :', JSON.stringify(etatFinal));
   console.log('Erreurs JS :', errs.length ? errs : 'aucune');
-  console.log(ok ? 'OK — cercles-drapeaux fonctionnels, fond blanc+tricolore franc, texte sans plaque, titre en tuiles, panneau translucide (60%) sans débordement à 700/1280/1920px, aucun résidu visuel'
+  console.log(ok ? 'OK — cercles-drapeaux fonctionnels, fond image drapeau, texte sans plaque, titre en tuiles, panneau quasi opaque (95%) sans débordement à 700/1280/1920px, aucun résidu visuel'
                  : 'ECHEC');
   await browser.close();
   process.exit(ok ? 0 : 1);

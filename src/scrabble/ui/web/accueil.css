@@ -106,16 +106,32 @@ body {
       crème, contour doré, relief), donc retiré de la liste "texte sombre
       uniforme" ci-dessous — son style est désormais défini séparément, plus
       bas dans ce fichier, avec son propre calcul de contraste (les tuiles
-      étant opaques, leur contraste ne dépend pas de l'opacité du panneau). */
+      étant opaques, leur contraste ne dépend pas de l'opacité du panneau).
+
+   Fond image + panneau quasi-opaque (issue #292) : le voile CSS en
+   `linear-gradient` (bandes forcément droites et figées) ne rendait jamais
+   le tissu ondulé voulu par Alain. Remplacé par une vraie photo de drapeau
+   belge ondulé (`images/drapeau-belge.jpg`) en `background-image`.
+   `background-size: 100% 100%` (étirement) plutôt que `cover` : `cover`
+   rognerait fortement les bandes noire/rouge sur les côtés dans une
+   fenêtre étroite, alors que l'étirement garde les trois bandes toujours
+   proportionnées sur toute la largeur — déformation imperceptible sur une
+   texture organique floue. Le panneau redevenant quasi opaque (voir
+   `.container::before`), le voile de fond n'a plus besoin de transparaître
+   à travers le contenu : il reste visible sur les côtés et en dessous du
+   panneau uniquement.
+
+   Asset (issue #292) : la pièce jointe de l'issue
+   (`issue-attachments/20260726-230812-drapeau_seul.png`, 1376x768) pèse
+   1,4 Mo en PNG — largement au-dessus du seuil d'1 Mo à partir duquel une
+   conversion s'impose pour un fichier embarqué dans l'installeur. Convertie
+   en JPEG qualité 85 (`images/drapeau-belge.jpg`, 61 Ko) : la texture est
+   une photo (bruit organique du tissu), pas un aplat ou un dessin au trait,
+   donc sans les artefacts de bloc que le JPEG produirait sur des à-plats
+   nets ou du texte — perte visuelle négligeable, gain de poids ~23x. */
 body.mode-belgicisme {
-    background-color: #ffffff;
-    background-image:
-        linear-gradient(
-            90deg,
-            rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.95) 33.33%,
-            rgba(250, 224, 66, 0.95) 33.33%, rgba(250, 224, 66, 0.95) 66.66%,
-            rgba(237, 41, 57, 0.95) 66.66%, rgba(237, 41, 57, 0.95) 100%
-        );
+    background-color: #0d0d0d;
+    background-image: url(images/drapeau-belge.jpg);
     background-repeat: no-repeat;
     background-size: 100% 100%;
     background-position: center;
@@ -164,7 +180,20 @@ body.mode-belgicisme {
    minimum, valeur fixe et déterministe — un mélange alpha CSS, pas un
    rendu variable). Descendre davantage (45%) ferait passer cette bande
    sous 4.5:1 (voir calcul dans l'historique de l'issue) : 50% est le
-   plancher compatible avec l'AA sur ce panneau. */
+   plancher compatible avec l'AA sur ce panneau.
+
+   Retour au quasi-opaque (issue #292) : le fond tricolore n'est plus un
+   voile CSS pâle mais une vraie photo de drapeau (voir plus haut) — il
+   n'a plus besoin de transparaître à travers le panneau pour être identifié,
+   il reste pleinement visible sur les côtés et en dessous. Le panneau
+   remonte donc à 0.95 (95%, milieu de la fourchette 92-97% demandée) :
+   quasi opaque, texte très confortable dessus (le calcul WCAG AA du 50%
+   ci-dessus, déjà largement au-dessus du seuil, ne fait que s'améliorer
+   avec moins de mélange). `top`/`bottom` à -20px (pas de `height` fixe)
+   restent inchangés : le panneau suit la hauteur réelle de `.container`
+   (déterminée par son contenu), jamais celle de la fenêtre — vérifié à la
+   fois avec 0 joueur/0 partie et avec plusieurs joueurs/parties (le
+   drapeau redevient visible en dessous dès la fin du contenu). */
 body.mode-belgicisme .container {
     position: relative;
 }
@@ -177,7 +206,7 @@ body.mode-belgicisme .container::before {
     left: 50%;
     transform: translateX(-50%);
     width: clamp(620px, 94vw, 720px);
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.95);
     border-radius: 12px;
     box-shadow: 0 2px 16px rgba(0, 0, 0, 0.18);
     z-index: -1;
@@ -199,6 +228,19 @@ body.mode-belgicisme .compteur,
 body.mode-belgicisme .liste-joueurs .vide,
 body.mode-belgicisme .parties-en-cours .vide {
     color: #1a1a1a;
+    text-shadow: none;
+}
+
+/* `.message-limite` ("Table complète (4 joueurs maximum)", etc.) gardait son
+   style pensé pour le tapis vert (rose clair #ffd0d0 + ombre portée) : quasi
+   invisible sur le panneau blanc/quasi-opaque du mode Belgicisme (constaté
+   en vérifiant le contraste WCAG AA de l'issue #292). Rouge alerte
+   (var(--couleur-danger), déjà utilisé ailleurs dans l'app pour ce
+   sémantisme) plutôt que le #1a1a1a uniforme ci-dessus : conserve le sens
+   "avertissement" du message tout en assurant un contraste confortable
+   (~7.5:1 sur le panneau à 95% d'opacité, bien au-delà du seuil AA 4.5:1). */
+body.mode-belgicisme .message-limite {
+    color: var(--couleur-danger);
     text-shadow: none;
 }
 
@@ -226,13 +268,24 @@ body.mode-belgicisme .parties-en-cours .vide {
    pour un embossage net à cette taille — à 2px/1px d'ombre, le relief
    devenait imperceptible sur une tuile deux fois plus grande. 8 tuiles à
    3.2rem + 7 espaces de 8px ≈ 427px, confortable dans les 560px de contenu
-   du panneau (600px - 2×20px de padding, cf. `.container`). */
+   du panneau (600px - 2×20px de padding, cf. `.container`).
+
+   Chevauchement avec le bouton réglages (issue #292) : à cette taille, les
+   tuiles centrées dans les 560px de `header` (via `justify-content: center`
+   sur toute sa largeur) ne laissent plus qu'une poignée de pixels avant le
+   bouton `.btn-reglages` (44px de large, ancré `top:0; right:0` sur ce
+   même `header`) — l'ombre portée des tuiles empiète visuellement dessus.
+   `padding-right: 56px` (44px de bouton + 12px de marge) réduit la boîte
+   dans laquelle `justify-content: center` centre les tuiles, les décalant
+   d'autant vers la gauche : espace réservé au bouton à toutes les largeurs
+   de fenêtre, sans dépendre d'un calcul de largeur de tuiles fragile. */
 body.mode-belgicisme header h1 {
     display: flex;
     justify-content: center;
     align-items: center;
     gap: 8px;
     margin-bottom: 14px;
+    padding-right: 56px;
 }
 
 body.mode-belgicisme header h1 .lettre-scrabble {
