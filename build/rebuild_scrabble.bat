@@ -8,6 +8,29 @@ echo   Rebuild Scrabble.exe
 echo ============================================
 echo.
 
+REM --- 0. Verifier les dependances externes non versionnees -----------------
+echo [0/5] Verification des dependances externes (hors git)...
+if not exist ".tools\InnoSetup6\ISCC.exe" (
+    echo.
+    echo ERREUR : .tools\InnoSetup6\ISCC.exe introuvable.
+    echo Deposez l'installation portable d'Inno Setup 6 a cet emplacement exact
+    echo ^(.tools\InnoSetup6\^) avant de lancer ce script ^(voir installeur\README.md,
+    echo section Prerequis^).
+    if "%REBUILD_INTERACTIF%"=="1" pause
+    exit /b 1
+)
+if not exist "data\dictionnaire\French-Scrabble-ODS8-main" (
+    echo.
+    echo ERREUR : data\dictionnaire\French-Scrabble-ODS8-main introuvable.
+    echo Deposez le dictionnaire ODS8 a cet emplacement exact
+    echo ^(data\dictionnaire\French-Scrabble-ODS8-main\^) avant de lancer ce script
+    echo ^(voir data\dictionnaire\README.md^).
+    if "%REBUILD_INTERACTIF%"=="1" pause
+    exit /b 1
+)
+echo Dependances externes presentes. OK.
+echo.
+
 REM --- 1. Preparer l'environnement virtuel de build -------------------------
 echo [1/5] Verification de l'environnement virtuel de build...
 if not exist ".venv_build\Scripts\python.exe" (

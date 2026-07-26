@@ -6,6 +6,19 @@ sont jamais commités dans le dépôt git** (volumineux, régénérables à tout
 moment à partir du build PyInstaller + de ce script) : seuls `scrabble.iss`
 et ce `README.md` sont suivis par git.
 
+## Dépendances externes à déposer manuellement (nouveau clone/poste)
+
+`build\rebuild_scrabble.bat` vérifie leur présence en étape 0 et s'arrête
+immédiatement si l'une manque. Sur un nouveau clone ou un nouveau poste de
+build, déposez-les avant de lancer un build complet :
+
+- `.tools\InnoSetup6\ISCC.exe` — installation portable d'Inno Setup 6 (voir
+  section Prérequis ci-dessous). Non suivi par git (`.gitignore` ignore
+  `.tools\`).
+- `data\dictionnaire\French-Scrabble-ODS8-main\` (et les autres dictionnaires
+  utilisés) — voir `data\dictionnaire\README.md` pour le détail complet et
+  la justification (licence floue, contenu tiers non redistribuable).
+
 ## Prérequis
 
 1. [Inno Setup 6](https://jrsoftware.org/isdl.php) installé (ou disponible en
