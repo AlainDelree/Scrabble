@@ -147,18 +147,24 @@ body.mode-belgicisme {
    fourchette 55-70% demandée) laisse les trois bandes clairement
    reconnaissables à travers tout le panneau tout en gardant un contraste
    confortable pour le texte sombre posé dessus (voir liste "texte sombre
-   uniforme" plus bas). Calcul de contraste WCAG (fond body déjà mélangé à
-   95% sur blanc, cf. plus haut ; panneau blanc à 60% par-dessus ; texte
-   #1a1a1a, luminance relative ~0.0104) sur les trois bandes, cas le plus
-   défavorable en premier :
-     - bande noire  (~#0d0d0d dessous) -> effectif ~rgb(158,158,158) -> ratio ≈ 6.5:1
-     - bande rouge  (~#ef3443 dessous) -> effectif ~rgb(249,178,184) -> ratio ≈ 10.0:1
-     - bande jaune  (~#fae24b dessous) -> effectif ~rgb(253,244,187) -> ratio ≈ 15.6:1
-   Les trois dépassent le seuil WCAG AA (4.5:1), la bande noire restant la
-   plus contraignante avec une marge confortable (~1.4x le minimum). Une
-   opacité plus basse (vers 55%) resterait conforme mais avec moins de marge
-   sur la bande noire ; 60% a été retenu comme compromis entre translucidité
-   marquée et marge de sécurité du contraste. */
+   uniforme" plus bas).
+
+   Ré-ajustement (issue #291) : après comparaison avec l'image de référence
+   jointe à #290 (bandes nettement vives à travers le panneau, pas
+   délavées), 60% restait encore trop proche de l'opaque — le rouge
+   ressortait rosé et le jaune pâle plutôt que saturés. Passage à 0.5 (50%),
+   qui laisse nettement plus de saturation traverser tout en restant
+   au-dessus du seuil WCAG AA sur la bande noire (le cas le plus
+   défavorable, cf. calcul ci-dessous) :
+     - bande noire  (~#0d0d0d dessous) -> effectif ~rgb(134,134,134) -> ratio ≈ 4.75:1
+     - bande rouge  (~#ef3443 dessous) -> effectif ~rgb(246,154,162) -> ratio ≈ 8.3:1
+     - bande jaune  (~#fae24b dessous) -> effectif ~rgb(252,240,165) -> ratio ≈ 15.1:1
+   Les trois dépassent toujours le seuil WCAG AA (4.5:1), la bande noire
+   restant la plus contraignante mais avec une marge réelle (~1.06x le
+   minimum, valeur fixe et déterministe — un mélange alpha CSS, pas un
+   rendu variable). Descendre davantage (45%) ferait passer cette bande
+   sous 4.5:1 (voir calcul dans l'historique de l'issue) : 50% est le
+   plancher compatible avec l'AA sur ce panneau. */
 body.mode-belgicisme .container {
     position: relative;
 }
@@ -171,7 +177,7 @@ body.mode-belgicisme .container::before {
     left: 50%;
     transform: translateX(-50%);
     width: clamp(620px, 94vw, 720px);
-    background: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.5);
     border-radius: 12px;
     box-shadow: 0 2px 16px rgba(0, 0, 0, 0.18);
     z-index: -1;
@@ -208,34 +214,46 @@ body.mode-belgicisme .parties-en-cours .vide {
      qui détache chaque tuile du panneau ;
    - coins légèrement arrondis.
    Fond opaque : le contraste du texte `#4a3418` sur `#f5e6c8` (~9.5:1) ne
-   dépend pas de l'opacité du panneau dessous. */
+   dépend pas de l'opacité du panneau dessous.
+
+   Agrandissement + relief renforcé (issue #291) : comparaison avec l'image
+   de référence jointe à #290 (ouverte pour cette tâche, cf. rapport) — les
+   tuiles du titre y occupent une large portion de la largeur du panneau
+   avec un relief 3D marqué, très loin des tuiles ~1.6rem/2px de bordure
+   d'origine (qui donnaient un petit ruban de texte dans un coin). Tuiles
+   portées à 3.2rem (× ~2 en linéaire, × ~4 en surface), bordure doublée à
+   3px, ombres internes et portée renforcées (offsets et opacités accrus)
+   pour un embossage net à cette taille — à 2px/1px d'ombre, le relief
+   devenait imperceptible sur une tuile deux fois plus grande. 8 tuiles à
+   3.2rem + 7 espaces de 8px ≈ 427px, confortable dans les 560px de contenu
+   du panneau (600px - 2×20px de padding, cf. `.container`). */
 body.mode-belgicisme header h1 {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 4px;
-    margin-bottom: 8px;
+    gap: 8px;
+    margin-bottom: 14px;
 }
 
 body.mode-belgicisme header h1 .lettre-scrabble {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 1.6rem;
-    height: 1.6rem;
-    padding: 0 2px;
+    min-width: 3.2rem;
+    height: 3.2rem;
+    padding: 0 4px;
     background: #f5e6c8;
     color: #4a3418;
-    font-size: 1.15rem;
+    font-size: 2.2rem;
     font-weight: 700;
     line-height: 1;
     text-shadow: none;
-    border-radius: 4px;
-    border: 2px solid #caa02c;
+    border-radius: 8px;
+    border: 3px solid #caa02c;
     box-shadow:
-        inset 1px 1px 0 rgba(255, 250, 230, 0.7),
-        inset -1px -1px 0 rgba(120, 80, 10, 0.5),
-        0 2px 3px rgba(0, 0, 0, 0.3);
+        inset 2px 2px 0 rgba(255, 250, 230, 0.8),
+        inset -2px -2px 0 rgba(120, 80, 10, 0.65),
+        0 4px 6px rgba(0, 0, 0, 0.4);
 }
 
 body.mode-belgicisme .btn-reglages {
@@ -251,12 +269,13 @@ body.mode-belgicisme section h2 {
    ou la bande tricolore) resterait invisible sur le panneau blanc — il faut
    une bordure sombre. Le fond (`rgba(255, 255, 255, 0.55)`) était devenu sans
    objet sur le panneau quasi-opaque de #289 (indiscernable du fond par
-   défaut) mais redevient utile depuis que le panneau est translucide à 60%
-   (#290) : cette couche blanche supplémentaire éclaircit encore le fond sous
-   ce texte, sans jamais faire baisser le contraste (empilement de couches
-   blanches translucides = seulement plus clair, jamais plus sombre — vérifié
-   au pire cas sur la bande noire : ~211,211,211 effectif, contraste #1a1a1a
-   ≈ 11.6:1, au-delà du 6.5:1 déjà obtenu sur le panneau seul). */
+   défaut) mais redevient utile depuis que le panneau est translucide (#290,
+   opacité recalibrée à 50% en #291) : cette couche blanche supplémentaire
+   éclaircit encore le fond sous ce texte, sans jamais faire baisser le
+   contraste (empilement de couches blanches translucides = seulement plus
+   clair, jamais plus sombre — vérifié au pire cas sur la bande noire :
+   ~201,201,201 effectif, contraste #1a1a1a ≈ 10.5:1, au-delà du 4.75:1 déjà
+   obtenu sur le panneau seul à 50%). */
 body.mode-belgicisme .liste-joueurs:has(.vide),
 body.mode-belgicisme .parties-en-cours:has(.vide) {
     background: rgba(255, 255, 255, 0.55);
