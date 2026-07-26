@@ -1,8 +1,8 @@
-// Vérification issues #269 + #270 + #271 + #272 : cercles-drapeaux
+// Vérification issues #269 + #270 + #271 + #272 + #289 : cercles-drapeaux
 // France/Belgique de l'accueil, et fond du mode Belgicisme.
 //
 // Contrôle en headless Playwright — le rendu réel WebKitGTK a été vérifié
-// manuellement par capture GTK+WebKit2 (issues #270/#271/#272, cf.
+// manuellement par capture GTK+WebKit2 (issues #270/#271/#272/#289, cf.
 // verif_belgicisme_270_webkitgtk.py et accueil.css) :
 //   1. France actif par défaut, Belgique inactif.
 //   2. Clic sur le drapeau belge -> classe .actif bascule, aria-checked
@@ -18,6 +18,12 @@
 //      blanc, pas de plaque) en mode France.
 //   5. Plusieurs allers-retours France <-> Belgique : aucun résidu visuel
 //      (retour exact au fond normal, un seul cercle actif à la fois).
+//   6. Panneau blanc central (issue #289) : à plusieurs largeurs de fenêtre
+//      (700px repli, ~1280px résolution cible, 1920px pleine largeur),
+//      `.container` reste entièrement contenu dans le panneau blanc de
+//      `.container::before` (aucun débordement sur le voile tricolore), et
+//      le panneau laisse toujours une marge visible avec le bord de la
+//      fenêtre (bandes tricolores toujours visibles, en bordure).
 import pw from '/home/alain/.npm-global/lib/node_modules/playwright/index.js';
 const { chromium } = pw;
 import { fileURLToPath } from 'url';
@@ -133,6 +139,49 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
     noirSansPlaque(textes.legendeFrance) &&
     noirSansPlaque(textes.legendeBelgique);
 
+  // Panneau blanc central (issue #289) : à plusieurs largeurs de fenêtre
+  // (700px repli, ~1280px résolution cible, 1920px pleine largeur déjà
+  // correcte avant #289 — ne doit pas être cassée), `.container` doit rester
+  // entièrement contenu dans le panneau blanc de `.container::before`, et le
+  // panneau doit toujours laisser une marge visible avec le bord de fenêtre
+  // (bande tricolore visible, en bordure uniquement).
+  const largeursPanneau = [700, 1280, 1920];
+  const mesuresPanneau = [];
+  for (const largeur of largeursPanneau) {
+    await page.setViewportSize({ width: largeur, height: 780 });
+    await page.waitForTimeout(60);
+    const mesure = await page.evaluate(() => {
+      const conteneur = document.querySelector('.container');
+      const rectConteneur = conteneur.getBoundingClientRect();
+      const stylePanneau = getComputedStyle(conteneur, '::before');
+      const largeurPanneau = parseFloat(stylePanneau.width);
+      const centreFenetre = window.innerWidth / 2;
+      const panneauGauche = centreFenetre - largeurPanneau / 2;
+      const panneauDroit = centreFenetre + largeurPanneau / 2;
+      return {
+        largeurFenetre: window.innerWidth,
+        fondPanneau: stylePanneau.backgroundColor,
+        largeurPanneau,
+        panneauGauche,
+        panneauDroit,
+        conteneurGauche: rectConteneur.left,
+        conteneurDroit: rectConteneur.right,
+      };
+    });
+    mesuresPanneau.push({ largeur, ...mesure });
+  }
+  await page.setViewportSize({ width: 700, height: 780 });
+  await page.waitForTimeout(60);
+  const TOLERANCE = 1;
+  const panneauOk = mesuresPanneau.every((m) =>
+    m.conteneurGauche >= m.panneauGauche - TOLERANCE &&
+    m.conteneurDroit <= m.panneauDroit + TOLERANCE &&
+    m.panneauGauche > 0 &&
+    m.panneauDroit < m.largeurFenetre &&
+    m.fondPanneau !== 'rgba(0, 0, 0, 0)' &&
+    m.fondPanneau !== 'transparent'
+  );
+
   // Plusieurs allers-retours pour détecter un résidu visuel.
   const historique = [];
   for (let i = 0; i < 4; i++) {
@@ -184,6 +233,7 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
     JSON.stringify(apresBelgique.appels) === JSON.stringify([true]) &&
     fondOk &&
     textesOk &&
+    panneauOk &&
     etatFinal.bodyModeBelge === false &&
     etatFinal.franceActif === true &&
     etatFinal.belgiqueActif === false &&
@@ -196,10 +246,11 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
   console.log('Après clic Belgique :', JSON.stringify(apresBelgique));
   console.log('Fond blanc + voile tricolore quasi-opaque (issue #272) :', JSON.stringify(fond), fondOk ? '(OK)' : '(INSUFFISANT)');
   console.log('Titre/sous-titre/légendes texte noir sans plaque (issue #272) :', JSON.stringify(textes), textesOk ? '(OK)' : '(INSUFFISANT)');
+  console.log('Panneau blanc central (issue #289), par largeur :', JSON.stringify(mesuresPanneau), panneauOk ? '(OK)' : '(DEBORDEMENT)');
   console.log('Historique bascules (mode belge actif ?) :', historique);
   console.log('État final (retour France) :', JSON.stringify(etatFinal));
   console.log('Erreurs JS :', errs.length ? errs : 'aucune');
-  console.log(ok ? 'OK — cercles-drapeaux fonctionnels, fond blanc+tricolore franc, texte sans plaque, aucun résidu visuel'
+  console.log(ok ? 'OK — cercles-drapeaux fonctionnels, fond blanc+tricolore franc, texte sans plaque, panneau blanc sans débordement à 700/1280/1920px, aucun résidu visuel'
                  : 'ECHEC');
   await browser.close();
   process.exit(ok ? 0 : 1);

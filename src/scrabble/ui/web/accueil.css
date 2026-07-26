@@ -56,8 +56,9 @@ body {
 }
 
 /* Mode Belgicisme (issue #269, bandeau opaque #270, fond tricolore #271,
-   couleurs franches + suppression des plaques #272) : Alain a vérifié le
-   rendu réel WebKitGTK de #271 par capture et constaté deux problèmes.
+   couleurs franches + suppression des plaques #272, panneau blanc central
+   #289) : Alain a vérifié le rendu réel WebKitGTK de #271 par capture et
+   constaté deux problèmes.
    1. Le voile tricolore (alpha 0.22/0.32/0.26 sur fond blanc) restait trop
       pâle pour être identifié comme noir/jaune/rouge francs — gris clair,
       jaune délavé, rose pastel. On remonte l'alpha à 0.95 sur les trois
@@ -70,10 +71,24 @@ body {
       titre/sous-titre/légendes (#271, pensé pour un contraste indépendant
       de la bande dessous) est donc une complexité inutile : supprimé au
       profit d'une seule couleur de texte sombre (#1a1a1a), appliquée
-      uniformément à tous les textes du mode Belgicisme. Cette couleur
-      contraste ~15:1 sur le jaune franc du voile (bien au-delà du seuil
-      WCAG AA 4.5:1) — seule bande qui compte puisqu'aucun texte ne repose
-      sur le noir ou le rouge.
+      uniformément à tous les textes du mode Belgicisme.
+   Investigation ultérieure (avant #289) : cette approche "tout repose sur la
+   bande jaune" suppose que la bande jaune (1/3 de la largeur de fenêtre) est
+   toujours au moins aussi large que le `.container` (600px max) centré
+   dessus. Faux dès que la fenêtre descend sous ~1920px de large (bande
+   jaune = largeur/3 < 600px) : `.container` déborde alors visuellement sur
+   les bandes noire et rouge voisines, où le texte sombre #1a1a1a devient
+   illisible (noir sur noir) ou peu contrasté (noir sur rouge). Aucune
+   largeur de bande fixe ne peut garantir l'absence de débordement : la
+   bande jaune est proportionnelle à la fenêtre, `.container` ne l'est pas.
+   #289 corrige ce défaut à la racine (au lieu d'un filet de sécurité par
+   élément) en s'inspirant d'une référence visuelle type site officiel
+   Scrabble : un panneau blanc/quasi-opaque (voir `.container::before`
+   ci-dessous) couvre `.container` et déborde légèrement sur les côtés, de
+   sorte que tout le contenu (titre, cartes, boutons) repose désormais
+   TOUJOURS sur du blanc, quelle que soit la largeur de fenêtre — le voile
+   tricolore du body (inchangé ci-dessous) ne reste visible que dans les
+   marges latérales, hors du panneau, jamais sous du texte ou une carte.
    Le mode France reste strictement inchangé (aucune de ces règles n'existe
    hors de `body.mode-belgicisme`). */
 body.mode-belgicisme {
@@ -91,10 +106,54 @@ body.mode-belgicisme {
     background-attachment: fixed;
 }
 
-/* Texte uniforme sombre, sans plaque (issue #272 — remplace le système de
-   plaques blanches de #271, cf. commentaire de body.mode-belgicisme
-   ci-dessus). Tous ces textes reposent sur la bande jaune, seule bande qui
-   porte du contenu. */
+/* Panneau blanc central (issue #289). `.container` (max-width 600px) est
+   toujours plus étroit que le panneau : la marge entre les deux bords est le
+   "padding visuel" demandé, et le voile tricolore ne transparaît que dans
+   les marges latérales entre le panneau et le bord de la fenêtre. `top`/
+   `bottom` négatifs (plutôt qu'une `height` fixe) font que le panneau suit
+   automatiquement la hauteur réelle du contenu, quel que soit le nombre de
+   joueurs/parties affichés. `clamp()` garantit un panneau toujours plus
+   large que `.container` (620px plancher, contre 600px de large maximum
+   pour `.container`) tout en laissant une marge visible à toutes les
+   largeurs testées (700px, ~1280px, pleine largeur ≥1800px) : à 700px de
+   large, `94vw` ≈ 658px (marge visible ≈ 21px de chaque côté) ; au-delà de
+   ~766px de large, le panneau plafonne à 720px et la marge tricolore
+   grandit avec la fenêtre — comportement identique à toutes les tailles,
+   pas seulement un correctif pour petits écrans. `z-index: -1` s'appuie sur
+   le contexte d'empilement créé par `position: relative` sur `.container` :
+   le panneau reste sous son contenu (header, cartes, boutons, tous non
+   positionnés) sans affecter l'empilement par rapport au fond tricolore du
+   body, peint séparément avant `.container` dans l'ordre du document. */
+body.mode-belgicisme .container {
+    position: relative;
+}
+
+body.mode-belgicisme .container::before {
+    content: "";
+    position: absolute;
+    top: -20px;
+    bottom: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: clamp(620px, 94vw, 720px);
+    background: rgba(255, 255, 255, 0.97);
+    border-radius: 12px;
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.18);
+    z-index: -1;
+}
+
+/* Texte sombre uniforme (issue #272, remplace le système de plaques de #271 ;
+   toujours d'actualité après #289). Ces éléments reposaient sur la bande
+   jaune (#272) ; ils reposent désormais sur le panneau blanc de #289 — la
+   raison change, la couleur reste : #1a1a1a contraste ~19:1 sur le panneau
+   quasi-opaque (blanc à 97%), bien au-delà du seuil WCAG AA (4.5:1), et ce
+   contraste ne dépend plus des proportions du voile tricolore puisque le
+   panneau ne fait plus jamais transparaître la bande dessous. Un retour aux
+   couleurs France d'origine (texte blanc, pensées pour le tapis vert plein
+   écran) a été envisagé (cf. tâche #289) mais écarté : sur le panneau blanc
+   quasi-opaque, du texte blanc tomberait sous le seuil WCAG AA (contraste
+   ~1:1), ce qui aurait réintroduit le problème de lisibilité que #289
+   corrige. */
 body.mode-belgicisme header h1,
 body.mode-belgicisme .subtitle,
 body.mode-belgicisme .drapeau-legende,
@@ -114,6 +173,14 @@ body.mode-belgicisme section h2 {
     border-bottom-color: rgba(0, 0, 0, 0.2);
 }
 
+/* Toujours nécessaire après #289 (vérifié) : la bordure pointillée par
+   défaut (`rgba(255, 255, 255, 0.4)`, pensée pour ressortir sur le tapis vert
+   ou la bande tricolore) resterait invisible sur le panneau blanc — il faut
+   une bordure sombre. Le fond (`rgba(255, 255, 255, 0.55)`) est en revanche
+   devenu sans objet : posé sur le panneau blanc de #289 plutôt que sur la
+   bande tricolore directe de #272, il ne se distingue plus visuellement du
+   fond par défaut (`rgba(255, 255, 255, 0.08)`, ligne ~316) — conservé tel
+   quel par prudence, sans effet visible constaté. */
 body.mode-belgicisme .liste-joueurs:has(.vide),
 body.mode-belgicisme .parties-en-cours:has(.vide) {
     background: rgba(255, 255, 255, 0.55);
