@@ -15,7 +15,15 @@
         <header>
             <button id="btn-reglages" class="btn-reglages" title="Réglages"
                     aria-label="Réglages">⚙</button>
-            <h1>Scrabble</h1>
+            <!-- Lettres découpées en <span> individuels (issue #290) : en mode
+                 France, ce balisage est invisible (aucune règle CSS hors
+                 `body.mode-belgicisme` ne cible `.lettre-scrabble`, le texte
+                 s'affiche comme un h1 normal). En mode Belgicisme uniquement,
+                 accueil.css transforme chaque span en tuile de Scrabble
+                 individuelle (fond crème, contour doré, relief). Généré
+                 statiquement ici plutôt qu'en JS : le texte "Scrabble" est
+                 fixe, pas besoin de complexité dynamique pour 8 lettres. -->
+            <h1><span class="lettre-scrabble">S</span><span class="lettre-scrabble">c</span><span class="lettre-scrabble">r</span><span class="lettre-scrabble">a</span><span class="lettre-scrabble">b</span><span class="lettre-scrabble">b</span><span class="lettre-scrabble">l</span><span class="lettre-scrabble">e</span></h1>
             <p class="subtitle">Configuration de la partie</p>
         </header>
 

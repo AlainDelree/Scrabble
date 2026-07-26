@@ -1,9 +1,9 @@
-// Vérification issues #269 + #270 + #271 + #272 + #289 : cercles-drapeaux
-// France/Belgique de l'accueil, et fond du mode Belgicisme.
+// Vérification issues #269 + #270 + #271 + #272 + #289 + #290 : cercles-
+// drapeaux France/Belgique de l'accueil, et fond du mode Belgicisme.
 //
 // Contrôle en headless Playwright — le rendu réel WebKitGTK a été vérifié
-// manuellement par capture GTK+WebKit2 (issues #270/#271/#272/#289, cf.
-// verif_belgicisme_270_webkitgtk.py et accueil.css) :
+// manuellement par capture GTK+WebKit2 (issues #270/#271/#272/#289/#290, cf.
+// verif_belgicisme_290_webkitgtk.py et accueil.css) :
 //   1. France actif par défaut, Belgique inactif.
 //   2. Clic sur le drapeau belge -> classe .actif bascule, aria-checked
 //      correct, body.mode-belgicisme posé, api.definir_mode_belgicisme(true)
@@ -12,18 +12,25 @@
 //      0.95, issue #272 — remplace l'alpha 0.22/0.32/0.26 trop pâle de #271,
 //      qui remplaçait le bandeau opaque 6px de #270, qui remplaçait lui-même
 //      le voile 12% invisible sur fond vert de #269) sur TOUTE la surface.
-//   4. Titre, sous-titre et légendes des drapeaux en texte noir uniforme
+//   4. Sous-titre et légendes des drapeaux en texte noir uniforme
 //      (#1a1a1a), SANS plaque de fond (issue #272 — supprime le système de
 //      plaques blanches de #271) en mode Belgicisme — inchangés (texte
-//      blanc, pas de plaque) en mode France.
+//      blanc, pas de plaque) en mode France. Le titre principal ("Scrabble")
+//      n'est PLUS concerné par cette règle depuis #290 : voir point 7.
 //   5. Plusieurs allers-retours France <-> Belgique : aucun résidu visuel
 //      (retour exact au fond normal, un seul cercle actif à la fois).
-//   6. Panneau blanc central (issue #289) : à plusieurs largeurs de fenêtre
-//      (700px repli, ~1280px résolution cible, 1920px pleine largeur),
-//      `.container` reste entièrement contenu dans le panneau blanc de
-//      `.container::before` (aucun débordement sur le voile tricolore), et
-//      le panneau laisse toujours une marge visible avec le bord de la
-//      fenêtre (bandes tricolores toujours visibles, en bordure).
+//   6. Panneau translucide central (issue #289, opacité réduite à 60% par
+//      #290) : à plusieurs largeurs de fenêtre (700px repli, ~1280px
+//      résolution cible, 1920px pleine largeur), `.container` reste
+//      entièrement contenu dans le panneau de `.container::before` (aucun
+//      débordement sur le voile tricolore), et le panneau laisse toujours
+//      une marge visible avec le bord de la fenêtre (bandes tricolores
+//      toujours visibles, en bordure comme au centre à travers le panneau).
+//   7. Titre en tuiles de Scrabble (issue #290) : en mode Belgicisme, chaque
+//      lettre de "Scrabble" (8 `<span class="lettre-scrabble">`) porte un
+//      fond opaque crème (#f5e6c8) et un contour doré — pas de couleur de
+//      texte uniforme sur le h1 lui-même. En mode France, ces spans restent
+//      sans style propre (texte blanc hérité du h1, comme avant #290).
 import pw from '/home/alain/.npm-global/lib/node_modules/playwright/index.js';
 const { chromium } = pw;
 import { fileURLToPath } from 'url';
@@ -114,9 +121,10 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
     fond.backgroundImage.includes('rgba(237, 41, 57, 0.95)') &&
     /100%\s*100%/.test(fond.backgroundSize);
 
-  // Titre/sous-titre/légendes en texte noir uniforme, SANS plaque de fond
-  // (issue #272 — supprime le système de plaques blanches ciblées de #271 :
-  // tout le contenu repose sur la bande jaune, un texte sombre y suffit).
+  // Sous-titre/légendes en texte noir uniforme, SANS plaque de fond (issue
+  // #272 — supprime le système de plaques blanches ciblées de #271). Le
+  // titre principal n'est PLUS dans ce groupe depuis #290 (vérifié à part
+  // ci-dessous, en tuiles).
   const textes = await page.evaluate(() => {
     const lire = (sel) => {
       const el = document.querySelector(sel);
@@ -124,7 +132,6 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
       return { color: style.color, backgroundColor: style.backgroundColor };
     };
     return {
-      titre: lire('header h1'),
       sousTitre: lire('.subtitle'),
       legendeFrance: lire('.drapeau-choix:nth-child(1) .drapeau-legende'),
       legendeBelgique: lire('.drapeau-choix:nth-child(2) .drapeau-legende'),
@@ -134,17 +141,34 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
     v.color === 'rgb(26, 26, 26)' &&
     (v.backgroundColor === 'rgba(0, 0, 0, 0)' || v.backgroundColor === 'transparent');
   const textesOk =
-    noirSansPlaque(textes.titre) &&
     noirSansPlaque(textes.sousTitre) &&
     noirSansPlaque(textes.legendeFrance) &&
     noirSansPlaque(textes.legendeBelgique);
 
-  // Panneau blanc central (issue #289) : à plusieurs largeurs de fenêtre
-  // (700px repli, ~1280px résolution cible, 1920px pleine largeur déjà
-  // correcte avant #289 — ne doit pas être cassée), `.container` doit rester
-  // entièrement contenu dans le panneau blanc de `.container::before`, et le
-  // panneau doit toujours laisser une marge visible avec le bord de fenêtre
-  // (bande tricolore visible, en bordure uniquement).
+  // Titre en tuiles de Scrabble (issue #290) : les 8 lettres de "Scrabble"
+  // (`header h1 .lettre-scrabble`) doivent chacune porter un fond opaque
+  // crème et une couleur de texte sombre distincte de la couleur France
+  // (blanc) — la preuve que le titre n'est plus un texte plat mais bien
+  // composé de tuiles individuelles en mode Belgicisme.
+  const tuiles = await page.evaluate(() => {
+    const spans = Array.from(document.querySelectorAll('header h1 .lettre-scrabble'));
+    return spans.map((el) => {
+      const style = getComputedStyle(el);
+      return { texte: el.textContent, color: style.color, backgroundColor: style.backgroundColor };
+    });
+  });
+  const tuilesOk =
+    tuiles.length === 8 &&
+    tuiles.map((t) => t.texte).join('') === 'Scrabble' &&
+    tuiles.every((t) => t.backgroundColor === 'rgb(245, 230, 200)' && t.color === 'rgb(74, 52, 24)');
+
+  // Panneau translucide central (issue #289, opacité réduite à 60% par
+  // #290) : à plusieurs largeurs de fenêtre (700px repli, ~1280px résolution
+  // cible, 1920px pleine largeur déjà correcte avant #289 — ne doit pas être
+  // cassée), `.container` doit rester entièrement contenu dans le panneau de
+  // `.container::before`, et le panneau doit toujours laisser une marge
+  // visible avec le bord de fenêtre (bande tricolore visible, en bordure
+  // comme — désormais — en transparence à travers le panneau lui-même).
   const largeursPanneau = [700, 1280, 1920];
   const mesuresPanneau = [];
   for (const largeur of largeursPanneau) {
@@ -178,8 +202,7 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
     m.conteneurDroit <= m.panneauDroit + TOLERANCE &&
     m.panneauGauche > 0 &&
     m.panneauDroit < m.largeurFenetre &&
-    m.fondPanneau !== 'rgba(0, 0, 0, 0)' &&
-    m.fondPanneau !== 'transparent'
+    m.fondPanneau === 'rgba(255, 255, 255, 0.6)'
   );
 
   // Plusieurs allers-retours pour détecter un résidu visuel.
@@ -233,6 +256,7 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
     JSON.stringify(apresBelgique.appels) === JSON.stringify([true]) &&
     fondOk &&
     textesOk &&
+    tuilesOk &&
     panneauOk &&
     etatFinal.bodyModeBelge === false &&
     etatFinal.franceActif === true &&
@@ -245,12 +269,13 @@ const html = fs.readFileSync(path.join(web, 'accueil.html'), 'utf8')
   console.log('État initial :', JSON.stringify(etatInitial));
   console.log('Après clic Belgique :', JSON.stringify(apresBelgique));
   console.log('Fond blanc + voile tricolore quasi-opaque (issue #272) :', JSON.stringify(fond), fondOk ? '(OK)' : '(INSUFFISANT)');
-  console.log('Titre/sous-titre/légendes texte noir sans plaque (issue #272) :', JSON.stringify(textes), textesOk ? '(OK)' : '(INSUFFISANT)');
-  console.log('Panneau blanc central (issue #289), par largeur :', JSON.stringify(mesuresPanneau), panneauOk ? '(OK)' : '(DEBORDEMENT)');
+  console.log('Sous-titre/légendes texte noir sans plaque (issue #272) :', JSON.stringify(textes), textesOk ? '(OK)' : '(INSUFFISANT)');
+  console.log('Titre en tuiles de Scrabble (issue #290) :', JSON.stringify(tuiles), tuilesOk ? '(OK)' : '(INSUFFISANT)');
+  console.log('Panneau translucide central (issues #289/#290), par largeur :', JSON.stringify(mesuresPanneau), panneauOk ? '(OK)' : '(DEBORDEMENT/OPACITE)');
   console.log('Historique bascules (mode belge actif ?) :', historique);
   console.log('État final (retour France) :', JSON.stringify(etatFinal));
   console.log('Erreurs JS :', errs.length ? errs : 'aucune');
-  console.log(ok ? 'OK — cercles-drapeaux fonctionnels, fond blanc+tricolore franc, texte sans plaque, panneau blanc sans débordement à 700/1280/1920px, aucun résidu visuel'
+  console.log(ok ? 'OK — cercles-drapeaux fonctionnels, fond blanc+tricolore franc, texte sans plaque, titre en tuiles, panneau translucide (60%) sans débordement à 700/1280/1920px, aucun résidu visuel'
                  : 'ECHEC');
   await browser.close();
   process.exit(ok ? 0 : 1);

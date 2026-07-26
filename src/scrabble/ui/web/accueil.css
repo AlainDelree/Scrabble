@@ -90,7 +90,23 @@ body {
    tricolore du body (inchangé ci-dessous) ne reste visible que dans les
    marges latérales, hors du panneau, jamais sous du texte ou une carte.
    Le mode France reste strictement inchangé (aucune de ces règles n'existe
-   hors de `body.mode-belgicisme`). */
+   hors de `body.mode-belgicisme`).
+
+   Refonte translucide + titre en tuiles (issue #290) : retour d'Alain après
+   test réel du panneau quasi-opaque (97%) de #289 — ce n'est pas le rendu
+   souhaité, il masque totalement le voile tricolore sous le contenu. Deux
+   changements :
+   1. Le panneau (`.container::before` ci-dessous) passe de 97% à 60%
+      d'opacité blanche : les trois bandes restent nettement reconnaissables
+      en transparence à travers tout le panneau, pas seulement dans ses
+      marges. Contraste WCAG AA revérifié à cette opacité pour le texte
+      #1a1a1a (calcul détaillé dans le commentaire de `.container::before`).
+   2. Le titre principal (`header h1`) n'est plus un texte plat #1a1a1a :
+      chaque lettre devient une tuile de Scrabble opaque individuelle (fond
+      crème, contour doré, relief), donc retiré de la liste "texte sombre
+      uniforme" ci-dessous — son style est désormais défini séparément, plus
+      bas dans ce fichier, avec son propre calcul de contraste (les tuiles
+      étant opaques, leur contraste ne dépend pas de l'opacité du panneau). */
 body.mode-belgicisme {
     background-color: #ffffff;
     background-image:
@@ -123,7 +139,26 @@ body.mode-belgicisme {
    le contexte d'empilement créé par `position: relative` sur `.container` :
    le panneau reste sous son contenu (header, cartes, boutons, tous non
    positionnés) sans affecter l'empilement par rapport au fond tricolore du
-   body, peint séparément avant `.container` dans l'ordre du document. */
+   body, peint séparément avant `.container` dans l'ordre du document.
+
+   Opacité translucide (issue #290, remplace le 0.97 quasi-opaque de #289) :
+   Alain a jugé le panneau #289 trop opaque à l'usage réel — le voile
+   tricolore du body disparaissait sous le contenu. 0.6 (60%, dans la
+   fourchette 55-70% demandée) laisse les trois bandes clairement
+   reconnaissables à travers tout le panneau tout en gardant un contraste
+   confortable pour le texte sombre posé dessus (voir liste "texte sombre
+   uniforme" plus bas). Calcul de contraste WCAG (fond body déjà mélangé à
+   95% sur blanc, cf. plus haut ; panneau blanc à 60% par-dessus ; texte
+   #1a1a1a, luminance relative ~0.0104) sur les trois bandes, cas le plus
+   défavorable en premier :
+     - bande noire  (~#0d0d0d dessous) -> effectif ~rgb(158,158,158) -> ratio ≈ 6.5:1
+     - bande rouge  (~#ef3443 dessous) -> effectif ~rgb(249,178,184) -> ratio ≈ 10.0:1
+     - bande jaune  (~#fae24b dessous) -> effectif ~rgb(253,244,187) -> ratio ≈ 15.6:1
+   Les trois dépassent le seuil WCAG AA (4.5:1), la bande noire restant la
+   plus contraignante avec une marge confortable (~1.4x le minimum). Une
+   opacité plus basse (vers 55%) resterait conforme mais avec moins de marge
+   sur la bande noire ; 60% a été retenu comme compromis entre translucidité
+   marquée et marge de sécurité du contraste. */
 body.mode-belgicisme .container {
     position: relative;
 }
@@ -136,25 +171,21 @@ body.mode-belgicisme .container::before {
     left: 50%;
     transform: translateX(-50%);
     width: clamp(620px, 94vw, 720px);
-    background: rgba(255, 255, 255, 0.97);
+    background: rgba(255, 255, 255, 0.6);
     border-radius: 12px;
     box-shadow: 0 2px 16px rgba(0, 0, 0, 0.18);
     z-index: -1;
 }
 
 /* Texte sombre uniforme (issue #272, remplace le système de plaques de #271 ;
-   toujours d'actualité après #289). Ces éléments reposaient sur la bande
-   jaune (#272) ; ils reposent désormais sur le panneau blanc de #289 — la
-   raison change, la couleur reste : #1a1a1a contraste ~19:1 sur le panneau
-   quasi-opaque (blanc à 97%), bien au-delà du seuil WCAG AA (4.5:1), et ce
-   contraste ne dépend plus des proportions du voile tricolore puisque le
-   panneau ne fait plus jamais transparaître la bande dessous. Un retour aux
-   couleurs France d'origine (texte blanc, pensées pour le tapis vert plein
-   écran) a été envisagé (cf. tâche #289) mais écarté : sur le panneau blanc
-   quasi-opaque, du texte blanc tomberait sous le seuil WCAG AA (contraste
-   ~1:1), ce qui aurait réintroduit le problème de lisibilité que #289
-   corrige. */
-body.mode-belgicisme header h1,
+   panneau devenu translucide en #290, cf. contour du fichier). Ces éléments
+   reposent sur le panneau blanc/translucide (`.container::before`) plutôt
+   que directement sur le voile tricolore : #1a1a1a y garde un contraste
+   confortable (≥6.5:1 dans le pire cas, la bande noire — calcul détaillé
+   au-dessus de `.container::before`), au-delà du seuil WCAG AA (4.5:1).
+   `header h1` n'est PLUS dans cette liste depuis #290 : le titre est
+   désormais composé de tuiles de Scrabble opaques par lettre (voir plus
+   bas), dont le contraste ne dépend pas de l'opacité du panneau. */
 body.mode-belgicisme .subtitle,
 body.mode-belgicisme .drapeau-legende,
 body.mode-belgicisme section h2,
@@ -163,6 +194,48 @@ body.mode-belgicisme .liste-joueurs .vide,
 body.mode-belgicisme .parties-en-cours .vide {
     color: #1a1a1a;
     text-shadow: none;
+}
+
+/* Titre en tuiles de Scrabble (issue #290), mode Belgicisme uniquement.
+   Le HTML (accueil.html) découpe "Scrabble" en 8 `<span class="lettre-
+   scrabble">` ; en mode France, aucune règle ne cible cette classe, le texte
+   s'affiche comme un h1 normal (blanc, cf. règle générale `header h1` plus
+   bas). Ici, chaque lettre devient une tuile individuelle :
+   - fond crème `#f5e6c8` (teinte jaune/crème façon tuile réelle, cohérente
+     avec le jaune du drapeau belge) ;
+   - contour doré `#caa02c` + ombres internes (clair en haut-gauche, sombre
+     en bas-droite) simulant un relief/embossage, et une ombre portée légère
+     qui détache chaque tuile du panneau ;
+   - coins légèrement arrondis.
+   Fond opaque : le contraste du texte `#4a3418` sur `#f5e6c8` (~9.5:1) ne
+   dépend pas de l'opacité du panneau dessous. */
+body.mode-belgicisme header h1 {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+body.mode-belgicisme header h1 .lettre-scrabble {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    padding: 0 2px;
+    background: #f5e6c8;
+    color: #4a3418;
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1;
+    text-shadow: none;
+    border-radius: 4px;
+    border: 2px solid #caa02c;
+    box-shadow:
+        inset 1px 1px 0 rgba(255, 250, 230, 0.7),
+        inset -1px -1px 0 rgba(120, 80, 10, 0.5),
+        0 2px 3px rgba(0, 0, 0, 0.3);
 }
 
 body.mode-belgicisme .btn-reglages {
@@ -176,11 +249,14 @@ body.mode-belgicisme section h2 {
 /* Toujours nécessaire après #289 (vérifié) : la bordure pointillée par
    défaut (`rgba(255, 255, 255, 0.4)`, pensée pour ressortir sur le tapis vert
    ou la bande tricolore) resterait invisible sur le panneau blanc — il faut
-   une bordure sombre. Le fond (`rgba(255, 255, 255, 0.55)`) est en revanche
-   devenu sans objet : posé sur le panneau blanc de #289 plutôt que sur la
-   bande tricolore directe de #272, il ne se distingue plus visuellement du
-   fond par défaut (`rgba(255, 255, 255, 0.08)`, ligne ~316) — conservé tel
-   quel par prudence, sans effet visible constaté. */
+   une bordure sombre. Le fond (`rgba(255, 255, 255, 0.55)`) était devenu sans
+   objet sur le panneau quasi-opaque de #289 (indiscernable du fond par
+   défaut) mais redevient utile depuis que le panneau est translucide à 60%
+   (#290) : cette couche blanche supplémentaire éclaircit encore le fond sous
+   ce texte, sans jamais faire baisser le contraste (empilement de couches
+   blanches translucides = seulement plus clair, jamais plus sombre — vérifié
+   au pire cas sur la bande noire : ~211,211,211 effectif, contraste #1a1a1a
+   ≈ 11.6:1, au-delà du 6.5:1 déjà obtenu sur le panneau seul). */
 body.mode-belgicisme .liste-joueurs:has(.vide),
 body.mode-belgicisme .parties-en-cours:has(.vide) {
     background: rgba(255, 255, 255, 0.55);
