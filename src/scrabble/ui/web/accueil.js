@@ -32,19 +32,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const listeJoueurs = document.getElementById('liste-joueurs');
     const messageVide = document.getElementById('message-vide');
     const btnAjouterHumain = document.getElementById('btn-ajouter-humain');
-    const btnAjouterOrdinateur = document.getElementById('btn-ajouter-ordinateur');
     const btnLancer = document.getElementById('btn-lancer');
 
     // Modales (le tirage d'ordre a migré vers la fenêtre Jeu — issue #170).
     const modaleHumain = document.getElementById('modale-humain');
-    const modaleOrdinateur = document.getElementById('modale-ordinateur');
 
     // Formulaires
     const formHumain = document.getElementById('form-humain');
-    const formOrdinateur = document.getElementById('form-ordinateur');
     const inputPrenom = document.getElementById('input-prenom');
     const checkboxSauvegarder = document.getElementById('checkbox-sauvegarder');
-    const listeNiveaux = document.getElementById('liste-niveaux');
 
     // Parties en cours
     const sectionReprise = document.getElementById('section-reprise');
@@ -111,10 +107,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         // un joueur » DISPARAÎT complètement dès qu'un humain est présent (pas de
         // désactivation grisée ni de tooltip) et réapparaît si l'humain est
         // retiré. On pilote donc sa visibilité (``hidden``) et non son état
-        // ``disabled``. Le bouton « Ajouter un ordinateur » garde, lui, son
-        // comportement historique (désactivé quand la table est pleine).
+        // ``disabled``. Les 5 boutons de niveau (issue #299) gardent, eux,
+        // leur comportement historique (désactivés quand la table est pleine).
         btnAjouterHumain.hidden = !etat.peut_ajouter_humain;
-        btnAjouterOrdinateur.disabled = !etat.peut_ajouter_ordinateur;
+        document.querySelectorAll('.btn-niveau').forEach(btn => {
+            btn.disabled = !etat.peut_ajouter_ordinateur;
+        });
         btnLancer.disabled = !etat.peut_lancer;
 
         // Messages de limite. La saturation du quota d'humains n'est plus un
@@ -151,26 +149,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
-    }
-
-    /**
-     * Charge et affiche les niveaux de difficulté
-     */
-    async function chargerNiveaux() {
-        const niveaux = await api.obtenir_niveaux();
-        listeNiveaux.innerHTML = '';
-        niveaux.forEach((niveau, index) => {
-            // Le rectangle cliquable est le <label> lui-même (issue #119) : ainsi
-            // un clic n'importe où dans le rectangle (y compris le padding
-            // au-dessus/en dessous du texte) sélectionne bien le bouton radio.
-            const label = document.createElement('label');
-            label.className = 'niveau-option';
-            label.innerHTML = `
-                <input type="radio" name="niveau" id="niveau-${index}" value="${niveau}" ${index === 2 ? 'checked' : ''}>
-                <span class="niveau-nom">${niveau}</span>
-            `;
-            listeNiveaux.appendChild(label);
-        });
     }
 
     /**
@@ -404,32 +382,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         cacherModale(modaleHumain);
     });
 
-    // Bouton ajouter ordinateur
-    btnAjouterOrdinateur.addEventListener('click', () => {
-        afficherModale(modaleOrdinateur);
-    });
-
-    // Formulaire ajout ordinateur
-    formOrdinateur.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const niveauRadio = document.querySelector('input[name="niveau"]:checked');
-        if (!niveauRadio) {
-            alert('Veuillez sélectionner un niveau.');
-            return;
-        }
-
-        const result = await api.ajouter_ordinateur(niveauRadio.value);
-        if (result.succes) {
-            cacherModale(modaleOrdinateur);
-            mettreAJourAffichage(result.etat);
-        } else {
-            alert(result.erreur);
-        }
-    });
-
-    // Annuler modale ordinateur
-    document.getElementById('btn-annuler-ordinateur').addEventListener('click', () => {
-        cacherModale(modaleOrdinateur);
+    // Boutons de niveau (issue #299) : un clic ajoute directement un
+    // ordinateur au niveau choisi, sans modale intermédiaire.
+    document.querySelectorAll('.btn-niveau').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const niveau = btn.dataset.niveau;
+            const result = await api.ajouter_ordinateur(niveau);
+            if (result.succes) {
+                mettreAJourAffichage(result.etat);
+            } else {
+                alert(result.erreur);
+            }
+        });
     });
 
     // Retirer un joueur (délégation d'événement)
@@ -951,8 +915,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.key === 'Escape') {
             if (!modaleHumain.hidden) {
                 cacherModale(modaleHumain);
-            } else if (!modaleOrdinateur.hidden) {
-                cacherModale(modaleOrdinateur);
             } else if (!vueReglages.hidden) {
                 masquerReglages();
             }
@@ -960,18 +922,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Clic en dehors de la modale pour fermer
-    [modaleHumain, modaleOrdinateur].forEach(modale => {
-        modale.addEventListener('click', (e) => {
-            if (e.target === modale) {
-                cacherModale(modale);
-            }
-        });
+    modaleHumain.addEventListener('click', (e) => {
+        if (e.target === modaleHumain) {
+            cacherModale(modaleHumain);
+        }
     });
 
     // --- Initialisation ---
     const etatInitial = await api.obtenir_etat();
     mettreAJourAffichage(etatInitial);
     syncModeDictionnaire(Boolean(etatInitial.mode_belgicisme));
-    await chargerNiveaux();
     await chargerPartiesEnCours();
 });

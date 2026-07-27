@@ -736,6 +736,46 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
     min-width: 10rem;
 }
 
+/* Boutons de niveau (issue #299) : rangée de 5 boutons directs, remplaçant
+   la modale "Ajouter un ordinateur". `width: 100%` fait passer la rangée sur
+   sa propre ligne dans `.zone-boutons` (flex-wrap: wrap), au-dessus des
+   boutons Ajouter un joueur/Lancer la partie. Sélecteur `.zone-boutons
+   .btn-niveau` (et non `.btn-niveau` seul) pour l'emporter sur `.zone-boutons
+   .btn` ci-dessus à spécificité égale (2 classes) : sans ce préfixe,
+   `min-width: 10rem` écraserait le `min-width: 0` nécessaire à l'ellipsis. */
+.zone-niveaux {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.zone-boutons .btn-niveau {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85rem;
+    padding: 8px 4px;
+    background: var(--couleur-ordinateur-fond);
+    color: var(--couleur-ordinateur);
+    border: 2px solid var(--couleur-ordinateur);
+    border-radius: var(--rayon-bordure);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.zone-boutons .btn-niveau:hover:not(:disabled) {
+    background: var(--couleur-ordinateur);
+    color: white;
+}
+
+.zone-boutons .btn-niveau:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 /* Liste des joueurs */
 .liste-joueurs {
     background: white;
@@ -895,15 +935,6 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
 
 .btn-humain:hover:not(:disabled) {
     background: #0d47a1;
-}
-
-.btn-ordinateur {
-    background: var(--couleur-ordinateur);
-    color: white;
-}
-
-.btn-ordinateur:hover:not(:disabled) {
-    background: #4a148c;
 }
 
 /* `width: 100%` retiré (issue #295) : le bouton vit désormais dans
@@ -1088,45 +1119,6 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
     width: 18px;
     height: 18px;
     cursor: pointer;
-}
-
-/* Niveaux de difficulté */
-.niveaux {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.niveau-option {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border: 2px solid var(--couleur-bordure);
-    border-radius: 6px;
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
-}
-
-.niveau-option:hover {
-    border-color: var(--couleur-ordinateur);
-    background: var(--couleur-ordinateur-fond);
-}
-
-.niveau-option input[type="radio"] {
-    width: 18px;
-    height: 18px;
-    cursor: pointer;
-}
-
-.niveau-option .niveau-nom {
-    cursor: pointer;
-    flex: 1;
-}
-
-.niveau-option input[type="radio"]:checked + .niveau-nom {
-    font-weight: 600;
-    color: var(--couleur-ordinateur);
 }
 
 .modale-actions {

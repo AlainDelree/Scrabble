@@ -127,11 +127,15 @@
                  côte à côte hors des sections Joueurs/Continuer. Logique de
                  visibilité/désactivation inchangée (accueil.js). -->
             <div class="zone-boutons">
+                <div class="zone-niveaux">
+                    <button class="btn btn-niveau" data-niveau="Débutant">Débutant</button>
+                    <button class="btn btn-niveau" data-niveau="Facile">Facile</button>
+                    <button class="btn btn-niveau" data-niveau="Intermédiaire">Intermédiaire</button>
+                    <button class="btn btn-niveau" data-niveau="Avancé">Avancé</button>
+                    <button class="btn btn-niveau" data-niveau="Expert">Expert</button>
+                </div>
                 <button id="btn-ajouter-humain" class="btn btn-humain">
                     Ajouter un joueur
-                </button>
-                <button id="btn-ajouter-ordinateur" class="btn btn-ordinateur">
-                    Ajouter un ordinateur
                 </button>
                 <button id="btn-lancer" class="btn btn-lancer" disabled>
                     Lancer la partie
@@ -434,25 +438,6 @@
                 </div>
                 <div class="modale-actions">
                     <button type="button" class="btn btn-secondaire" id="btn-annuler-humain">Annuler</button>
-                    <button type="submit" class="btn btn-primaire">Ajouter</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Modale ajout ordinateur -->
-    <div id="modale-ordinateur" class="modale" hidden>
-        <div class="modale-contenu">
-            <h3>Ajouter un ordinateur</h3>
-            <form id="form-ordinateur">
-                <div class="champ">
-                    <label>Niveau de difficulté :</label>
-                    <div class="niveaux" id="liste-niveaux">
-                        <!-- Rempli dynamiquement -->
-                    </div>
-                </div>
-                <div class="modale-actions">
-                    <button type="button" class="btn btn-secondaire" id="btn-annuler-ordinateur">Annuler</button>
                     <button type="submit" class="btn btn-primaire">Ajouter</button>
                 </div>
             </form>
