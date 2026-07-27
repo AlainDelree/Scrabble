@@ -158,6 +158,40 @@ body {
     gap: 8px;
 }
 
+/* Derniers coups / Dictionnaire : deux blocs permanents pleine largeur
+   (issue #308/#309), entre la zone A (boutons système) et la zone B (joueurs).
+   Même gabarit que les autres zones (.zone-gauche), empilés en colonne. */
+.zone-historique-permanente,
+.zone-dico-permanente {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.zone-titre {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--couleur-texte-secondaire, #555);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Liste des derniers coups en flux normal (remplace le popover .historique-liste
+   ci-dessus) : même contenu (.historique-ligne…), plus de position absolue ni
+   d'ombre, bornée en hauteur et défilante comme avant. */
+.historique-liste-permanente {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 180px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
 /* Zone B : fiches joueurs empilées. Prend une part de la hauteur libre pour
    rester lisible ; ``align-items: stretch`` laisse chaque fiche occuper la
    largeur de la marge. ``justify-content: center`` (issue #190) répartit la
@@ -402,9 +436,10 @@ body {
     display: none;
     position: fixed;
     left: 8px;
-    /* Décalé sous la zone du bouton « Vérification dictionnaire » (issue #87).
-       Ce bouton (.verif-dico-ancre) vit lui aussi en position: fixed dans le
-       coin haut-gauche : top:12px + min-height:40px + ombre → bord bas ≈ 52px.
+    /* Décalé sous la zone du bouton « Vérification dictionnaire » (issue #87,
+       ex-``.verif-dico-ancre``, supprimé depuis #308/#309). Ce bouton vivait lui
+       aussi en position: fixed dans le coin haut-gauche : top:12px +
+       min-height:40px + ombre → bord bas ≈ 52px.
        À la largeur d'ouverture par défaut (1320px) et jusqu'au seuil de 1780px,
        le bouton est en icône seule, épinglé dans le coin, et se superposait au
        haut du décor (le « S » recouvert par la loupe). Plutôt que de dépendre
@@ -446,96 +481,22 @@ body {
    historique ; l'Issue C nettoiera ce qui devient définitivement obsolète. */
 
 /* --------------------------------------------------------------------------- */
-/* Vérification dictionnaire déportée à gauche (issue #86)                      */
+/* Vérification dictionnaire (issue #86, bloc permanent depuis #308/#309)       */
 /* --------------------------------------------------------------------------- */
-/* Ancre fixe logée dans l'espace libre en haut à gauche de l'écran, entre le
-   décor « SCRABBLE » (gouttière gauche) et la barre du sac. Comme le décor, elle
-   est en position: fixed → elle ne participe JAMAIS au flux et ne peut donc pas
-   « casser » la mise en page du contenu centré, quelle que soit la largeur.
-   Bord DROIT du bouton calé 8px à gauche du bord gauche du contenu centré
-   (.container, largeur max 1180px → demi-largeur 590px). Le bouton grandit vers
-   la GAUCHE dans la gouttière : il ne recouvre donc JAMAIS le contenu (sac,
-   panneaux, plateau), quelle que soit la largeur. Plancher (100vw − 52px) : sur
-   les fenêtres trop étroites où la gouttière disparaît, le bouton reste épinglé
-   dans le coin haut-gauche (icône seule) plutôt que de sortir de l'écran. */
-/* Depuis la refonte #186 (Issue A) la loupe n'est plus une ancre fixe en
-   gouttière : elle vit désormais DANS la zone A (boutons système) de la marge
-   gauche, en flux normal. ``position: relative`` la garde comme contexte
-   d'ancrage du popover (qui s'ouvre en dessous, en surimpression). z-index élevé
-   pour que le popover passe au-dessus des zones voisines de la marge. */
-.verif-dico-ancre {
-    position: relative;
-    z-index: 6;
-}
-
-/* Bouton discret d'ouverture. Repli par défaut (fenêtres étroites, décor masqué,
-   gouttière quasi nulle) : ICÔNE SEULE, compacte et calée dans le coin, pour ne
-   pas empiéter sur le contenu ni disparaître. Cible cliquable confortable
-   (public 80+) grâce au padding et à min-height. Style cohérent avec les boutons
-   secondaires blancs bien contrastés sur le feutre vert. */
-.btn-verif-dico {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 40px;
-    padding: 8px 12px;
-    background: white;
-    color: #444;
-    border: none;
-    border-radius: 999px;
-    box-shadow: var(--ombre);
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.btn-verif-dico:hover {
-    background: #f0f0f0;
-}
-
-.verif-dico-icone {
-    font-size: 1.05rem;
-    line-height: 1;
-}
-
-/* Libellé masqué par défaut (icône seule) ; réaffiché seulement quand la
-   gouttière gauche est assez large (voir media query plus bas). Il reste toujours
-   accessible via aria-label/title. */
-.verif-dico-libelle {
-    display: none;
-}
-
-/* Popover contenant le champ + le bouton de vérification (mêmes éléments qu'avant,
-   simplement déplacés). Ouvert au clic sur le bouton (attribut [hidden] retiré
-   par le JS), fermé au clic extérieur ou à la touche Échap. Ancré sous le bouton,
-   à gauche de l'écran. */
-.verif-dico-popover {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 0;
-    width: min(320px, calc(100vw - 24px));
-    padding: 12px;
-    background: white;
-    border-radius: var(--rayon-bordure);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
-}
-
-.verif-dico-popover[hidden] {
-    display: none;
-}
-
-/* Depuis la refonte #186 la loupe vit dans la marge gauche étroite (zone A) :
-   on la garde en ICÔNE SEULE (le libellé reste masqué, toujours accessible via
-   aria-label/title) pour ne pas élargir la pastille au point de casser la
-   disposition en lignes de la zone A sur une marge de ~300–340px. */
+/* Le bouton loupe + popover (.verif-dico-ancre/.btn-verif-dico/.verif-dico-popover)
+   ont été retirés du HTML : le champ de vérification est désormais un bloc
+   permanent (.zone-dico-permanente, styles plus bas), plus besoin d'ancre ni de
+   popover flottant. .zone-verif-dico/.champ-verif restent inchangées (voir plus
+   bas), elles fonctionnent telles quelles en flux normal. */
 
 /* Barre globale unique (issue #47, point 2) : sac, accès à l'historique et lien
    « Resynchroniser » fusionnés sur une seule ligne horizontale compacte. Se
    replie proprement si la fenêtre est trop étroite. */
 /* L'ancienne barre globale horizontale (``header`` / ``.barre-globale``) a été
    supprimée du DOM par la refonte #186 : son contenu (retour menu, resync, sac,
-   loupe, derniers coups, joker) est réparti dans la zone A de la marge gauche.
-   Les styles de ce contenu (pastilles .sac, .historique-resume, .btn-verif-dico…)
+   joker) est réparti dans la zone A de la marge gauche (loupe et derniers coups
+   en sont ressortis depuis #308/#309, voir .zone-dico-permanente/
+   .zone-historique-permanente). Les styles de ce contenu (pastille .sac…)
    restent définis plus bas et s'appliquent tels quels dans la zone A. */
 
 /* Bandeau de fin de partie (issue #45, point 2 ; étendu issue #133) : hors
@@ -697,93 +658,33 @@ body {
 }
 
 /* --------------------------------------------------------------------------- */
-/* Encart d'historique glissant des derniers coups (issue #37)                  */
+/* Encart d'historique glissant des derniers coups (issue #37, bloc permanent   */
+/* pleine largeur depuis #308/#309)                                              */
 /* --------------------------------------------------------------------------- */
-/* Affiché en permanence sous la barre d'infos, au-dessus de la table. Liste les
-   dernières actions (min(nb_joueurs*2, 8) lignes), la plus récente en haut.
-   Chaque ligne cliquable rouvre le détail du coup dans la modale existante ; la
-   couleur de bord distingue humain (bleu) et ordinateur (violet), comme partout
-   ailleurs à l'écran. */
-/* Menu déroulant fusionné dans la barre globale (issue #47, point 2) :
-   l'historique n'est plus une colonne verticale à gauche de la table (issue #45,
-   point 4) mais un <details> compact dans la barre du haut. Replié, il n'occupe
-   que la hauteur de son résumé ; déplié, sa liste s'ouvre en surimpression sous
-   la barre (position absolue) sans repousser la table.
-   Réorganisation (issue #125) : « Derniers coups » est désormais le PREMIER
-   élément de la barre (à gauche) ; c'est le sac qui porte ``margin-left:auto``
-   (voir .sac) et pousse tout le groupe droit (sac, Resynchroniser, Retour au
-   menu) à droite. Le menu s'ouvrant à gauche (``left:0`` ci-dessous) dispose
-   ainsi de la gouttière libre et ne recouvre plus le plateau. */
-
-.historique-menu {
-    position: relative;
-}
-
-/* Bouton déclencheur (issue #144, ex-<summary>) : une petite pastille discrète
-   cohérente avec le sac et le lien « Resynchroniser ». Un chevron est ajouté
-   après le titre (voir .historique-resume-inner::after). Depuis l'abandon du
-   <details> natif au profit de C.configurerPopover, c'est un vrai <button> : on
-   réinitialise donc bordure et police héritées. La mise en page en ligne reste
-   confiée à `.historique-resume-inner`. */
-.historique-resume {
-    width: fit-content;
-    padding: 6px 12px;
-    border: none;
-    border-radius: 999px;
-    background: white;
-    box-shadow: var(--ombre);
-    font-family: inherit;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #555;
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-/* Wrapper interne : c'est LUI qui porte la disposition en ligne (titre,
-   compteur, chevron), pour laisser le <summary> à son display natif. */
-.historique-resume-inner {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.historique-resume-inner::after {
-    content: '▾';
-    font-size: 0.7rem;
-    color: #999;
-    transition: transform 0.15s;
-}
-
-.historique-resume[aria-expanded="true"] .historique-resume-inner::after {
-    transform: rotate(180deg);
-}
-
+/* Liste les dernières actions, la plus récente en haut. Chaque ligne cliquable
+   rouvre le détail du coup dans la modale existante ; la couleur de bord
+   distingue humain (bleu) et ordinateur (violet), comme partout ailleurs à
+   l'écran. Le bouton déclencheur + popover (.historique-menu/.historique-resume/
+   ex-popover .historique-liste) ont été retirés du HTML : voir
+   .zone-historique-permanente/.historique-liste-permanente plus bas pour le
+   nouveau bloc permanent. .historique-resume-compte est réutilisée telle quelle
+   pour le compteur du nouveau titre. */
 .historique-resume-compte {
     color: var(--couleur-primaire);
     font-variant-numeric: tabular-nums;
 }
 
-/* Liste déployée = popover (issue #144) : surimpression sous le bouton, largeur
-   fixe raisonnable, DÉFILEMENT vertical dès que l'historique dépasse la hauteur
-   plafond. Ne consomme aucune hauteur de mise en page (position absolue). Le
-   masquage/affichage est piloté par l'attribut [hidden] (posé/retiré par
-   C.configurerPopover), voir la règle [hidden] plus bas. */
+/* .historique-liste (fond blanc, ombre, coins arrondis, popover absolu) n'est
+   plus utilisée par l'historique permanent (remplacée par
+   .historique-liste-permanente) mais reste nécessaire : le popover du joker
+   (.joker-popover plus bas) en hérite toujours le look popover. */
 .historique-liste {
     position: absolute;
     top: calc(100% + 6px);
     left: 0;
     z-index: 60;
-    /* Largeur réduite (issue #125) : 280px au lieu de 320. Le menu étant
-       désormais ancré tout à gauche de la barre, il s'ouvre dans la gouttière
-       verte à gauche du plateau centré ; à 280px il tient dans cette gouttière
-       (fenêtre maximisée) et ne mord donc plus sur le bord gauche du plateau. */
     width: 280px;
     max-width: 80vw;
-    /* L'historique n'étant plus plafonné à 8 lignes (issue #144), la liste peut
-       devenir longue : on borne sa hauteur (relative au viewport pour ne jamais
-       déborder de l'écran) et on la rend scrollable, la plus récente restant en
-       haut. Aucune limite de hauteur ne casse donc la mise en page. */
     max-height: min(360px, 70vh);
     overflow-y: auto;
     background: white;
@@ -796,7 +697,6 @@ body {
     gap: 3px;
 }
 
-/* Fermée, la liste (popover) est retirée du flux et de l'affichage. */
 .historique-liste[hidden] {
     display: none;
 }
@@ -1689,13 +1589,7 @@ body {
 }
 
 /* Boutons de base. CONSERVÉS ICI VOLONTAIREMENT (issue #107) bien qu'identiques à
-   commun.css : le bouton « Vérification dictionnaire » (.btn-verif-dico, défini
-   plus haut) réutilise .btn mais lui ajoute des réglages propres (pilule
-   border-radius: 999px, padding réduit) qui — dans l'ordre du cascade — sont
-   écrasés par cette base .btn placée APRÈS lui. Retirer ce bloc au profit de la
-   version de commun.css (chargée AVANT jeu.css) inverserait l'ordre et ferait
-   gagner les réglages « pilule » de .btn-verif-dico, changeant le rendu du bouton.
-   On garde donc ce doublon précis pour laisser le rendu existant strictement
+   commun.css, pour laisser le rendu existant des boutons de cet écran strictement
    inchangé (les autres doublons de commun.css, eux, ont bien été retirés). */
 .btn {
     padding: 10px 18px;
@@ -2002,13 +1896,13 @@ body {
    ========================================================================= */
 
 /* Masquage de TOUTE l'interface de jeu pendant le tirage. ``.container`` porte
-   la barre globale (header) et la table (plateau + fiches) ; ``.decor-scrabble``,
-   ``.verif-dico-ancre`` et ``#message-plateau`` vivent hors du container : on
-   les masque explicitement pour qu'aucun élément ne subsiste derrière l'écran
-   de tirage (point de vigilance issue #168). */
+   la barre globale (header), la loupe/derniers coups (blocs permanents de
+   .colonne-gauche depuis #308/#309) et la table (plateau + fiches) ;
+   ``.decor-scrabble`` et ``#message-plateau`` vivent hors du container : on les
+   masque explicitement pour qu'aucun élément ne subsiste derrière l'écran de
+   tirage (point de vigilance issue #168). */
 body.tirage-en-cours .container,
 body.tirage-en-cours .decor-scrabble,
-body.tirage-en-cours .verif-dico-ancre,
 body.tirage-en-cours #message-plateau {
     display: none !important;
 }
@@ -2024,7 +1918,6 @@ body.tirage-en-cours #message-plateau {
    sur un plateau intermédiaire incorrect. */
 body.jeu-en-init .container,
 body.jeu-en-init .decor-scrabble,
-body.jeu-en-init .verif-dico-ancre,
 body.jeu-en-init #message-plateau {
     display: none !important;
 }

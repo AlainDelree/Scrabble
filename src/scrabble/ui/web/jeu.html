@@ -44,18 +44,19 @@
             <!-- ============================================================ -->
             <!-- Regroupe ce qui était dispersé dans l'ancienne « barre globale »
                  horizontale du haut (issue #47/#125) : retour au menu,
-                 resynchroniser, sac de lettres restantes, loupe de vérification
-                 dictionnaire (ex-gouttière, issue #86) et menu « Derniers coups »
-                 (issue #37/#144). Le menu joker (issue #168) reste ici : masqué
-                 tant qu'aucun joker n'est en cours de pose. Contenu et id
-                 strictement inchangés — simple relocalisation. -->
+                 resynchroniser, sac de lettres restantes. Le menu joker (issue
+                 #168) reste ici : masqué tant qu'aucun joker n'est en cours de
+                 pose. La loupe de vérification dictionnaire (issue #86) et le
+                 menu « Derniers coups » (issue #37/#144) ont quitté cette zone
+                 pour devenir deux blocs permanents pleine largeur dans
+                 .colonne-gauche (issue #308/#309). -->
             <!-- Zone A répartie sur 2 lignes explicites (issue #189, croquis d'Alain) :
                  la marge élargie (voir .container) dégage assez de place pour
                  regrouper les pastilles côte à côte au lieu de les empiler. Deux
                  conteneurs ``.zone-systeme-ligne`` (rangées flex) portent le
                  découpage :
                    - Ligne 1 : Retour au menu · Resynchroniser (icône seule) · Sac ;
-                   - Ligne 2 : loupe (vérification dictionnaire) · Derniers coups.
+                   - Ligne 2 : menu joker (masqué hors pose de joker).
                  Contenu et id strictement inchangés — seul le regroupement change. -->
             <section class="zone-gauche zone-systeme" aria-label="Actions système">
                 <!-- Ligne 1 : retour au menu, resynchroniser (icône seule), sac. -->
@@ -90,61 +91,49 @@
                     </div>
                 </div>
 
-                <!-- Ligne 2 : loupe de vérification dictionnaire + Derniers coups
-                     (et le menu joker, masqué tant qu'aucun joker n'est en pose). -->
+                <!-- Ligne 2 : le menu joker (masqué tant qu'aucun joker n'est en
+                     pose). Dictionnaire et Derniers coups ont quitté cette ligne
+                     (issue #308/#309) : ce sont désormais deux blocs permanents
+                     pleine largeur, voir plus bas dans .colonne-gauche. -->
                 <div class="zone-systeme-ligne">
-                <!-- Vérification dictionnaire (issue #86) : le champ + le bouton
-                     de vérification vivent dans un popover ouvert au clic sur une
-                     loupe discrète. MÊME comportement / mêmes id (#champ-verif,
-                     #btn-verifier, #message-brouillon) qu'avant : seul
-                     l'emplacement change (ex-gouttière fixe → zone A, issue #186). -->
-                <div class="verif-dico-ancre">
-                    <button id="btn-ouvrir-verif" class="btn btn-verif-dico"
-                            aria-haspopup="dialog" aria-expanded="false"
-                            title="Vérifier si un mot existe dans le dictionnaire">
-                        <span class="verif-dico-icone" aria-hidden="true">🔎</span>
-                        <span class="verif-dico-libelle">Vérification dictionnaire</span>
-                    </button>
-                    <div id="verif-dico-popover" class="verif-dico-popover" role="dialog"
-                         aria-label="Vérification d'un mot dans le dictionnaire" hidden>
-                        <div class="zone-verif-dico">
-                            <input type="text" id="champ-verif" class="champ-verif"
-                                   placeholder="Tapez un mot à tester…"
-                                   aria-label="Mot à vérifier dans le dictionnaire"
-                                   autocomplete="off" spellcheck="false">
-                            <button id="btn-verifier" class="btn btn-secondaire btn-petit">
-                                🔎 Vérifier le mot dans le dictionnaire
-                            </button>
-                        </div>
-                        <p id="message-brouillon" class="message-brouillon" role="status" aria-live="polite"></p>
-                        <!-- Définition affichée sous le verdict quand le mot est
-                             valide (issue #124). -->
-                        <div id="definition-brouillon" class="definition-brouillon" aria-live="polite" hidden></div>
-                    </div>
-                </div>
-
-                <!-- Accès à l'historique glissant (issue #37/#144). Bouton +
-                     popover (C.configurerPopover) : ouverture/fermeture au clic,
-                     fermeture au clic extérieur ou à Échap. La plus RÉCENTE en
-                     haut ; chaque ligne rouvre le détail du score de CE coup. -->
-                <div class="historique-menu" id="historique-menu">
-                    <button id="btn-historique" class="historique-resume"
-                            aria-haspopup="dialog" aria-expanded="false">
-                        <span class="historique-resume-inner">
-                            <span class="historique-resume-titre">🕑 Derniers coups</span>
-                            <span class="historique-resume-compte" id="historique-compte"></span>
-                        </span>
-                    </button>
-                    <ol id="historique-liste" class="historique-liste" role="dialog"
-                        aria-label="Historique des coups de la partie"
-                        aria-live="polite" hidden></ol>
-                </div>
-
                 <!-- Le sélecteur de lettre du joker n'est plus ancré ici (issue
                      #201) : la marge gauche étroite (refonte #186) tronquait sa
                      grille. Il vit désormais en popover fixe posé sur la case du
                      plateau — voir #joker-popover en fin de <body>. -->
                 </div><!-- /zone-systeme-ligne (ligne 2) -->
+            </section>
+
+            <!-- Derniers coups (issue #308) : bloc permanent pleine largeur.
+                 Remplace l'ancien menu déroulant (#historique-menu) ; même id
+                 #historique-liste/#historique-compte, rendreHistorique() (jeu.js)
+                 les peuple sans changement. -->
+            <section class="zone-gauche zone-historique-permanente">
+                <h3 class="zone-titre">🕑 Derniers coups
+                    <span class="historique-resume-compte" id="historique-compte"></span>
+                </h3>
+                <ol id="historique-liste" class="historique-liste-permanente"
+                    role="log" aria-live="polite"></ol>
+            </section>
+
+            <!-- Dictionnaire (issue #308) : champ toujours visible. Remplace
+                 l'ancien popover (#verif-dico-popover) ; mêmes id (#champ-verif,
+                 #btn-verifier, #message-brouillon, #definition-brouillon),
+                 verifierMotDictionnaire() (jeu.js) inchangée. -->
+            <section class="zone-gauche zone-dico-permanente">
+                <h3 class="zone-titre">🔎 Dictionnaire</h3>
+                <div class="zone-verif-dico">
+                    <input type="text" id="champ-verif" class="champ-verif"
+                           placeholder="Tapez un mot à tester…"
+                           aria-label="Mot à vérifier dans le dictionnaire"
+                           autocomplete="off" spellcheck="false">
+                    <button id="btn-verifier" class="btn btn-secondaire btn-petit">
+                        Vérifier
+                    </button>
+                </div>
+                <p id="message-brouillon" class="message-brouillon" role="status" aria-live="polite"></p>
+                <!-- Définition affichée sous le verdict quand le mot est valide
+                     (issue #124). -->
+                <div id="definition-brouillon" class="definition-brouillon" aria-live="polite" hidden></div>
             </section>
 
             <!-- ============================================================ -->

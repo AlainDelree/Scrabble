@@ -113,14 +113,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnAnnulerEchange = document.getElementById('btn-annuler-echange');
     const messageCoup = document.getElementById('message-coup');
 
-    // Vérification dictionnaire par saisie libre (issue #50/#86) : champ + bouton
-    // logés derrière un popover discret dans la gouttière gauche.
+    // Vérification dictionnaire par saisie libre (issue #50/#86) : champ +
+    // bouton dans un bloc permanent de la colonne gauche (issue #308/#309).
     const champVerif = document.getElementById('champ-verif');
     const btnVerifier = document.getElementById('btn-verifier');
     const messageBrouillon = document.getElementById('message-brouillon');
     const definitionBrouillon = document.getElementById('definition-brouillon');
-    const btnOuvrirVerif = document.getElementById('btn-ouvrir-verif');
-    const verifPopover = document.getElementById('verif-dico-popover');
 
     // Modale de détail du score (issue #35), ici ouverte depuis l'historique.
     // Contrôleur factorisé dans commun.js (issue #90).
@@ -1678,39 +1676,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             verifierMotDictionnaire();
         }
     });
-    // Remet le popover de vérification à zéro (issue #196) : champ vidé, verdict
-    // et définition effacés, pour qu'une réouverture démarre sur un champ vierge
-    // prêt à recevoir une nouvelle recherche (plus besoin d'effacer à la main).
-    function reinitialiserVerifDictionnaire() {
-        champVerif.value = '';
-        afficherMessageBrouillon('');
-        masquerDefinitionBrouillon();
-    }
-
-    // Popover replié (issue #86) : au clic, focus sur le champ ; à la fermeture,
-    // on efface la recherche précédente (issue #196).
-    C.configurerPopover(
-        btnOuvrirVerif, verifPopover,
-        () => { champVerif.focus(); },
-        reinitialiserVerifDictionnaire,
-    );
 
     // ------------------------------------------------------------------ //
-    // Encart d'historique glissant : ouverture/fermeture + clic sur une ligne
+    // Encart d'historique glissant : clic sur une ligne
     // ------------------------------------------------------------------ //
 
-    // Ouverture/fermeture du menu « Derniers coups » (issue #144) : on réutilise
-    // le MÊME mécanisme que « Vérification dictionnaire » (C.configurerPopover) —
-    // clic sur le bouton pour basculer, fermeture au clic EXTÉRIEUR ou à la touche
-    // Échap, mise à jour d'aria-expanded. Cela remplace l'ancienne logique séparée
-    // qui devait forcer la bascule native du <details> sous WebKitGTK (issues
-    // #49/#56/#60) et ne se fermait pas à la perte de focus. La liste
-    // (``historiqueListe``, id #historique-liste) sert de popover : les clics à
-    // l'intérieur (ouverture du détail d'un coup) ne la ferment pas, configurerPopover
-    // stoppant leur propagation vers document.
-    const btnHistorique = document.getElementById('btn-historique');
-    C.configurerPopover(btnHistorique, historiqueListe);
-
+    // Depuis l'issue #308/#309, #historique-liste est un bloc permanent de la
+    // colonne gauche (plus un popover) : seul le clic sur une ligne (ouverture
+    // du détail du coup) reste à câbler ici.
     function entreeHistoriqueDe(li) {
         if (!li || !etat || !Array.isArray(etat.historique)) {
             return null;
