@@ -24,35 +24,31 @@
                  JS : le texte "Scrabble" est fixe, pas besoin de complexité
                  dynamique pour 8 lettres. -->
             <h1><span class="lettre-scrabble">S</span><span class="lettre-scrabble">c</span><span class="lettre-scrabble">r</span><span class="lettre-scrabble">a</span><span class="lettre-scrabble">b</span><span class="lettre-scrabble">b</span><span class="lettre-scrabble">l</span><span class="lettre-scrabble">e</span></h1>
-            <!-- Sous-titre en tuiles (issue #296), même principe que le titre
-                 et les titres de section : chaque lettre est une tuile
-                 individuelle ; les 4 mots sont séparés par un margin-right de
-                 0.4rem posé sur la dernière lettre de chaque mot (sauf le
-                 dernier mot), via la classe `.fin-mot` (voir accueil.css). -->
+            <!-- Sous-titre en tuiles (issue #296, remplacé "Configuration de
+                 la partie" → "Dictionnaires :" en #298), même principe que le
+                 titre et les titres de section : chaque lettre est une tuile
+                 individuelle. Le ":" final est un `<span>` à part, SANS la
+                 classe `.lettre-scrabble` (issue #298) : un signe de
+                 ponctuation dans une tuile crème/dorée aurait été lu comme une
+                 lettre à part entière (aspect visuel incohérent) ; en texte
+                 nu il se lit naturellement comme la marque de fin d'étiquette
+                 ("Dictionnaires :" introduisant le choix France/Belgique
+                 juste en dessous), cf. rapport. -->
             <p class="sous-titre-tuiles">
-              <span class="lettre-scrabble">C</span><span
+              <span class="lettre-scrabble">D</span><span
+              class="lettre-scrabble">i</span><span
+              class="lettre-scrabble">c</span><span
+              class="lettre-scrabble">t</span><span
+              class="lettre-scrabble">i</span><span
               class="lettre-scrabble">o</span><span
               class="lettre-scrabble">n</span><span
-              class="lettre-scrabble">f</span><span
-              class="lettre-scrabble">i</span><span
-              class="lettre-scrabble">g</span><span
-              class="lettre-scrabble">u</span><span
-              class="lettre-scrabble">r</span><span
+              class="lettre-scrabble">n</span><span
               class="lettre-scrabble">a</span><span
-              class="lettre-scrabble">t</span><span
               class="lettre-scrabble">i</span><span
-              class="lettre-scrabble">o</span><span
-              class="lettre-scrabble fin-mot">n</span><span
-              class="lettre-scrabble">d</span><span
-              class="lettre-scrabble fin-mot">e</span><span
-              class="lettre-scrabble">l</span><span
-              class="lettre-scrabble fin-mot">a</span><span
-              class="lettre-scrabble">p</span><span
-              class="lettre-scrabble">a</span><span
               class="lettre-scrabble">r</span><span
-              class="lettre-scrabble">t</span><span
-              class="lettre-scrabble">i</span><span
-              class="lettre-scrabble">e</span>
+              class="lettre-scrabble">e</span><span
+              class="lettre-scrabble">s</span><span
+              class="sous-titre-deux-points">:</span>
             </p>
         </header>
 
@@ -105,18 +101,13 @@
                     <div id="liste-joueurs" class="liste-joueurs">
                         <p class="vide" id="message-vide">Aucun joueur. Ajoutez des joueurs pour commencer.</p>
                     </div>
-                    <div class="compteur" id="compteur">
-                        <span id="nb-humains">0</span> humain(s),
-                        <span id="nb-ordinateurs">0</span> ordinateur(s)
-                    </div>
                 </section>
 
                 <section class="reprise" id="section-reprise">
                     <!-- "Continuer" (9 tuiles) remplacé par "Parties en cours"
-                         (issue #296) : 14 lettres tiennent confortablement
-                         dans la zone centrale même à 700px de large (cf.
-                         rapport). `.fin-mot` sépare les 3 mots (voir
-                         accueil.css). -->
+                         (issue #296), lui-même raccourci en "Parties" (7
+                         tuiles, issue #298) : un seul mot, donc pas de classe
+                         `.fin-mot` ici. -->
                     <h2 class="titre-section-tuiles">
                       <span class="lettre-scrabble">P</span><span
                       class="lettre-scrabble">a</span><span
@@ -124,13 +115,6 @@
                       class="lettre-scrabble">t</span><span
                       class="lettre-scrabble">i</span><span
                       class="lettre-scrabble">e</span><span
-                      class="lettre-scrabble fin-mot">s</span><span
-                      class="lettre-scrabble">e</span><span
-                      class="lettre-scrabble fin-mot">n</span><span
-                      class="lettre-scrabble">c</span><span
-                      class="lettre-scrabble">o</span><span
-                      class="lettre-scrabble">u</span><span
-                      class="lettre-scrabble">r</span><span
                       class="lettre-scrabble">s</span>
                     </h2>
                     <div id="parties-en-cours" class="parties-en-cours">

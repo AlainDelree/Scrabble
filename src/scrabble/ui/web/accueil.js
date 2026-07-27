@@ -31,8 +31,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Éléments du DOM
     const listeJoueurs = document.getElementById('liste-joueurs');
     const messageVide = document.getElementById('message-vide');
-    const nbHumains = document.getElementById('nb-humains');
-    const nbOrdinateurs = document.getElementById('nb-ordinateurs');
     const btnAjouterHumain = document.getElementById('btn-ajouter-humain');
     const btnAjouterOrdinateur = document.getElementById('btn-ajouter-ordinateur');
     const btnLancer = document.getElementById('btn-lancer');
@@ -106,10 +104,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 listeJoueurs.appendChild(item);
             });
         }
-
-        // Compteurs
-        nbHumains.textContent = etat.nb_humains;
-        nbOrdinateurs.textContent = etat.nb_ordinateurs;
 
         // Boutons.
         //

@@ -237,7 +237,6 @@ body.mode-belgicisme .container::before {
    raisonnement) ; `.drapeau-legende` a disparu du HTML au même moment
    (étiquettes "France"/"Belgique" supprimées sous les cercles). */
 body.mode-belgicisme section h2,
-body.mode-belgicisme .compteur,
 body.mode-belgicisme .liste-joueurs .vide,
 body.mode-belgicisme .parties-en-cours .vide {
     color: #1a1a1a;
@@ -389,10 +388,18 @@ body.mode-belgicisme .parties-en-cours:has(.vide) {
    belgicisme)` exclut explicitement le mode Belgicisme : celui-ci reste géré
    par son propre panneau translucide (`.container::before`), sans peindre
    `.container` lui-même en blanc opaque par-dessus. */
+/* Marge haute/basse ajoutée en #298, en miroir de la marge du mode
+   Belgicisme (3rem, cf. `body.mode-belgicisme .container` plus haut) : sans
+   elle, le panneau blanc touchait le bord supérieur de la fenêtre. 1.5rem,
+   plus petite qu'en Belgicisme, est volontaire : ce mode n'a pas de drapeau
+   de fond à révéler (pas de `::before` débordant ici), juste un peu d'air
+   autour du panneau — pas besoin d'un espace aussi généreux. */
 body:not(.mode-belgicisme) .container {
     background: white;
     border-radius: 16px;
     overflow: hidden;
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
 }
 
 /* En-tête */
@@ -446,7 +453,8 @@ header h1 {
     text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
-/* Sous-titre "Configuration de la partie" en tuiles (issue #296), même
+/* Sous-titre "Dictionnaires :" en tuiles (issue #296 ; texte changé depuis
+   "Configuration de la partie" en #298, cf. commentaire HTML), même
    principe que le titre principal (`header h1`) et les titres de section
    (`.titre-section-tuiles`) : chaque lettre est une tuile de Scrabble
    opaque, dans les deux modes. Tuiles nettement plus petites que celles du
@@ -490,13 +498,27 @@ header h1 {
 
 /* `.fin-mot` (issue #296) : sur la dernière lettre de chaque mot sauf le
    dernier, dans un groupe de tuiles lettre par lettre (`.sous-titre-tuiles`
-   ou `.titre-section-tuiles`, ex. "Configuration de la partie" ou "Parties
-   en cours"). Simule l'espace inter-mots par un margin-right, faute
-   d'espace typographique visible entre des tuiles individuelles. Règle
-   générique (non préfixée) : le même balisage/la même classe sert dans les
-   deux contextes. */
+   ou `.titre-section-tuiles`). Simule l'espace inter-mots par un
+   margin-right, faute d'espace typographique visible entre des tuiles
+   individuelles. Règle générique (non préfixée) : le même balisage/la même
+   classe sert dans les deux contextes. */
 .fin-mot {
     margin-right: 0.4rem;
+}
+
+/* ":" final du sous-titre (issue #298) : `<span>` texte nu, volontairement
+   SANS la classe `.lettre-scrabble` (voir choix expliqué dans accueil.html).
+   `#1a1a1a` directement (pas de variante par mode) : le panneau `.container`
+   est blanc/translucide dans les deux modes depuis #296, donc le même texte
+   sombre reste lisible partout — même couleur que les titres de section en
+   mode Belgicisme (`body.mode-belgicisme section h2` ci-dessus). `font-size`/
+   `font-weight` repris du `.sous-titre-tuiles .lettre-scrabble` voisin. */
+.sous-titre-deux-points {
+    display: inline-flex;
+    align-items: center;
+    font-size: clamp(0.65rem, 1.5vw, 0.85rem);
+    font-weight: 700;
+    color: #1a1a1a;
 }
 
 /* Cercles-drapeaux du mode dictionnaire (issue #269), sous le sous-titre. */
@@ -844,21 +866,6 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
 
 .btn-retirer:hover {
     background: rgba(198, 40, 40, 0.1);
-}
-
-/* Compteur */
-.compteur {
-    text-align: center;
-    margin-top: 10px;
-    font-size: 0.9rem;
-    /* Depuis #295, `.compteur` vit dans `.zone-centrale` (fond blanc dans les
-       deux modes) plutôt que directement sur le tapis vert (#77) : le blanc
-       adouci d'origine y devenait illisible en mode France (constaté par
-       capture WebKitGTK). #333 garde un contraste net sur fond blanc/pastel,
-       cohérent avec le traitement déjà appliqué au reste du texte de
-       `.zone-centrale` en mode Belgicisme. */
-    color: #333;
-    text-shadow: none;
 }
 
 /* Boutons */
