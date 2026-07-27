@@ -331,7 +331,7 @@ class TestApiAccueilLancement:
         # Stub de la persistance pour éviter d'écrire sur disque
         monkeypatch.setattr(
             "scrabble.ui.accueil.demarrer_suivi",
-            lambda partie: 42,
+            lambda partie, **_: 42,
         )
 
         api = ApiAccueil()
@@ -481,7 +481,7 @@ class TestSourceDictionnaireAppliquee:
             lambda source="ods", **_: appels.append(source)
             or Trie.depuis_iterable(["TEST"]),
         )
-        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: 7)
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie, **_: 7)
 
         api = ApiAccueil()
         api.ajouter_humain("Alice")
@@ -535,7 +535,7 @@ class TestSourceDictionnaireAppliquee:
             lambda source="ods", **_: appels.append(source)
             or Trie.depuis_iterable(["TEST"]),
         )
-        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: 1)
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie, **_: 1)
 
         api = ApiAccueil()
         api.ajouter_humain("Alice")
@@ -606,7 +606,7 @@ class TestSourceDictionnaireAppliquee:
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie", lambda source="ods", **_: tries[source]
         )
-        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: 1)
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie, **_: 1)
 
         api = ApiAccueil()
         api.ajouter_humain("Alice")
@@ -818,7 +818,7 @@ class TestApiAccueilInfosTirage:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.demarrer_suivi",
-            lambda partie: 7,
+            lambda partie, **_: 7,
         )
         return ApiAccueil()
 

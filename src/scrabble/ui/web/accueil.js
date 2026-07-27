@@ -330,6 +330,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function choisirModeDictionnaire(modeBelgicisme) {
         syncModeDictionnaire(modeBelgicisme);
         await api.definir_mode_belgicisme(modeBelgicisme);
+        await chargerPartiesEnCours();
     }
 
     drapeauFrance.addEventListener('click', () => choisirModeDictionnaire(false));

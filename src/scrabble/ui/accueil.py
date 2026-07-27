@@ -560,7 +560,9 @@ class ApiAccueil:
                 bonus_fin_partie=bonus_fin_partie,
                 dictionnaire_ia=trie_ia,
             )
-            self._id_partie = demarrer_suivi(self._partie)
+            self._id_partie = demarrer_suivi(
+                self._partie, mode_belgicisme=self.config_partie.mode_belgicisme
+            )
             # Détail à rejouer côté Jeu pour l'écran de tirage (issue #170) :
             # l'ordre de création (humains puis ordinateurs) et la graine suffisent
             # à ``detail_tirage_ordre`` pour reproduire exactement le tirage.
@@ -612,6 +614,11 @@ class ApiAccueil:
         """
         try:
             toutes = lister_parties()
+            # Filtrage par mode de jeu actif (issue #305) : une partie créée en
+            # mode Belgicisme ne doit pas apparaître à l'accueil en mode France,
+            # et inversement.
+            mode_actif = self.config_partie.mode_belgicisme
+            toutes = [p for p in toutes if p.mode_belgicisme == mode_actif]
             # ``toutes`` est trié date décroissante : le premier de chaque
             # catégorie est le plus récent.
             en_cours = next((p for p in toutes if not p.terminee), None)

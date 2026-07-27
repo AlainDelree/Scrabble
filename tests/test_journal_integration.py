@@ -117,7 +117,7 @@ class TestJournalAccueil:
             "scrabble.ui.accueil.obtenir_trie",
             lambda source="ods", **_: Trie.depuis_iterable(["MAISON", "TEST"]),
         )
-        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: 42)
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie, **_: 42)
 
         api = ApiAccueil()
         api.ajouter_humain("Alice")

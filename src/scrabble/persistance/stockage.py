@@ -106,6 +106,7 @@ class ResumePartie:
     scores_finaux: list[int] | None = None
     gagnants: list[str] | None = None
     scores_actuels: list[int] | None = None
+    mode_belgicisme: bool = False
 
     @property
     def terminee(self) -> bool:
@@ -269,6 +270,17 @@ def _initialiser_schema(connexion: sqlite3.Connection) -> None:
             ON actions (id_partie, indice);
         """
     )
+    # Migration (issue #305) : ajoute la colonne ``mode_belgicisme`` aux bases
+    # créées avant son introduction. Les parties existantes reçoivent la
+    # valeur par défaut 0 (France), comportement souhaité.
+    colonnes = [
+        row[1] for row in connexion.execute("PRAGMA table_info(parties)").fetchall()
+    ]
+    if "mode_belgicisme" not in colonnes:
+        connexion.execute(
+            "ALTER TABLE parties ADD COLUMN "
+            "mode_belgicisme INTEGER NOT NULL DEFAULT 0"
+        )
     connexion.commit()
 
 
@@ -281,7 +293,11 @@ def _maintenant() -> str:
 # Fonctions principales
 # --------------------------------------------------------------------------- #
 
-def demarrer_suivi(partie: Partie, chemin: _TypeChemin = CHEMIN_DEFAUT) -> int:
+def demarrer_suivi(
+    partie: Partie,
+    chemin: _TypeChemin = CHEMIN_DEFAUT,
+    mode_belgicisme: bool = False,
+) -> int:
     """Enregistre une partie fraîche (graine + joueurs), statut « en cours ».
 
     À appeler juste après :func:`~scrabble.moteur.partie.creer_partie`. Renvoie
@@ -301,14 +317,15 @@ def demarrer_suivi(partie: Partie, chemin: _TypeChemin = CHEMIN_DEFAUT) -> int:
     with _connexion(chemin) as connexion:
         curseur = connexion.execute(
             "INSERT INTO parties "
-            "(graine, date_creation, date_maj, joueurs, statut) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "(graine, date_creation, date_maj, joueurs, statut, mode_belgicisme) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (
                 partie.graine,
                 horodatage,
                 horodatage,
                 _joueurs_vers_json(partie.joueurs),
                 STATUT_EN_COURS,
+                int(mode_belgicisme),
             ),
         )
         return int(curseur.lastrowid)
@@ -461,7 +478,8 @@ def lister_parties(chemin: _TypeChemin = CHEMIN_DEFAUT) -> list[ResumePartie]:
     with _connexion(chemin) as connexion:
         lignes = connexion.execute(
             "SELECT id, statut, graine, date_creation, date_maj, joueurs, "
-            "scores_finaux, gagnants FROM parties ORDER BY date_maj DESC, id DESC"
+            "scores_finaux, gagnants, mode_belgicisme FROM parties "
+            "ORDER BY date_maj DESC, id DESC"
         ).fetchall()
         scores_par_partie = _scores_actuels_par_partie(connexion)
     resumes: list[ResumePartie] = []
@@ -482,6 +500,7 @@ def lister_parties(chemin: _TypeChemin = CHEMIN_DEFAUT) -> list[ResumePartie]:
                 scores_finaux=None if scores is None else json.loads(scores),
                 gagnants=None if gagnants is None else json.loads(gagnants),
                 scores_actuels=scores_actuels,
+                mode_belgicisme=bool(ligne["mode_belgicisme"]),
             )
         )
     return resumes

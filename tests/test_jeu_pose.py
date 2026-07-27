@@ -618,7 +618,7 @@ class TestSourceDictionnaireValidationCoup:
         )
         # Pas de persistance en base pendant le test : id_partie reste None,
         # ce qui neutralise aussi ``_persister_entrees`` côté ApiJeu.
-        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie: None)
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie, **_: None)
 
         api = ApiAccueil()
         api.ajouter_humain("Alice")
