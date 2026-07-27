@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-cd /d "%~dp0.."
+pushd "%~dp0.."
 
 echo ============================================
 echo   Rebuild Scrabble.exe
@@ -16,7 +16,7 @@ if not exist ".tools\InnoSetup6\ISCC.exe" (
     echo Deposez l'installation portable d'Inno Setup 6 a cet emplacement exact
     echo ^(.tools\InnoSetup6\^) avant de lancer ce script ^(voir installeur\README.md,
     echo section Prerequis^).
-    if "%REBUILD_INTERACTIF%"=="1" pause
+    popd
     exit /b 1
 )
 if not exist "data\dictionnaire\French-Scrabble-ODS8-main" (
@@ -25,7 +25,7 @@ if not exist "data\dictionnaire\French-Scrabble-ODS8-main" (
     echo Deposez le dictionnaire ODS8 a cet emplacement exact
     echo ^(data\dictionnaire\French-Scrabble-ODS8-main\^) avant de lancer ce script
     echo ^(voir data\dictionnaire\README.md^).
-    if "%REBUILD_INTERACTIF%"=="1" pause
+    popd
     exit /b 1
 )
 echo Dependances externes presentes. OK.
@@ -39,7 +39,7 @@ if not exist ".venv_build\Scripts\python.exe" (
     if errorlevel 1 (
         echo.
         echo ERREUR : impossible de creer .venv_build. Verifiez l'installation Python.
-        if "%REBUILD_INTERACTIF%"=="1" pause
+        popd
         exit /b 1
     )
     call ".venv_build\Scripts\python.exe" -m pip install --upgrade pip >nul
@@ -47,14 +47,14 @@ if not exist ".venv_build\Scripts\python.exe" (
     if errorlevel 1 (
         echo.
         echo ERREUR : l'installation de requirements.txt a echoue.
-        if "%REBUILD_INTERACTIF%"=="1" pause
+        popd
         exit /b 1
     )
     call ".venv_build\Scripts\pip.exe" install pyinstaller
     if errorlevel 1 (
         echo.
         echo ERREUR : l'installation de pyinstaller a echoue.
-        if "%REBUILD_INTERACTIF%"=="1" pause
+        popd
         exit /b 1
     )
 ) else (
@@ -80,7 +80,7 @@ call ".venv_build\Scripts\pyinstaller.exe" scrabble.spec -y
 if errorlevel 1 (
     echo.
     echo ERREUR : le build PyInstaller a echoue. Voir les messages ci-dessus.
-    if "%REBUILD_INTERACTIF%"=="1" pause
+    popd
     exit /b 1
 )
 echo.
@@ -101,7 +101,7 @@ if exist "dist\Scrabble\Scrabble.exe" (
 ) else (
     echo.
     echo ERREUR : Scrabble.exe introuvable dans dist\Scrabble apres le build.
-    if "%REBUILD_INTERACTIF%"=="1" pause
+    popd
     exit /b 1
 )
 
@@ -111,14 +111,14 @@ if not exist ".tools\InnoSetup6\ISCC.exe" (
     echo.
     echo ERREUR : .tools\InnoSetup6\ISCC.exe introuvable. Verifiez l'installation
     echo portable d'Inno Setup sur cette machine ^(voir installeur\README.md^).
-    if "%REBUILD_INTERACTIF%"=="1" pause
+    popd
     exit /b 1
 )
-call ".tools\InnoSetup6\ISCC.exe" /Q installeur\scrabble.iss
+call ".tools\InnoSetup6\ISCC.exe" installeur\scrabble.iss
 if errorlevel 1 (
     echo.
     echo ERREUR : la compilation Inno Setup a echoue. Voir les messages ci-dessus.
-    if "%REBUILD_INTERACTIF%"=="1" pause
+    popd
     exit /b 1
 )
 echo.
@@ -132,5 +132,5 @@ echo Rappel : lancez Scrabble.exe vous-meme depuis cette session
 echo interactive pour verifier que tout fonctionne bien
 echo ^(WebView2, dictionnaire, interface^).
 echo.
-if "%REBUILD_INTERACTIF%"=="1" pause
+popd
 exit /b 0

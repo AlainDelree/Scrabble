@@ -19,6 +19,18 @@ build, déposez-les avant de lancer un build complet :
   utilisés) — voir `data\dictionnaire\README.md` pour le détail complet et
   la justification (licence floue, contenu tiers non redistribuable).
 
+## Quel script lancer
+
+Le pipeline complet (venv, PyInstaller, ISCC) est dans `build\rebuild_scrabble.bat`.
+Ce script ne s'arrête jamais sur une interaction (aucun `pause`, aucune
+dépendance à une variable d'environnement) : c'est celui à utiliser en
+contexte automatisé (service CCW-Watcher).
+
+Pour un lancement manuel par Alain (double-clic ou terminal interactif),
+utiliser `build\rebuild_scrabble_manuel.bat` : il appelle
+`rebuild_scrabble.bat`, propage son code de sortie, puis fait un `pause`
+inconditionnel pour garder la fenêtre ouverte le temps de lire le résultat.
+
 ## Prérequis
 
 1. [Inno Setup 6](https://jrsoftware.org/isdl.php) installé (ou disponible en
