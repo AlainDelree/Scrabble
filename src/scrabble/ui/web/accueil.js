@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const p = document.createElement('p');
             p.className = 'message-limite';
             p.textContent = messageLimite;
-            document.querySelector('.actions').after(p);
+            document.querySelector('.zone-boutons').after(p);
         }
 
         // Suivre si un humain a été ajouté

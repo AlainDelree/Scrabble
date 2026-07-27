@@ -53,38 +53,65 @@
         </div>
 
         <main>
-            <section class="table-joueurs">
-                <h2>Joueurs autour de la table</h2>
-                <div id="liste-joueurs" class="liste-joueurs">
-                    <p class="vide" id="message-vide">Aucun joueur. Ajoutez des joueurs pour commencer.</p>
-                </div>
-                <div class="compteur" id="compteur">
-                    <span id="nb-humains">0</span> humain(s),
-                    <span id="nb-ordinateurs">0</span> ordinateur(s)
-                </div>
-            </section>
+            <!-- Zone centrale (issue #295) : fond blanc (France) ou bande
+                 tricolore (Belgicisme) commun aux sections Joueurs/Continuer,
+                 distinct de la zone haute (titre/drapeaux) et de la zone basse
+                 (boutons) qui restent posées directement sur le tapis vert ou
+                 le fond drapeau. -->
+            <div class="zone-centrale">
+                <div class="bande-tricolore" aria-hidden="true"></div>
 
-            <section class="actions">
+                <section class="table-joueurs">
+                    <h2 class="titre-section-tuiles">
+                      <span class="lettre-scrabble">J</span><span
+                      class="lettre-scrabble">o</span><span
+                      class="lettre-scrabble">u</span><span
+                      class="lettre-scrabble">e</span><span
+                      class="lettre-scrabble">u</span><span
+                      class="lettre-scrabble">r</span><span
+                      class="lettre-scrabble">s</span>
+                    </h2>
+                    <div id="liste-joueurs" class="liste-joueurs">
+                        <p class="vide" id="message-vide">Aucun joueur. Ajoutez des joueurs pour commencer.</p>
+                    </div>
+                    <div class="compteur" id="compteur">
+                        <span id="nb-humains">0</span> humain(s),
+                        <span id="nb-ordinateurs">0</span> ordinateur(s)
+                    </div>
+                </section>
+
+                <section class="reprise" id="section-reprise">
+                    <h2 class="titre-section-tuiles">
+                      <span class="lettre-scrabble">C</span><span
+                      class="lettre-scrabble">o</span><span
+                      class="lettre-scrabble">n</span><span
+                      class="lettre-scrabble">t</span><span
+                      class="lettre-scrabble">i</span><span
+                      class="lettre-scrabble">n</span><span
+                      class="lettre-scrabble">u</span><span
+                      class="lettre-scrabble">e</span><span
+                      class="lettre-scrabble">r</span>
+                    </h2>
+                    <div id="parties-en-cours" class="parties-en-cours">
+                        <p class="vide">Aucune partie enregistrée.</p>
+                    </div>
+                </section>
+            </div><!-- /.zone-centrale -->
+
+            <!-- Zone basse (issue #295) : les trois boutons d'action, réunis
+                 côte à côte hors des sections Joueurs/Continuer. Logique de
+                 visibilité/désactivation inchangée (accueil.js). -->
+            <div class="zone-boutons">
                 <button id="btn-ajouter-humain" class="btn btn-humain">
                     Ajouter un joueur
                 </button>
                 <button id="btn-ajouter-ordinateur" class="btn btn-ordinateur">
                     Ajouter un ordinateur
                 </button>
-            </section>
-
-            <section class="lancement">
                 <button id="btn-lancer" class="btn btn-lancer" disabled>
                     Lancer la partie
                 </button>
-            </section>
-
-            <section class="reprise" id="section-reprise">
-                <h2>Reprendre une partie</h2>
-                <div id="parties-en-cours" class="parties-en-cours">
-                    <p class="vide">Aucune partie enregistrée.</p>
-                </div>
-            </section>
+            </div>
         </main>
       </div><!-- /#vue-config -->
 
