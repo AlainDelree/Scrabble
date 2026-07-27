@@ -160,12 +160,26 @@ body {
 
 /* Derniers coups / Dictionnaire : deux blocs permanents pleine largeur
    (issue #308/#309), entre la zone A (boutons système) et la zone B (joueurs).
-   Même gabarit que les autres zones (.zone-gauche), empilés en colonne. */
+   Style carte identique aux fiches joueurs (.panneau-joueur) — fond blanc,
+   coins arrondis, ombre, padding — pour rester lisible sur le tapis vert
+   (correction issue #310, les titres étaient illisibles sans ce fond). */
 .zone-historique-permanente,
 .zone-dico-permanente {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    background: white;
+    border-radius: var(--rayon-bordure);
+    box-shadow: var(--ombre);
+    padding: 8px 10px;
+}
+
+/* Le bouton « Derniers coups » (comportement popover restauré par la
+   correction #310) doit occuper toute la largeur de la carte pleine largeur,
+   au lieu de sa largeur ``fit-content`` d'origine (issue #144). */
+.zone-historique-permanente .historique-resume {
+    width: 100%;
+    text-align: left;
 }
 
 .zone-titre {
@@ -176,20 +190,6 @@ body {
     display: flex;
     align-items: center;
     gap: 6px;
-}
-
-/* Liste des derniers coups en flux normal (remplace le popover .historique-liste
-   ci-dessus) : même contenu (.historique-ligne…), plus de position absolue ni
-   d'ombre, bornée en hauteur et défilante comme avant. */
-.historique-liste-permanente {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    max-height: 180px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
 }
 
 /* Zone B : fiches joueurs empilées. Prend une part de la hauteur libre pour
@@ -658,26 +658,65 @@ body {
 }
 
 /* --------------------------------------------------------------------------- */
-/* Encart d'historique glissant des derniers coups (issue #37, bloc permanent   */
-/* pleine largeur depuis #308/#309)                                              */
+/* Encart d'historique glissant des derniers coups (issue #37, bloc plein       */
+/* largeur depuis #308/#309, comportement popover restauré par la correction    */
+/* #310)                                                                        */
 /* --------------------------------------------------------------------------- */
 /* Liste les dernières actions, la plus récente en haut. Chaque ligne cliquable
    rouvre le détail du coup dans la modale existante ; la couleur de bord
    distingue humain (bleu) et ordinateur (violet), comme partout ailleurs à
-   l'écran. Le bouton déclencheur + popover (.historique-menu/.historique-resume/
-   ex-popover .historique-liste) ont été retirés du HTML : voir
-   .zone-historique-permanente/.historique-liste-permanente plus bas pour le
-   nouveau bloc permanent. .historique-resume-compte est réutilisée telle quelle
-   pour le compteur du nouveau titre. */
+   l'écran. Le bouton déclencheur (C.configurerPopover, jeu.js) reste un vrai
+   <button> : on réinitialise donc bordure et police héritées. La mise en page
+   en ligne reste confiée à `.historique-resume-inner`. La largeur pleine
+   largeur de la carte (issue #308/#309) est imposée par
+   `.zone-historique-permanente .historique-resume` plus haut. */
+.historique-menu {
+    position: relative;
+}
+
+.historique-resume {
+    width: fit-content;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 999px;
+    background: white;
+    box-shadow: var(--ombre);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #555;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.historique-resume-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.historique-resume-inner::after {
+    content: '▾';
+    font-size: 0.7rem;
+    color: #999;
+    transition: transform 0.15s;
+}
+
+.historique-resume[aria-expanded="true"] .historique-resume-inner::after {
+    transform: rotate(180deg);
+}
+
 .historique-resume-compte {
     color: var(--couleur-primaire);
     font-variant-numeric: tabular-nums;
 }
 
-/* .historique-liste (fond blanc, ombre, coins arrondis, popover absolu) n'est
-   plus utilisée par l'historique permanent (remplacée par
-   .historique-liste-permanente) mais reste nécessaire : le popover du joker
-   (.joker-popover plus bas) en hérite toujours le look popover. */
+/* Liste déployée = popover (issue #144) : surimpression sous le bouton, largeur
+   fixe raisonnable, DÉFILEMENT vertical dès que l'historique dépasse la hauteur
+   plafond. Ne consomme aucune hauteur de mise en page (position absolue). Le
+   masquage/affichage est piloté par l'attribut [hidden] (posé/retiré par
+   C.configurerPopover). Également réutilisée par le popover du joker
+   (.joker-popover plus bas). */
 .historique-liste {
     position: absolute;
     top: calc(100% + 6px);

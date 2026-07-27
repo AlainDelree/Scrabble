@@ -103,16 +103,26 @@
                 </div><!-- /zone-systeme-ligne (ligne 2) -->
             </section>
 
-            <!-- Derniers coups (issue #308) : bloc permanent pleine largeur.
-                 Remplace l'ancien menu déroulant (#historique-menu) ; même id
-                 #historique-liste/#historique-compte, rendreHistorique() (jeu.js)
-                 les peuple sans changement. -->
+            <!-- Derniers coups (issue #310, correction #308/#309) : bloc plein
+                 largeur (seule sa largeur a changé) qui conserve le comportement
+                 popover ORIGINAL — clic sur le bouton pour afficher/masquer la
+                 liste (C.configurerPopover, jeu.js) : ouverture/fermeture au
+                 clic, fermeture au clic extérieur ou à la touche Échap. La plus
+                 RÉCENTE en haut ; chaque ligne rouvre le détail du score de CE
+                 coup. -->
             <section class="zone-gauche zone-historique-permanente">
-                <h3 class="zone-titre">🕑 Derniers coups
-                    <span class="historique-resume-compte" id="historique-compte"></span>
-                </h3>
-                <ol id="historique-liste" class="historique-liste-permanente"
-                    role="log" aria-live="polite"></ol>
+                <div class="historique-menu" id="historique-menu">
+                    <button id="btn-historique" class="historique-resume"
+                            aria-haspopup="dialog" aria-expanded="false">
+                        <span class="historique-resume-inner">
+                            <span class="historique-resume-titre">🕑 Derniers coups</span>
+                            <span class="historique-resume-compte" id="historique-compte"></span>
+                        </span>
+                    </button>
+                    <ol id="historique-liste" class="historique-liste" role="dialog"
+                        aria-label="Historique des coups de la partie"
+                        aria-live="polite" hidden></ol>
+                </div>
             </section>
 
             <!-- Dictionnaire (issue #308) : champ toujours visible. Remplace

@@ -1678,12 +1678,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ------------------------------------------------------------------ //
-    // Encart d'historique glissant : clic sur une ligne
+    // Encart d'historique glissant : ouverture/fermeture + clic sur une ligne
     // ------------------------------------------------------------------ //
 
-    // Depuis l'issue #308/#309, #historique-liste est un bloc permanent de la
-    // colonne gauche (plus un popover) : seul le clic sur une ligne (ouverture
-    // du détail du coup) reste à câbler ici.
+    // Ouverture/fermeture du menu « Derniers coups » (issue #144, comportement
+    // restauré par la correction #310 après la refonte pleine largeur #308/#309
+    // qui l'avait par erreur supprimé) : clic sur le bouton pour basculer,
+    // fermeture au clic EXTÉRIEUR ou à la touche Échap, mise à jour
+    // d'aria-expanded. La liste (``historiqueListe``, id #historique-liste)
+    // sert de popover : les clics à l'intérieur (ouverture du détail d'un coup)
+    // ne la ferment pas, configurerPopover stoppant leur propagation vers
+    // document.
+    const btnHistorique = document.getElementById('btn-historique');
+    C.configurerPopover(btnHistorique, historiqueListe);
+
     function entreeHistoriqueDe(li) {
         if (!li || !etat || !Array.isArray(etat.historique)) {
             return null;
