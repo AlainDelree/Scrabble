@@ -208,6 +208,7 @@ body.mode-belgicisme {
 body.mode-belgicisme .container {
     position: relative;
     margin-top: 3rem;
+    margin-bottom: 1.5rem;
 }
 
 body.mode-belgicisme .container::before {
@@ -393,13 +394,28 @@ body.mode-belgicisme .parties-en-cours:has(.vide) {
    elle, le panneau blanc touchait le bord supérieur de la fenêtre. 1.5rem,
    plus petite qu'en Belgicisme, est volontaire : ce mode n'a pas de drapeau
    de fond à révéler (pas de `::before` débordant ici), juste un peu d'air
-   autour du panneau — pas besoin d'un espace aussi généreux. */
+   autour du panneau — pas besoin d'un espace aussi généreux. Belgicisme
+   reprend désormais la même valeur en bas (issue #304) : elle ne l'avait
+   jamais eue (seul `margin-top` y avait été posé), asymétrie invisible côté
+   Belgicisme (le panneau y est un pseudo-élément flottant, pas de bord de
+   fenêtre proche) mais qui aurait recréé l'écart une fois les deux marges
+   externes comparées.
+   `padding-bottom` porté à 40px (issue #304) : en Belgicisme, le panneau visible
+   est `.container::before`, qui déborde de 20px sous le bord réel de
+   `.container` (`bottom: -20px` ci-dessus) — au 20px de padding hérité de
+   `.container` s'ajoutent donc 20px, soit 40px d'air sous le dernier bouton
+   avant le bord du panneau. En France, `.container` EST le panneau (peint
+   directement, pas de pseudo-élément) : ses seuls 20px de padding hérités
+   laissaient le panneau s'arrêter net sous les boutons, sans l'équivalent
+   des 20px de débord belge. 40px explicite ici recrée la même hauteur
+   perçue dans les deux modes. */
 body:not(.mode-belgicisme) .container {
     background: white;
     border-radius: 16px;
     overflow: hidden;
     margin-top: 1.5rem;
     margin-bottom: 1.5rem;
+    padding-bottom: 40px;
 }
 
 /* En-tête */
@@ -435,6 +451,25 @@ header {
 .btn-reglages:disabled {
     opacity: 0.55;
     cursor: default;
+}
+
+/* Bouton réglages sur fond blanc en mode France (issue #304, suite de #302) :
+   le style ci-dessus (icône blanche sur noir semi-transparent à 18/32%) est
+   pensé pour le tapis vert visible derrière le bouton dans les autres écrans
+   (jeu.html) et en mode Belgicisme (image de fond sombre). Depuis #296, le
+   panneau `.container` est peint en blanc opaque sur toute sa hauteur en
+   mode France, y compris sous le bouton réglages : une icône blanche sur un
+   voile noir à 18% y devient un gris clair quasi invisible sur fond blanc.
+   Inversion vers une icône sombre sur voile noir plus opaque, cohérente avec
+   le texte `#1a1a1a` déjà utilisé ailleurs sur ce panneau. */
+body:not(.mode-belgicisme) .btn-reglages {
+    background: rgba(0, 0, 0, 0.12);
+    color: #333;
+}
+
+body:not(.mode-belgicisme) .btn-reglages:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.22);
+    color: #111;
 }
 
 /* Texte de secours pour `header h1` (issue #77, suite de #75) : conservé au
@@ -514,19 +549,31 @@ header h1 {
     margin-right: 1.2rem;
 }
 
-/* ":" final du sous-titre (issue #298) : `<span>` texte nu, volontairement
-   SANS la classe `.lettre-scrabble` (voir choix expliqué dans accueil.html).
-   `#1a1a1a` directement (pas de variante par mode) : le panneau `.container`
-   est blanc/translucide dans les deux modes depuis #296, donc le même texte
-   sombre reste lisible partout — même couleur que les titres de section en
-   mode Belgicisme (`body.mode-belgicisme section h2` ci-dessus). `font-size`/
-   `font-weight` repris du `.sous-titre-tuiles .lettre-scrabble` voisin. */
-.sous-titre-deux-points {
+/* ":" final du sous-titre en tuile complète (issue #304, remplace le texte nu
+   de #298 : voir choix expliqué dans accueil.html). Reprend exactement le
+   gabarit de `.sous-titre-tuiles .lettre-scrabble` (mêmes tailles/couleurs/
+   relief) plutôt que de dépendre de ce sélecteur descendant : `.lettre-
+   scrabble` seul (posé en plus sur ce span dans le HTML) suffirait presque,
+   mais une règle dédiée évite tout couplage fragile si `.sous-titre-tuiles
+   .lettre-scrabble` change de forme un jour. L'espace avant le ":" est géré
+   par `.fin-mot-sous-titre` sur le "u" de "jeu", pas ici. */
+.sous-titre-deux-points-tuile {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     font-size: clamp(0.65rem, 1.5vw, 0.85rem);
+    width: clamp(1.1rem, 2.2vw, 1.4rem);
+    height: clamp(1.1rem, 2.2vw, 1.4rem);
+    background: #f5e6c8;
+    color: #4a3418;
     font-weight: 700;
-    color: #1a1a1a;
+    line-height: 1;
+    border-radius: 3px;
+    border: 1px solid #caa02c;
+    box-shadow:
+        inset 1px 1px 0 rgba(255, 250, 230, 0.8),
+        inset -1px -1px 0 rgba(120, 80, 10, 0.65),
+        0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 /* Cercles-drapeaux du mode dictionnaire (issue #269), sous le sous-titre. */

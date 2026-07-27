@@ -30,15 +30,16 @@
                  directement visibles sans passer par le choix du
                  dictionnaire), même principe que le titre et les titres de
                  section : chaque lettre est une tuile individuelle. Le ":"
-                 final est un `<span>` à part, SANS la classe
-                 `.lettre-scrabble` (issue #298) : un signe de ponctuation
-                 dans une tuile crème/dorée aurait été lu comme une lettre à
-                 part entière (aspect visuel incohérent) ; en texte nu il se
-                 lit naturellement comme la marque de fin d'étiquette. Classe
-                 `.fin-mot-sous-titre` (et non `.fin-mot`) sur la dernière
-                 lettre de chaque mot : espacement inter-mots propre à ce
-                 sous-titre, sans toucher `.fin-mot` utilisé ailleurs
-                 (issue #301). -->
+                 final est désormais lui aussi une tuile complète, classe
+                 `.sous-titre-deux-points-tuile` (issue #304, remplace le
+                 texte nu de #298 : sur le fond blanc pleine hauteur du
+                 panneau depuis #296, un ":" en texte nu tranchait avec les
+                 tuiles crème/dorées environnantes ; en tuile il s'intègre au
+                 même langage visuel que "Type"/"de"/"jeu"). `.fin-mot-
+                 sous-titre` (et non `.fin-mot`, issue #301) sur le "u" de
+                 "jeu" fait aussi office d'espace avant le ":" — pas de
+                 marge supplémentaire nécessaire sur la tuile du ":" elle-
+                 même. -->
             <p class="sous-titre-tuiles">
               <span class="lettre-scrabble">T</span><span
               class="lettre-scrabble">y</span><span
@@ -48,8 +49,8 @@
               class="lettre-scrabble fin-mot-sous-titre">e</span><span
               class="lettre-scrabble">j</span><span
               class="lettre-scrabble">e</span><span
-              class="lettre-scrabble">u</span><span
-              class="sous-titre-deux-points">:</span>
+              class="lettre-scrabble fin-mot-sous-titre">u</span><span
+              class="lettre-scrabble sous-titre-deux-points-tuile">:</span>
             </p>
         </header>
 
