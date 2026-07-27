@@ -1,29 +1,22 @@
-# Idées et tâches en attente — Projet Scrabble
+# Tâches en attente — Projet Scrabble
 
-Notes diverses à traiter plus tard, pour ne pas perdre le fil entre les
-sessions.
--Pour les boutons "Passer" et "Remettre toute ses lettres et passer" -> modal de confirmation
--Rendre plus lisible le bouton "Remettre toute ses lettre et passer"
--Le selecteur de lettre pour le joker est tronqué
--Evaluation de la partie en fonction des points: Échelle d'évaluation des scores Moins de 300 points : Niveau débutant ou partie avec de nombreuses lettres mortes.  De 300 à 400 points : Niveau intermédiaire (joueur occasionnel).  De 400 à 500 points : Bon niveau. Vous arrivez à placer des scrabbles et optimiser les cases multiplicatrices.  Plus de 500 points : Niveau expert ou compétiteur.  -> il faut vérifier si cette évaluation change pour une partie a 2, 3 ou 4 joueurs.
--Lors de la creeation de partie, comme on a abandonné l'idée de plusieurs joueurs humains, il faut sélectionner d'office le joueur humain sans qu'on doive l'ajouter a la main.
--En fin de partie, mettre le tableau de classement dans une modal(Retour menu, Rester sur la partie, Recommencer)
--Dans réglage, pouvoir choisir son avatar(aucun ordi ne peut prendre l'avatar choisi)
--Quand vérifier dictionnaire perd le focus il se referme, il faut que derniers coups fasse de meme.
--Afficher tous les coups du jeu dans derniers coups(les coups les plus récent en haut)
+## À vérifier avant implémentation
 
-##Creer un fichier meilleurs score
-Creer un fichiers meilleur score répartis en 3 catégories(1vs1, 1vs2, 1vs3) et par niveaux(Débutant, facile, Intermédiaire, Avancé, Expert)
-Garder les 10 meilleurs score par combinaison catégorie/niveau
+- **Évaluation de la partie** : afficher en fin de jeu une évaluation
+  du score selon une échelle (< 300 pts : débutant, 300-400 : intermédiaire,
+  400-500 : bon niveau, > 500 : expert). Vérifier si l'échelle doit varier
+  selon le nombre de joueurs (1v1, 1v2, 1v3).
 
-## Creer TextField constemment visible pourle dictionnaire
+- **Fichier meilleurs scores** : 3 catégories (1v1, 1v2, 1v3) × 5 niveaux
+  (Débutant, Facile, Intermédiaire, Avancé, Expert), top 10 par combinaison.
+  Vérifier l'état actuel avant de chiffrer le chantier.
 
-Vu la fréquence d'utilisation du dictionnaire dans l'écran de jeu observée, il faut remplacer le bouton loupe, ouvrant un textfield pour chercher la définition d'un mot par le textefield accessible directement dans l'ecran
+- **Gestion d'erreurs silencieuses dans accueil.py** : plusieurs
+  `except` avalent les erreurs sans log (ex. `sauvegarder_prenom_principal`).
+  Pas bloquant, mais à durcir/logger si un bug de sauvegarde apparaît.
 
-## Point de vigilance : gestion d'erreurs dans accueil.py
+## À implémenter
 
-Dans `src/scrabble/ui/accueil.py`, plusieurs `except (KeyError, TypeError,
-Exception)` avalent les erreurs silencieusement (ex.
-`sauvegarder_prenom_principal` retourne juste `False` sur toute erreur,
-sans log). Pas bloquant, mais à durcir/logger si un bug de sauvegarde
-apparaît en pratique.
+- **TextField dictionnaire constamment visible** : remplacer le bouton
+  loupe dans l'écran de jeu par un champ de recherche directement
+  accessible, sans clic préalable.
