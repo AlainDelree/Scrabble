@@ -232,9 +232,10 @@ body.mode-belgicisme .container::before {
    au-dessus de `.container::before`), au-delà du seuil WCAG AA (4.5:1).
    `header h1` n'est PLUS dans cette liste depuis #290 : le titre est
    désormais composé de tuiles de Scrabble opaques par lettre (voir plus
-   bas), dont le contraste ne dépend pas de l'opacité du panneau. */
-body.mode-belgicisme .subtitle,
-body.mode-belgicisme .drapeau-legende,
+   bas), dont le contraste ne dépend pas de l'opacité du panneau.
+   `.subtitle` non plus depuis #296 (sous-titre passé en tuiles, même
+   raisonnement) ; `.drapeau-legende` a disparu du HTML au même moment
+   (étiquettes "France"/"Belgique" supprimées sous les cercles). */
 body.mode-belgicisme section h2,
 body.mode-belgicisme .compteur,
 body.mode-belgicisme .liste-joueurs .vide,
@@ -256,11 +257,28 @@ body.mode-belgicisme .message-limite {
     text-shadow: none;
 }
 
-/* Titre en tuiles de Scrabble (issue #290), mode Belgicisme uniquement.
+/* Même correction pour le mode France (issue #296) : `.message-limite` est
+   ajouté après `.zone-boutons` (accueil.js), donc à l'intérieur de
+   `.container` — désormais peint en blanc sur toute sa hauteur en mode
+   France (voir `body:not(.mode-belgicisme) .container` plus bas). Le rose
+   clair par défaut, pensé pour le tapis vert, devient quasi invisible sur ce
+   fond blanc, comme constaté pour le mode Belgicisme en #292. */
+body:not(.mode-belgicisme) .message-limite {
+    color: var(--couleur-danger);
+    text-shadow: none;
+}
+
+/* Titre en tuiles de Scrabble (issue #290, étendu aux deux modes en #296).
    Le HTML (accueil.html) découpe "Scrabble" en 8 `<span class="lettre-
-   scrabble">` ; en mode France, aucune règle ne cible cette classe, le texte
-   s'affiche comme un h1 normal (blanc, cf. règle générale `header h1` plus
-   bas). Ici, chaque lettre devient une tuile individuelle :
+   scrabble">`. Jusqu'à #296, ce style était scopé à `body.mode-belgicisme` :
+   en mode France, aucune règle ne ciblait cette classe, le texte s'affichait
+   comme un h1 normal (blanc, cf. règle générale `header h1` plus bas). Le
+   scope est retiré depuis #296 : le panneau `.container` étant désormais
+   blanc pleine hauteur dans les deux modes (voir `body:not(.mode-
+   belgicisme) .container` plus bas), les tuiles reposent sur fond blanc en
+   France comme en Belgicisme — leur fond crème/contour doré opaques
+   restent contrastés indépendamment de la couleur derrière. Ici, chaque
+   lettre devient une tuile individuelle :
    - fond crème `#f5e6c8` (teinte jaune/crème façon tuile réelle, cohérente
      avec le jaune du drapeau belge) ;
    - contour doré `#caa02c` + ombres internes (clair en haut-gauche, sombre
@@ -291,7 +309,7 @@ body.mode-belgicisme .message-limite {
    dans laquelle `justify-content: center` centre les tuiles, les décalant
    d'autant vers la gauche : espace réservé au bouton à toutes les largeurs
    de fenêtre, sans dépendre d'un calcul de largeur de tuiles fragile. */
-body.mode-belgicisme header h1 {
+header h1 {
     display: flex;
     justify-content: center;
     align-items: center;
@@ -300,7 +318,7 @@ body.mode-belgicisme header h1 {
     padding-right: 56px;
 }
 
-body.mode-belgicisme header h1 .lettre-scrabble {
+header h1 .lettre-scrabble {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -357,6 +375,26 @@ body.mode-belgicisme .parties-en-cours:has(.vide) {
     padding: 20px;
 }
 
+/* Panneau blanc pleine hauteur en mode France (issue #296, suite de #295) :
+   `.zone-centrale` ne couvrait que les sections Joueurs/Continuer, laissant
+   le titre et les cercles-drapeaux directement sur le tapis vert — asymétrie
+   avec le mode Belgicisme, où `.container::before` couvre déjà tout le
+   contenu (titre inclus, cf. #289). Ici on peint directement `.container`
+   plutôt que d'ajouter un pseudo-élément superposé : le mode France n'a pas
+   besoin de déborder sur les côtés comme le panneau translucide belge (pas
+   de voile tricolore à laisser transparaître dans les marges), donc pas
+   besoin du `position: relative` + `::before` + `z-index: -1` utilisés en
+   Belgicisme. `overflow: hidden` évite que les coins arrondis des enfants
+   (zone-centrale, etc.) débordent du rayon du panneau. `:not(.mode-
+   belgicisme)` exclut explicitement le mode Belgicisme : celui-ci reste géré
+   par son propre panneau translucide (`.container::before`), sans peindre
+   `.container` lui-même en blanc opaque par-dessus. */
+body:not(.mode-belgicisme) .container {
+    background: white;
+    border-radius: 16px;
+    overflow: hidden;
+}
+
 /* En-tête */
 header {
     text-align: center;
@@ -392,26 +430,73 @@ header {
     cursor: default;
 }
 
-/* Textes sur le tapis vert (issue #77, suite de #75). Le titre était en vert
-   primaire (var(--couleur-primaire)) : vert sur vert, quasi illisible depuis
-   l'ajout du fond en feutre (issue #75). On le passe en blanc franc avec une
-   ombre portée légère, reprenant EXACTEMENT le traitement du décor « SCRABBLE »
-   de l'écran de jeu (issue #70) : contraste large et confortable, pensé pour une
-   lecture aisée par un public âgé (> 80 ans). Blanc pur (#fff) sur le vert
-   #35654d ≈ 6:1, au-delà du seuil WCAG AA (4.5:1). */
+/* Texte de secours pour `header h1` (issue #77, suite de #75) : conservé au
+   cas où le h1 contiendrait un jour du texte brut plutôt que des tuiles
+   (blanc franc + ombre portée, pensé à l'origine pour le tapis vert). Depuis
+   #290/#296, le h1 ne contient plus que des `.lettre-scrabble` (tuiles
+   opaques, dans les deux modes désormais) : ni la couleur ni l'ombre ne sont
+   donc visibles en pratique. `margin-bottom` retiré d'ici (issue #296) : il
+   ferait doublon avec celui, plus généreux (14px), de la règle `header h1`
+   ci-dessous qui gère l'espacement réel du conteneur de tuiles — même
+   sélecteur, même spécificité, deux valeurs différentes auraient créé un
+   conflit d'ordre de cascade fragile. */
 header h1 {
     font-size: 2rem;
     color: #ffffff;
-    margin-bottom: 4px;
     text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
-/* Sous-titre : gris #666 (prévu pour un fond clair) illisible sur le vert. Blanc
-   très légèrement adouci + ombre portée pour rester net sans dureté. */
-.subtitle {
-    color: rgba(255, 255, 255, 0.92);
-    font-size: 0.95rem;
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+/* Sous-titre "Configuration de la partie" en tuiles (issue #296), même
+   principe que le titre principal (`header h1`) et les titres de section
+   (`.titre-section-tuiles`) : chaque lettre est une tuile de Scrabble
+   opaque, dans les deux modes. Tuiles nettement plus petites que celles du
+   titre (clamp 0.65-0.85rem de police contre 2.2rem) — un sous-titre reste
+   un sous-titre, pas un second titre principal.
+
+   Contrairement au titre et aux titres de section, ce groupe de tuiles n'a
+   PAS de base commune à hériter (chacun des deux autres définit sa propre
+   copie complète fond/bordure/relief, aucune n'est factorisée dans une
+   règle `.lettre-scrabble` non préfixée) : la première version de cette
+   règle ne posait que la taille, en s'appuyant à tort sur un style de base
+   supposé — capture WebKitGTK à l'appui (texte plat sans tuile visible),
+   corrigé en ajoutant ici la même recette complète que les deux autres
+   groupes, à l'échelle réduite de ce sous-titre. */
+.sous-titre-tuiles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    justify-content: center;
+    margin: 0.3rem 0 0.6rem;
+}
+
+.sous-titre-tuiles .lettre-scrabble {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(0.65rem, 1.5vw, 0.85rem);
+    width: clamp(1.1rem, 2.2vw, 1.4rem);
+    height: clamp(1.1rem, 2.2vw, 1.4rem);
+    background: #f5e6c8;
+    color: #4a3418;
+    font-weight: 700;
+    line-height: 1;
+    border-radius: 3px;
+    border: 1px solid #caa02c;
+    box-shadow:
+        inset 1px 1px 0 rgba(255, 250, 230, 0.8),
+        inset -1px -1px 0 rgba(120, 80, 10, 0.65),
+        0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* `.fin-mot` (issue #296) : sur la dernière lettre de chaque mot sauf le
+   dernier, dans un groupe de tuiles lettre par lettre (`.sous-titre-tuiles`
+   ou `.titre-section-tuiles`, ex. "Configuration de la partie" ou "Parties
+   en cours"). Simule l'espace inter-mots par un margin-right, faute
+   d'espace typographique visible entre des tuiles individuelles. Règle
+   générique (non préfixée) : le même balisage/la même classe sert dans les
+   deux contextes. */
+.fin-mot {
+    margin-right: 0.4rem;
 }
 
 /* Cercles-drapeaux du mode dictionnaire (issue #269), sous le sous-titre. */
@@ -493,12 +578,6 @@ header h1 {
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
 
-.drapeau-legende {
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 0.8rem;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-}
-
 /* Sections */
 section {
     margin-bottom: 24px;
@@ -518,13 +597,15 @@ section h2 {
     text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
-/* Titres de section en tuiles Scrabble (issue #295) : « Joueurs » et
-   « Continuer » reprennent le principe des tuiles du titre principal (fond
-   crème, contour doré, relief), en plus petit et alignées à gauche plutôt que
-   centrées. Contrairement aux tuiles du `header h1` (réservées au mode
-   Belgicisme, cf. commentaire plus haut), celles-ci sont volontairement NON
-   scopées à `body.mode-belgicisme` : le texte de l'issue demande qu'elles
-   s'affichent aussi en mode France, posées directement sur le tapis vert. */
+/* Titres de section en tuiles Scrabble (issue #295, « Continuer » renommé
+   « Parties en cours » en #296) : « Joueurs » et « Parties en cours »
+   reprennent le principe des tuiles du titre principal (fond crème, contour
+   doré, relief), en plus petit et alignées à gauche plutôt que centrées.
+   Non scopées à `body.mode-belgicisme` depuis l'origine (#295) : le texte de
+   l'issue demandait qu'elles s'affichent aussi en mode France, posées
+   directement sur le tapis vert — ce que fait désormais aussi `header h1`
+   depuis #296 (cf. commentaire plus haut), la distinction entre les deux
+   n'existe donc plus. */
 .titre-section-tuiles {
     display: flex;
     flex-wrap: wrap;

@@ -15,16 +15,45 @@
         <header>
             <button id="btn-reglages" class="btn-reglages" title="Réglages"
                     aria-label="Réglages">⚙</button>
-            <!-- Lettres découpées en <span> individuels (issue #290) : en mode
-                 France, ce balisage est invisible (aucune règle CSS hors
-                 `body.mode-belgicisme` ne cible `.lettre-scrabble`, le texte
-                 s'affiche comme un h1 normal). En mode Belgicisme uniquement,
-                 accueil.css transforme chaque span en tuile de Scrabble
-                 individuelle (fond crème, contour doré, relief). Généré
-                 statiquement ici plutôt qu'en JS : le texte "Scrabble" est
-                 fixe, pas besoin de complexité dynamique pour 8 lettres. -->
+            <!-- Lettres découpées en <span> individuels (issue #290, tuiles
+                 étendues au mode France en #296) : accueil.css transforme
+                 chaque span en tuile de Scrabble individuelle (fond crème,
+                 contour doré, relief), dans les deux modes désormais — le
+                 panneau `.container` étant blanc pleine hauteur dans les
+                 deux modes depuis #296. Généré statiquement ici plutôt qu'en
+                 JS : le texte "Scrabble" est fixe, pas besoin de complexité
+                 dynamique pour 8 lettres. -->
             <h1><span class="lettre-scrabble">S</span><span class="lettre-scrabble">c</span><span class="lettre-scrabble">r</span><span class="lettre-scrabble">a</span><span class="lettre-scrabble">b</span><span class="lettre-scrabble">b</span><span class="lettre-scrabble">l</span><span class="lettre-scrabble">e</span></h1>
-            <p class="subtitle">Configuration de la partie</p>
+            <!-- Sous-titre en tuiles (issue #296), même principe que le titre
+                 et les titres de section : chaque lettre est une tuile
+                 individuelle ; les 4 mots sont séparés par un margin-right de
+                 0.4rem posé sur la dernière lettre de chaque mot (sauf le
+                 dernier mot), via la classe `.fin-mot` (voir accueil.css). -->
+            <p class="sous-titre-tuiles">
+              <span class="lettre-scrabble">C</span><span
+              class="lettre-scrabble">o</span><span
+              class="lettre-scrabble">n</span><span
+              class="lettre-scrabble">f</span><span
+              class="lettre-scrabble">i</span><span
+              class="lettre-scrabble">g</span><span
+              class="lettre-scrabble">u</span><span
+              class="lettre-scrabble">r</span><span
+              class="lettre-scrabble">a</span><span
+              class="lettre-scrabble">t</span><span
+              class="lettre-scrabble">i</span><span
+              class="lettre-scrabble">o</span><span
+              class="lettre-scrabble fin-mot">n</span><span
+              class="lettre-scrabble">d</span><span
+              class="lettre-scrabble fin-mot">e</span><span
+              class="lettre-scrabble">l</span><span
+              class="lettre-scrabble fin-mot">a</span><span
+              class="lettre-scrabble">p</span><span
+              class="lettre-scrabble">a</span><span
+              class="lettre-scrabble">r</span><span
+              class="lettre-scrabble">t</span><span
+              class="lettre-scrabble">i</span><span
+              class="lettre-scrabble">e</span>
+            </p>
         </header>
 
         <!-- Mode dictionnaire régional (issue #269) : choix exclusif entre le
@@ -36,19 +65,21 @@
              couvert ici. -->
         <div class="mode-dictionnaire" role="radiogroup"
              aria-label="Mode de dictionnaire, France ou Belgique">
+            <!-- Étiquettes texte "France"/"Belgique" retirées sous les cercles
+                 (issue #296) : les cercles-drapeaux restent seuls, avec leur
+                 `aria-label`/`title` déjà porteurs du même texte pour
+                 l'accessibilité. -->
             <div class="drapeau-choix">
                 <button type="button" class="drapeau-cercle drapeau-france actif"
                         id="drapeau-france" role="radio" aria-checked="true"
                         aria-label="Dictionnaire France (choix par défaut)"
                         title="Dictionnaire France"></button>
-                <span class="drapeau-legende">France</span>
             </div>
             <div class="drapeau-choix">
                 <button type="button" class="drapeau-cercle drapeau-belgique"
                         id="drapeau-belgique" role="radio" aria-checked="false"
                         aria-label="Mode Belgicisme (Belgique)"
                         title="Mode Belgicisme"></button>
-                <span class="drapeau-legende">Belgique</span>
             </div>
         </div>
 
@@ -81,16 +112,26 @@
                 </section>
 
                 <section class="reprise" id="section-reprise">
+                    <!-- "Continuer" (9 tuiles) remplacé par "Parties en cours"
+                         (issue #296) : 14 lettres tiennent confortablement
+                         dans la zone centrale même à 700px de large (cf.
+                         rapport). `.fin-mot` sépare les 3 mots (voir
+                         accueil.css). -->
                     <h2 class="titre-section-tuiles">
-                      <span class="lettre-scrabble">C</span><span
-                      class="lettre-scrabble">o</span><span
-                      class="lettre-scrabble">n</span><span
+                      <span class="lettre-scrabble">P</span><span
+                      class="lettre-scrabble">a</span><span
+                      class="lettre-scrabble">r</span><span
                       class="lettre-scrabble">t</span><span
                       class="lettre-scrabble">i</span><span
-                      class="lettre-scrabble">n</span><span
-                      class="lettre-scrabble">u</span><span
                       class="lettre-scrabble">e</span><span
-                      class="lettre-scrabble">r</span>
+                      class="lettre-scrabble fin-mot">s</span><span
+                      class="lettre-scrabble">e</span><span
+                      class="lettre-scrabble fin-mot">n</span><span
+                      class="lettre-scrabble">c</span><span
+                      class="lettre-scrabble">o</span><span
+                      class="lettre-scrabble">u</span><span
+                      class="lettre-scrabble">r</span><span
+                      class="lettre-scrabble">s</span>
                     </h2>
                     <div id="parties-en-cours" class="parties-en-cours">
                         <p class="vide">Aucune partie enregistrée.</p>
