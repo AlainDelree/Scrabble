@@ -1639,6 +1639,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         definitionBrouillon.hidden = true;
     }
 
+    // Vide le champ et le verdict/définition affichés quand le focus quitte
+    // complètement la zone dictionnaire (issue #311, suite #308/#310).
+    function reinitialiserVerifDictionnaire() {
+        champVerif.value = '';
+        afficherMessageBrouillon('', null);
+        masquerDefinitionBrouillon();
+    }
+
     async function verifierMotDictionnaire() {
         const mot = champVerif.value;
         if (!mot.trim()) {
@@ -1676,6 +1684,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             verifierMotDictionnaire();
         }
     });
+
+    // Vide le champ et le verdict/définition dès que le focus quitte
+    // complètement la zone (clic ailleurs sur la page), issue #311.
+    document.querySelector('.zone-dico-permanente')
+        .addEventListener('focusout', (e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) {
+                reinitialiserVerifDictionnaire();
+            }
+        });
 
     // ------------------------------------------------------------------ //
     // Encart d'historique glissant : ouverture/fermeture + clic sur une ligne
