@@ -25,29 +25,30 @@
                  dynamique pour 8 lettres. -->
             <h1><span class="lettre-scrabble">S</span><span class="lettre-scrabble">c</span><span class="lettre-scrabble">r</span><span class="lettre-scrabble">a</span><span class="lettre-scrabble">b</span><span class="lettre-scrabble">b</span><span class="lettre-scrabble">l</span><span class="lettre-scrabble">e</span></h1>
             <!-- Sous-titre en tuiles (issue #296, remplacé "Configuration de
-                 la partie" → "Dictionnaires :" en #298), même principe que le
-                 titre et les titres de section : chaque lettre est une tuile
-                 individuelle. Le ":" final est un `<span>` à part, SANS la
-                 classe `.lettre-scrabble` (issue #298) : un signe de
-                 ponctuation dans une tuile crème/dorée aurait été lu comme une
-                 lettre à part entière (aspect visuel incohérent) ; en texte
-                 nu il se lit naturellement comme la marque de fin d'étiquette
-                 ("Dictionnaires :" introduisant le choix France/Belgique
-                 juste en dessous), cf. rapport. -->
+                 la partie" → "Dictionnaires :" en #298, puis "Type de jeu :"
+                 en #301 — les 5 boutons de niveau ci-dessous étant désormais
+                 directement visibles sans passer par le choix du
+                 dictionnaire), même principe que le titre et les titres de
+                 section : chaque lettre est une tuile individuelle. Le ":"
+                 final est un `<span>` à part, SANS la classe
+                 `.lettre-scrabble` (issue #298) : un signe de ponctuation
+                 dans une tuile crème/dorée aurait été lu comme une lettre à
+                 part entière (aspect visuel incohérent) ; en texte nu il se
+                 lit naturellement comme la marque de fin d'étiquette. Classe
+                 `.fin-mot-sous-titre` (et non `.fin-mot`) sur la dernière
+                 lettre de chaque mot : espacement inter-mots propre à ce
+                 sous-titre, sans toucher `.fin-mot` utilisé ailleurs
+                 (issue #301). -->
             <p class="sous-titre-tuiles">
-              <span class="lettre-scrabble">D</span><span
-              class="lettre-scrabble">i</span><span
-              class="lettre-scrabble">c</span><span
-              class="lettre-scrabble">t</span><span
-              class="lettre-scrabble">i</span><span
-              class="lettre-scrabble">o</span><span
-              class="lettre-scrabble">n</span><span
-              class="lettre-scrabble">n</span><span
-              class="lettre-scrabble">a</span><span
-              class="lettre-scrabble">i</span><span
-              class="lettre-scrabble">r</span><span
+              <span class="lettre-scrabble">T</span><span
+              class="lettre-scrabble">y</span><span
+              class="lettre-scrabble">p</span><span
+              class="lettre-scrabble fin-mot-sous-titre">e</span><span
+              class="lettre-scrabble">d</span><span
+              class="lettre-scrabble fin-mot-sous-titre">e</span><span
+              class="lettre-scrabble">j</span><span
               class="lettre-scrabble">e</span><span
-              class="lettre-scrabble">s</span><span
+              class="lettre-scrabble">u</span><span
               class="sous-titre-deux-points">:</span>
             </p>
         </header>

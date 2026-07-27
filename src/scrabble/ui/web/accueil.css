@@ -506,6 +506,14 @@ header h1 {
     margin-right: 0.4rem;
 }
 
+/* `.fin-mot-sous-titre` (issue #301) : variante d'espacement inter-mots
+   propre au sous-titre "Type de jeu :", plus large que `.fin-mot` (qui reste
+   inchangé et utilisé ailleurs) pour bien distinguer "Type" / "de" / "jeu"
+   malgré la taille réduite des tuiles de sous-titre. */
+.fin-mot-sous-titre {
+    margin-right: 1.2rem;
+}
+
 /* ":" final du sous-titre (issue #298) : `<span>` texte nu, volontairement
    SANS la classe `.lettre-scrabble` (voir choix expliqué dans accueil.html).
    `#1a1a1a` directement (pas de variante par mode) : le panneau `.container`
@@ -755,9 +763,7 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
     min-width: 0;
     font-size: 0.85rem;
     padding: 8px 4px;
-    background: var(--couleur-ordinateur-fond);
-    color: var(--couleur-ordinateur);
-    border: 2px solid var(--couleur-ordinateur);
+    border: 2px solid;
     border-radius: var(--rayon-bordure);
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
@@ -766,9 +772,49 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
     text-overflow: ellipsis;
 }
 
-.zone-boutons .btn-niveau:hover:not(:disabled) {
-    background: var(--couleur-ordinateur);
-    color: white;
+/* Dégradé crème → brun du plus clair (Débutant) au plus foncé (Expert),
+   couleur de police basculée vers blanc dès que le fond devient trop
+   sombre pour garantir le contraste WCAG AA (issue #301). */
+.zone-boutons .btn-niveau[data-niveau="Débutant"] {
+    background: #f5e6c8;
+    color: #4a3418;
+    border-color: #caa02c;
+}
+.zone-boutons .btn-niveau[data-niveau="Facile"] {
+    background: #e8c97a;
+    color: #4a3418;
+    border-color: #b8920a;
+}
+.zone-boutons .btn-niveau[data-niveau="Intermédiaire"] {
+    background: #c9963c;
+    color: #4a3418;
+    border-color: #9b6b1e;
+}
+.zone-boutons .btn-niveau[data-niveau="Avancé"] {
+    background: #9b6b1e;
+    color: #ffffff;
+    border-color: #7a5010;
+}
+.zone-boutons .btn-niveau[data-niveau="Expert"] {
+    background: #5c3d0a;
+    color: #ffffff;
+    border-color: #3d2606;
+}
+
+.zone-boutons .btn-niveau[data-niveau="Débutant"]:hover:not(:disabled) {
+    background: #e8c97a;
+}
+.zone-boutons .btn-niveau[data-niveau="Facile"]:hover:not(:disabled) {
+    background: #c9963c; color: #4a3418;
+}
+.zone-boutons .btn-niveau[data-niveau="Intermédiaire"]:hover:not(:disabled) {
+    background: #9b6b1e; color: #ffffff;
+}
+.zone-boutons .btn-niveau[data-niveau="Avancé"]:hover:not(:disabled) {
+    background: #7a5010;
+}
+.zone-boutons .btn-niveau[data-niveau="Expert"]:hover:not(:disabled) {
+    background: #3d2606;
 }
 
 .zone-boutons .btn-niveau:disabled {
