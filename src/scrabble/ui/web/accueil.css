@@ -689,6 +689,20 @@ body:not(.mode-belgicisme) .titre-section-tuiles .lettre-scrabble {
     background: #ffffff;
 }
 
+/* Essai visuel (issue #302) : en mode France, surclasse le blanc uni
+   ci-dessus par le même tapis vert que le fond de `body` (dégradé radial
+   défini tout en haut de ce fichier), en miroir de la bande tricolore
+   ajoutée plus bas pour le mode Belgicisme — objectif de cohérence
+   visuelle symétrique entre les deux modes. Les cartes Joueurs/Parties en
+   cours gardent leur propre fond blanc opaque (`.liste-joueurs`,
+   `.parties-en-cours` ci-dessous) : seuls les espaces entre elles et les
+   titres en tuiles se retrouvent sur ce vert plutôt que sur du blanc. */
+body:not(.mode-belgicisme) .zone-centrale {
+    background: var(--tapis-vert);
+    background-image:
+        radial-gradient(120% 90% at 50% 30%, var(--tapis-vert-clair) 0%, var(--tapis-vert) 55%, var(--tapis-vert-fonce) 100%);
+}
+
 /* Les sections Joueurs/Continuer perdent leur marge de section générique
    (24px) une fois réunies dans `.zone-centrale` : sans ce nettoyage (issue
    #295, point 2g), la marge du bas de `.table-joueurs` créait un vide blanc
