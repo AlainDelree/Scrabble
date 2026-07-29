@@ -405,3 +405,40 @@
         creerModaleScore,
     };
 })();
+
+const AVATARS_F = ["avatar-02", "avatar-08", "avatar-10"];
+const AVATARS_M = ["avatar-01", "avatar-03", "avatar-04", "avatar-05",
+    "avatar-06", "avatar-07", "avatar-09", "avatar-11", "avatar-12",
+    "avatar-13", "avatar-14", "avatar-15"];
+const AVATARS = ["avatar-01", "avatar-02", "avatar-03", "avatar-04",
+    "avatar-05", "avatar-06", "avatar-07", "avatar-08", "avatar-09",
+    "avatar-10", "avatar-11", "avatar-12", "avatar-13", "avatar-14",
+    "avatar-15"];
+
+function avatarPour(i) {
+    return AVATARS[((i % AVATARS.length) + AVATARS.length) % AVATARS.length];
+}
+
+function elementAvatar(nomFichier, className) {
+    const img = document.createElement("img");
+    img.src = `avatars/${nomFichier}.svg`;
+    img.alt = "";
+    img.className = className || "avatar-svg";
+    return img;
+}
+
+function avatarAleatoirePourPrenom(prenom, exclus) {
+    const g = typeof genrePrenom === "function" ? genrePrenom(prenom) : null;
+    const liste = g === "F" ? AVATARS_F : g === "M" ? AVATARS_M : AVATARS;
+    const disponibles = liste.filter(a => !exclus || !exclus.includes(a));
+    const source = disponibles.length > 0 ? disponibles : liste;
+    return source[Math.floor(Math.random() * source.length)];
+}
+
+function avatarStablePourPrenom(prenom) {
+    const g = typeof genrePrenom === "function" ? genrePrenom(prenom) : null;
+    const liste = g === "F" ? AVATARS_F : g === "M" ? AVATARS_M : AVATARS;
+    let hash = 0;
+    for (let i = 0; i < prenom.length; i++) hash += prenom.charCodeAt(i);
+    return liste[hash % liste.length];
+}
