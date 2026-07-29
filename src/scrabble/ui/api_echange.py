@@ -57,21 +57,19 @@ class MixinEchange:
         ``{"succes": False, "erreur": <message clair>}`` — l'état n'est pas
         modifié.
         """
-        from collections import Counter
-
         from scrabble.ui import jeu as mod_jeu
         from scrabble.ui.jeu import echanger_chevalet_complet, index_humain_reference
 
         nom = self._partie.joueur_courant().nom
         nb_avant = len(self._partie.historique)
-        # Capture du chevalet du joueur de référence avant l'échange, pour en
-        # déduire par diff les lettres tout juste piochées (issue #325).
         index_ref = index_humain_reference(self._partie.joueurs)
-        avant = list(self._partie.joueurs[index_ref].chevalet)
         resultat = echanger_chevalet_complet(self._partie, self._id_partie)
         if resultat.get("succes"):
             apres = self._partie.joueurs[index_ref].chevalet
-            self._lettres_pioches = list((Counter(apres) - Counter(avant)).elements())
+            # Échange complet : tout le chevalet est rendu et remplacé, donc
+            # les lettres piochées sont exactement le nouveau chevalet
+            # (issue #326).
+            self._lettres_pioches = list(apres)
             mod_jeu.journal.info(f"Jeu : échange complet du chevalet par {nom}.")
             self._persister_entrees(self._partie.historique[nb_avant:])
             self._finaliser_si_terminee()
@@ -213,7 +211,16 @@ class MixinEchange:
         resultat = echanger_jetons(self._partie, self._id_partie, jetons)
         if resultat.get("succes"):
             apres = self._partie.joueurs[index_ref].chevalet
-            self._lettres_pioches = list((Counter(apres) - Counter(avant)).elements())
+            # Échange partiel : les lettres gardées = avant moins les jetons
+            # échangés (connus précisément) ; les lettres piochées = apres
+            # moins les gardées (issue #326).
+            gardes = list(avant)
+            for j in jetons:
+                if j in gardes:
+                    gardes.remove(j)
+            self._lettres_pioches = list(
+                (Counter(apres) - Counter(gardes)).elements()
+            )
             mod_jeu.journal.info(
                 f"Jeu : échange partiel de {len(jetons)} lettre(s) par {nom}."
             )
