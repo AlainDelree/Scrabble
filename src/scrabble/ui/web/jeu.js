@@ -1008,10 +1008,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 resolve();
             };
             setTimeout(() => {
+                // Forcer le reflow pour que la transition CSS se déclenche
+                // correctement après l'animation d'apparition.
+                overlay.getBoundingClientRect();
                 overlay.classList.add('pioche-overlay-sortie');
-                overlay.addEventListener('transitionend', terminer, { once: true });
-                // Filet de sécurité si l'événement de transition ne se déclenche
-                // pas (calque sans tuile, focus perdu…).
                 setTimeout(terminer, 800);
             }, 900);
         });
