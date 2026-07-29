@@ -2205,3 +2205,84 @@ body.jeu-en-init #message-plateau {
         animation: none;
     }
 }
+
+/* --------------------------------------------------------------------------- */
+/* Animation de pioche : nouvelles lettres en grand au centre (issue #317)      */
+/* --------------------------------------------------------------------------- */
+/* Quand de nouvelles lettres arrivent sur le chevalet (tirage après une pose,
+   échange, passage de tour), le JS (animerNouvellesLettres, jeu.js) crée ce
+   calque plein écran, y place une grande tuile par lettre arrivée, laisse le
+   tout visible ~900ms puis ajoute ``.pioche-overlay-sortie`` : les tuiles
+   glissent vers le bas-gauche (direction du chevalet, situé dans la marge
+   gauche, ``.zone-chevalet``) en s'estompant sur 400ms, avant que le JS ne
+   retire le calque et reconstruise le panneau. Toujours transparent aux clics
+   (pointer-events: none), comme .scrabble-fete/.victoire-fete. */
+.pioche-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    pointer-events: none;
+}
+
+/* Tuiles nettement plus grandes que celles du chevalet (.panneau-case, 40×44px)
+   pour bien marquer l'arrivée des nouvelles lettres. */
+.pioche-tuile {
+    width: 72px;
+    height: 80px;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 2.2rem;
+    text-transform: uppercase;
+    background: var(--tuile-fond);
+    border: 2px solid var(--tuile-bordure);
+    color: var(--tuile-texte);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    animation: pioche-tuile-apparition 0.25s ease-out both;
+    transition: transform 0.4s ease-in, opacity 0.4s ease-in;
+}
+
+.pioche-tuile.joker {
+    border: 2px dashed var(--tuile-joker-bordure);
+    color: var(--tuile-joker-bordure);
+}
+
+.pioche-tuile .val {
+    position: absolute;
+    right: 6px;
+    bottom: 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+@keyframes pioche-tuile-apparition {
+    0%   { opacity: 0; transform: scale(0.5); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* Sortie vers le chevalet : ajoutée par le JS 900ms après l'apparition,
+   déclenche la transition ci-dessus (transform/opacity) sur 400ms. */
+.pioche-overlay-sortie .pioche-tuile {
+    transform: translate(-45vw, 40vh) scale(0.4);
+    opacity: 0;
+}
+
+/* Accessibilité : le JS ne crée même pas ce calque si prefers-reduced-motion
+   est actif (repli silencieux, direct vers reconstruirePanneau). Cette règle
+   ne reste qu'en filet de sécurité si le calque existait déjà avant un
+   changement de préférence en cours de partie. */
+@media (prefers-reduced-motion: reduce) {
+    .pioche-tuile {
+        animation: none;
+        transition: none;
+    }
+}

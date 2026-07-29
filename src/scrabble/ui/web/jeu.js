@@ -935,6 +935,88 @@ document.addEventListener('DOMContentLoaded', async () => {
         panneauSelection = null;
     }
 
+    /** Table d'effectifs {lettre|valeur -> nombre} pour comparer deux chevalets
+     *  sans être sensible à l'ordre (issue #317). */
+    function compterLettres(lettres) {
+        const compte = new Map();
+        (lettres || []).forEach((l) => {
+            const cle = (l.joker ? '*' : l.lettre) + '|' + l.valeur;
+            compte.set(cle, (compte.get(cle) || 0) + 1);
+        });
+        return compte;
+    }
+
+    /** Lettres présentes dans ``nouvelles`` en plus de ``anciennes`` (multi-
+     *  ensemble, issue #317) : celles qui viennent d'arriver sur le chevalet
+     *  (tirage après une pose, échange…), à distinguer des lettres déjà là qui
+     *  n'ont fait que changer de position dans le tableau. */
+    function nouvellesLettresArrivees(anciennes, nouvelles) {
+        const restantes = compterLettres(anciennes);
+        const arrivees = [];
+        (nouvelles || []).forEach((l) => {
+            const cle = (l.joker ? '*' : l.lettre) + '|' + l.valeur;
+            const dispo = restantes.get(cle) || 0;
+            if (dispo > 0) {
+                restantes.set(cle, dispo - 1);
+            } else {
+                arrivees.push(l);
+            }
+        });
+        return arrivees;
+    }
+
+    let animationPiocheEnCours = false;
+
+    /**
+     * Anime l'arrivée de nouvelles lettres sur le chevalet (issue #317) : un
+     * calque plein écran affiche brièvement chaque lettre en grande tuile au
+     * centre de l'écran, puis les fait disparaître vers le bas-gauche (direction
+     * du chevalet, ``.zone-chevalet`` étant dans la marge gauche) avant que
+     * l'appelant ne reconstruise le panneau. Repli silencieux (aucun calque) si
+     * ``prefers-reduced-motion`` est actif — voir ``.panneau-case-vide`` et les
+     * autres animations du fichier pour le même traitement.
+     */
+    function animerNouvellesLettres(lettres) {
+        return new Promise((resolve) => {
+            if (!Array.isArray(lettres) || lettres.length === 0) {
+                resolve();
+                return;
+            }
+            const reduit = window.matchMedia
+                && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (reduit) {
+                resolve();
+                return;
+            }
+
+            animationPiocheEnCours = true;
+            const overlay = document.createElement('div');
+            overlay.className = 'pioche-overlay';
+            overlay.setAttribute('aria-hidden', 'true');
+            lettres.forEach((l) => {
+                const tuile = document.createElement('div');
+                tuile.className = 'pioche-tuile' + (l.joker ? ' joker' : '');
+                const lettreAffichee = l.joker ? '★' : C.escapeHtml(l.lettre);
+                tuile.innerHTML = `${lettreAffichee}<span class="val">${l.valeur}</span>`;
+                overlay.appendChild(tuile);
+            });
+            document.body.appendChild(overlay);
+
+            const terminer = () => {
+                overlay.remove();
+                animationPiocheEnCours = false;
+                resolve();
+            };
+            setTimeout(() => {
+                overlay.classList.add('pioche-overlay-sortie');
+                overlay.addEventListener('transitionend', terminer, { once: true });
+                // Filet de sécurité si l'événement de transition ne se déclenche
+                // pas (calque sans tuile, focus perdu…).
+                setTimeout(terminer, 500);
+            }, 900);
+        });
+    }
+
     /**
      * Applique un état PRIVÉ du chevalet (lettres du joueur de référence). Poussé
      * par Python via ``window.appliquerEtatChevalet`` après toute mutation, ou
@@ -943,6 +1025,8 @@ document.addEventListener('DOMContentLoaded', async () => {
      * déroulant du plateau (issue #168) : rien à faire ici.
      */
     function appliquerEtatChevalet(payload) {
+        const premierAppel = etatChevalet === null;
+        const anciennesLettres = etatChevalet ? etatChevalet.lettres : [];
         etatChevalet = payload || {};
 
         // Changement de tour (issue #100) : ``index_reference`` étant constant pour
@@ -959,8 +1043,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         // changent pas en posant).
         const sig = signatureLettres(etatChevalet.lettres);
         if (sig !== panneauSignature) {
-            reconstruirePanneau();
             panneauSignature = sig;
+            // Lettres tout juste arrivées (pose/échange/passage de tour, issue
+            // #317) : animées au centre avant de rejoindre le panneau. Ni au tout
+            // premier affichage (rien n'est « arrivé », c'est l'état initial), ni
+            // si une animation est déjà en cours (mise à jour rapprochée : on
+            // rebâtit directement pour rester synchrone avec Python).
+            const arrivees = (premierAppel || animationPiocheEnCours)
+                ? []
+                : nouvellesLettresArrivees(anciennesLettres, etatChevalet.lettres);
+            if (arrivees.length > 0) {
+                animerNouvellesLettres(arrivees).then(() => {
+                    reconstruirePanneau();
+                    rendrePanneau();
+                });
+            } else {
+                reconstruirePanneau();
+            }
         }
 
         // Toute pose/annulation remet la sélection Python à null : on aligne la
