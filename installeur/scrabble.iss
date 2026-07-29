@@ -38,7 +38,7 @@ SetupIconFile=..\assets\scrabble.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2
 SolidCompression=yes
-OutputDir=output
+OutputDir=C:\Temp\ScrabbleOutput
 OutputBaseFilename=Scrabble-Setup
 ; Application graphique volumineuse (~90 Mo) : pas de mode "onefile", on
 ; installe le contenu tel quel (cf. [Files] ci-dessous).

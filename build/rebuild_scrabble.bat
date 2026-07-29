@@ -121,6 +121,9 @@ if errorlevel 1 (
     popd
     exit /b 1
 )
+if not exist "installeur\output" mkdir "installeur\output"
+copy "C:\Temp\ScrabbleOutput\Scrabble-Setup.exe" "installeur\output\Scrabble-Setup.exe"
+echo [OK] Installeur copié vers installeur\output\
 echo.
 echo installeur\output\Scrabble-Setup.exe genere.
 echo.
