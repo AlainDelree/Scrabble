@@ -1049,9 +1049,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             // premier affichage (rien n'est « arrivé », c'est l'état initial), ni
             // si une animation est déjà en cours (mise à jour rapprochée : on
             // rebâtit directement pour rester synchrone avec Python).
-            const arrivees = (premierAppel || animationPiocheEnCours)
+            const arrivees = (premierAppel || animationPiocheEnCours
+                              || !etatChevalet.mon_tour)
                 ? []
-                : etatChevalet.lettres || [];
+                : nouvellesLettresArrivees(anciennesLettres,
+                                           etatChevalet.lettres || []);
             if (arrivees.length > 0) {
                 animerNouvellesLettres(arrivees).then(() => {
                     reconstruirePanneau();
