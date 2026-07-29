@@ -31,4 +31,20 @@ if not getattr(sys, "frozen", False):
 from scrabble.ui.application import main  # noqa: E402
 
 if __name__ == "__main__":
+    # Identification de l'application dans la barre des tâches (issue #318),
+    # à faire avant le premier (et unique) ``webview.start()`` (déclenché par
+    # ``main()`` ci-dessous).
+    if sys.platform == "win32":
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Scrabble")
+    elif sys.platform.startswith("linux"):
+        import gi
+
+        gi.require_version("Gtk", "3.0")
+        from gi.repository import GLib
+
+        GLib.set_prgname("Scrabble")
+        GLib.set_application_name("Scrabble")
+
     raise SystemExit(main())
