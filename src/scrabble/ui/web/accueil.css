@@ -956,13 +956,6 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
     border-left: 4px solid var(--couleur-ordinateur);
 }
 
-.joueur-icone {
-    font-size: 1.3rem;
-    margin-right: 10px;
-    width: 28px;
-    text-align: center;
-}
-
 /* Portrait de l'avatar configuré du joueur humain (issue #148) : même gabarit
    que l'icône générique (28 px, marge droite identique) pour ne pas décaler le
    nom, avec le rendu rond « pastille » repris des panneaux de l'écran de jeu. */
