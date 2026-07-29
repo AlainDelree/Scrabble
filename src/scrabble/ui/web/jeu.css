@@ -2248,7 +2248,7 @@ body.jeu-en-init #message-plateau {
     color: var(--tuile-texte);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
     animation: pioche-tuile-apparition 0.25s ease-out both;
-    transition: transform 0.4s ease-in, opacity 0.4s ease-in;
+    transition: transform 0.7s ease-in, opacity 0.5s ease-in 0.2s;
 }
 
 .pioche-tuile.joker {
@@ -2273,7 +2273,7 @@ body.jeu-en-init #message-plateau {
 /* Sortie vers le chevalet : ajoutée par le JS 900ms après l'apparition,
    déclenche la transition ci-dessus (transform/opacity) sur 400ms. */
 .pioche-overlay-sortie .pioche-tuile {
-    transform: translate(-45vw, 40vh) scale(0.4);
+    transform: translate(-80vw, 60vh) scale(0.15);
     opacity: 0;
 }
 

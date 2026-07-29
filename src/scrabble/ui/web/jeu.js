@@ -1012,7 +1012,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 overlay.addEventListener('transitionend', terminer, { once: true });
                 // Filet de sécurité si l'événement de transition ne se déclenche
                 // pas (calque sans tuile, focus perdu…).
-                setTimeout(terminer, 500);
+                setTimeout(terminer, 800);
             }, 900);
         });
     }
