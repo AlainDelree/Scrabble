@@ -13,6 +13,7 @@ import json
 from typing import Any, TYPE_CHECKING
 
 from scrabble import journal
+from scrabble.regles.lettres import JOKER, valeur_lettre
 
 if TYPE_CHECKING:
     import webview
@@ -34,6 +35,7 @@ class MixinDiffusion:
     _mode_echange: bool
     _selection_echange: list[int]
     _window_plateau: "webview.Window | None"
+    _lettres_pioches: list[str]
 
     def _placements_publics(self) -> list[dict[str, Any]]:
         """Placements en attente **sans** l'index de chevalet (part côté plateau).
@@ -109,6 +111,17 @@ class MixinDiffusion:
             # Lettres privées : toujours celles du joueur de référence (issue #99),
             # jamais un ordinateur ni un autre humain.
             "lettres": serialiser_chevalet(reference),
+            # Lettres tout juste piochées (issue #325) : capturées par diff du
+            # chevalet avant/après l'action par les mixins Pose/Échange
+            # (``self._lettres_pioches``, une liste de jetons bruts), puis
+            # sérialisées ici dans le même format que ``lettres`` (lettre,
+            # valeur, joker) pour que le calque d'animation du chevalet
+            # (``animerNouvellesLettres`` côté JS) les affiche sans traitement
+            # supplémentaire.
+            "lettres_pioches": [
+                {"lettre": jeton, "valeur": valeur_lettre(jeton), "joker": jeton == JOKER}
+                for jeton in self._lettres_pioches
+            ],
             "selection": self._selection,
             "en_attente": [dict(p) for p in self._en_attente],
             "joker_demande": self._joker_demande,
@@ -154,6 +167,11 @@ class MixinDiffusion:
         self._pousser(
             self._window_plateau, "appliquerEtatChevalet", self._etat_chevalet()
         )
+        # Les lettres piochées ne concernent que CETTE diffusion (issue #325) :
+        # une fois poussées, on repart vierge pour ne pas rejouer l'animation
+        # d'arrivée à la diffusion suivante si aucune nouvelle pioche n'a eu
+        # lieu entre-temps.
+        self._lettres_pioches = []
 
     @staticmethod
     def _pousser(

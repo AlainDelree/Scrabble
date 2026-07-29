@@ -1177,6 +1177,11 @@ class ApiJeu(MixinDiffusion, MixinTirageOrdre, MixinTourEtFinPartie, MixinPose, 
         # même pour un joker dont la lettre a été choisie).
         self._selection: int | None = None
         self._en_attente: list[dict[str, Any]] = []
+        # Lettres tout juste piochées par la dernière action (issue #325) :
+        # capturées par diff du chevalet avant/après une pose ou un échange
+        # (mixins Pose/Échange), consommées et remises à vide par
+        # ``MixinDiffusion._diffuser`` à chaque diffusion.
+        self._lettres_pioches: list[str] = []
         # Échange partiel (issue #138). ``_type_echange`` fige, au chargement de
         # la partie (donc à son démarrage), le mode choisi dans les réglages :
         # "complet" (bouton « Remettre toutes ses lettres ») ou "partiel"

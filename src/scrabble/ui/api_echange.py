@@ -36,6 +36,7 @@ class MixinEchange:
     _type_echange: str
     _mode_echange: bool
     _selection_echange: list[int]
+    _lettres_pioches: list[str]
 
     # Méthodes attendues de MixinDiffusion (via l'héritage multiple d'ApiJeu).
     def _diffuser(self) -> None: ...
@@ -56,13 +57,21 @@ class MixinEchange:
         ``{"succes": False, "erreur": <message clair>}`` — l'état n'est pas
         modifié.
         """
+        from collections import Counter
+
         from scrabble.ui import jeu as mod_jeu
-        from scrabble.ui.jeu import echanger_chevalet_complet
+        from scrabble.ui.jeu import echanger_chevalet_complet, index_humain_reference
 
         nom = self._partie.joueur_courant().nom
         nb_avant = len(self._partie.historique)
+        # Capture du chevalet du joueur de référence avant l'échange, pour en
+        # déduire par diff les lettres tout juste piochées (issue #325).
+        index_ref = index_humain_reference(self._partie.joueurs)
+        avant = list(self._partie.joueurs[index_ref].chevalet)
         resultat = echanger_chevalet_complet(self._partie, self._id_partie)
         if resultat.get("succes"):
+            apres = self._partie.joueurs[index_ref].chevalet
+            self._lettres_pioches = list((Counter(apres) - Counter(avant)).elements())
             mod_jeu.journal.info(f"Jeu : échange complet du chevalet par {nom}.")
             self._persister_entrees(self._partie.historique[nb_avant:])
             self._finaliser_si_terminee()
@@ -170,8 +179,10 @@ class MixinEchange:
         issue #99/#130) : c'est cette garde qui assure que les index visent bien
         le chevalet du joueur de référence (alors joueur courant).
         """
+        from collections import Counter
+
         from scrabble.ui import jeu as mod_jeu
-        from scrabble.ui.jeu import echanger_jetons
+        from scrabble.ui.jeu import echanger_jetons, index_humain_reference
 
         refus = self._refuser_hors_tour()
         if refus is not None:
@@ -195,8 +206,14 @@ class MixinEchange:
         jetons = [joueur.chevalet[i] for i in indices]
         nom = joueur.nom
         nb_avant = len(self._partie.historique)
+        # Capture du chevalet du joueur de référence avant l'échange, pour en
+        # déduire par diff les lettres tout juste piochées (issue #325).
+        index_ref = index_humain_reference(self._partie.joueurs)
+        avant = list(self._partie.joueurs[index_ref].chevalet)
         resultat = echanger_jetons(self._partie, self._id_partie, jetons)
         if resultat.get("succes"):
+            apres = self._partie.joueurs[index_ref].chevalet
+            self._lettres_pioches = list((Counter(apres) - Counter(avant)).elements())
             mod_jeu.journal.info(
                 f"Jeu : échange partiel de {len(jetons)} lettre(s) par {nom}."
             )

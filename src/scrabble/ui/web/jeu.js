@@ -1044,14 +1044,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sig = signatureLettres(etatChevalet.lettres);
         if (sig !== panneauSignature) {
             panneauSignature = sig;
-            // Lettres tout juste arrivées (pose/échange/passage de tour, issue
-            // #317) : animées au centre avant de rejoindre le panneau. Ni au tout
-            // premier affichage (rien n'est « arrivé », c'est l'état initial), ni
-            // si une animation est déjà en cours (mise à jour rapprochée : on
-            // rebâtit directement pour rester synchrone avec Python).
+            // Lettres tout juste piochées (pose/échange, issue #325) : Python les
+            // calcule par diff du chevalet avant/après l'action et les fournit
+            // directement via ``etatChevalet.lettres_pioches`` — animées au centre
+            // avant de rejoindre le panneau. Ni au tout premier affichage (rien
+            // n'est « arrivé », c'est l'état initial), ni si une animation est déjà
+            // en cours (mise à jour rapprochée : on rebâtit directement pour rester
+            // synchrone avec Python).
             const arrivees = (premierAppel || animationPiocheEnCours)
                 ? []
-                : etatChevalet.lettres || [];
+                : (etatChevalet.lettres_pioches || []);
             if (arrivees.length > 0) {
                 animerNouvellesLettres(arrivees).then(() => {
                     reconstruirePanneau();
