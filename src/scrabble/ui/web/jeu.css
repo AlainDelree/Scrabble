@@ -2225,14 +2225,15 @@ body.jeu-en-init #message-plateau {
     align-items: center;
     justify-content: center;
     gap: 12px;
+    flex-wrap: wrap;
     pointer-events: none;
 }
 
 /* Tuiles nettement plus grandes que celles du chevalet (.panneau-case, 40×44px)
    pour bien marquer l'arrivée des nouvelles lettres. */
 .pioche-tuile {
-    width: 72px;
-    height: 80px;
+    width: 120px;
+    height: 132px;
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -2240,7 +2241,7 @@ body.jeu-en-init #message-plateau {
     position: relative;
     border-radius: 6px;
     font-weight: 700;
-    font-size: 2.2rem;
+    font-size: 3.5rem;
     text-transform: uppercase;
     background: var(--tuile-fond);
     border: 2px solid var(--tuile-bordure);

@@ -1051,7 +1051,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // rebâtit directement pour rester synchrone avec Python).
             const arrivees = (premierAppel || animationPiocheEnCours)
                 ? []
-                : nouvellesLettresArrivees(anciennesLettres, etatChevalet.lettres);
+                : etatChevalet.lettres || [];
             if (arrivees.length > 0) {
                 animerNouvellesLettres(arrivees).then(() => {
                     reconstruirePanneau();
