@@ -935,36 +935,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         panneauSelection = null;
     }
 
-    /** Table d'effectifs {lettre|valeur -> nombre} pour comparer deux chevalets
-     *  sans être sensible à l'ordre (issue #317). */
-    function compterLettres(lettres) {
-        const compte = new Map();
-        (lettres || []).forEach((l) => {
-            const cle = (l.joker ? '*' : l.lettre) + '|' + l.valeur;
-            compte.set(cle, (compte.get(cle) || 0) + 1);
-        });
-        return compte;
-    }
-
-    /** Lettres présentes dans ``nouvelles`` en plus de ``anciennes`` (multi-
-     *  ensemble, issue #317) : celles qui viennent d'arriver sur le chevalet
-     *  (tirage après une pose, échange…), à distinguer des lettres déjà là qui
-     *  n'ont fait que changer de position dans le tableau. */
-    function nouvellesLettresArrivees(anciennes, nouvelles) {
-        const restantes = compterLettres(anciennes);
-        const arrivees = [];
-        (nouvelles || []).forEach((l) => {
-            const cle = (l.joker ? '*' : l.lettre) + '|' + l.valeur;
-            const dispo = restantes.get(cle) || 0;
-            if (dispo > 0) {
-                restantes.set(cle, dispo - 1);
-            } else {
-                arrivees.push(l);
-            }
-        });
-        return arrivees;
-    }
-
     let animationPiocheEnCours = false;
 
     /**
@@ -1026,7 +996,6 @@ document.addEventListener('DOMContentLoaded', async () => {
      */
     function appliquerEtatChevalet(payload) {
         const premierAppel = etatChevalet === null;
-        const anciennesLettres = etatChevalet ? etatChevalet.lettres : [];
         etatChevalet = payload || {};
 
         // Changement de tour (issue #100) : ``index_reference`` étant constant pour
