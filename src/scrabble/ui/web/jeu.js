@@ -1010,6 +1010,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Le panneau n'est reconstruit qu'au changement de tour ou de contenu du
         // chevalet (échange / nouveau tirage), pas à chaque pose (les lettres ne
         // changent pas en posant).
+        let animationLancee = false;
         const sig = signatureLettres(etatChevalet.lettres);
         if (sig !== panneauSignature) {
             panneauSignature = sig;
@@ -1024,6 +1025,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ? []
                 : (etatChevalet.lettres_pioches || []);
             if (arrivees.length > 0) {
+                animationLancee = true;
                 animerNouvellesLettres(arrivees).then(() => {
                     reconstruirePanneau();
                     rendrePanneau();
@@ -1039,7 +1041,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             panneauSelection = null;
         }
 
-        rendrePanneau();
+        if (!animationLancee) {
+            rendrePanneau();
+        }
     }
     window.appliquerEtatChevalet = appliquerEtatChevalet;
 
