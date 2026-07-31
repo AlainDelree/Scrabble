@@ -192,5 +192,9 @@ echo Rappel : lancez Scrabble.exe vous-meme depuis cette session
 echo interactive pour verifier que tout fonctionne bien
 echo ^(WebView2, dictionnaire, interface^).
 echo.
+echo Nettoyage du clone CCW (reset commits locaux)...
+git -C Z:\CCW\scrabble reset --hard origin/master
+echo Clone CCW propre.
+echo.
 popd
 exit /b 0
