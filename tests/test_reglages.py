@@ -81,13 +81,13 @@ def test_modifier_theme_plateau_valide(tmp_path):
 
 
 def test_modifier_theme_plateau_invalide_retombe_sur_defaut(tmp_path):
-    """Un thème inconnu est normalisé vers le défaut « classique »."""
+    """Un thème inconnu est normalisé vers le défaut « vert »."""
     chemin = tmp_path / "config.json"
 
     retenue = modifier_reglage("theme_plateau", "inexistant", chemin)
 
-    assert retenue == "classique"
-    assert lire_reglage("theme_plateau", chemin) == "classique"
+    assert retenue == "vert"
+    assert lire_reglage("theme_plateau", chemin) == "vert"
 
 
 @pytest.mark.parametrize("valeur", [True, False])

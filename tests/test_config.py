@@ -192,14 +192,14 @@ def test_prenom_principal_mauvais_type_repare(tmp_path):
     assert json.loads(chemin.read_text(encoding="utf-8"))["prenom_principal"] == ""
 
 
-def test_theme_plateau_defaut_classique(tmp_path):
-    """Le thème de plateau par défaut est « classique »."""
+def test_theme_plateau_defaut_vert(tmp_path):
+    """Le thème de plateau par défaut est « vert » (issue #342)."""
     chemin = tmp_path / "config.json"
 
     config = charger_config(chemin)
 
-    assert config["theme_plateau"] == "classique"
-    assert CONFIG_DEFAUT["theme_plateau"] == "classique"
+    assert config["theme_plateau"] == "vert"
+    assert CONFIG_DEFAUT["theme_plateau"] == "vert"
     # Le défaut fait partie des thèmes reconnus.
     assert CONFIG_DEFAUT["theme_plateau"] in THEMES_PLATEAU
 
@@ -218,7 +218,7 @@ def test_theme_plateau_valeurs_valides_conservees(tmp_path, theme):
 
 
 def test_theme_plateau_valeur_invalide_reparee(tmp_path):
-    """Un thème inconnu retombe sur le défaut « classique » et le fichier est réparé."""
+    """Un thème inconnu retombe sur le défaut « vert » et le fichier est réparé."""
     chemin = tmp_path / "config.json"
     chemin.write_text(
         json.dumps({"theme_plateau": "fluo-arc-en-ciel"}), encoding="utf-8"
@@ -226,10 +226,10 @@ def test_theme_plateau_valeur_invalide_reparee(tmp_path):
 
     config = charger_config(chemin)
 
-    assert config["theme_plateau"] == "classique"
+    assert config["theme_plateau"] == "vert"
     # La réparation est persistée sur disque.
     releu = json.loads(chemin.read_text(encoding="utf-8"))
-    assert releu["theme_plateau"] == "classique"
+    assert releu["theme_plateau"] == "vert"
 
 
 def test_theme_plateau_vide_repare(tmp_path):
@@ -239,17 +239,17 @@ def test_theme_plateau_vide_repare(tmp_path):
 
     config = charger_config(chemin)
 
-    assert config["theme_plateau"] == "classique"
+    assert config["theme_plateau"] == "vert"
 
 
 def test_theme_plateau_mauvais_type_repare(tmp_path):
-    """Un thème du mauvais type retombe sur le défaut « classique »."""
+    """Un thème du mauvais type retombe sur le défaut « vert »."""
     chemin = tmp_path / "config.json"
     chemin.write_text(json.dumps({"theme_plateau": 7}), encoding="utf-8")
 
     config = charger_config(chemin)
 
-    assert config["theme_plateau"] == "classique"
+    assert config["theme_plateau"] == "vert"
 
 
 def test_type_echange_complet_par_defaut(tmp_path):
@@ -301,14 +301,14 @@ def test_type_echange_vide_repare(tmp_path):
     assert config["type_echange"] == "complet"
 
 
-def test_bonus_fin_partie_desactive_par_defaut(tmp_path):
-    """Le bonus au finisseur (issue #134) est désactivé par défaut."""
+def test_bonus_fin_partie_active_par_defaut(tmp_path):
+    """Le bonus au finisseur (issue #134) est activé par défaut (issue #342)."""
     chemin = tmp_path / "config.json"
 
     config = charger_config(chemin)
 
-    assert config["bonus_fin_partie"] is False
-    assert CONFIG_DEFAUT["bonus_fin_partie"] is False
+    assert config["bonus_fin_partie"] is True
+    assert CONFIG_DEFAUT["bonus_fin_partie"] is True
 
 
 @pytest.mark.parametrize("valeur", [True, False])
@@ -334,23 +334,23 @@ def test_bonus_fin_partie_valeur_non_booleenne_reparee(tmp_path, invalide):
 
     config = charger_config(chemin)
 
-    assert config["bonus_fin_partie"] is False
+    assert config["bonus_fin_partie"] is True
     releu = json.loads(chemin.read_text(encoding="utf-8"))
-    assert releu["bonus_fin_partie"] is False
+    assert releu["bonus_fin_partie"] is True
 
 
 # --------------------------------------------------------------------------- #
 # Vocabulaire humain de l'IA (issue #206)
 # --------------------------------------------------------------------------- #
 
-def test_vocabulaire_humain_desactive_par_defaut(tmp_path):
-    """Le réglage « vocabulaire humain » (issue #206) est désactivé par défaut."""
+def test_vocabulaire_humain_active_par_defaut(tmp_path):
+    """Le réglage « vocabulaire humain » (issue #206) est activé par défaut (issue #342)."""
     chemin = tmp_path / "config.json"
 
     config = charger_config(chemin)
 
-    assert config["vocabulaire_humain"] is False
-    assert CONFIG_DEFAUT["vocabulaire_humain"] is False
+    assert config["vocabulaire_humain"] is True
+    assert CONFIG_DEFAUT["vocabulaire_humain"] is True
 
 
 @pytest.mark.parametrize("valeur", [True, False])
@@ -376,9 +376,9 @@ def test_vocabulaire_humain_valeur_non_booleenne_reparee(tmp_path, invalide):
 
     config = charger_config(chemin)
 
-    assert config["vocabulaire_humain"] is False
+    assert config["vocabulaire_humain"] is True
     releu = json.loads(chemin.read_text(encoding="utf-8"))
-    assert releu["vocabulaire_humain"] is False
+    assert releu["vocabulaire_humain"] is True
 
 
 # --------------------------------------------------------------------------- #
