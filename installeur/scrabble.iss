@@ -16,6 +16,14 @@
 #define MyAppPublisher "Alain Delree"
 #define MyAppExeName "Scrabble.exe"
 #define MyDistDir "..\dist\Scrabble"
+; Actualise (dépôt AlainDelree/Actualise) est l'updater autonome qui met
+; Scrabble à jour depuis les GitHub Releases avant de le lancer (issue #344,
+; architecture complète dans CONCEPTION.md du dépôt Actualise). Le raccourci
+; utilisateur doit pointer vers lui, jamais directement vers Scrabble.exe.
+#define MyActualiseExeName "Actualise.exe"
+; Déposé par build\rebuild_scrabble.bat avant l'appel à ISCC.
+#define MyActualiseExeSource "C:\Temp\ScrabbleBuild\Actualise.exe"
+#define MyActualiseDir "{sd}\Actualise"
 
 [Setup]
 ; GUID fixe et unique à l'application : NE PAS régénérer (sert à Windows pour
@@ -60,10 +68,64 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 ; dans l'installeur : un nouvel utilisateur hériterait sinon des préférences/
 ; de l'historique de parties de quelqu'un d'autre dès la première ouverture.
 Source: "{#MyDistDir}\*"; DestDir: "{app}"; Excludes: "config.json,logs\*,data\parties.db,data\*.db"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Actualise.exe : updater autonome, installé à côté de Scrabble (pas dans
+; {app}) car il survit aux mises à jour/réinstallations de Scrabble lui-même.
+Source: "{#MyActualiseExeSource}"; DestDir: "{#MyActualiseDir}"; Flags: ignoreversion
+
+[Dirs]
+Name: "{#MyActualiseDir}"
+Name: "{#MyActualiseDir}\attente"
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+; Les raccourcis pointent vers Actualise.exe (jamais directement vers
+; Scrabble.exe) : Actualise met Scrabble à jour depuis les GitHub Releases
+; avant de le lancer, à chaque démarrage.
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{#MyActualiseDir}\{#MyActualiseExeName}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{#MyActualiseDir}\{#MyActualiseExeName}"
+
+[Code]
+// Génère le config.json d'Actualise, consommé par Actualise.exe au
+// lancement pour savoir quel dépôt GitHub surveiller, où est installé
+// Scrabble et où stocker les archives téléchargées (issue #344).
+function EchapperJSON(const Texte: String): String;
+begin
+  Result := Texte;
+  StringChangeEx(Result, '\', '\\', True);
+end;
+
+procedure CreerConfigActualise();
+var
+  DossierActualise, RepertoireInstallation, ZoneAttente, Contenu: String;
+begin
+  DossierActualise := ExpandConstant('{#MyActualiseDir}') + '\';
+  RepertoireInstallation := ExpandConstant('{app}') + '\';
+  ZoneAttente := DossierActualise + 'attente\';
+
+  Contenu :=
+    '{' + #13#10 +
+    '  "actualise": {' + #13#10 +
+    '    "build_installe": 1,' + #13#10 +
+    '    "depot_github": "AlainDelree/Actualise"' + #13#10 +
+    '  },' + #13#10 +
+    '  "application_cible": {' + #13#10 +
+    '    "nom": "Scrabble",' + #13#10 +
+    '    "depot_github": "AlainDelree/Scrabble",' + #13#10 +
+    '    "build_installe": 1,' + #13#10 +
+    '    "repertoire_installation": "' + EchapperJSON(RepertoireInstallation) + '",' + #13#10 +
+    '    "executable": "Scrabble.exe"' + #13#10 +
+    '  },' + #13#10 +
+    '  "zone_attente": "' + EchapperJSON(ZoneAttente) + '",' + #13#10 +
+    '  "topic_ntfy": ""' + #13#10 +
+    '}' + #13#10;
+
+  SaveStringToFile(DossierActualise + 'config.json', Contenu, False);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    CreerConfigActualise();
+end;
 
 [UninstallDelete]
 ; Nettoyage des fichiers générés à l'usage par le jeu (config.json, logs/,
