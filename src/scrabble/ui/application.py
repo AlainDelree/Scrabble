@@ -560,7 +560,9 @@ def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
             "Application unifiée : fenêtre unique ouverte sur l'accueil."
         )
         # UNE seule boucle pywebview pour toute l'application (issue #179).
-        webview.start(deployer_fenetre_maximisee, (window, "application"))
+        # debug=True (issue #343) : ouvre les DevTools (F12) pour diagnostiquer
+        # l'animation de pioche sur WebView2 Windows, absente sous WebKitGTK Linux.
+        webview.start(deployer_fenetre_maximisee, (window, "application"), debug=True)
         return routeur
     finally:
         journal.cloturer_session()
