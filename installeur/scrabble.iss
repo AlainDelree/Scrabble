@@ -21,6 +21,11 @@
 ; architecture complète dans CONCEPTION.md du dépôt Actualise). Le raccourci
 ; utilisateur doit pointer vers lui, jamais directement vers Scrabble.exe.
 #define MyActualiseExeName "Actualise.exe"
+; Icône affichée sur les raccourcis (Bureau/menu Démarrer), déployée dans
+; {app} par la section [Files] ci-dessous (embarquée par PyInstaller, cf.
+; scrabble.spec) : sans elle, les raccourcis pointant vers Actualise.exe
+; afficheraient l'icône générique d'Actualise.
+#define MyAppIcoName "scrabble.ico"
 ; Déposé par build\rebuild_scrabble.bat avant l'appel à ISCC (Actualise.exe +
 ; son dossier _internal\, runtime Python + DLL, mode PyInstaller --onedir).
 #define MyActualiseSrcDir "C:\Temp\ScrabbleBuild\Actualise_dist"
@@ -83,8 +88,8 @@ Name: "{#MyActualiseDir}\attente"
 ; Les raccourcis pointent vers Actualise.exe (jamais directement vers
 ; Scrabble.exe) : Actualise met Scrabble à jour depuis les GitHub Releases
 ; avant de le lancer, à chaque démarrage.
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{#MyActualiseDir}\{#MyActualiseExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{#MyActualiseDir}\{#MyActualiseExeName}"
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{#MyActualiseDir}\{#MyActualiseExeName}"; IconFilename: "{app}\{#MyAppIcoName}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{#MyActualiseDir}\{#MyActualiseExeName}"; IconFilename: "{app}\{#MyAppIcoName}"
 
 [Code]
 // Génère le config.json d'Actualise, consommé par Actualise.exe au
@@ -115,7 +120,8 @@ begin
     '    "depot_github": "AlainDelree/Scrabble",' + #13#10 +
     '    "build_installe": 1,' + #13#10 +
     '    "repertoire_installation": "' + EchapperJSON(RepertoireInstallation) + '",' + #13#10 +
-    '    "executable": "Scrabble.exe"' + #13#10 +
+    '    "executable": "Scrabble.exe",' + #13#10 +
+    '    "icone": "' + EchapperJSON(ExpandConstant('{app}') + '\scrabble.ico') + '"' + #13#10 +
     '  },' + #13#10 +
     '  "zone_attente": "' + EchapperJSON(ZoneAttente) + '",' + #13#10 +
     '  "topic_ntfy": ""' + #13#10 +
