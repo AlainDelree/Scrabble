@@ -146,9 +146,9 @@ REM --- 6. Telecharger et extraire Actualise (issue #345, issue #346) ---------
 REM Actualise.exe + son dossier _internal\ (runtime Python + DLL, mode
 REM PyInstaller --onedir) sont l'updater embarque dans l'installeur (cf.
 REM scrabble.iss, Source attendue : C:\Temp\ScrabbleBuild\Actualise_dist\).
-REM Recupere depuis la Release v2 du depot AlainDelree/Actualise.
+REM Recupere depuis la Release v3 du depot AlainDelree/Actualise.
 echo [6/9] Telechargement d'Actualise (updater)...
-set "ACTUALISE_URL=https://github.com/AlainDelree/Actualise/releases/download/v2/actualise.zip"
+set "ACTUALISE_URL=https://github.com/AlainDelree/Actualise/releases/download/v3/actualise.zip"
 set "ACTUALISE_ZIP=%LOCALBUILD%\actualise.zip"
 set "ACTUALISE_EXTRACT=%LOCALBUILD%\actualise_extract"
 powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -Uri '%ACTUALISE_URL%' -OutFile '%ACTUALISE_ZIP%' -UseBasicParsing } catch { exit 1 }"

@@ -20,6 +20,10 @@
 ; Scrabble à jour depuis les GitHub Releases avant de le lancer (issue #344,
 ; architecture complète dans CONCEPTION.md du dépôt Actualise). Le raccourci
 ; utilisateur doit pointer vers lui, jamais directement vers Scrabble.exe.
+; Version d'Actualise embarquée (Release GitHub AlainDelree/Actualise) :
+; reflète le "build_installe" écrit dans config.json par CreerConfigActualise
+; ci-dessous (issue #352 — évite la valeur figée en dur).
+#define MyActualiseVersion "3"
 #define MyActualiseExeName "Actualise.exe"
 ; Icône affichée sur les raccourcis (Bureau/menu Démarrer), déployée dans
 ; {app} par la section [Files] ci-dessous (embarquée par PyInstaller, cf.
@@ -112,7 +116,7 @@ begin
   Contenu :=
     '{' + #13#10 +
     '  "actualise": {' + #13#10 +
-    '    "build_installe": 1,' + #13#10 +
+    '    "build_installe": {#MyActualiseVersion},' + #13#10 +
     '    "depot_github": "AlainDelree/Actualise"' + #13#10 +
     '  },' + #13#10 +
     '  "application_cible": {' + #13#10 +
