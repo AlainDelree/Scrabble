@@ -765,7 +765,10 @@ def jouer_placements(
       (:class:`~scrabble.moteur.partie.ActionInvalide`).
 
     En cas de succès, l'appelant recharge l'état via :func:`etat_public` : rien
-    n'est perdu côté attente puisque le moteur a consommé les lettres.
+    n'est perdu côté attente puisque le moteur a consommé les lettres. La clé
+    ``lettres_piochees`` porte les jetons réellement tirés du sac pour
+    recompléter le chevalet (:attr:`~scrabble.moteur.partie.EntreeHistorique.lettres_piochees`,
+    issue #357), à consommer directement plutôt que recalculée par diff.
     """
     try:
         coup = construire_coup(partie.plateau, placements)
@@ -787,6 +790,7 @@ def jouer_placements(
             if entree.detail is not None
             else None
         ),
+        "lettres_piochees": list(entree.lettres_piochees),
     }
 
 

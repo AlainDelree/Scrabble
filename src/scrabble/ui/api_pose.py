@@ -328,23 +328,19 @@ class MixinPose:
         Confidentialité : la réponse ne contient jamais l'identité des lettres
         d'un chevalet (``etat`` est l'état public, sans chevalet).
         """
-        from collections import Counter
-
         from scrabble.ui import jeu as mod_jeu
-        from scrabble.ui.jeu import etat_public, index_humain_reference, jouer_placements
+        from scrabble.ui.jeu import etat_public, jouer_placements
 
         if placements is not None:
             self._en_attente = [self._normaliser_placement(p) for p in placements]
         nb_avant = len(self._partie.historique)
-        # Capture du chevalet du joueur de référence avant la pioche déclenchée
-        # par le coup, pour en déduire par diff les lettres tout juste piochées
-        # (issue #325 — animation du chevalet).
-        index_ref = index_humain_reference(self._partie.joueurs)
-        avant = list(self._partie.joueurs[index_ref].chevalet)
         resultat = jouer_placements(self._partie, self._en_attente)
         if resultat.get("succes"):
-            apres = self._partie.joueurs[index_ref].chevalet
-            self._lettres_pioches = list((Counter(apres) - Counter(avant)).elements())
+            # Lettres tout juste piochées, remontées directement par le moteur
+            # (issue #357 — évite le calcul par diff de chevalet, incorrect
+            # quand une lettre piochée a la même valeur qu'une lettre posée,
+            # cf. issue #356 ; utilisées pour l'animation du chevalet, issue #325).
+            self._lettres_pioches = list(resultat.get("lettres_piochees", []))
             detail = resultat.get("detail")
             mot = (
                 detail["mots"][0]["texte"]

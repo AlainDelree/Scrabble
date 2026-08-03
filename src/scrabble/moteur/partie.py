@@ -133,6 +133,13 @@ class EntreeHistorique:
     tel quel sans recalcul. L'UI s'en sert pour mettre brièvement en évidence le
     dernier coup d'un ordinateur sur le plateau (issue #58). Vide pour une passe
     ou un échange.
+
+    Toujours pour un coup, ``lettres_piochees`` donne la liste exacte des
+    jetons tirés du sac pour recompléter le chevalet à 7 après la pose (issue
+    #357) : contrairement à un calcul par diff de chevalet avant/après, cette
+    liste reste correcte même quand une lettre piochée a la même valeur qu'une
+    lettre posée. Vide pour une passe ou un échange, et si le sac était déjà
+    vide.
     """
 
     index_joueur: int
@@ -143,6 +150,7 @@ class EntreeHistorique:
     lettres_echangees: int = 0
     jetons_echanges: list[str] = field(default_factory=list)
     positions_posees: list[tuple[int, int]] = field(default_factory=list)
+    lettres_piochees: list[str] = field(default_factory=list)
     score_cumule: int = 0
 
 
@@ -386,7 +394,7 @@ class Partie:
         detail = detailler_score(self.plateau, nouvelles, coup.direction)
         joueur.score += detail.total
         _retirer_jetons(joueur.chevalet, requis)
-        self._completer_chevalet(joueur)
+        piochees = self._completer_chevalet(joueur)
         self.passes_consecutives = 0
         entree = self._enregistrer(
             joueur,
@@ -394,6 +402,7 @@ class Partie:
             coup=coup,
             detail=detail,
             positions_posees=nouvelles,
+            lettres_piochees=piochees,
         )
         if self.sac.est_vide() and not joueur.chevalet:
             self._terminer(MOTIF_CHEVALET_VIDE)
@@ -510,11 +519,18 @@ class Partie:
                 requis.append(JOKER if tuile.joker else tuile.lettre)
         return requis
 
-    def _completer_chevalet(self, joueur: Joueur) -> None:
-        """Complète le chevalet jusqu'à 7 (ou moins si le sac s'épuise)."""
+    def _completer_chevalet(self, joueur: Joueur) -> list[str]:
+        """Complète le chevalet jusqu'à 7 (ou moins si le sac s'épuise).
+
+        Renvoie la liste des jetons effectivement tirés du sac (issue #357),
+        pour que l'appelant puisse la faire remonter sans recalcul par diff.
+        """
         manque = TAILLE_CHEVALET - len(joueur.chevalet)
-        if manque > 0:
-            joueur.chevalet.extend(self.sac.tirer(manque))
+        if manque <= 0:
+            return []
+        piochees = self.sac.tirer(manque)
+        joueur.chevalet.extend(piochees)
+        return piochees
 
     def _enregistrer(
         self,
@@ -526,6 +542,7 @@ class Partie:
         lettres_echangees: int = 0,
         jetons_echanges: list[str] | None = None,
         positions_posees: list[tuple[int, int]] | None = None,
+        lettres_piochees: list[str] | None = None,
     ) -> EntreeHistorique:
         entree = EntreeHistorique(
             index_joueur=self.index_courant,
@@ -536,6 +553,7 @@ class Partie:
             lettres_echangees=lettres_echangees,
             jetons_echanges=list(jetons_echanges) if jetons_echanges else [],
             positions_posees=list(positions_posees) if positions_posees else [],
+            lettres_piochees=list(lettres_piochees) if lettres_piochees else [],
             score_cumule=joueur.score,
         )
         self.historique.append(entree)
