@@ -205,6 +205,13 @@ def verifier_taille_datas(datas, seuil_octets):
 
 
 datas = []
+# Icône du jeu, copiée à la racine de dist/Scrabble/ (aux côtés de Scrabble.exe) :
+# le paramètre icon= de EXE() ci-dessous ne fait que l'intégrer comme ressource
+# de l'exécutable, il ne la copie pas comme fichier de données. Or scrabble.iss
+# référence "{app}\scrabble.ico" via IconFilename pour les raccourcis (issue
+# #348) — sans cette entrée, ce fichier serait absent après installation
+# (issue #349).
+datas += [(os.path.join(RACINE, "assets", "scrabble.ico"), ".")]
 # Assets web (HTML/CSS/JS/avatars SVG + images PNG comme web/images/sac.png)
 # des fenêtres accueil (réglages intégrés)/jeu/chevalet. ``collect_tree`` marche
 # via ``os.walk`` sans filtre d'extension : tout fichier de ``web/`` est embarqué
