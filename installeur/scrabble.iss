@@ -29,7 +29,7 @@
 ; Déposé par build\rebuild_scrabble.bat avant l'appel à ISCC (Actualise.exe +
 ; son dossier _internal\, runtime Python + DLL, mode PyInstaller --onedir).
 #define MyActualiseSrcDir "C:\Temp\ScrabbleBuild\Actualise_dist"
-#define MyActualiseDir "{sd}\Actualise"
+#define MyActualiseDir "{sd}\Actualise_Scrabble"
 
 [Setup]
 ; GUID fixe et unique à l'application : NE PAS régénérer (sert à Windows pour
