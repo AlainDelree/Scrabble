@@ -142,11 +142,12 @@ if exist "dist\Scrabble\Scrabble.exe" (
     exit /b 1
 )
 
-REM --- 6. Telecharger et extraire Actualise.exe (issue #345) -----------------
-REM Actualise.exe est l'updater embarque dans l'installeur (cf. scrabble.iss,
-REM Source attendue : C:\Temp\ScrabbleBuild\Actualise.exe). Recupere depuis la
-REM Release v1 du depot AlainDelree/Actualise.
-echo [6/9] Telechargement d'Actualise.exe (updater)...
+REM --- 6. Telecharger et extraire Actualise (issue #345, issue #346) ---------
+REM Actualise.exe + son dossier _internal\ (runtime Python + DLL, mode
+REM PyInstaller --onedir) sont l'updater embarque dans l'installeur (cf.
+REM scrabble.iss, Source attendue : C:\Temp\ScrabbleBuild\Actualise_dist\).
+REM Recupere depuis la Release v1 du depot AlainDelree/Actualise.
+echo [6/9] Telechargement d'Actualise (updater)...
 set "ACTUALISE_URL=https://github.com/AlainDelree/Actualise/releases/download/v1/actualise.zip"
 set "ACTUALISE_ZIP=%LOCALBUILD%\actualise.zip"
 set "ACTUALISE_EXTRACT=%LOCALBUILD%\actualise_extract"
@@ -166,15 +167,15 @@ if errorlevel 1 (
     popd
     exit /b 1
 )
-powershell -NoProfile -Command "try { $exe = Get-ChildItem -Path '%ACTUALISE_EXTRACT%' -Recurse -Filter 'Actualise.exe' | Select-Object -First 1; if (-not $exe) { exit 1 }; Copy-Item -Path $exe.FullName -Destination '%LOCALBUILD%\Actualise.exe' -Force } catch { exit 1 }"
-if errorlevel 1 (
+robocopy "%ACTUALISE_EXTRACT%" "%LOCALBUILD%\Actualise_dist" /E /NFL /NDL /NJH /NJS /NC /NS /NP >nul
+if %errorlevel% geq 8 (
     echo.
-    echo ERREUR : Actualise.exe introuvable dans actualise.zip, ou copie vers %LOCALBUILD% echouee.
+    echo ERREUR : la copie de %ACTUALISE_EXTRACT% vers %LOCALBUILD%\Actualise_dist a echoue.
     popd
     popd
     exit /b 1
 )
-echo Actualise.exe pret : %LOCALBUILD%\Actualise.exe
+echo Actualise pret : %LOCALBUILD%\Actualise_dist
 echo.
 
 REM --- 7. Compiler l'installeur Windows (Inno Setup) ------------------------

@@ -21,8 +21,9 @@
 ; architecture complète dans CONCEPTION.md du dépôt Actualise). Le raccourci
 ; utilisateur doit pointer vers lui, jamais directement vers Scrabble.exe.
 #define MyActualiseExeName "Actualise.exe"
-; Déposé par build\rebuild_scrabble.bat avant l'appel à ISCC.
-#define MyActualiseExeSource "C:\Temp\ScrabbleBuild\Actualise.exe"
+; Déposé par build\rebuild_scrabble.bat avant l'appel à ISCC (Actualise.exe +
+; son dossier _internal\, runtime Python + DLL, mode PyInstaller --onedir).
+#define MyActualiseSrcDir "C:\Temp\ScrabbleBuild\Actualise_dist"
 #define MyActualiseDir "{sd}\Actualise"
 
 [Setup]
@@ -68,9 +69,11 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 ; dans l'installeur : un nouvel utilisateur hériterait sinon des préférences/
 ; de l'historique de parties de quelqu'un d'autre dès la première ouverture.
 Source: "{#MyDistDir}\*"; DestDir: "{app}"; Excludes: "config.json,logs\*,data\parties.db,data\*.db"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Actualise.exe : updater autonome, installé à côté de Scrabble (pas dans
-; {app}) car il survit aux mises à jour/réinstallations de Scrabble lui-même.
-Source: "{#MyActualiseExeSource}"; DestDir: "{#MyActualiseDir}"; Flags: ignoreversion
+; Actualise : updater autonome, installé à côté de Scrabble (pas dans {app})
+; car il survit aux mises à jour/réinstallations de Scrabble lui-même. Copie
+; récursive (Actualise.exe + _internal\, runtime Python + DLL, mode
+; PyInstaller --onedir).
+Source: "{#MyActualiseSrcDir}\*"; DestDir: "{#MyActualiseDir}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Dirs]
 Name: "{#MyActualiseDir}"
