@@ -3,6 +3,14 @@ setlocal enabledelayedexpansion
 pushd "%~dp0.."
 set "ORIGDIR=%CD%"
 
+REM --- Analyse des parametres (mode --publier optionnel) --------------------
+set "PUBLIER=0"
+set "PUBLIER_BUILD="
+if /i "%~1"=="--publier" (
+    set "PUBLIER=1"
+    if not "%~2"=="" set "PUBLIER_BUILD=%~2"
+)
+
 echo ============================================
 echo   Rebuild Scrabble.exe
 echo ============================================
@@ -266,6 +274,71 @@ echo Rappel : lancez Scrabble.exe vous-meme depuis cette session
 echo interactive pour verifier que tout fonctionne bien
 echo ^(WebView2, dictionnaire, interface^).
 echo.
+
+if "%PUBLIER%"=="1" (
+    echo ============================================
+    echo   PUBLICATION ^(--publier^)
+    echo ============================================
+    echo.
+    echo [Publier 1/4] Calcul du SHA-256 de installeur\output\scrabble.zip...
+    if not exist "installeur\output\scrabble.zip" (
+        echo.
+        echo ERREUR : installeur\output\scrabble.zip introuvable, publication annulee.
+        popd
+        exit /b 1
+    )
+    set "ZIP_SHA256="
+    for /f "usebackq" %%h in (`powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 'installeur\output\scrabble.zip').Hash.ToLower()"`) do set "ZIP_SHA256=%%h"
+    if "!ZIP_SHA256!"=="" (
+        echo.
+        echo ERREUR : le calcul du SHA-256 de scrabble.zip a echoue.
+        popd
+        exit /b 1
+    )
+    echo SHA-256 : !ZIP_SHA256!
+    echo.
+
+    echo [Publier 2/4] Determination du numero de build...
+    if not "%PUBLIER_BUILD%"=="" (
+        set "NOUVEAU_BUILD=%PUBLIER_BUILD%"
+        echo Numero de build fourni en parametre : !NOUVEAU_BUILD!
+    ) else (
+        set "ANCIEN_BUILD="
+        for /f "usebackq" %%b in (`powershell -NoProfile -Command "try { (Get-Content 'version.json' -Raw | ConvertFrom-Json).build } catch { '' }"`) do set "ANCIEN_BUILD=%%b"
+        if "!ANCIEN_BUILD!"=="" (
+            echo.
+            echo ERREUR : impossible de lire le champ build de version.json a la racine du clone.
+            popd
+            exit /b 1
+        )
+        set /a NOUVEAU_BUILD=!ANCIEN_BUILD!+1
+        echo Build actuel dans version.json : !ANCIEN_BUILD! -^> nouveau build : !NOUVEAU_BUILD!
+    )
+    echo.
+
+    echo [Publier 3/4] Ecriture de version.json...
+    echo {"build": !NOUVEAU_BUILD!, "sha256": "!ZIP_SHA256!"}>version.json
+    type version.json
+    echo.
+    echo.
+
+    echo [Publier 4/4] Commit git de version.json...
+    git add version.json
+    git commit -m "version.json : build !NOUVEAU_BUILD!, sha256 scrabble.zip"
+    if errorlevel 1 (
+        echo.
+        echo ERREUR : le commit git de version.json a echoue.
+        popd
+        exit /b 1
+    )
+    echo.
+    echo ============================================
+    echo   RAPPEL : git push et gh release create restent MANUELS.
+    echo   Ce script ne les execute JAMAIS automatiquement.
+    echo ============================================
+    echo.
+)
+
 echo Nettoyage du clone CCW (reset commits locaux)...
 git -C Z:\CCW\scrabble reset --hard origin/master
 echo Clone CCW propre.
