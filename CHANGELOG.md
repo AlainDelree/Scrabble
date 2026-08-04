@@ -7,6 +7,25 @@ Historique des changements notables, par ordre antéchronologique. Voir aussi
 
 ## Non publié
 
+### Ajouté
+
+- **Issue #362** — `scripts/mesurer_force_niveaux.py` : script de mesure
+  manuel (hors suite pytest) de la force relative de deux niveaux IA sur des
+  parties complètes jouées l'une contre l'autre dans la **même** partie (même
+  sac au départ, même tirage d'ordre), seul moyen d'isoler l'effet de la
+  stratégie du bruit du tirage. Déterministe (toute l'aléa d'une partie dérive
+  d'une graine unique, y compris un `random.Random` distinct par joueur IA) :
+  deux exécutions identiques donnent des résultats identiques, ce qui permet
+  de comparer deux runs avant/après un changement de calibrage
+  (`_MALUS_LONGUEUR`, `_BONUS_PREMIUM`). Affiche une progression (parties
+  jouées, temps écoulé, restant estimé) et un résumé avec taux de victoire par
+  niveau (intervalle de confiance à 95 %), score moyen, écart moyen, matchs
+  nuls et répartition de qui a commencé (avec alerte si déséquilibrée).
+  Export CSV optionnel (une ligne par partie). Complète
+  `tests/test_moteur_ia.py`, qui mesure le score moyen par coup sur des
+  positions figées mais rien sur une partie complète (score cumulé, milieu de
+  partie riche en hooks — contexte des issues #359/#361).
+
 ### Modifié
 
 - **Issue #359** — Stratégie IA : ajout d'un score stratégique de tri

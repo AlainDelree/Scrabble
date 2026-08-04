@@ -38,8 +38,10 @@ vrai code vit désormais dans `scrabble.moteur.generateur`, `scrabble.moteur.ia`
 `scrabble.ui.application` et `src/scrabble/ui/web/` respectivement.
 
 `scripts/` = outils hors-jeu (génération d'avatars/icônes, construction du
-dictionnaire de définitions, filtres Wiktionnaire) et `_harness_jeu/`
-(harnais Playwright + captures de vérification visuelle).
+dictionnaire de définitions, filtres Wiktionnaire, mesure manuelle de la force
+relative des niveaux IA sur parties complètes via `mesurer_force_niveaux.py`,
+issue #362) et `_harness_jeu/` (harnais Playwright + captures de vérification
+visuelle).
 
 ## Données
 `data/dictionnaire/` (gitignoré) reçoit **manuellement** les dictionnaires
