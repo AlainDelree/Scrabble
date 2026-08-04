@@ -59,6 +59,7 @@ from typing import TYPE_CHECKING
 
 from scrabble.moteur.generateur import CoupNote, generer_coups
 from scrabble.moteur.plateau_partie import Coup, PlateauPartie
+from scrabble.regles.plateau import TypeCase
 
 if TYPE_CHECKING:
     from scrabble.moteur.generateur import TrieProtocol
@@ -72,6 +73,79 @@ class Niveau(Enum):
     INTERMEDIAIRE = auto()
     AVANCE = auto()
     EXPERT = auto()
+
+
+#: Malus (négatif) appliqué au score de tri d'un coup posant peu de lettres
+#: (``nb_nouvelles <= 2``), doublé si une seule lettre est posée (« hook
+#: pur »). Croissant en valeur absolue avec le niveau : un niveau fort doit
+#: éviter les hooks encore plus nettement qu'un niveau faible (issue #359).
+_MALUS_LONGUEUR: dict[Niveau, int] = {
+    Niveau.DEBUTANT: -5,
+    Niveau.FACILE: -8,
+    Niveau.INTERMEDIAIRE: -12,
+    Niveau.AVANCE: -18,
+    Niveau.EXPERT: -25,
+}
+
+#: Bonus (positif) appliqué au score de tri d'un coup exploitant au moins
+#: une case premium (mot ou lettre compte double/triple). Croissant avec le
+#: niveau (issue #359).
+_BONUS_PREMIUM: dict[Niveau, int] = {
+    Niveau.DEBUTANT: 3,
+    Niveau.FACILE: 5,
+    Niveau.INTERMEDIAIRE: 8,
+    Niveau.AVANCE: 12,
+    Niveau.EXPERT: 20,
+}
+
+#: Cases dont le bonus porte sur le mot entier (plus précieuses que les
+#: cases à bonus de lettre seule) : reçoivent le plein bonus premium, contre
+#: la moitié pour LETTRE_DOUBLE/LETTRE_TRIPLE.
+_CASES_BONUS_MOT = frozenset({TypeCase.MOT_DOUBLE, TypeCase.MOT_TRIPLE, TypeCase.CENTRE})
+
+#: Seuil (en nombre de lettres nouvellement posées) en-deçà duquel la
+#: pénalité longueur s'applique.
+_SEUIL_PENALITE_LONGUEUR = 2
+
+
+def _score_strategique(cn: CoupNote, niveau: Niveau) -> int:
+    """Score ajusté servant UNIQUEMENT au tri des coups par niveau IA.
+
+    N'affecte pas :attr:`CoupNote.score` (score réel affiché/marqué) : c'est
+    une clé de tri parallèle qui corrige deux biais du tri glouton sur score
+    brut (issue #359) :
+
+    * pénalise les coups posant peu de lettres (``nb_nouvelles <= 2``), en
+      particulier les « hooks » purs (une seule lettre posée, malus doublé) ;
+    * valorise les coups exploitant une case premium, même à score brut
+      légèrement inférieur à un hook.
+
+    Les deux ajustements sont proportionnels au niveau : un niveau fort doit
+    éviter les hooks et viser les cases premium plus nettement qu'un niveau
+    faible, cohérent avec l'idée qu'un débutant humain *essaie* de faire de
+    vrais mots — c'est la qualité de sa recherche qui est faible, pas son
+    style de jeu.
+    """
+    ajustement = 0
+
+    if cn.nb_nouvelles <= _SEUIL_PENALITE_LONGUEUR:
+        malus = _MALUS_LONGUEUR[niveau]
+        if cn.nb_nouvelles == 1:
+            malus *= 2
+        ajustement += malus
+
+    if any(mot.cases_bonus for mot in cn.detail.mots):
+        bonus = _BONUS_PREMIUM[niveau]
+        types_case = {
+            type_case
+            for mot in cn.detail.mots
+            for (_, _, type_case) in mot.cases_bonus
+        }
+        if not types_case & _CASES_BONUS_MOT:
+            bonus //= 2
+        ajustement += bonus
+
+    return cn.score + ajustement
 
 
 def choisir_coup(
@@ -99,6 +173,8 @@ def choisir_coup(
 
     rng = alea if alea is not None else random.Random()
 
+    coups = sorted(coups, key=lambda cn: _score_strategique(cn, niveau), reverse=True)
+
     if niveau == Niveau.EXPERT:
         return _choisir_expert(coups, rng)
     if niveau == Niveau.AVANCE:
@@ -107,8 +183,10 @@ def choisir_coup(
         return _choisir_intermediaire(coups, rng)
     if niveau == Niveau.FACILE:
         return _choisir_facile(coups, rng)
-    # DEBUTANT
-    return _choisir_debutant(coups, rng)
+    # DEBUTANT : parmi les coups formant un vrai mot (>= 3 lettres posées) si
+    # certains existent, sinon repli sur la liste complète (issue #359).
+    coups_longs = [cn for cn in coups if cn.nb_nouvelles >= 3]
+    return _choisir_debutant(coups_longs if coups_longs else coups, rng)
 
 
 def _choisir_expert(coups: list[CoupNote], rng: random.Random) -> Coup:

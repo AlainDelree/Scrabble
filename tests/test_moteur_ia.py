@@ -13,8 +13,8 @@ import statistics
 import pytest
 
 from scrabble.dictionnaire.dictionnaire import Trie
-from scrabble.moteur.generateur import generer_coups
-from scrabble.moteur.ia import Niveau, choisir_coup
+from scrabble.moteur.generateur import CoupNote, generer_coups
+from scrabble.moteur.ia import Niveau, _score_strategique, choisir_coup
 from scrabble.moteur.partie import (
     ACTION_COUP,
     ACTION_PASSE,
@@ -29,6 +29,8 @@ from scrabble.moteur.plateau_partie import (
     PlateauPartie,
     tuiles_depuis_chaine,
 )
+from scrabble.moteur.score import DetailMot, DetailScore
+from scrabble.regles.plateau import TypeCase
 
 
 def _trie(*mots: str) -> Trie:
@@ -39,6 +41,72 @@ def _coup_cadre_au_centre() -> Coup:
     """CADRE horizontal à partir de la case centrale."""
     ligne, colonne = CENTRE
     return Coup(ligne, colonne, Direction.HORIZONTALE, tuiles_depuis_chaine("CADRE"))
+
+
+# --------------------------------------------------------------------------- #
+# Score stratégique (issue #359) : pénalité hooks / bonus cases premium
+# --------------------------------------------------------------------------- #
+
+
+def _coup_note(mot: str, score: int, nb_nouvelles: int, cases_bonus=()) -> CoupNote:
+    """CoupNote synthétique pour tester _score_strategique isolément."""
+    coup = Coup(CENTRE[0], CENTRE[1], Direction.HORIZONTALE, tuiles_depuis_chaine(mot))
+    detail = DetailScore(
+        mots=[DetailMot(texte=mot, score=score, cases_bonus=list(cases_bonus))],
+        bonus_scrabble=0,
+        total=score,
+    )
+    return CoupNote(coup, detail, nb_nouvelles)
+
+
+class TestScoreStrategique:
+    """Pénalité longueur et bonus cases premium du tri IA (issue #359)."""
+
+    def test_expert_prefere_mot_double_a_hook_legerement_superieur(self):
+        """EXPERT préfère un mot sur case MOT_DOUBLE à un hook mieux payé.
+
+        Reproduit l'exemple de l'issue #359 : un hook d'une seule lettre à
+        18 pts (case normale) contre un mot de 4 lettres à 16 pts profitant
+        d'une case MOT_DOUBLE. En score brut le hook gagne ; en score
+        stratégique EXPERT, le mot sur case premium doit l'emporter.
+        """
+        hook = _coup_note("CADRES", score=18, nb_nouvelles=1)
+        mot_premium = _coup_note(
+            "CADRE", score=16, nb_nouvelles=4, cases_bonus=[(7, 7, TypeCase.MOT_DOUBLE)]
+        )
+        assert hook.score > mot_premium.score
+        assert _score_strategique(mot_premium, Niveau.EXPERT) > _score_strategique(
+            hook, Niveau.EXPERT
+        )
+
+        coups = sorted(
+            [hook, mot_premium],
+            key=lambda cn: _score_strategique(cn, Niveau.EXPERT),
+            reverse=True,
+        )
+        assert coups[0] is mot_premium
+
+    def test_penalite_hook_double_pour_une_seule_lettre(self):
+        """Le malus longueur est doublé pour un hook d'une seule lettre."""
+        hook_une_lettre = _coup_note("CADRES", score=10, nb_nouvelles=1)
+        hook_deux_lettres = _coup_note("CADRES", score=10, nb_nouvelles=2)
+        assert _score_strategique(
+            hook_une_lettre, Niveau.INTERMEDIAIRE
+        ) < _score_strategique(hook_deux_lettres, Niveau.INTERMEDIAIRE)
+
+    def test_aucune_penalite_ni_bonus_a_trois_lettres_sans_case_premium(self):
+        """Pas d'ajustement pour un vrai mot (>=3 lettres) sans case premium."""
+        cn = _coup_note("CAR", score=9, nb_nouvelles=3)
+        assert _score_strategique(cn, Niveau.EXPERT) == cn.score
+
+    def test_bonus_premium_croissant_avec_le_niveau(self):
+        """Le bonus case premium croît avec le niveau IA."""
+        cn = _coup_note(
+            "CARDE", score=20, nb_nouvelles=5, cases_bonus=[(3, 3, TypeCase.MOT_TRIPLE)]
+        )
+        ajustement_debutant = _score_strategique(cn, Niveau.DEBUTANT) - cn.score
+        ajustement_expert = _score_strategique(cn, Niveau.EXPERT) - cn.score
+        assert 0 < ajustement_debutant < ajustement_expert
 
 
 # --------------------------------------------------------------------------- #
@@ -79,12 +147,18 @@ class TestExpert:
 
 
 class TestDebutant:
-    """DEBUTANT choisit uniformément parmi tous les coups."""
+    """DEBUTANT choisit uniformément parmi tous les coups.
+
+    Depuis l'issue #359, DEBUTANT filtre d'abord sur les coups formant un
+    vrai mot (``nb_nouvelles >= 3``) quand il en existe : le dictionnaire de
+    ce test inclut donc plusieurs mots de 3+ lettres (CADRE, ACRE, CAR) pour
+    que la distribution reste observable sur plusieurs coups qualifiants.
+    """
 
     def test_distribution_uniforme_tous_coups(self):
         plateau = PlateauPartie()
         chevalet = list("CADRE")
-        dico = _trie("CADRE", "DE", "RE", "A", "DA")
+        dico = _trie("CADRE", "ACRE", "CAR", "DE", "RE", "A", "DA")
         coups = generer_coups(plateau, chevalet, dico)
         nb_coups = len(coups)
         assert nb_coups > 1
@@ -227,11 +301,21 @@ class TestFacile:
                 assert any(cn.coup == coup for cn in haut)
 
     def test_score_moyen_superieur_a_debutant(self):
-        """FACILE est réellement plus fort que DEBUTANT en score moyen.
+        """FACILE reste plus faible qu'INTERMEDIAIRE en score moyen.
 
         Cœur de l'issue #208 : l'ancienne stratégie (moitié inférieure) rendait
-        FACILE plus FAIBLE que DEBUTANT ; le passage au top 60 % corrige cette
-        inversion nom/force sur un plateau/chevalet offrant des scores étalés.
+        FACILE plus FAIBLE qu'INTERMEDIAIRE ; le passage au top 60 % corrige
+        cette inversion sur un plateau/chevalet offrant des scores étalés.
+
+        Depuis l'issue #359, DEBUTANT ne tire plus uniformément parmi TOUS les
+        coups : il filtre d'abord sur les coups formant un vrai mot
+        (``nb_nouvelles >= 3``) quand il en existe. Sur ce plateau quasi vide,
+        ce filtre exclut la plupart des hooks faibles (1-2 lettres) que
+        DEBUTANT pouvait tirer avant, si bien que sa moyenne peut désormais
+        dépasser celle de FACILE (dont le top 60 % conserve encore des hooks
+        proches du centre, boostés par les cases premium). La comparaison
+        DEBUTANT < FACILE n'est donc plus une garantie structurelle ; seule la
+        comparaison DEBUTANT < INTERMEDIAIRE < ... reste valide.
         """
         plateau = PlateauPartie()
         chevalet = list("CADRES")
@@ -255,7 +339,8 @@ class TestFacile:
         moy_debutant = moyenne_scores(Niveau.DEBUTANT)
         moy_facile = moyenne_scores(Niveau.FACILE)
         moy_inter = moyenne_scores(Niveau.INTERMEDIAIRE)
-        assert moy_debutant < moy_facile < moy_inter
+        assert moy_facile < moy_inter
+        assert moy_debutant < moy_inter
 
 
 # --------------------------------------------------------------------------- #

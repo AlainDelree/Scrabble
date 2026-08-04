@@ -52,10 +52,20 @@ class TrieProtocol(Protocol):
 
 @dataclass(frozen=True)
 class CoupNote:
-    """Un coup valide associé à son score détaillé."""
+    """Un coup valide associé à son score détaillé.
+
+    Attributs
+    ---------
+    nb_nouvelles:
+        Nombre de cases nouvellement posées par ce coup (longueur du
+        placement, hors lettres déjà présentes sur le plateau). Sert de base
+        à la pénalité « hooks » de la sélection IA (voir
+        :mod:`scrabble.moteur.ia`).
+    """
 
     coup: Coup
     detail: DetailScore
+    nb_nouvelles: int
 
     @property
     def score(self) -> int:
@@ -274,7 +284,7 @@ def generer_coups(
         if not nouvelles:
             continue
         detail = detailler_score(copie, nouvelles, coup.direction)
-        resultats.append(CoupNote(coup, detail))
+        resultats.append(CoupNote(coup, detail, len(nouvelles)))
 
     # Trier par score décroissant
     resultats.sort(key=lambda cn: cn.score, reverse=True)
