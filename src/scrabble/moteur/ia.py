@@ -19,8 +19,11 @@ Niveaux de difficulté
   60 %), c'est-à-dire en écartant les 40 % de coups les plus faibles. Reste
   délibérément sous-optimal, mais réellement plus fort que DEBUTANT en score
   moyen (issue #208, voir la note ci-dessous).
-* **DEBUTANT** : choix aléatoire uniforme parmi TOUS les coups, sans
-  considération de score. Peut occasionnellement jouer un bon coup par chance.
+* **DEBUTANT** : choix aléatoire uniforme parmi les 85 % meilleurs coups (top
+  85 %). N'écarte que les 15 % de coups les plus faibles au sens du score
+  stratégique (typiquement les hooks pénalisés par le malus longueur), ce qui
+  le laisse très proche d'un tirage au hasard tout en garantissant qu'il reste
+  le niveau le plus faible (issue #361).
 
 Ordre réel de force (score moyen)
 ---------------------------------
@@ -28,21 +31,30 @@ Les stratégies ci-dessus produisent, en moyenne, l'ordre croissant
 ``DEBUTANT < FACILE < INTERMEDIAIRE < AVANCE < EXPERT`` — cohérent avec l'ordre
 de la classe :class:`Niveau` et avec ce que suggèrent les noms des niveaux.
 
-Pourquoi « top 60 % » plutôt qu'une moitié/tranche centrale ? La distribution
-des scores est fortement asymétrique : quelques coups à très fort score (un
-« scrabble » vaut ~70 pts) tirent la MOYENNE de DEBUTANT (qui échantillonne
-tous les coups) bien au-dessus de la médiane. Une tranche centrée sur la
-médiane resterait donc, en moyenne, SOUS DEBUTANT. Écarter les 40 % les plus
-faibles garantit au contraire ``FACILE > DEBUTANT`` (on ne retient que la
-partie haute), tout en gardant ``FACILE < INTERMEDIAIRE`` puisque le top 33 %
-d'INTERMEDIAIRE est un sous-ensemble strictement meilleur du top 60 %. Cette
-monotonie est donc structurelle, indépendante du dictionnaire employé (elle
-vaut avec ou sans le filtre de « vocabulaire humain », issue #206/#207).
+Cette monotonie est STRUCTURELLE : tous les niveaux passent par le même
+mécanisme (tri par score stratégique puis tirage uniforme dans une tranche
+haute), et les tranches sont strictement emboîtées — top 85 % (DEBUTANT) ⊃
+top 60 % (FACILE) ⊃ top 33 % (INTERMEDIAIRE) ⊃ top 15 % (AVANCE) ⊃ meilleur
+coup (EXPERT). Chaque tranche étant un sous-ensemble strictement meilleur de
+la précédente, les scores moyens croissent mécaniquement avec le niveau,
+indépendamment du dictionnaire employé (avec ou sans le filtre de
+« vocabulaire humain », issue #206/#207). Aucun niveau n'a de filtre dur
+spécifique : l'issue #359 avait doté DEBUTANT d'un filtre sur la longueur
+(``nb_nouvelles >= 3``) qui le rendait plus sélectif que FACILE et cassait la
+monotonie ; l'issue #361 l'a remplacé par la tranche top 85 %.
+
+Pourquoi « top 60 % » pour FACILE plutôt qu'une moitié/tranche centrale ? La
+distribution des scores est fortement asymétrique : quelques coups à très
+fort score (un « scrabble » vaut ~70 pts) tirent la MOYENNE d'un tirage large
+bien au-dessus de la médiane. Une tranche centrée sur la médiane resterait
+donc, en moyenne, SOUS DEBUTANT. Écarter les 40 % les plus faibles garantit
+au contraire ``FACILE > DEBUTANT`` (issue #208).
 
 Comportement de repli (listes courtes)
 --------------------------------------
-Si la tranche calculée (top 15 %, tiers, top 60 %) est vide, on retombe sur la liste
-complète. Cela évite tout crash sur des positions avec peu de coups jouables.
+Si la tranche calculée (top 15 %, tiers, top 60 %, top 85 %) est vide, on
+retombe sur la liste complète via ``max(1, ...)``. Cela évite tout crash sur
+des positions avec peu de coups jouables.
 Exemple : 2 coups disponibles, tiers = 0 → on choisit parmi les 2.
 
 Reproductibilité
@@ -183,10 +195,7 @@ def choisir_coup(
         return _choisir_intermediaire(coups, rng)
     if niveau == Niveau.FACILE:
         return _choisir_facile(coups, rng)
-    # DEBUTANT : parmi les coups formant un vrai mot (>= 3 lettres posées) si
-    # certains existent, sinon repli sur la liste complète (issue #359).
-    coups_longs = [cn for cn in coups if cn.nb_nouvelles >= 3]
-    return _choisir_debutant(coups_longs if coups_longs else coups, rng)
+    return _choisir_debutant(coups, rng)
 
 
 def _choisir_expert(coups: list[CoupNote], rng: random.Random) -> Coup:
@@ -228,5 +237,16 @@ def _choisir_facile(coups: list[CoupNote], rng: random.Random) -> Coup:
 
 
 def _choisir_debutant(coups: list[CoupNote], rng: random.Random) -> Coup:
-    """DEBUTANT : aléatoire parmi tous les coups."""
-    return rng.choice(coups).coup
+    """DEBUTANT : aléatoire parmi les 85 % meilleurs coups (top 85 %).
+
+    Tranche la plus large de tous les niveaux : seuls les 15 % de coups les
+    plus faibles au sens du score stratégique sont écartés (le malus longueur
+    y relègue les hooks les plus pauvres). C'est ce qui rend le tri
+    stratégique opérant pour DEBUTANT tout en le maintenant strictement sous
+    FACILE (top 60 %, sous-ensemble strictement meilleur) — issue #361, en
+    remplacement du filtre dur ``nb_nouvelles >= 3`` de l'issue #359 qui
+    cassait la monotonie des niveaux. ``max(1, ...)`` garantit un
+    sous-ensemble non vide, comme les autres niveaux.
+    """
+    taille_haut = max(1, len(coups) * 85 // 100)
+    return rng.choice(coups[:taille_haut]).coup

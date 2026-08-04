@@ -7,7 +7,47 @@ Historique des changements notables, par ordre antéchronologique. Voir aussi
 
 ## Non publié
 
+### Modifié
+
+- **Issue #359** — Stratégie IA : ajout d'un score stratégique de tri
+  (`_score_strategique` dans `moteur/ia.py`), distinct du score réel du coup,
+  corrigeant deux biais du tri glouton sur score brut : pénalité sur les
+  coups posant peu de lettres (`nb_nouvelles <= 2`, malus doublé pour un
+  « hook » d'une seule lettre) et bonus pour les coups exploitant une case
+  premium (plein bonus pour MOT_DOUBLE/MOT_TRIPLE/CENTRE, moitié pour les
+  bonus de lettre). Les deux ajustements croissent avec le niveau
+  (`_MALUS_LONGUEUR`, `_BONUS_PREMIUM`). `moteur/generateur.py` expose
+  désormais `nb_nouvelles` (nombre de cases nouvellement posées) dans
+  `CoupNote` pour permettre ce tri, les cases bonus étant déjà portées par
+  `DetailMot`. Entrée rétroactive : le travail avait été committé sous les
+  libellés `avant-issue-359-*` (7efd0d5) sans entrée CHANGELOG. NB : le
+  filtre dur `nb_nouvelles >= 3` que #359 avait donné à DEBUTANT a été
+  remplacé par l'issue #361 (voir ci-dessous).
+
 ### Corrigé
+
+- **Issue #361** — Monotonie des niveaux IA rétablie. Le filtre dur
+  `nb_nouvelles >= 3` introduit par #359 pour DEBUTANT le rendait plus
+  sélectif que FACILE sur ce critère : sa moyenne pouvait dépasser celle de
+  FACILE (une joueuse choisissant « Débutant » pouvait affronter une IA plus
+  forte qu'en « Facile »), et le test `test_score_moyen_superieur_a_debutant`
+  avait été relâché pour tolérer la rupture. DEBUTANT passe désormais par le
+  même mécanisme de tranche que les autres niveaux : tirage uniforme dans le
+  top 85 % des coups triés par score stratégique (`max(1, len(coups) * 85 //
+  100)`). La chaîne d'inclusion des tranches redevient stricte (85 % ⊃ 60 %
+  ⊃ 33 % ⊃ 15 % ⊃ meilleur), ce qui rend la monotonie
+  `DEBUTANT < FACILE < INTERMEDIAIRE < AVANCE < EXPERT` structurelle ; le
+  malus longueur (-5) de DEBUTANT devient opérant (les hooks les plus
+  faibles tombent dans les 15 % écartés). L'assertion complète
+  `moy_debutant < moy_facile < moy_inter` est rétablie, et les fixtures de
+  `TestProgressionTrieIaRestreint` incluent désormais des mots de 2 lettres
+  (courants dans le vocabulaire « humain » : ON, OR, AS, AN, OS ; obscurs
+  dans le seul dico complet : RA, OC, NA, TA, SA) pour que la monotonie soit
+  réellement éprouvée en présence de hooks — elle était auparavant
+  trivialement satisfaite par artefact de fixture (aucun mot < 3 lettres).
+  Écarts mesurés entre niveaux adjacents (400 tirages, dico restreint) :
+  1.20 / 1.48 / 2.06 / 3.37 points — tous ≥ 1.0, seuil 85 % retenu sans
+  ajustement.
 
 - **Issue #345** — `build/rebuild_scrabble.bat` ne téléchargeait pas
   `Actualise.exe` (dépendance de l'installeur, chemin attendu

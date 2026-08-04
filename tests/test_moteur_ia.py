@@ -147,21 +147,28 @@ class TestExpert:
 
 
 class TestDebutant:
-    """DEBUTANT choisit uniformément parmi tous les coups.
+    """DEBUTANT choisit uniformément dans les 85 % meilleurs coups (top 85 %).
 
-    Depuis l'issue #359, DEBUTANT filtre d'abord sur les coups formant un
-    vrai mot (``nb_nouvelles >= 3``) quand il en existe : le dictionnaire de
-    ce test inclut donc plusieurs mots de 3+ lettres (CADRE, ACRE, CAR) pour
-    que la distribution reste observable sur plusieurs coups qualifiants.
+    Depuis l'issue #361, DEBUTANT passe par le même mécanisme de tranche que
+    les autres niveaux (il n'a plus le filtre dur ``nb_nouvelles >= 3`` de
+    l'issue #359, qui le rendait plus sélectif que FACILE). Le dictionnaire
+    de ce test mélange mots de 3+ lettres (CADRE, ACRE, CAR) et mots courts
+    pour offrir assez de coups : la tranche top 85 % y écarte réellement les
+    coups les plus faibles au sens du score stratégique.
     """
 
-    def test_distribution_uniforme_tous_coups(self):
+    def test_choisit_dans_le_top_85_pct(self):
         plateau = PlateauPartie()
         chevalet = list("CADRE")
         dico = _trie("CADRE", "ACRE", "CAR", "DE", "RE", "A", "DA")
-        coups = generer_coups(plateau, chevalet, dico)
-        nb_coups = len(coups)
-        assert nb_coups > 1
+        coups = sorted(
+            generer_coups(plateau, chevalet, dico),
+            key=lambda cn: _score_strategique(cn, Niveau.DEBUTANT),
+            reverse=True,
+        )
+        assert len(coups) > 1
+        taille_haut = max(1, len(coups) * 85 // 100)
+        haut = coups[:taille_haut]
 
         choisis: dict[tuple, int] = {}
         tirages = 500
@@ -170,6 +177,7 @@ class TestDebutant:
                 plateau, chevalet, dico, Niveau.DEBUTANT, random.Random(graine)
             )
             if coup is not None:
+                assert any(cn.coup == coup for cn in haut)
                 cle = (coup.ligne, coup.colonne, coup.direction.value)
                 choisis[cle] = choisis.get(cle, 0) + 1
         assert len(choisis) > 1
@@ -301,21 +309,14 @@ class TestFacile:
                 assert any(cn.coup == coup for cn in haut)
 
     def test_score_moyen_superieur_a_debutant(self):
-        """FACILE reste plus faible qu'INTERMEDIAIRE en score moyen.
+        """FACILE bat DEBUTANT en score moyen, tout en restant sous INTERMEDIAIRE.
 
         Cœur de l'issue #208 : l'ancienne stratégie (moitié inférieure) rendait
-        FACILE plus FAIBLE qu'INTERMEDIAIRE ; le passage au top 60 % corrige
-        cette inversion sur un plateau/chevalet offrant des scores étalés.
-
-        Depuis l'issue #359, DEBUTANT ne tire plus uniformément parmi TOUS les
-        coups : il filtre d'abord sur les coups formant un vrai mot
-        (``nb_nouvelles >= 3``) quand il en existe. Sur ce plateau quasi vide,
-        ce filtre exclut la plupart des hooks faibles (1-2 lettres) que
-        DEBUTANT pouvait tirer avant, si bien que sa moyenne peut désormais
-        dépasser celle de FACILE (dont le top 60 % conserve encore des hooks
-        proches du centre, boostés par les cases premium). La comparaison
-        DEBUTANT < FACILE n'est donc plus une garantie structurelle ; seule la
-        comparaison DEBUTANT < INTERMEDIAIRE < ... reste valide.
+        FACILE plus FAIBLE que DEBUTANT ; le passage au top 60 % corrige cette
+        inversion sur un plateau/chevalet offrant des scores étalés. Depuis
+        l'issue #361, DEBUTANT tire dans le top 85 % (sur-ensemble strict du
+        top 60 % de FACILE), donc la chaîne DEBUTANT < FACILE < INTERMEDIAIRE
+        est structurelle et vérifiée en entier.
         """
         plateau = PlateauPartie()
         chevalet = list("CADRES")
@@ -339,8 +340,7 @@ class TestFacile:
         moy_debutant = moyenne_scores(Niveau.DEBUTANT)
         moy_facile = moyenne_scores(Niveau.FACILE)
         moy_inter = moyenne_scores(Niveau.INTERMEDIAIRE)
-        assert moy_facile < moy_inter
-        assert moy_debutant < moy_inter
+        assert moy_debutant < moy_facile < moy_inter
 
 
 # --------------------------------------------------------------------------- #
@@ -502,8 +502,13 @@ class TestIntegrationPartie:
 # fois avec un Trie IA strictement plus petit que le dico complet.
 
 # Vocabulaire complet riche autour du chevalet « CARTONS » (plateau vide, ancrage
-# central unique). Offre 118 coups aux scores étalés, dont un « scrabble »
-# (bingo) CARTONS à 70 points.
+# central unique). Offre de nombreux coups aux scores étalés, dont un
+# « scrabble » (bingo) CARTONS à 70 points. Inclut depuis l'issue #361 des mots
+# de 2 lettres — courants (ON, OR, AS, AN, OS) comme obscurs du Scrabble (RA,
+# OC, NA, TA, SA) — afin que les coups courts pénalisés par le malus longueur
+# existent réellement dans les listes de coups : sans eux, la monotonie des
+# niveaux était trivialement satisfaite sur plateau vide (aucun coup < 3
+# lettres, artefact de fixture).
 _MOTS_COMPLET = (
     "CARTON", "CARTONS", "CARTE", "CARTES", "CANOT", "CANOTS", "CARAT",
     "CARATS", "ARC", "ARCS", "ARCON", "ARCONS", "CAR", "CARS", "CAS", "SAC",
@@ -514,6 +519,7 @@ _MOTS_COMPLET = (
     "ANT", "RATON", "RATONS", "TANCS", "TANC", "CANT", "CANTS", "NOTA",
     "SONAR", "SONATE", "SCORE", "CROATS", "TARON", "ROTAS", "ROTA", "TROCA",
     "SANTO", "CATOR",
+    "ON", "OR", "AS", "AN", "OS", "RA", "OC", "NA", "TA", "SA",
 )
 
 # Sous-ensemble « vocabulaire humain » : mots courants seulement, sous-ensemble
@@ -521,16 +527,21 @@ _MOTS_COMPLET = (
 # toujours intersecté avec le dico complet). On y a retiré les mots rares/peu
 # courants — dont le bingo CARTONS — pour reproduire fidèlement l'effet du
 # filtre : l'IA perd l'accès aux coups à fort score assis sur du vocabulaire
-# rare. Laisse tout de même 44 coups aux scores étalés (6 scores distincts).
+# rare. Les seuls mots de 2 lettres présents ici sont ceux qu'un joueur
+# ordinaire connaît (ON, OR, AS, AN, OS) ; les 2-lettres obscurs du Scrabble
+# (RA, OC, NA...) restent dans _MOTS_COMPLET uniquement — c'est précisément ce
+# que le vocabulaire humain écarte (issues #206/#207, #361).
 _MOTS_IA_RESTREINT = (
     "CARTON", "CARTE", "CARTES", "CANOT", "CAR", "CARS", "CAS", "SAC", "ACRE",
     "RAT", "RATS", "ART", "ARTS", "STAR", "CON", "CONS", "COR", "ROC", "TON",
     "TONS", "SORT", "TRAC", "OCA", "TAO", "SONAR", "SCORE",
+    "ON", "OR", "AS", "AN", "OS",
 )
 
 # Ordre des niveaux par score moyen croissant, tel qu'il découle RÉELLEMENT des
 # stratégies de sélection (cf. ia.py) :
-#   * DEBUTANT tire uniformément parmi TOUS les coups → moyenne la plus basse ;
+#   * DEBUTANT tire dans le top 85 % (n'écarte que les 15 % plus faibles)
+#     → moyenne la plus basse (issue #361) ;
 #   * FACILE tire dans le top 60 % (écarte les 40 % plus faibles) → au-dessus
 #     de DEBUTANT mais nettement sous INTERMEDIAIRE ;
 #   * INTERMEDIAIRE (top 33 %), AVANCE (top 15 %), EXPERT (meilleur) → croissant.
@@ -538,8 +549,10 @@ _MOTS_IA_RESTREINT = (
 # plaçait sous DEBUTANT, contrairement à ce que suggèrent les noms) mais le
 # top 60 %. L'ordre réel coïncide désormais avec l'ordre des noms et avec
 # l'énoncé de l'issue #207 : « Débutant < Facile < Intermédiaire < Avancé <
-# Expert ». Cette monotonie est structurelle et vaut donc à l'identique avec et
-# sans le filtre de vocabulaire ; ces tests le vérifient empiriquement.
+# Expert ». Cette monotonie est structurelle — les tranches sont strictement
+# emboîtées (85 % ⊃ 60 % ⊃ 33 % ⊃ 15 % ⊃ meilleur) — et vaut donc à
+# l'identique avec et sans le filtre de vocabulaire ; ces tests le vérifient
+# empiriquement, y compris en présence de mots courts (hooks) depuis #361.
 _ORDRE_CROISSANT_ATTENDU = [
     Niveau.DEBUTANT,
     Niveau.FACILE,
