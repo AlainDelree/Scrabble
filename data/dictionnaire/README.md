@@ -24,9 +24,23 @@ Déposez manuellement ici, à cet emplacement, sans les ajouter au suivi git :
 - `mots_courants.txt` — ensemble des mots ODS8 jugés « courants » d'après
   Lexique 3, un mot par ligne (normalisé comme l'ODS8 : MAJUSCULES, **sans
   accent**). Produit par `scripts/generer_mots_courants.py` (issue #205) par
-  croisement ODS8 × `Lexique383.tsv`. Destiné à être consommé par le futur
-  filtre de vocabulaire de l'IA (issue C, à venir). Se régénère à tout moment ;
-  n'a pas à être déposé manuellement.
+  croisement ODS8 × `Lexique383.tsv`, au seuil par défaut (1 occ./million).
+  Se régénère à tout moment ; n'a pas à être déposé manuellement.
+
+- `mots_courants_debutant.txt`, `mots_courants_facile.txt`,
+  `mots_courants_intermediaire.txt`, `mots_courants_avance.txt`,
+  `mots_courants_expert.txt` — vocabulaire IA par palier de difficulté (issue
+  #366, lot A), même croisement ODS8 × Lexique 3 à cinq seuils de fréquence
+  différents (respectivement ≥ 3,0, ≥ 2,0, ≥ 1,0, ≥ 0,5 et l'intersection
+  brute sans seuil pour Expert). Se produisent **tous en une seule commande** :
+
+      python scripts/generer_mots_courants.py --tous
+
+  Le sixième palier, **Champion du monde**, ne nécessite **aucun fichier** :
+  il correspond à l'ODS8 complet, servi directement depuis le Trie déjà
+  chargé (`obtenir_trie()`). Ces cinq fichiers sont des sorties purement
+  dérivées (jamais éditées à la main) : la commande ci-dessus les réécrit
+  systématiquement, sans confirmation ni `--force`.
 
 ## Règle git
 

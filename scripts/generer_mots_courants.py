@@ -57,12 +57,45 @@ est directement relisible par ``lire_liste_mots`` (même convention que
 ``mots_ajoutes_*`` / ``classiques_ajoutes.txt``) : l'issue C n'aura qu'à charger
 cet ensemble et le croiser avec le dictionnaire actif.
 
+Vocabulaire IA par palier (issue #366, lot A)
+----------------------------------------------
+Le rapport de lecture #366 découpe le vocabulaire de l'IA en six paliers de
+richesse croissante. Cinq d'entre eux sont de simples variantes de seuil du
+même croisement ODS8 × Lexique (:data:`SEUILS_PALIER`, noms de fichiers dans
+``scrabble.dictionnaire.dictionnaire.FICHIERS_VOCABULAIRE_PALIER``, réutilisés
+tels quels par le futur lot C) ; le sixième (« champion du monde ») est l'ODS8
+complet et ne nécessite **aucun fichier** — il se résout directement vers
+``obtenir_trie()``. L'option ``--tous`` (voir Usage) produit les cinq fichiers
+en une seule commande.
+
+Le palier « expert » correspond à l'**intersection brute** Lexique × ODS8,
+sans seuil de fréquence : on l'obtient avec ``seuil=0.0`` passé à
+:func:`selectionner_mots_courants`. Ceci rend bien l'intersection brute et pas
+un sous-ensemble tronqué : la comparaison de seuil est large (``>=``, pas
+``>``) et aucune fréquence de Lexique n'est négative (occurrences par
+million), donc toute forme présente dans Lexique — y compris à fréquence
+mesurée nulle — passe le test ``frequence >= 0``. ``seuil=0.0`` et
+« présence dans Lexique sans condition » (:func:`mesurer_couverture`,
+``intersection_brute``) sont donc rigoureusement équivalents ; vérifié par
+``test_selection_seuil_zero_egale_intersection_brute``.
+
+Écrasement des fichiers de palier
+----------------------------------
+Contrairement à ``classiques_ajoutes.txt`` (curation manuelle protégée par
+``--force`` dans ``scripts/generer_classiques.py``), les fichiers de palier —
+comme ``mots_courants.txt`` lui-même — sont des **sorties purement dérivées** :
+aucune édition manuelle n'y est jamais faite, ils se régénèrent à l'identique
+à partir de l'ODS8 et de Lexique. Il n'y a donc rien à protéger d'un
+écrasement : ``--tous`` (comme le mode simple) réécrit systématiquement, sans
+``--force``. Choix explicite, pas un oubli.
+
 Usage
 -----
     python scripts/generer_mots_courants.py            # construit mots_courants.txt
     python scripts/generer_mots_courants.py --dry-run  # mesure seule, sans écrire
     python scripts/generer_mots_courants.py --seuil 2  # seuil 2/million
     python scripts/generer_mots_courants.py --corpus livres  # freqlivres seul
+    python scripts/generer_mots_courants.py --tous     # les 5 fichiers de palier
 
 Nécessite l'ODS8 et ``Lexique383.tsv`` présents dans ``data/dictionnaire/``.
 """
@@ -79,6 +112,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from scrabble.dictionnaire.dictionnaire import (  # noqa: E402
     DOSSIER_DICO,
+    FICHIERS_VOCABULAIRE_PALIER,
     _reecrire_liste_mots,
     charger_ods,
     desaccentuer,
@@ -88,6 +122,28 @@ from scrabble.dictionnaire.dictionnaire import (  # noqa: E402
 # Emplacements par défaut (dans le dossier gitignoré des dictionnaires tiers).
 CHEMIN_LEXIQUE = DOSSIER_DICO / "Lexique383.tsv"
 CHEMIN_MOTS_COURANTS = DOSSIER_DICO / "mots_courants.txt"
+
+# Seuils de fréquence (occ./million) par palier de vocabulaire IA (issue #366,
+# lot A). « expert » = 0.0 : intersection brute, sans condition de fréquence
+# (voir le docstring du module). Noms de fichiers dans
+# ``FICHIERS_VOCABULAIRE_PALIER`` (module ``dictionnaire``, réutilisée telle
+# quelle pour que le lot C n'ait qu'une seule source de vérité pour les noms).
+SEUILS_PALIER: dict[str, float] = {
+    "debutant": 3.0,
+    "facile": 2.0,
+    "intermediaire": 1.0,
+    "avance": 0.5,
+    "expert": 0.0,
+}
+
+# Ordre d'affichage/génération : du vocabulaire le plus restreint au plus large.
+ORDRE_PALIERS: tuple[str, ...] = (
+    "debutant",
+    "facile",
+    "intermediaire",
+    "avance",
+    "expert",
+)
 
 # Corpus de fréquence sélectionnables et colonnes Lexique correspondantes.
 COLONNES_CORPUS: dict[str, tuple[str, ...]] = {
@@ -194,6 +250,37 @@ def selectionner_mots_courants(
     }
 
 
+def generer_tous_paliers(
+    frequences: dict[str, tuple[float, float]],
+    mots_ods: set[str],
+    corpus: str = CORPUS_DEFAUT,
+    dry_run: bool = False,
+) -> list[tuple[str, int]]:
+    """Produit les cinq fichiers de vocabulaire IA par palier (``--tous``, issue #366).
+
+    Un fichier par palier de :data:`ORDRE_PALIERS`, chacun filtré au seuil
+    :data:`SEUILS_PALIER` correspondant et écrit à l'emplacement
+    ``FICHIERS_VOCABULAIRE_PALIER`` (module ``dictionnaire``). N'écrit rien si
+    ``dry_run`` (mesure seule). Retourne ``[(palier, effectif), ...]`` dans
+    l'ordre de :data:`ORDRE_PALIERS`, pour le récapitulatif de :func:`main`.
+    """
+    resultats: list[tuple[str, int]] = []
+    total = len(mots_ods)
+    for palier in ORDRE_PALIERS:
+        seuil = SEUILS_PALIER[palier]
+        chemin = FICHIERS_VOCABULAIRE_PALIER[palier]
+        courants = selectionner_mots_courants(frequences, mots_ods, seuil, corpus)
+        print(
+            f"[{palier}] seuil >= {seuil} : {len(courants)} mots "
+            f"({_pourcent(len(courants), total)} de l'ODS8)"
+        )
+        if not dry_run:
+            _reecrire_liste_mots(chemin, courants)
+            print(f"  → écrit dans {chemin}")
+        resultats.append((palier, len(courants)))
+    return resultats
+
+
 def mesurer_couverture(
     frequences: dict[str, tuple[float, float]],
     mots_ods: set[str],
@@ -269,9 +356,21 @@ def main(argv: list[str] | None = None) -> int:
     parseur.add_argument(
         "--dry-run",
         action="store_true",
-        help="mesure la couverture sans écrire le fichier de sortie",
+        help="mesure la couverture sans écrire le(s) fichier(s) de sortie",
+    )
+    parseur.add_argument(
+        "--tous",
+        action="store_true",
+        help=(
+            "génère les cinq fichiers de vocabulaire par palier (issue #366) "
+            "en une commande, aux emplacements conventionnels ; incompatible "
+            "avec --sortie/--seuil (un seuil par palier est imposé)"
+        ),
     )
     args = parseur.parse_args(argv)
+
+    if args.tous and (args.sortie != CHEMIN_MOTS_COURANTS or args.seuil != SEUIL_DEFAUT):
+        parseur.error("--tous est incompatible avec --sortie/--seuil (un seuil par palier est imposé).")
 
     mots_ods = charger_ods()
     if not mots_ods:
@@ -301,6 +400,16 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Formes Lexique distinctes (désaccentuées) : {len(frequences)}")
     stats = mesurer_couverture(frequences, mots_ods, args.corpus)
     afficher_couverture(stats)
+
+    if args.tous:
+        print("\nGénération des cinq fichiers de vocabulaire par palier :")
+        resultats = generer_tous_paliers(frequences, mots_ods, args.corpus, args.dry_run)
+        print("\nRécapitulatif :")
+        for palier, effectif in resultats:
+            print(f"  {palier:<15} {effectif} mots")
+        if args.dry_run:
+            print("(--dry-run : aucun fichier écrit.)")
+        return 0
 
     courants = selectionner_mots_courants(
         frequences, mots_ods, args.seuil, args.corpus

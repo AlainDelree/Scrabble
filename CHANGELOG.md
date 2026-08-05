@@ -9,6 +9,20 @@ Historique des changements notables, par ordre antéchronologique. Voir aussi
 
 ### Ajouté
 
+- **Issue #366** (lot A, suite de #205/#206) — `scripts/generer_mots_courants.py
+  --tous` : produit en une seule commande les cinq fichiers de vocabulaire IA
+  par palier de difficulté (`mots_courants_debutant/facile/intermediaire/
+  avance/expert.txt`, seuils de fréquence respectifs ≥ 3,0/2,0/1,0/0,5 et
+  intersection brute sans seuil pour Expert), avec un récapitulatif des
+  effectifs. Le sixième palier, Champion du monde, ne nécessite aucun fichier
+  (ODS8 complet, résolu directement vers `obtenir_trie()`). Noms de fichiers
+  centralisés dans la nouvelle constante
+  `scrabble.dictionnaire.dictionnaire.FICHIERS_VOCABULAIRE_PALIER`, réutilisable
+  par le futur lot C (résolution `Niveau` → palier). Fichiers dérivés purs
+  (jamais édités à la main) : réécrits systématiquement, sans `--force`,
+  contrairement à `classiques_ajoutes.txt`. Ce lot ne touche ni au moteur ni à
+  l'UI — seule la génération des fichiers.
+
 - **Issue #362** — `scripts/mesurer_force_niveaux.py` : script de mesure
   manuel (hors suite pytest) de la force relative de deux niveaux IA sur des
   parties complètes jouées l'une contre l'autre dans la **même** partie (même

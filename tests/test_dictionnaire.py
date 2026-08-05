@@ -20,6 +20,8 @@ import pytest
 import scrabble.dictionnaire.dictionnaire as d
 from scrabble.dictionnaire.dictionnaire import (
     CHEMINS_MODIFS,
+    DOSSIER_DICO,
+    FICHIERS_VOCABULAIRE_PALIER,
     Dictionnaire,
     Trie,
     assurer_fichiers_modifs,
@@ -47,6 +49,32 @@ from scrabble.dictionnaire.dictionnaire import (
     statut_classique,
     statut_source,
 )
+
+
+# --------------------------------------------------------------------------- #
+# Vocabulaire IA par palier (issue #366, lot A)
+# --------------------------------------------------------------------------- #
+
+def test_fichiers_vocabulaire_palier_cinq_entrees_sous_dossier_dico():
+    """La constante de mapping palier → fichier couvre les cinq paliers filtrés.
+
+    Le sixième palier (« champion du monde », ODS8 complet) n'a volontairement
+    aucune entrée : il se résout vers :func:`obtenir_trie`, sans fichier.
+    """
+    assert set(FICHIERS_VOCABULAIRE_PALIER) == {
+        "debutant",
+        "facile",
+        "intermediaire",
+        "avance",
+        "expert",
+    }
+    assert "champion_du_monde" not in FICHIERS_VOCABULAIRE_PALIER
+    noms = set()
+    for palier, chemin in FICHIERS_VOCABULAIRE_PALIER.items():
+        assert chemin.parent == DOSSIER_DICO
+        assert chemin.name == f"mots_courants_{palier}.txt"
+        noms.add(chemin.name)
+    assert len(noms) == 5  # aucun doublon de nom de fichier entre paliers
 
 
 # --------------------------------------------------------------------------- #

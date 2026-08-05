@@ -116,6 +116,23 @@ CHEMINS_CLASSIQUES: tuple[Path, Path] = (
 # avertissement journalisé — voir :func:`construire_ensemble_ia`.
 CHEMIN_MOTS_COURANTS = DOSSIER_DICO / "mots_courants.txt"
 
+# Vocabulaire « humain » de l'IA par palier (issue #366, lot A, suite de
+# #205/#206). Chaque palier correspond à un seuil de fréquence différent sur le
+# même croisement ODS8 × Lexique 3 (``scripts/generer_mots_courants.py --tous``),
+# un fichier « un mot par ligne » par palier, même convention/normalisation que
+# :data:`CHEMIN_MOTS_COURANTS`. Le palier « champion_du_monde » (ODS8 complet,
+# sans filtre) n'a volontairement **pas d'entrée** ici : il se résout vers
+# :func:`obtenir_trie` directement, sans passer par un fichier de vocabulaire
+# restreint — voir le lot C (résolution ``Niveau`` → palier) pour l'usage de
+# cette constante à l'exécution.
+FICHIERS_VOCABULAIRE_PALIER: dict[str, Path] = {
+    "debutant": DOSSIER_DICO / "mots_courants_debutant.txt",
+    "facile": DOSSIER_DICO / "mots_courants_facile.txt",
+    "intermediaire": DOSSIER_DICO / "mots_courants_intermediaire.txt",
+    "avance": DOSSIER_DICO / "mots_courants_avance.txt",
+    "expert": DOSSIER_DICO / "mots_courants_expert.txt",
+}
+
 # Belgicismes à revoir (issue #274) : CSV colonnes ``mot`` /
 # ``définition(s) belge(s)`` / ``origine_wallonne`` / ``existe_sens_standard``,
 # maintenu manuellement. Chargé uniquement quand le mode Belgicisme est actif

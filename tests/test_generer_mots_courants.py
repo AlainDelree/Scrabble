@@ -172,6 +172,137 @@ def test_mesure_couverture_intersection_et_balayage(tmp_path):
     assert balayage[1.0] == 1   # MAISON seul (RARE sous 1.0)
 
 
+# --------------------------------------------------------------------------- #
+# Palier « expert » : seuil 0 == intersection brute (issue #366, lot A)
+# --------------------------------------------------------------------------- #
+
+def test_selection_seuil_zero_egale_intersection_brute(tmp_path):
+    """``selectionner_mots_courants(..., seuil=0.0)`` rend l'intersection brute.
+
+    Y compris pour une forme à fréquence mesurée nulle dans les deux corpus :
+    la comparaison est large (``>=``), pas stricte, donc rien n'est exclu à
+    tort — c'est cette propriété que le palier Expert exploite (voir le
+    docstring du script).
+    """
+    lexique = tmp_path / "lex.tsv"
+    _ecrire_lexique(
+        lexique,
+        [
+            ("maison", 50.0, 40.0),
+            ("rare", 0.1, 0.05),
+            ("jamaisvu", 0.0, 0.0),  # présent dans Lexique, fréquence nulle partout
+        ],
+    )
+    freq = gmc.lire_frequences_lexique(lexique)
+    ods = {"MAISON", "RARE", "JAMAISVU", "HORSLEXIQUE"}
+
+    stats = gmc.mesurer_couverture(freq, ods, "union")
+    au_seuil_zero = gmc.selectionner_mots_courants(freq, ods, seuil=0.0, corpus="union")
+
+    assert len(au_seuil_zero) == stats["intersection_brute"]
+    assert au_seuil_zero == {"MAISON", "RARE", "JAMAISVU"}
+    assert "HORSLEXIQUE" not in au_seuil_zero
+
+
+# --------------------------------------------------------------------------- #
+# Mode --tous : cinq paliers en une commande (issue #366, lot A)
+# --------------------------------------------------------------------------- #
+
+def test_ordre_et_seuils_paliers_couvrent_les_memes_cles():
+    """``ORDRE_PALIERS``, ``SEUILS_PALIER`` et ``FICHIERS_VOCABULAIRE_PALIER``.
+
+    doivent porter exactement les mêmes cinq paliers, sans quoi
+    :func:`generer_tous_paliers` lèverait un ``KeyError`` à l'exécution.
+    """
+    assert set(gmc.ORDRE_PALIERS) == set(gmc.SEUILS_PALIER)
+    assert set(gmc.ORDRE_PALIERS) == set(gmc.FICHIERS_VOCABULAIRE_PALIER)
+    assert len(gmc.ORDRE_PALIERS) == 5
+
+
+def test_generer_tous_paliers_ecrit_les_cinq_fichiers(tmp_path, monkeypatch):
+    """``generer_tous_paliers`` écrit un fichier par palier, filtré à son seuil."""
+    chemins = {palier: tmp_path / f"{palier}.txt" for palier in gmc.ORDRE_PALIERS}
+    monkeypatch.setattr(gmc, "FICHIERS_VOCABULAIRE_PALIER", chemins)
+
+    lexique = tmp_path / "lex.tsv"
+    _ecrire_lexique(
+        lexique,
+        [
+            ("tres", 10.0, 10.0),      # >= 3.0 : dans tous les paliers
+            ("moyen", 1.5, 1.5),       # >= 1.0 mais < 2.0 : intermédiaire/avancé/expert
+            ("faible", 0.6, 0.6),      # >= 0.5 mais < 1.0 : avancé/expert seuls
+            ("nul", 0.0, 0.0),         # présent mais fréquence nulle : expert seul
+        ],
+    )
+    freq = gmc.lire_frequences_lexique(lexique)
+    ods = {"TRES", "MOYEN", "FAIBLE", "NUL"}
+
+    resultats = gmc.generer_tous_paliers(freq, ods, corpus="union", dry_run=False)
+
+    effectifs = dict(resultats)
+    assert effectifs["debutant"] == 1     # TRES seul (seuil 3.0)
+    assert effectifs["facile"] == 1       # TRES seul (seuil 2.0)
+    assert effectifs["intermediaire"] == 2  # TRES + MOYEN (seuil 1.0)
+    assert effectifs["avance"] == 3       # + FAIBLE (seuil 0.5)
+    assert effectifs["expert"] == 4       # + NUL (seuil 0.0, intersection brute)
+
+    for palier, chemin in chemins.items():
+        assert chemin.exists()
+        mots = set(chemin.read_text(encoding="utf-8").split())
+        assert len(mots) == effectifs[palier]
+
+
+def test_generer_tous_paliers_dry_run_ecrit_rien(tmp_path, monkeypatch):
+    """``dry_run=True`` mesure sans écrire aucun des cinq fichiers."""
+    chemins = {palier: tmp_path / f"{palier}.txt" for palier in gmc.ORDRE_PALIERS}
+    monkeypatch.setattr(gmc, "FICHIERS_VOCABULAIRE_PALIER", chemins)
+
+    lexique = tmp_path / "lex.tsv"
+    _ecrire_lexique(lexique, [("maison", 50.0, 40.0)])
+    freq = gmc.lire_frequences_lexique(lexique)
+
+    gmc.generer_tous_paliers(freq, {"MAISON"}, corpus="union", dry_run=True)
+
+    for chemin in chemins.values():
+        assert not chemin.exists()
+
+
+def test_main_tous_produit_le_recapitulatif(tmp_path, monkeypatch, capsys):
+    """``main(["--tous"])`` génère les cinq fichiers et affiche un récapitulatif."""
+    chemins = {palier: tmp_path / f"{palier}.txt" for palier in gmc.ORDRE_PALIERS}
+    monkeypatch.setattr(gmc, "FICHIERS_VOCABULAIRE_PALIER", chemins)
+    monkeypatch.setattr(gmc, "charger_ods", lambda: {"MAISON", "ZEBRE"})
+
+    lexique = tmp_path / "lex.tsv"
+    _ecrire_lexique(lexique, [("maison", 50.0, 40.0), ("zebre", 5.0, 4.0)])
+
+    code = gmc.main(["--lexique", str(lexique), "--tous"])
+    assert code == 0
+    for chemin in chemins.values():
+        assert chemin.exists()
+    sortie = capsys.readouterr().out
+    assert "Récapitulatif" in sortie
+    for palier in gmc.ORDRE_PALIERS:
+        assert palier in sortie
+
+
+def test_main_tous_incompatible_avec_sortie_ou_seuil(tmp_path):
+    """``--tous`` combiné à ``--sortie``/``--seuil`` est un usage rejeté (pas un plantage)."""
+    with pytest.raises(SystemExit):
+        gmc.main(["--tous", "--seuil", "2"])
+    with pytest.raises(SystemExit):
+        gmc.main(["--tous", "--sortie", str(tmp_path / "sortie.txt")])
+
+
+def test_main_tous_fichier_lexique_absent_message_clair(tmp_path, monkeypatch, capsys):
+    """``--tous`` sans ``Lexique383.tsv`` échoue proprement, comme le mode simple."""
+    monkeypatch.setattr(gmc, "charger_ods", lambda: {"MOT"})
+    code = gmc.main(["--lexique", str(tmp_path / "absent.tsv"), "--tous"])
+    assert code == 1
+    sortie = capsys.readouterr()
+    assert "introuvable" in sortie.err
+
+
 def test_main_ecrit_fichier_trie(tmp_path, monkeypatch, capsys):
     """``main`` produit un fichier « un mot par ligne » trié, relisible tel quel."""
     lexique = tmp_path / "lex.tsv"
