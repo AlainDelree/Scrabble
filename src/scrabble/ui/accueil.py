@@ -94,10 +94,8 @@ NIVEAUX_LABELS: dict[str, Niveau] = {
     "Intermédiaire": Niveau.INTERMEDIAIRE,
     "Avancé": Niveau.AVANCE,
     "Expert": Niveau.EXPERT,
+    "Champion du monde": Niveau.CHAMPION_DU_MONDE,
 }
-# CHAMPION_DU_MONDE (issue #368, lot D) est volontairement absent : le 6e
-# bouton de l'accueil relève du lot F (issue #369, point 7 — hors périmètre
-# de ce lot), qui touchera aussi ``NIVEAUX_LABELS``.
 
 # Libellé français d'un Niveau, inverse de NIVEAUX_LABELS (pour les messages).
 _LIBELLES_NIVEAUX: dict[Niveau, str] = {

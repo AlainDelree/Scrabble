@@ -287,7 +287,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                   DEBUTANT: 'Débutant',
                   FACILE: 'Facile',
                   INTERMEDIAIRE: 'Intermédiaire',
+                  AVANCE: 'Avancé',
                   EXPERT: 'Expert',
+                  CHAMPION_DU_MONDE: 'Champion du monde',
               }[joueur.niveau] || joueur.niveau)
             : '';
         const badgeNiveau = niveauLabel

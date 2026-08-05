@@ -830,52 +830,101 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
     text-overflow: ellipsis;
 }
 
-/* Dégradé crème → brun du plus clair (Débutant) au plus foncé (Expert),
-   couleur de police basculée vers blanc dès que le fond devient trop
-   sombre pour garantir le contraste WCAG AA (issue #301). */
+/* Dégradé crème → brun du plus clair (Débutant) au plus foncé (Champion du
+   monde), sur SIX paliers depuis l'ajout de ce niveau (issue #371, lot F —
+   les cinq premiers étaient codés en dur pour cinq arrêts exacts). Couleur de
+   police basculée vers blanc dès que le fond devient trop sombre pour
+   garantir le contraste WCAG AA (issue #301).
+
+   Chaque palier a été revérifié individuellement (par bande, pas en
+   moyenne — le contraste MOYEN du dégradé ne garantit rien sur un palier
+   particulier) avec la formule de luminance relative WCAG :
+     - Débutant          #f5e6c8 / texte #4a3418 → 9.49:1
+     - Facile            #e3bd6c / texte #4a3418 → 6.55:1
+     - Intermédiaire     #d1a352 / texte #4a3418 → 5.05:1
+     - Avancé            #8a5a1a / texte #ffffff → 5.90:1
+     - Expert            #5c3d0a / texte #ffffff → 9.87:1
+     - Champion du monde #2e1c05 / texte #ffffff → 16.35:1
+   tous au-delà du seuil AA (4.5:1). Le palier Intermédiaire de l'ancienne
+   série à cinq arrêts (#c9963c, texte foncé) ne passait PAS ce seuil en
+   réalité (4.41:1 en texte foncé, 2.65:1 en texte blanc — luminance de fond
+   tombant dans la zone où AUCUN des deux textes ne convient) : un défaut
+   préexistant à ce lot, corrigé ici en resserrant tout le dégradé plutôt que
+   d'ajouter un simple sixième arrêt à la série d'origine.
+
+   Survol : chaque palier bascule désormais uniformément sur le fond du
+   palier suivant (``hover_i = fond_{i+1}``), plus foncé, y compris pour
+   Avancé/Expert qui utilisaient jusqu'ici leur propre couleur de bordure en
+   survol. Champion du monde (dernier palier, pas de suivant) survole sur un
+   brun quasi noir dédié (#170b01). Cette réorganisation libère #3d2606
+   (bordure d'Expert) de son ancien rôle de survol d'Expert : conserver ce
+   candidat « naturel » pour le fond de Champion du monde aurait fait
+   coïncider un nouveau fond au repos avec l'ancienne couleur de survol
+   d'Expert — source de confusion visuelle explicitement signalée par
+   l'issue. #3d2606 redevient ici uniquement la bordure d'Expert, son rôle
+   d'origine. */
 .zone-boutons .btn-niveau[data-niveau="Débutant"] {
     background: #f5e6c8;
     color: #4a3418;
     border-color: #caa02c;
 }
 .zone-boutons .btn-niveau[data-niveau="Facile"] {
-    background: #e8c97a;
+    background: #e3bd6c;
     color: #4a3418;
     border-color: #b8920a;
 }
 .zone-boutons .btn-niveau[data-niveau="Intermédiaire"] {
-    background: #c9963c;
+    background: #d1a352;
     color: #4a3418;
     border-color: #9b6b1e;
 }
 .zone-boutons .btn-niveau[data-niveau="Avancé"] {
-    background: #9b6b1e;
+    background: #8a5a1a;
     color: #ffffff;
-    border-color: #7a5010;
+    border-color: #6b4413;
 }
 .zone-boutons .btn-niveau[data-niveau="Expert"] {
     background: #5c3d0a;
     color: #ffffff;
     border-color: #3d2606;
 }
+.zone-boutons .btn-niveau[data-niveau="Champion du monde"] {
+    background: #2e1c05;
+    color: #ffffff;
+    border-color: #1a0f02;
+}
 
 .zone-boutons .btn-niveau[data-niveau="Débutant"]:hover:not(:disabled) {
-    background: #e8c97a;
+    background: #e3bd6c;
 }
 .zone-boutons .btn-niveau[data-niveau="Facile"]:hover:not(:disabled) {
-    background: #c9963c; color: #4a3418;
+    background: #d1a352; color: #4a3418;
 }
 .zone-boutons .btn-niveau[data-niveau="Intermédiaire"]:hover:not(:disabled) {
-    background: #9b6b1e; color: #ffffff;
+    background: #8a5a1a; color: #ffffff;
 }
 .zone-boutons .btn-niveau[data-niveau="Avancé"]:hover:not(:disabled) {
-    background: #7a5010;
+    background: #5c3d0a;
 }
 .zone-boutons .btn-niveau[data-niveau="Expert"]:hover:not(:disabled) {
-    background: #3d2606;
+    background: #2e1c05;
+}
+.zone-boutons .btn-niveau[data-niveau="Champion du monde"]:hover:not(:disabled) {
+    background: #170b01;
 }
 
 .zone-boutons .btn-niveau:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* Niveau indisponible (vocabulaire IA manquant, issue #369 lot C ; rendu
+   visuel issue #371 lot F) : contrairement à ``:disabled`` ci-dessus, le
+   bouton n'est PAS désactivé nativement — il doit rester cliquable pour
+   afficher le message d'erreur au clic (accueil.js), en plus du message au
+   survol (``title``). Même affaiblissement visuel que ``:disabled`` pour
+   signaler l'indisponibilité d'un coup d'œil. */
+.zone-boutons .btn-niveau.niveau-indisponible {
     opacity: 0.45;
     cursor: not-allowed;
 }

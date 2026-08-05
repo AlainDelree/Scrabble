@@ -46,16 +46,41 @@
       nb_lettres: 6, courant: false, position: 'droite', avatar: 'avatar-12' },
   ];
 
+  // Format allégé en trois paliers (issue #364) : la liste elle-même ne porte
+  // plus le détail du score embarqué (``detail``), seulement un booléen
+  // ``a_detail`` — le détail se charge à la demande via
+  // ``api.obtenir_detail_coup(index)`` (voir plus bas). ``positions`` (cases
+  // posées, vide pour une passe/un échange) sert à la surbrillance du coup
+  // consulté dans l'historique (jeu.js, ``surbrillerCoupConsulte``).
   const historique = [
     { index: 5, action: 'coup', nom_joueur: 'Ordi Est', humain: false, mot: 'CAVE',
-      score_action: 18, detail: { mots: [{ texte: 'CAVE', score: 18, cases_bonus: [] }], total: 18 } },
+      score_action: 18, a_detail: true, positions: [{ ligne: 6, colonne: 9 }] },
     { index: 4, action: 'coup', nom_joueur: 'Alain', humain: true, mot: 'JOUER',
-      score_action: 24, detail: { mots: [{ texte: 'JOUER', score: 24, cases_bonus: [] }], total: 24 } },
+      score_action: 24, a_detail: true,
+      positions: [
+        { ligne: 7, colonne: 5 }, { ligne: 7, colonne: 6 }, { ligne: 7, colonne: 7 },
+        { ligne: 7, colonne: 8 }, { ligne: 7, colonne: 9 },
+      ] },
     { index: 3, action: 'passe', nom_joueur: 'Ordi Ouest', humain: false, mot: null,
-      score_action: 0, detail: null },
+      score_action: 0, a_detail: false, positions: [] },
     { index: 2, action: 'coup', nom_joueur: 'Ordi Nord', humain: false, mot: 'MTS',
-      score_action: 12, detail: { mots: [{ texte: 'MTS', score: 12, cases_bonus: [] }], total: 12 } },
+      score_action: 12, a_detail: true,
+      positions: [
+        { ligne: 6, colonne: 7 }, { ligne: 8, colonne: 7 }, { ligne: 9, colonne: 7 },
+      ] },
   ];
+
+  // Détail du score d'un coup (palier c, issue #364), chargé à la demande par
+  // ``api.obtenir_detail_coup(index)`` — plus jamais embarqué dans la liste.
+  const detailsCoup = {
+    5: { mots: [{ texte: 'CAVE', score: 18, cases_bonus: [] }], total: 18 },
+    4: { mots: [{ texte: 'JOUER', score: 24, cases_bonus: [] }], total: 24 },
+    2: { mots: [{ texte: 'MTS', score: 12, cases_bonus: [] }], total: 12 },
+  };
+
+  // Résumé minimal du dernier coup réel (issue #364, ex-``historique[0]``) :
+  // sert à la surbrillance persistante ``.derniere-pose`` du plateau.
+  const dernierCoup = { positions: historique[0].positions };
 
   const chevalet = [
     { lettre: 'A', valeur: 1, joker: false },
@@ -71,7 +96,7 @@
     id_partie: 1, taille: 15, plateau, joueurs,
     index_courant: 0, jetons_sac: 42, nb_humains: 1,
     tour_humain: true, index_panneau: 0, terminee: false,
-    gagnants: [], historique,
+    gagnants: [], nb_historique: historique.length, dernier_coup: dernierCoup,
   };
 
   window.pywebview = {
@@ -79,6 +104,14 @@
       obtenir_etat: async () => JSON.parse(JSON.stringify(etat)),
       obtenir_theme_plateau: async () => window.__THEME__ || 'classique',
       obtenir_chevalet: async () => ({ succes: true, lettres: chevalet }),
+      // Paliers b/c de l'historique glissant (issue #364) : la liste sans
+      // détail, puis le détail d'UNE entrée à la demande.
+      obtenir_historique: async () => JSON.parse(JSON.stringify(historique)),
+      obtenir_detail_coup: async (index) => (
+        index in detailsCoup
+          ? { succes: true, detail: JSON.parse(JSON.stringify(detailsCoup[index])) }
+          : { succes: false }
+      ),
       verifier_mot: async () => ({ succes: true, valide: true, mot: 'TEST', definition: ['Définition de démonstration.'] }),
       echanger_tout: async () => ({ succes: true }),
       passer: async () => ({ succes: true }),

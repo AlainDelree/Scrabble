@@ -9,6 +9,67 @@ Historique des changements notables, par ordre antéchronologique. Voir aussi
 
 ### Ajouté
 
+- **Issue #371** (lot F, suite de #366/#368/#369/#370) — Dernier lot du
+  chantier « vocabulaire par niveau » : Champion du monde devient
+  sélectionnable à l'accueil, avec un dégradé à six paliers et les niveaux
+  indisponibles désactivés d'emblée.
+  - **6ᵉ bouton** : `ui/web/accueil.html` ajoute le bouton « Champion du
+    monde » à `.zone-niveaux` ; `ui/accueil.py` complète `NIVEAUX_LABELS`
+    (`"Champion du monde": Niveau.CHAMPION_DU_MONDE`, l'exclusion
+    documentée depuis le lot D est retirée).
+  - **Dégradé à six paliers** (`ui/web/accueil.css`) : les six arrêts
+    (fonds, bordures, texte, survol) ont été **recalculés dans leur
+    ensemble**, pas seulement complétés d'un sixième — l'ancienne série à
+    cinq paliers cachait un défaut : le palier Intermédiaire (`#c9963c`,
+    texte foncé) ne respectait PAS le contraste WCAG AA en réalité (4.41:1
+    en texte foncé, 2.65:1 en texte blanc, luminance de fond tombant dans
+    la zone où aucun des deux textes ne convient). La nouvelle série
+    (`#f5e6c8` → `#e3bd6c` → `#d1a352` → `#8a5a1a` → `#5c3d0a` → `#2e1c05`)
+    passe ≥ 4.5:1 sur chaque bande, au repos comme au survol, vérifié par un
+    calcul de luminance relative WCAG (pas une moyenne). Le survol suit
+    désormais uniformément `hover_i = fond_{i+1}` (y compris pour
+    Avancé/Expert, qui utilisaient jusqu'ici leur propre bordure) ; `#3d2606`
+    (bordure d'Expert, candidat naturel pour le 6ᵉ fond mais déjà utilisé
+    comme survol d'Expert dans l'ancienne série) redevient uniquement la
+    bordure d'Expert, jamais réutilisé pour Champion du monde.
+  - **Niveaux indisponibles** : l'accueil appelle
+    `ApiAccueil.obtenir_disponibilite_niveaux()` (exposée par le lot C) **à
+    l'affichage**, pas au lancement — un niveau dont le vocabulaire IA est
+    absent du disque reste cliquable (pas de `disabled` natif, qui
+    empêcherait tout événement clic) mais affiche le message dédié au survol
+    (`title`) et au clic (`alert`), via la classe CSS `.niveau-indisponible`.
+    Le refus côté Python (`ajouter_ordinateur`) reste en place comme défense
+    en profondeur. Champion du monde, sans fichier de vocabulaire, est
+    toujours disponible.
+  - **Correctif au passage** (`ui/web/jeu.js`) : le badge de niveau affiché
+    derrière le prénom d'un joueur ordinateur (fiche panneau) affichait
+    « AVANCE » en majuscules et sans accent — la map de libellés n'y
+    contenait pas `AVANCE`, défaut antérieur au chantier signalé par le
+    rapport du lot D. Complétée avec `AVANCE` → « Avancé » et
+    `CHAMPION_DU_MONDE` → « Champion du monde » ; la map homologue
+    d'`accueil.js` (déjà correcte pour `AVANCE`) reçoit aussi
+    `CHAMPION_DU_MONDE`.
+  - **Harnais visuel** : `scripts/_harness_jeu/mock.js` mockait encore
+    l'ancien format `etat.historique` avec détail de score embarqué, retiré
+    par l'issue #364 — mis à jour vers le format à trois paliers actuel
+    (`etat.nb_historique` + `etat.dernier_coup`, `api.obtenir_historique()`
+    sans détail, `api.obtenir_detail_coup(index)` à la demande). Signalé
+    sans régénération (rendu WebKitGTK non couvert par pytest) : les
+    captures de référence `i289..i292_accueil_*` (5 boutons) et les scripts
+    `verif_accueil_145.mjs`/`verif_niveaux_119.mjs` (encore bâtis sur
+    l'ancienne modale « Ajouter un ordinateur » antérieure à #299, avec un
+    mock à 4 niveaux ne couvrant même pas Avancé) sont obsolètes et devront
+    être régénérés/réécrits séparément.
+  - Tests : nouveau fichier `test_accueil_niveaux_visuels.py` (6ᵉ bouton,
+    contraste WCAG AA par bande au repos et au survol pour les six paliers,
+    monotonie du dégradé, garde-fous paramétrés sur tous les membres de
+    `Niveau` pour les deux maps JS de libellés, consommation JS de
+    `obtenir_disponibilite_niveaux`). `test_accueil.py` :
+    `test_tous_les_niveaux_ont_un_label` perd son exclusion de
+    `CHAMPION_DU_MONDE` (garde-fou complet, sur le modèle du lot D) ;
+    `test_labels_attendus` couvre Avancé et Champion du monde. Suite
+    complète : 874 tests verts.
+
 - **Issue #370** (lot E, suite de #366/#369) — Suppression du réglage global
   « vocabulaire humain » (issue #206), devenu redondant et contradictoire
   depuis le lot C (#369) : chaque niveau joue désormais sur son propre palier

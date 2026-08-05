@@ -56,6 +56,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // État
     let premierHumainAjoute = false;
 
+    // Disponibilité des niveaux (issue #369 lot C, rendu visuel issue #371
+    // lot F) : { [label]: message } pour chaque niveau dont le vocabulaire IA
+    // est indisponible. Peuplé une seule fois au chargement de l'accueil
+    // (voir appliquerDisponibiliteNiveaux, appelée dans l'initialisation
+    // plus bas) — le contrôle doit avoir lieu à l'AFFICHAGE, pas au
+    // lancement (Béatrice ne doit pas cliquer, attendre, puis échouer).
+    let niveauxIndisponibles = {};
+
     /**
      * Met à jour l'affichage en fonction de l'état reçu
      */
@@ -97,7 +105,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         'FACILE': 'Facile',
                         'INTERMEDIAIRE': 'Intermédiaire',
                         'AVANCE': 'Avancé',
-                        'EXPERT': 'Expert'
+                        'EXPERT': 'Expert',
+                        'CHAMPION_DU_MONDE': 'Champion du monde'
                     }[joueur.niveau] || joueur.niveau;
                     typeLabel += ` (${niveauLabel})`;
                 }
@@ -398,9 +407,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Boutons de niveau (issue #299) : un clic ajoute directement un
     // ordinateur au niveau choisi, sans modale intermédiaire.
+    //
+    // Niveau indisponible (issue #369 lot C, rendu visuel issue #371 lot F) :
+    // le bouton n'est PAS désactivé nativement (voir appliquerDisponibiliteNiveaux
+    // plus bas) afin de rester cliquable — le message dédié doit s'afficher
+    // « au clic ou au survol », ce qu'un <button disabled> natif empêcherait
+    // (un bouton désactivé ne reçoit aucun événement click). Le refus côté
+    // Python (ajouter_ordinateur) reste en place comme défense en profondeur.
     document.querySelectorAll('.btn-niveau').forEach(btn => {
         btn.addEventListener('click', async () => {
             const niveau = btn.dataset.niveau;
+            const messageIndisponible = niveauxIndisponibles[niveau];
+            if (messageIndisponible) {
+                alert(messageIndisponible);
+                return;
+            }
             const result = await api.ajouter_ordinateur(niveau);
             if (result.succes) {
                 mettreAJourAffichage(result.etat);
@@ -409,6 +430,37 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     });
+
+    /**
+     * Désactive visuellement les boutons de niveau dont le vocabulaire IA est
+     * indisponible et prépare le message d'erreur dédié (issue #369 lot C,
+     * rendu visuel issue #371 lot F). Appelée une seule fois à l'affichage de
+     * l'accueil (voir l'initialisation plus bas) : Béatrice voit l'état
+     * indisponible AVANT de cliquer, elle ne clique pas pour échouer ensuite.
+     * Champion du monde ne dépend d'aucun fichier : toujours disponible,
+     * jamais concerné par cette fonction.
+     */
+    async function appliquerDisponibiliteNiveaux() {
+        let disponibilites;
+        try {
+            disponibilites = await api.obtenir_disponibilite_niveaux();
+        } catch (err) {
+            return;
+        }
+        (disponibilites || []).forEach(({ label, disponible, message }) => {
+            if (disponible) {
+                return;
+            }
+            niveauxIndisponibles[label] = message;
+            const btn = document.querySelector(
+                `.btn-niveau[data-niveau="${CSS.escape(label)}"]`);
+            if (!btn) {
+                return;
+            }
+            btn.classList.add('niveau-indisponible');
+            btn.title = message;
+        });
+    }
 
     // Retirer un joueur (délégation d'événement)
     listeJoueurs.addEventListener('click', async (e) => {
@@ -936,4 +988,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     mettreAJourAffichage(etatInitial);
     syncModeDictionnaire(Boolean(etatInitial.mode_belgicisme));
     await chargerPartiesEnCours();
+    // Contrôle de disponibilité des niveaux À L'AFFICHAGE (issue #369 lot C,
+    // rendu visuel issue #371 lot F), pas seulement au lancement.
+    await appliquerDisponibiliteNiveaux();
 });

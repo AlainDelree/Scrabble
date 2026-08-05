@@ -273,16 +273,14 @@ class TestNiveauxLabels:
     def test_tous_les_niveaux_ont_un_label(self):
         """Chaque niveau proposable à l'écran d'accueil a un label français.
 
-        Niveau.CHAMPION_DU_MONDE (issue #368, lot D) est volontairement exclu
-        de cette vérification : il n'est pas encore proposable au joueur, ce
-        câblage étant réservé au lot F. Le retirer de la liste plutôt que de
-        toucher ``NIVEAUX_LABELS``/``accueil.py`` respecte le périmètre du
-        lot D tout en gardant ce test représentatif de son intention réelle
-        (« tout niveau sélectionnable a un label »).
+        Paramétré sur TOUS les membres de :class:`Niveau` (issue #371, lot F,
+        garde-fou sur le modèle du test paramétré du lot D, issue #368) : plus
+        d'exclusion de ``Niveau.CHAMPION_DU_MONDE`` (le 6e bouton de l'accueil
+        est désormais câblé, voir :class:`TestDisponibiliteNiveaux`) — un futur
+        ajout de niveau fera automatiquement échouer ce test tant que
+        ``NIVEAUX_LABELS`` n'aura pas été complété.
         """
         for niveau in Niveau:
-            if niveau is Niveau.CHAMPION_DU_MONDE:
-                continue
             label_trouve = any(
                 NIVEAUX_LABELS[label] == niveau for label in NIVEAUX_LABELS
             )
@@ -293,7 +291,9 @@ class TestNiveauxLabels:
         assert NIVEAUX_LABELS["Débutant"] == Niveau.DEBUTANT
         assert NIVEAUX_LABELS["Facile"] == Niveau.FACILE
         assert NIVEAUX_LABELS["Intermédiaire"] == Niveau.INTERMEDIAIRE
+        assert NIVEAUX_LABELS["Avancé"] == Niveau.AVANCE
         assert NIVEAUX_LABELS["Expert"] == Niveau.EXPERT
+        assert NIVEAUX_LABELS["Champion du monde"] == Niveau.CHAMPION_DU_MONDE
 
 
 class TestDisponibiliteNiveaux:
