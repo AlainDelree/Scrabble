@@ -54,20 +54,24 @@ from scrabble.config import (
     charger_config,
 )
 from scrabble.dictionnaire.dictionnaire import (
+    FICHIERS_CACHE_IA_PALIER,
+    FICHIERS_VOCABULAIRE_PALIER,
     SOURCES,
     marquer_classique,
     modifier_appartenance,
     obtenir_trie,
     obtenir_trie_ia,
+    paliers_disponibles,
     rechercher_statut,
 )
-from scrabble.moteur.ia import Niveau
+from scrabble.moteur.ia import Niveau, resoudre_palier
 from scrabble.moteur.partie import MAX_JOUEURS, Partie, creer_partie
 from scrabble.persistance.stockage import (
     CHEMIN_DEFAUT,
     ResumePartie,
     demarrer_suivi,
     lister_parties,
+    niveaux_ia_stockes,
     reprendre_partie,
 )
 from scrabble.reglages import lire_reglage, modifier_reglage
@@ -91,6 +95,43 @@ NIVEAUX_LABELS: dict[str, Niveau] = {
     "Avancé": Niveau.AVANCE,
     "Expert": Niveau.EXPERT,
 }
+# CHAMPION_DU_MONDE (issue #368, lot D) est volontairement absent : le 6e
+# bouton de l'accueil relève du lot F (issue #369, point 7 — hors périmètre
+# de ce lot), qui touchera aussi ``NIVEAUX_LABELS``.
+
+# Libellé français d'un Niveau, inverse de NIVEAUX_LABELS (pour les messages).
+_LIBELLES_NIVEAUX: dict[Niveau, str] = {
+    niveau: label for label, niveau in NIVEAUX_LABELS.items()
+}
+
+
+def _disponibilite_niveau(niveau: Niveau) -> tuple[bool, str | None]:
+    """Disponibilité du vocabulaire IA d'un niveau (issue #369, lot C, point 5).
+
+    Réglage « vocabulaire humain » (issue #206) désactivé (défaut) → toujours
+    disponible : tous les niveaux jouent alors sur l'ODS8 complet (point 7 de
+    l'issue #369), le fichier de vocabulaire d'un palier n'entre donc jamais
+    en jeu et ne doit pas bloquer la sélection d'un niveau. Activé → un
+    niveau est indisponible quand son palier (:func:`resoudre_palier`) est
+    connu mais que le fichier de vocabulaire correspondant est absent du
+    disque (:func:`~scrabble.dictionnaire.dictionnaire.paliers_disponibles`).
+    :data:`~scrabble.moteur.ia.Niveau.CHAMPION_DU_MONDE` (palier ``None``) ne
+    dépend d'aucun fichier : toujours disponible, réglage ou pas.
+
+    Renvoie ``(True, None)`` si disponible, ``(False, message)`` sinon, où
+    ``message`` reprend le libellé retenu par l'issue : « <Niveau> en erreur,
+    veuillez choisir un autre niveau. Prévenir Alain pour la réparation. ».
+    """
+    if not bool(charger_config().get("vocabulaire_humain", False)):
+        return True, None
+    palier = resoudre_palier(niveau)
+    if palier is None or paliers_disponibles().get(palier, False):
+        return True, None
+    label = _LIBELLES_NIVEAUX.get(niveau, niveau.name)
+    return False, (
+        f"{label} en erreur, veuillez choisir un autre niveau. "
+        "Prévenir Alain pour la réparation."
+    )
 
 # Libellés français des valeurs à choix fini pour le panneau Réglages intégré
 # à l'accueil (issue #169, ex-fenêtre autonome ``ui/reglages.py``). Les clés
@@ -414,8 +455,33 @@ class ApiAccueil:
         journal.info(f"Accueil : joueur humain ajouté ({nom}).")
         return {"succes": True, "etat": self.obtenir_etat()}
 
+    def obtenir_disponibilite_niveaux(self) -> list[dict[str, Any]]:
+        """Disponibilité de chaque niveau de difficulté (issue #369, lot C).
+
+        Renvoie, pour chaque label de :data:`NIVEAUX_LABELS`, ``{"label",
+        "disponible", "message"}`` — ``message`` étant ``None`` quand
+        ``disponible`` est vrai. Sert de base à un futur bouton désactivé
+        d'emblée à l'accueil (« le contrôle doit se faire à l'affichage de
+        l'accueil, pas au lancement », issue #369 point 5) : ce lot expose
+        l'information côté Python, le rendu visuel (bouton grisé, tooltip)
+        relevant du lot F.
+        """
+        resultat = []
+        for label, niveau in NIVEAUX_LABELS.items():
+            disponible, message = _disponibilite_niveau(niveau)
+            resultat.append(
+                {"label": label, "disponible": disponible, "message": message}
+            )
+        return resultat
+
     def ajouter_ordinateur(self, niveau_label: str) -> dict[str, Any]:
-        """Ajoute un ordinateur avec le niveau donné (label français)."""
+        """Ajoute un ordinateur avec le niveau donné (label français).
+
+        Refuse un niveau dont le vocabulaire IA est indisponible (issue #369,
+        point 5, défense en profondeur : le bouton correspondant doit déjà
+        être désactivé à l'accueil, lot F) avec le message dédié
+        (:func:`_disponibilite_niveau`).
+        """
         if not self.config_partie.peut_ajouter_ordinateur():
             return {
                 "succes": False,
@@ -424,6 +490,9 @@ class ApiAccueil:
         niveau = NIVEAUX_LABELS.get(niveau_label)
         if niveau is None:
             return {"succes": False, "erreur": f"Niveau inconnu : {niveau_label}"}
+        disponible, message = _disponibilite_niveau(niveau)
+        if not disponible:
+            return {"succes": False, "erreur": message}
         noms_pris = self.config_partie.noms_utilises()
         try:
             prenoms = tirer_prenoms(1, noms_pris)
@@ -463,28 +532,91 @@ class ApiAccueil:
         }
 
     @staticmethod
-    def _construire_trie_ia(source: str, mode_belgicisme: bool = False) -> Any:
-        """Trie restreint de l'IA si « vocabulaire humain » est actif, sinon ``None``.
+    def _construire_trie_ia(
+        source: str,
+        niveaux: list[Niveau],
+        mode_belgicisme: bool = False,
+        trie_complet: Any | None = None,
+    ) -> dict[Niveau, Any]:
+        """Mapping ``{Niveau: Trie}`` pour les niveaux présents (issue #369, lot C).
 
-        Réglage global unique (issue #206), indépendant du niveau de difficulté :
-        désactivé (défaut) → ``None`` (l'IA joue sur le dictionnaire complet,
-        comportement historique inchangé, coût nul). Activé → Trie restreint
-        (:func:`~scrabble.dictionnaire.dictionnaire.obtenir_trie_ia`) construit sur
-        la **même** ``source`` que le Trie complet du jeu.
+        Fin du Trie IA unique (rapport de lecture #366) : une partie avec un
+        Débutant et un Expert a besoin de deux Tries distincts. Cette méthode
+        construit le mapping consommé par ``Partie.dictionnaires_ia``,
+        appelée aussi bien à la création (:meth:`lancer_partie`) qu'à la
+        reprise (:meth:`reprendre`) — ``niveaux`` en est le seul point de
+        variation (config courante vs niveaux **stockés**, voir
+        :func:`~scrabble.persistance.stockage.niveaux_ia_stockes`).
+
+        Réglage global « vocabulaire humain » (issue #206), toujours
+        indépendant du niveau de difficulté : désactivé (défaut) → mapping
+        **vide** ; chaque IA retombe alors sur le dictionnaire complet dans
+        ``Partie`` (comportement historique inchangé, coût nul — voir le
+        docstring de ``Partie`` pour ce repli). Activé → un Trie par niveau
+        **présent uniquement** (chargement paresseux, point 3 de l'issue) :
+        au plus 3 IA à une table, donc au plus 3 paliers chargés, jamais les
+        six — le rapport #366 chiffre un Trie complet à plusieurs dizaines de
+        Mo, et les mesures du lot C (voir CHANGELOG) confirment l'écart.
+
+        Chaque niveau se résout vers un palier via
+        :func:`~scrabble.moteur.ia.resoudre_palier` :
+
+        * un palier connu (5 premiers niveaux) → Trie restreint
+          (:func:`~scrabble.dictionnaire.dictionnaire.obtenir_trie_ia`), avec
+          le chemin de vocabulaire et le chemin de cache propres à ce palier
+          (:data:`~scrabble.dictionnaire.dictionnaire.FICHIERS_VOCABULAIRE_PALIER`,
+          :data:`~scrabble.dictionnaire.dictionnaire.FICHIERS_CACHE_IA_PALIER`)
+          et ``palier=palier`` passé à ``obtenir_trie_ia`` — chemin distinct
+          **et** défense en profondeur de l'en-tête, recommandation explicite
+          du lot B ;
+        * ``None`` (CHAMPION_DU_MONDE) → Trie complet
+          (:func:`~scrabble.dictionnaire.dictionnaire.obtenir_trie`), en
+          réutilisant ``trie_complet`` s'il est déjà construit par l'appelant
+          (le Trie de validation de la partie, jamais reconstruit deux fois)
+          plutôt que d'en reconstruire un second.
+
+        Vocabulaire manquant (issue #369, point 5) : si le fichier de
+        vocabulaire d'un palier **requis** (présent dans ``niveaux``) est
+        absent, ``ValueError`` est levée avec le message retenu par l'issue
+        (:func:`_disponibilite_niveau`) plutôt que de rabattre silencieusement
+        ce niveau sur un autre vocabulaire. Le contrôle préventif (empêcher la
+        sélection d'un niveau indisponible) a lieu en amont, à l'affichage de
+        l'accueil (:meth:`ajouter_ordinateur`,
+        :meth:`obtenir_disponibilite_niveaux`) : cette exception ne devrait
+        donc se déclencher qu'à la reprise d'une partie **sauvegardée** dont
+        le niveau est devenu indisponible depuis — ``lancer_partie`` comme
+        ``reprendre`` l'attrapent déjà via leur ``except Exception`` existant
+        et renvoient ``{"succes": False, "erreur": ...}`` au JS, qui revient à
+        l'accueil sans planter.
 
         La source est transmise **en paramètre** par l'appelant (issue #210) —
-        exactement la valeur passée à ``obtenir_trie(source)`` — plutôt que relue
-        ici via un second ``charger_config()`` qui pourrait en théorie diverger.
-        On garantit ainsi que le vocabulaire de l'IA reste un sous-ensemble strict
-        du dictionnaire de validation effectivement utilisé pour la partie.
-
-        ``mode_belgicisme`` (issue #274, défaut ``False``) est transmis de la
-        même façon, pour la même raison : il doit correspondre exactement au
-        mode utilisé pour le Trie complet de la partie.
+        exactement la valeur passée à ``obtenir_trie(source)`` — plutôt que
+        relue ici via un second ``charger_config()`` qui pourrait en théorie
+        diverger. ``mode_belgicisme`` (issue #274) suit la même logique.
         """
         if not bool(charger_config().get("vocabulaire_humain", False)):
-            return None
-        return obtenir_trie_ia(source, mode_belgicisme=mode_belgicisme)
+            return {}
+        resultat: dict[Niveau, Any] = {}
+        for niveau in dict.fromkeys(niveaux):  # dédoublonne, ordre préservé
+            palier = resoudre_palier(niveau)
+            if palier is None:
+                resultat[niveau] = (
+                    trie_complet
+                    if trie_complet is not None
+                    else obtenir_trie(source, mode_belgicisme=mode_belgicisme)
+                )
+                continue
+            disponible, message = _disponibilite_niveau(niveau)
+            if not disponible:
+                raise ValueError(message)
+            resultat[niveau] = obtenir_trie_ia(
+                source,
+                chemin_mots_courants=FICHIERS_VOCABULAIRE_PALIER[palier],
+                chemin_cache=FICHIERS_CACHE_IA_PALIER[palier],
+                mode_belgicisme=mode_belgicisme,
+                palier=palier,
+            )
+        return resultat
 
     def lancer_partie(self) -> dict[str, Any]:
         """Crée et démarre la partie avec la configuration actuelle.
@@ -545,10 +677,12 @@ class ApiAccueil:
             # Réglage du bonus officiel au finisseur (issue #134), câblé dans le
             # moteur via creer_partie.
             bonus_fin_partie = bool(config.get("bonus_fin_partie", False))
-            # Réglage « vocabulaire humain » (issue #206) : Trie restreint de l'IA,
-            # construit sur la même source et le même mode que le Trie complet
-            # (issues #210, #274).
-            trie_ia = self._construire_trie_ia(source, mode_belgicisme)
+            # Réglage « vocabulaire humain » (issue #206) : un Trie par niveau
+            # d'IA présent (issue #369, lot C), construit sur la même source et
+            # le même mode que le Trie complet (issues #210, #274).
+            tries_ia = self._construire_trie_ia(
+                source, niveaux_ia, mode_belgicisme, trie_complet=trie
+            )
             self._partie = creer_partie(
                 noms_humains=noms_humains,
                 dictionnaire=trie,
@@ -558,7 +692,7 @@ class ApiAccueil:
                 graine=graine,
                 tirage_ordre=True,
                 bonus_fin_partie=bonus_fin_partie,
-                dictionnaire_ia=trie_ia,
+                dictionnaires_ia=tries_ia,
             )
             self._id_partie = demarrer_suivi(
                 self._partie, mode_belgicisme=self.config_partie.mode_belgicisme
@@ -655,6 +789,16 @@ class ApiAccueil:
         En cas de succès, le champ ``pret`` vaut ``True`` : le JS doit alors
         fermer la fenêtre d'accueil (``api.fermer_fenetre()``) pour que l'écran
         de jeu puisse s'ouvrir avec la partie reprise.
+
+        Les niveaux d'IA utilisés pour construire les Tries (issue #369, lot C)
+        viennent de la partie **stockée** (:func:`~scrabble.persistance.stockage.
+        niveaux_ia_stockes`), pas de la configuration courante de l'accueil —
+        comportement voulu : une IA « Expert » sauvegardée reste Expert à la
+        reprise, quel que soit l'état de ``config_partie`` entre-temps. Si un
+        niveau stocké est devenu indisponible (fichier de vocabulaire manquant),
+        ``_construire_trie_ia`` lève ``ValueError`` (message dédié), rattrapée
+        ci-dessous par le ``except Exception`` général : retour à l'accueil avec
+        message d'erreur, sans planter (issue #369, point 5).
         """
         try:
             # Source du dictionnaire choisie dans les réglages (issue #210) :
@@ -664,10 +808,14 @@ class ApiAccueil:
             trie = obtenir_trie(source)
             # Réglage « vocabulaire humain » (issue #206) : une partie reprise doit
             # continuer de restreindre son IA si le réglage est actif — sur la même
-            # source que le Trie complet (issue #210).
-            trie_ia = self._construire_trie_ia(source)
+            # source que le Trie complet (issue #210), et niveau par niveau
+            # (issue #369, lot C) selon les niveaux **stockés**.
+            niveaux_stockes = niveaux_ia_stockes(id_partie)
+            tries_ia = self._construire_trie_ia(
+                source, niveaux_stockes, trie_complet=trie
+            )
             self._partie = reprendre_partie(
-                id_partie, trie, dictionnaire_ia=trie_ia
+                id_partie, trie, dictionnaires_ia=tries_ia
             )
             self._id_partie = id_partie
             # Reprise = pas de tirage d'ordre à rejouer : on efface tout

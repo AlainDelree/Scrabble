@@ -9,10 +9,11 @@ Niveaux de difficulté
 ---------------------
 * **CHAMPION_DU_MONDE** : même stratégie de sélection qu'EXPERT (meilleur
   coup) et même tranche de malus/bonus stratégiques. Ne se distingue
-  d'EXPERT que par le vocabulaire (ODS8 complet au lieu de l'intersection
-  Lexique), câblé par le lot C (issue #368, lot D) — tant que ce câblage
-  n'existe pas, CHAMPION_DU_MONDE se comporte à l'identique d'EXPERT, égalité
-  DOCUMENTÉE ET TEMPORAIRE (voir « Ordre réel de force » ci-dessous).
+  d'EXPERT que par le vocabulaire — câblé par l'appelant (issue #369, lot C)
+  via :func:`resoudre_palier` : EXPERT reçoit le Trie restreint du palier
+  ``"expert"`` (intersection Lexique), CHAMPION_DU_MONDE le Trie complet
+  (ODS8 sans filtre, ``obtenir_trie()``). Ce module lui-même reste agnostique
+  du dictionnaire reçu (voir « Ordre réel de force » ci-dessous).
 * **EXPERT** : choisit le meilleur coup (premier de la liste triée). En cas
   d'égalité de score entre plusieurs coups de tête, choix aléatoire parmi eux.
 * **AVANCE** : choix aléatoire uniforme parmi les 15 % meilleurs coups (top
@@ -34,32 +35,34 @@ Niveaux de difficulté
 Ordre réel de force (score moyen)
 ---------------------------------
 Les stratégies ci-dessus produisent, en moyenne, l'ordre croissant
-``DEBUTANT < FACILE < INTERMEDIAIRE < AVANCE < EXPERT <= CHAMPION_DU_MONDE``
+``DEBUTANT < FACILE < INTERMEDIAIRE < AVANCE < EXPERT < CHAMPION_DU_MONDE``
 — cohérent avec l'ordre de la classe :class:`Niveau` et avec ce que
 suggèrent les noms des niveaux.
 
-Cette monotonie est STRUCTURELLE : tous les niveaux passent par le même
-mécanisme (tri par score stratégique puis tirage uniforme dans une tranche
-haute), et les tranches sont strictement emboîtées — top 85 % (DEBUTANT) ⊃
-top 60 % (FACILE) ⊃ top 33 % (INTERMEDIAIRE) ⊃ top 15 % (AVANCE) ⊃ meilleur
-coup (EXPERT). Chaque tranche étant un sous-ensemble strictement meilleur de
-la précédente, les scores moyens croissent mécaniquement avec le niveau,
-indépendamment du dictionnaire employé (avec ou sans le filtre de
-« vocabulaire humain », issue #206/#207). Aucun niveau n'a de filtre dur
-spécifique : l'issue #359 avait doté DEBUTANT d'un filtre sur la longueur
-(``nb_nouvelles >= 3``) qui le rendait plus sélectif que FACILE et cassait la
-monotonie ; l'issue #361 l'a remplacé par la tranche top 85 %.
+Cette monotonie est STRUCTURELLE pour les cinq premiers niveaux : tous
+passent par le même mécanisme (tri par score stratégique puis tirage
+uniforme dans une tranche haute), et les tranches sont strictement
+emboîtées — top 85 % (DEBUTANT) ⊃ top 60 % (FACILE) ⊃ top 33 %
+(INTERMEDIAIRE) ⊃ top 15 % (AVANCE) ⊃ meilleur coup (EXPERT). Chaque tranche
+étant un sous-ensemble strictement meilleur de la précédente, les scores
+moyens croissent mécaniquement avec le niveau, indépendamment du dictionnaire
+employé. Aucun niveau n'a de filtre dur spécifique : l'issue #359 avait doté
+DEBUTANT d'un filtre sur la longueur (``nb_nouvelles >= 3``) qui le rendait
+plus sélectif que FACILE et cassait la monotonie ; l'issue #361 l'a remplacé
+par la tranche top 85 %.
 
-Le dernier maillon, EXPERT <= CHAMPION_DU_MONDE, est une ÉGALITÉ et non une
-inégalité stricte : à ce stade (lot D de l'issue #368), CHAMPION_DU_MONDE
-n'est câblé sur aucun vocabulaire distinct d'EXPERT (le lot C s'en charge),
-et partage exactement la même stratégie et les mêmes tranches de malus/bonus.
-Les deux niveaux produisent donc, à graine égale, EXACTEMENT le même coup —
-l'égalité est mécanique, pas approximative. Cette égalité est TEMPORAIRE :
-une fois le lot C câblé (ODS8 complet pour CHAMPION_DU_MONDE contre
-l'intersection Lexique pour EXPERT), le vocabulaire plus large de
-CHAMPION_DU_MONDE lui ouvrira des coups inaccessibles à EXPERT et l'inégalité
-deviendra stricte.
+Le dernier maillon, EXPERT < CHAMPION_DU_MONDE, est de nature DIFFÉRENTE : ce
+n'est pas la stratégie de sélection qui les distingue (:func:`_choisir_expert`
+sert les deux identiquement), mais le vocabulaire reçu en paramètre — câblé
+par l'appelant (issue #369, lot C, voir :func:`resoudre_palier`) : EXPERT
+génère ses coups sur le Trie restreint du palier ``"expert"`` (intersection
+Lexique), CHAMPION_DU_MONDE sur le Trie complet ODS8. Le vocabulaire plus
+large de CHAMPION_DU_MONDE lui ouvre des coups inaccessibles à EXPERT, d'où
+l'inégalité stricte en moyenne. Contrairement aux cinq premiers niveaux, ce
+n'est donc PAS une propriété de ce module : à dictionnaire identique (par
+exemple si l'appelant transmettait le même Trie aux deux, ou avec le
+vocabulaire humain désactivé — voir ``ui.accueil``), les deux niveaux
+redeviennent mécaniquement égaux, comme le vérifie la fixture de test dédiée.
 
 Pourquoi « top 60 % » pour FACILE plutôt qu'une moitié/tranche centrale ? La
 distribution des scores est fortement asymétrique : quelques coups à très
@@ -110,6 +113,46 @@ class Niveau(Enum):
     AVANCE = auto()
     EXPERT = auto()
     CHAMPION_DU_MONDE = auto()
+
+
+# Résolution Niveau → clé de palier de vocabulaire IA (issue #369, lot C).
+#
+# Emplacement volontaire : ce module (``moteur.ia``) connaît :class:`Niveau`,
+# et les clés ci-dessous ne sont que des chaînes — aucune dépendance vers
+# ``scrabble.dictionnaire`` n'est introduite ici. C'est le sens inverse qui est
+# strictement interdit (choix du lot A, issue #366) : ``dictionnaire.py`` ne
+# doit jamais importer le moteur, pour rester utilisable sans lui. Le moteur,
+# lui, peut décrire une correspondance vers des clés de palier sans en
+# importer la définition : ces mêmes clés sont utilisées, côté appelant
+# (``scrabble.ui.accueil``, qui importe déjà les deux modules), pour indexer
+# :data:`scrabble.dictionnaire.dictionnaire.FICHIERS_VOCABULAIRE_PALIER` et
+# :data:`~scrabble.dictionnaire.dictionnaire.FICHIERS_CACHE_IA_PALIER` — une
+# correspondance de test (``test_moteur_ia.py``) vérifie qu'elles restent en
+# phase.
+#
+# :data:`Niveau.CHAMPION_DU_MONDE` n'a volontairement aucune entrée : il ne se
+# résout vers aucun palier restreint mais vers le Trie complet
+# (:func:`~scrabble.dictionnaire.dictionnaire.obtenir_trie`, ODS8 sans
+# filtre) — voir :func:`resoudre_palier`.
+_PALIERS_PAR_NIVEAU: dict[Niveau, str] = {
+    Niveau.DEBUTANT: "debutant",
+    Niveau.FACILE: "facile",
+    Niveau.INTERMEDIAIRE: "intermediaire",
+    Niveau.AVANCE: "avance",
+    Niveau.EXPERT: "expert",
+}
+
+
+def resoudre_palier(niveau: Niveau) -> str | None:
+    """Résout un :class:`Niveau` vers sa clé de palier de vocabulaire IA.
+
+    Renvoie la clé de palier (``"debutant"``, ``"facile"``… voir
+    :data:`_PALIERS_PAR_NIVEAU`) pour les cinq niveaux filtrés, et ``None``
+    pour :data:`Niveau.CHAMPION_DU_MONDE` : ce niveau n'est câblé sur aucun
+    fichier de vocabulaire restreint, l'appelant doit se rabattre sur le Trie
+    complet (``obtenir_trie()``) plutôt que sur ``obtenir_trie_ia(palier=...)``.
+    """
+    return _PALIERS_PAR_NIVEAU.get(niveau)
 
 
 #: Malus (négatif) appliqué au score de tri d'un coup posant peu de lettres
@@ -228,9 +271,11 @@ def choisir_coup(
 def _choisir_expert(coups: list[CoupNote], rng: random.Random) -> Coup:
     """EXPERT et CHAMPION_DU_MONDE : meilleur coup, aléatoire en cas d'égalité.
 
-    CHAMPION_DU_MONDE réutilise cette fonction tant que le lot C (issue #368)
-    n'a pas câblé son vocabulaire propre (ODS8 complet) : jusque-là, les deux
-    niveaux sont stratégiquement identiques.
+    Les deux niveaux partagent exactement la même stratégie de sélection et
+    les mêmes tranches de malus/bonus (:data:`_MALUS_LONGUEUR`,
+    :data:`_BONUS_PREMIUM`) : seul le vocabulaire reçu en paramètre les
+    distingue, câblé par l'appelant (issue #369, lot C, voir
+    :func:`resoudre_palier`).
     """
     meilleur_score = coups[0].score
     meilleurs = [cn for cn in coups if cn.score == meilleur_score]

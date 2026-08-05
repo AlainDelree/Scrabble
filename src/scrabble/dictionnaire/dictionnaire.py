@@ -150,6 +150,30 @@ FICHIERS_CACHE_IA_PALIER: dict[str, Path] = {
     for palier in FICHIERS_VOCABULAIRE_PALIER
 }
 
+
+def paliers_disponibles(
+    fichiers: dict[str, Path] = FICHIERS_VOCABULAIRE_PALIER,
+) -> dict[str, bool]:
+    """Disponibilité de chaque palier de vocabulaire IA (issue #369, lot C).
+
+    Un palier est disponible si son fichier de vocabulaire existe sur disque.
+    Contrairement à :func:`lire_liste_mots` (qui tolère silencieusement un
+    fichier absent en renvoyant un ensemble vide), cette fonction sert à
+    **détecter** l'absence plutôt qu'à s'en accommoder : un palier absent doit
+    être signalé à l'utilisatrice (niveau désactivé), pas remplacé
+    silencieusement par un vocabulaire vide ou un autre palier.
+
+    Ne couvre pas le palier ``"champion_du_monde"`` (aucune entrée dans
+    :data:`FICHIERS_VOCABULAIRE_PALIER` : il se résout vers
+    :func:`obtenir_trie`, toujours disponible, sans fichier de vocabulaire).
+    L'appelant qui a besoin de la disponibilité de CHAMPION_DU_MONDE la
+    considère donc ``True`` par construction, en dehors de cette fonction.
+
+    ``fichiers`` par défaut :data:`FICHIERS_VOCABULAIRE_PALIER` ; un mapping
+    explicite reste accepté pour les tests.
+    """
+    return {palier: chemin.exists() for palier, chemin in fichiers.items()}
+
 # Belgicismes à revoir (issue #274) : CSV colonnes ``mot`` /
 # ``définition(s) belge(s)`` / ``origine_wallonne`` / ``existe_sens_standard``,
 # maintenu manuellement. Chargé uniquement quand le mode Belgicisme est actif

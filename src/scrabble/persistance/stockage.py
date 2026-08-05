@@ -506,12 +506,42 @@ def lister_parties(chemin: _TypeChemin = CHEMIN_DEFAUT) -> list[ResumePartie]:
     return resumes
 
 
+def niveaux_ia_stockes(
+    id_partie: int, chemin: _TypeChemin = CHEMIN_DEFAUT
+) -> list[Niveau]:
+    """Niveaux des IA de la partie stockée ``id_partie``, sans la reconstruire.
+
+    Lit directement la configuration JSON des joueurs (colonne
+    ``parties.joueurs``), sans rejouer les actions ni instancier de
+    :class:`Partie`. Sert à l'appelant (``ui.accueil.ApiAccueil.reprendre``,
+    issue #369 lot C) à savoir quels paliers de vocabulaire IA charger
+    **avant** d'appeler :func:`reprendre_partie` : les niveaux d'une partie
+    reprise doivent venir de la partie **stockée**, pas de la configuration
+    courante de l'accueil (une IA « Expert » restée en base doit continuer à
+    jouer Expert même si l'accueil affiche autre chose entre-temps).
+
+    :raises KeyError: si aucune partie ne porte cet identifiant.
+    """
+    with _connexion(chemin) as connexion:
+        ligne = connexion.execute(
+            "SELECT joueurs FROM parties WHERE id = ?", (id_partie,)
+        ).fetchone()
+    if ligne is None:
+        raise KeyError(f"Aucune partie d'identifiant {id_partie}.")
+    configs = _joueurs_depuis_json(ligne["joueurs"])
+    return [
+        Niveau[donnees["niveau"]]
+        for donnees in configs
+        if donnees.get("niveau") is not None
+    ]
+
+
 def reprendre_partie(
     id_partie: int,
     dictionnaire: DictionnaireMots,
     chemin: _TypeChemin = CHEMIN_DEFAUT,
     *,
-    dictionnaire_ia: DictionnaireMots | None = None,
+    dictionnaires_ia: dict[Niveau, DictionnaireMots] | None = None,
 ) -> Partie:
     """Reconstruit la :class:`Partie` ``id_partie`` en rejouant ses actions.
 
@@ -525,12 +555,15 @@ def reprendre_partie(
     ``dictionnaire`` doit être le même (ou en contenir les mots) que celui de la
     partie d'origine, sans quoi le rejeu d'un coup échouerait à la validation.
 
-    ``dictionnaire_ia`` (issue #206, réglage « vocabulaire humain ») est
-    transmis tel quel à la :class:`Partie` reconstruite pour que l'IA d'une
-    partie **reprise** continue de jouer dans son vocabulaire restreint. ``None``
-    (défaut) = IA sur le dictionnaire complet. Le rejeu des actions passe
-    toujours par ``valider_coup`` sur ``dictionnaire`` complet : il n'est donc
-    pas affecté par ce paramètre.
+    ``dictionnaires_ia`` (issues #206, #369 lot C) associe à chaque
+    :class:`~scrabble.moteur.ia.Niveau` présent son Trie restreint, transmis tel
+    quel à la :class:`Partie` reconstruite pour que chaque IA d'une partie
+    **reprise** continue de jouer dans son vocabulaire propre. ``None`` (défaut)
+    = toutes les IA sur le dictionnaire complet. Voir :func:`niveaux_ia_stockes`
+    pour connaître, avant l'appel, les niveaux à couvrir dans ce mapping (les
+    niveaux viennent de la partie stockée, pas de la config courante). Le rejeu
+    des actions passe toujours par ``valider_coup`` sur ``dictionnaire``
+    complet : il n'est donc pas affecté par ce paramètre.
 
     :raises KeyError: si aucune partie ne porte cet identifiant.
     """
@@ -551,7 +584,7 @@ def reprendre_partie(
         joueurs,
         dictionnaire,
         graine=ligne["graine"],
-        dictionnaire_ia=dictionnaire_ia,
+        dictionnaires_ia=dictionnaires_ia,
     )
 
     for action in actions:

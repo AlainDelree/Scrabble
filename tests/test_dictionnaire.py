@@ -46,6 +46,7 @@ from scrabble.dictionnaire.dictionnaire import (
     normaliser_mot,
     obtenir_trie,
     obtenir_trie_ia,
+    paliers_disponibles,
     rechercher_statut,
     statut_classique,
     statut_source,
@@ -100,6 +101,42 @@ def test_fichiers_cache_ia_palier_meme_cles_que_vocabulaire_et_chemins_distincts
         assert chemin.name == f"trie_ia_cache_{palier}.pkl"
         noms.add(chemin.name)
     assert len(noms) == 5  # aucun doublon de nom de fichier entre paliers
+
+
+# --------------------------------------------------------------------------- #
+# Disponibilité des paliers de vocabulaire IA (issue #369, lot C)
+# --------------------------------------------------------------------------- #
+
+def test_paliers_disponibles_tous_presents(tmp_path):
+    """Un palier dont le fichier de vocabulaire existe est disponible."""
+    chemin_a = tmp_path / "mots_courants_a.txt"
+    chemin_b = tmp_path / "mots_courants_b.txt"
+    chemin_a.write_text("CHAT\n", encoding="utf-8")
+    chemin_b.write_text("CHIEN\n", encoding="utf-8")
+    assert paliers_disponibles({"a": chemin_a, "b": chemin_b}) == {
+        "a": True,
+        "b": True,
+    }
+
+
+def test_paliers_disponibles_signale_le_fichier_manquant(tmp_path):
+    """Un palier dont le fichier est absent est signalé indisponible, pas ignoré.
+
+    Contrairement à :func:`lire_liste_mots` (fichier absent toléré → ensemble
+    vide, silencieux), cette fonction sert justement à DÉTECTER l'absence — le
+    point 5 de l'issue #369 exige un signalement, pas un repli silencieux.
+    """
+    chemin_present = tmp_path / "mots_courants_present.txt"
+    chemin_present.write_text("CHAT\n", encoding="utf-8")
+    chemin_absent = tmp_path / "mots_courants_absent.txt"
+    assert paliers_disponibles(
+        {"present": chemin_present, "absent": chemin_absent}
+    ) == {"present": True, "absent": False}
+
+
+def test_paliers_disponibles_defaut_utilise_fichiers_vocabulaire_palier():
+    """Sans argument, porte sur les cinq vrais paliers de production."""
+    assert set(paliers_disponibles()) == set(FICHIERS_VOCABULAIRE_PALIER)
 
 
 # --------------------------------------------------------------------------- #

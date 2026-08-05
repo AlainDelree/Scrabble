@@ -5,10 +5,18 @@ FACILE, DEBUTANT) sur la base du générateur exhaustif, la reproductibilité
 avec graine fixée, les cas limites (un seul coup, aucun coup), et
 l'intégration avec Partie/creer_partie.
 
-CHAMPION_DU_MONDE (issue #368, lot D) n'est pas encore câblé sur un
-vocabulaire distinct d'EXPERT (lot C à venir) : les deux niveaux sont
-stratégiquement identiques ici, d'où l'égalité (et non l'inégalité stricte)
-dans les tests de monotonie ci-dessous.
+CHAMPION_DU_MONDE et EXPERT partagent EXACTEMENT la même stratégie de
+sélection (:func:`~scrabble.moteur.ia._choisir_expert`) : à dictionnaire
+identique, les deux niveaux restent mécaniquement égaux — c'est ce que
+vérifient la plupart des tests ci-dessous, qui appellent
+``choisir_coup(..., dico, niveau, ...)`` avec un seul ``dico`` partagé. Ce
+qui les distingue en jeu réel est le vocabulaire reçu en paramètre, câblé par
+l'appelant (issue #369, lot C, voir ``scrabble.moteur.ia.resoudre_palier`` et
+``scrabble.ui.accueil``) : EXPERT sur le Trie restreint du palier
+``"expert"``, CHAMPION_DU_MONDE sur le Trie complet. Les tests de monotonie
+de ``TestProgressionTrieIaRestreint`` simulent ce câblage en donnant
+explicitement un dictionnaire plus large à CHAMPION_DU_MONDE
+(``dico_champion``), pour vérifier l'inégalité stricte qui en résulte.
 """
 
 from __future__ import annotations
@@ -18,9 +26,9 @@ import statistics
 
 import pytest
 
-from scrabble.dictionnaire.dictionnaire import Trie
+from scrabble.dictionnaire.dictionnaire import FICHIERS_VOCABULAIRE_PALIER, Trie
 from scrabble.moteur.generateur import CoupNote, generer_coups
-from scrabble.moteur.ia import Niveau, _score_strategique, choisir_coup
+from scrabble.moteur.ia import Niveau, _score_strategique, choisir_coup, resoudre_palier
 from scrabble.moteur.partie import (
     ACTION_COUP,
     ACTION_PASSE,
@@ -47,6 +55,53 @@ def _coup_cadre_au_centre() -> Coup:
     """CADRE horizontal à partir de la case centrale."""
     ligne, colonne = CENTRE
     return Coup(ligne, colonne, Direction.HORIZONTALE, tuiles_depuis_chaine("CADRE"))
+
+
+# --------------------------------------------------------------------------- #
+# Résolution Niveau → palier de vocabulaire IA (issue #369, lot C)
+# --------------------------------------------------------------------------- #
+
+class TestResoudrePalier:
+    """Résolution :class:`Niveau` → clé de palier (:func:`resoudre_palier`)."""
+
+    @pytest.mark.parametrize(
+        "niveau, palier_attendu",
+        [
+            (Niveau.DEBUTANT, "debutant"),
+            (Niveau.FACILE, "facile"),
+            (Niveau.INTERMEDIAIRE, "intermediaire"),
+            (Niveau.AVANCE, "avance"),
+            (Niveau.EXPERT, "expert"),
+        ],
+    )
+    def test_cinq_premiers_niveaux_resolvent_vers_leur_palier(
+        self, niveau, palier_attendu
+    ):
+        assert resoudre_palier(niveau) == palier_attendu
+
+    def test_champion_du_monde_ne_resout_vers_aucun_palier(self):
+        """CHAMPION_DU_MONDE n'a pas de palier : Trie complet, pas de fichier."""
+        assert resoudre_palier(Niveau.CHAMPION_DU_MONDE) is None
+
+    def test_tous_les_niveaux_sont_couverts(self):
+        """Chaque membre de Niveau reçoit une résolution (palier ou None)."""
+        for niveau in Niveau:
+            resoudre_palier(niveau)  # ne doit jamais lever
+
+    def test_paliers_resolus_correspondent_aux_cles_du_vocabulaire_ia(self):
+        """Les clés produites sont exactement celles de FICHIERS_VOCABULAIRE_PALIER.
+
+        Vérifie la correspondance entre ce module (qui ne connaît que des
+        chaînes, sans importer ``scrabble.dictionnaire``, issue #369) et les
+        clés réelles utilisées côté dictionnaire — la cohérence dépend de la
+        discipline documentée, pas d'un import partagé.
+        """
+        paliers_resolus = {
+            resoudre_palier(niveau)
+            for niveau in Niveau
+            if resoudre_palier(niveau) is not None
+        }
+        assert paliers_resolus == set(FICHIERS_VOCABULAIRE_PALIER)
 
 
 # --------------------------------------------------------------------------- #
@@ -573,10 +628,11 @@ _MOTS_IA_RESTREINT = (
 #     de DEBUTANT mais nettement sous INTERMEDIAIRE ;
 #   * INTERMEDIAIRE (top 33 %), AVANCE (top 15 %), EXPERT (meilleur) → croissant.
 #   * CHAMPION_DU_MONDE réutilise EXACTEMENT la stratégie et les tranches
-#     d'EXPERT tant que le lot C (issue #368) n'a pas câblé son vocabulaire
-#     propre : à graine égale, les deux niveaux choisissent le même coup, donc
-#     leurs scores moyens sont ÉGAUX (pas strictement croissants) — dernier
-#     maillon documenté comme TEMPORAIRE dans la docstring du module.
+#     d'EXPERT (:func:`~scrabble.moteur.ia._choisir_expert` sert les deux
+#     identiquement) : ce qui les distingue est le vocabulaire reçu en
+#     paramètre, câblé par l'appelant (issue #369, lot C) — EXPERT sur le
+#     Trie restreint du palier, CHAMPION_DU_MONDE sur le Trie complet. Les
+#     tests ci-dessous simulent ce câblage via ``dico_champion``.
 # NB : depuis l'issue #208, FACILE n'est plus la moitié INFÉRIEURE (ce qui le
 # plaçait sous DEBUTANT, contrairement à ce que suggèrent les noms) mais le
 # top 60 %. L'ordre réel coïncide désormais avec l'ordre des noms et avec
@@ -594,34 +650,51 @@ _ORDRE_CROISSANT_ATTENDU = [
     Niveau.CHAMPION_DU_MONDE,
 ]
 
-#: Paires consécutives de :data:`_ORDRE_CROISSANT_ATTENDU` dont l'ordre est
-#: une ÉGALITÉ attendue (et non une inégalité stricte). Seule la paire
-#: EXPERT/CHAMPION_DU_MONDE l'est, tant que le lot C n'a pas câblé un
-#: vocabulaire propre à CHAMPION_DU_MONDE (issue #368, lot D).
-_PAIRES_EGALITE_ATTENDUE = {(Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE)}
-
 
 def _moyennes_par_niveau(
     plateau: PlateauPartie,
     chevalet: list[str],
     dico: Trie,
     n: int = 400,
+    dico_champion: Trie | None = None,
 ) -> dict[Niveau, float]:
     """Score moyen de chaque niveau sur ``n`` tirages à graines 0..n-1.
 
     Même méthode que les tests statistiques existants : on génère la liste de
-    référence des coups une fois (sur ``dico``, donc restreinte si ``dico`` est
-    le Trie IA), puis on relève le score du coup choisi pour chaque graine. Le
-    score d'un coup ne dépend que des tuiles/plateau, pas du dictionnaire.
+    référence des coups une fois par dictionnaire utilisé, puis on relève le
+    score du coup choisi pour chaque graine. Le score d'un coup ne dépend que
+    des tuiles/plateau, pas du dictionnaire.
+
+    ``dico_champion`` (issue #369, lot C), s'il est fourni, est le
+    dictionnaire utilisé pour :data:`Niveau.CHAMPION_DU_MONDE` à la place de
+    ``dico`` — simule le câblage réel (``scrabble.ui.accueil``), où
+    CHAMPION_DU_MONDE joue sur le Trie complet quand les autres niveaux jouent
+    sur un palier restreint. ``None`` (défaut) : CHAMPION_DU_MONDE partage
+    ``dico`` avec les autres niveaux, comme avant l'issue #369.
     """
     coups_ref = generer_coups(plateau, chevalet, dico)
+    coups_ref_champion = (
+        coups_ref
+        if dico_champion is None
+        else generer_coups(plateau, chevalet, dico_champion)
+    )
     moyennes: dict[Niveau, float] = {}
     for niveau in Niveau:
+        dico_niveau = (
+            dico_champion
+            if niveau is Niveau.CHAMPION_DU_MONDE and dico_champion is not None
+            else dico
+        )
+        reference = (
+            coups_ref_champion if dico_niveau is dico_champion else coups_ref
+        )
         scores = []
         for graine in range(n):
-            coup = choisir_coup(plateau, chevalet, dico, niveau, random.Random(graine))
+            coup = choisir_coup(
+                plateau, chevalet, dico_niveau, niveau, random.Random(graine)
+            )
             if coup is not None:
-                cn = next(c for c in coups_ref if c.coup == coup)
+                cn = next(c for c in reference if c.coup == coup)
                 scores.append(cn.score)
         moyennes[niveau] = statistics.mean(scores) if scores else 0.0
     return moyennes
@@ -645,45 +718,45 @@ class TestProgressionTrieIaRestreint:
         assert len({cn.score for cn in coups_ia}) >= 3
 
     def test_progression_monotone_avec_filtre_actif(self):
-        """La progression reste monotone (au sens large) avec le Trie IA restreint.
+        """La progression reste STRICTEMENT monotone avec le Trie IA restreint.
 
-        Confirme l'hypothèse du rapport #203 : le filtre étant global, la
-        monotonie des scores moyens est préservée une fois le filtre actif.
-        Croissance stricte partout, SAUF sur la paire EXPERT/CHAMPION_DU_MONDE
-        (égalité attendue et temporaire, cf. docstring du module — issue #368,
-        lot D : CHAMPION_DU_MONDE ne sera câblé sur son propre vocabulaire
-        qu'au lot C).
+        Confirme l'hypothèse du rapport #203 : le filtre étant appliqué
+        uniformément aux cinq premiers niveaux, la monotonie des scores moyens
+        est préservée. Le dernier maillon EXPERT < CHAMPION_DU_MONDE est
+        désormais lui aussi strict (issue #369, lot C) : on simule ici le
+        câblage réel en donnant à CHAMPION_DU_MONDE le Trie complet
+        (``dico_champion``) pendant qu'EXPERT reste sur le Trie restreint —
+        le bingo CARTONS (70 pts, absent de ``_MOTS_IA_RESTREINT``) n'est
+        alors accessible qu'à CHAMPION_DU_MONDE.
         """
         dico_ia = Trie.depuis_iterable(_MOTS_IA_RESTREINT)
-        moy = _moyennes_par_niveau(self.plateau, self.chevalet, dico_ia)
+        dico_complet = Trie.depuis_iterable(_MOTS_COMPLET)
+        moy = _moyennes_par_niveau(
+            self.plateau, self.chevalet, dico_ia, dico_champion=dico_complet
+        )
         ordre = sorted(Niveau, key=lambda niv: moy[niv])
         assert ordre == _ORDRE_CROISSANT_ATTENDU
-        # Croissant le long de l'ordre attendu, strictement sauf aux paires
-        # d'égalité documentées (EXPERT/CHAMPION_DU_MONDE).
         for a, b in zip(_ORDRE_CROISSANT_ATTENDU, _ORDRE_CROISSANT_ATTENDU[1:]):
-            if (a, b) in _PAIRES_EGALITE_ATTENDUE:
-                assert moy[a] == moy[b], f"{a} et {b} devraient être égaux : {moy}"
-            else:
-                assert moy[a] < moy[b], f"{a} devrait être < {b} : {moy}"
+            assert moy[a] < moy[b], f"{a} devrait être < {b} : {moy}"
 
     def test_niveaux_restent_perceptiblement_distincts(self):
         """Aucun niveau ne se confond avec son voisin sous le filtre.
 
-        Point #3 de l'issue : on veut détecter le cas où un niveau ne se
-        distinguerait plus suffisamment d'un autre. On exige un écart d'au moins
-        1 point entre niveaux adjacents dans l'ordre de progression, seuil
-        au-delà duquel la différence reste perceptible en jeu — SAUF pour la
-        paire EXPERT/CHAMPION_DU_MONDE, dont l'égalité est attendue et
-        temporaire (issue #368, lot D ; levée par le lot C).
+        Point #3 de l'issue #207 : on veut détecter le cas où un niveau ne se
+        distinguerait plus suffisamment d'un autre. On exige un écart d'au
+        moins 1 point entre niveaux adjacents dans l'ordre de progression,
+        seuil au-delà duquel la différence reste perceptible en jeu — y
+        compris désormais pour la paire EXPERT/CHAMPION_DU_MONDE (issue #369,
+        lot C, monotonie devenue stricte : voir ``dico_champion``).
         """
         dico_ia = Trie.depuis_iterable(_MOTS_IA_RESTREINT)
-        moy = _moyennes_par_niveau(self.plateau, self.chevalet, dico_ia)
+        dico_complet = Trie.depuis_iterable(_MOTS_COMPLET)
+        moy = _moyennes_par_niveau(
+            self.plateau, self.chevalet, dico_ia, dico_champion=dico_complet
+        )
         for a, b in zip(_ORDRE_CROISSANT_ATTENDU, _ORDRE_CROISSANT_ATTENDU[1:]):
             ecart = moy[b] - moy[a]
-            if (a, b) in _PAIRES_EGALITE_ATTENDUE:
-                assert ecart == 0.0, f"{a} et {b} devraient être égaux : {moy}"
-            else:
-                assert ecart >= 1.0, f"{a} et {b} trop proches sous filtre : {moy}"
+            assert ecart >= 1.0, f"{a} et {b} trop proches sous filtre : {moy}"
 
     def test_ordre_relatif_identique_avec_et_sans_filtre(self):
         """L'ordre RELATIF des niveaux est identique avec et sans filtre.

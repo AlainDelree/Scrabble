@@ -9,6 +9,82 @@ Historique des changements notables, par ordre antéchronologique. Voir aussi
 
 ### Ajouté
 
+- **Issue #369** (lot C, suite de #366/#367/#368) — Résolution du Trie IA par
+  niveau : fin du Trie IA unique de `Partie` (verrou structurel identifié par
+  le rapport de lecture #366). `scrabble.moteur.ia.resoudre_palier(Niveau) ->
+  str | None` résout un niveau vers sa clé de palier (`FICHIERS_VOCABULAIRE_PALIER`),
+  `None` pour `CHAMPION_DU_MONDE` (Trie complet, pas de fichier) — placée côté
+  moteur pour respecter le sens unique des dépendances établi au lot A
+  (`dictionnaire.py` n'importe jamais le moteur ; le moteur peut décrire une
+  correspondance vers de simples clés `str` sans importer `dictionnaire.py`).
+  `Partie.dictionnaire_ia` (Trie unique) devient `Partie.dictionnaires_ia`
+  (mapping `{Niveau: Trie}`) ; `jouer_tour_ia` transmet à `ia.choisir_coup` le
+  Trie du **niveau du joueur courant**, avec repli sur `dictionnaire` complet
+  pour un niveau absent du mapping (mapping vide par défaut = comportement
+  historique inchangé, coût nul). `creer_partie`/`recreer_partie_meme_joueurs`
+  et `stockage.reprendre_partie` suivent (paramètre `dictionnaires_ia`) ;
+  nouvelle fonction `stockage.niveaux_ia_stockes(id_partie)` qui lit les
+  niveaux directement dans le blob JSON stocké, sans reconstruire la partie —
+  utilisée par `ApiAccueil.reprendre` pour que les Tries construits à la
+  reprise reflètent les niveaux **stockés**, pas la config courante de
+  l'accueil.
+  `ApiAccueil._construire_trie_ia` construit désormais le mapping des niveaux
+  réellement présents à la table (chargement paresseux : au plus 3 IA, donc au
+  plus 3 paliers chargés, jamais les six), à la création comme à la reprise ;
+  `FICHIERS_CACHE_IA_PALIER[palier]` sert de `chemin_cache` et `palier=palier`
+  est transmis à `obtenir_trie_ia` (chemin distinct **et** défense en
+  profondeur de l'en-tête, recommandation du lot B). `CHAMPION_DU_MONDE`
+  réutilise le Trie complet déjà construit par l'appelant plutôt que d'en
+  reconstruire un second. Le réglage « vocabulaire humain » (issue #206)
+  continue de tout piloter : désactivé, mapping vide, tous les niveaux sur
+  l'ODS8 complet (comportement historique inchangé) ; activé, un Trie par
+  palier.
+  Vocabulaire manquant (point 5) : nouvelle fonction
+  `dictionnaire.paliers_disponibles()` (détecte l'absence, contrairement à
+  `lire_liste_mots` qui la tolère silencieusement). `ApiAccueil.ajouter_ordinateur`
+  refuse désormais un niveau dont le palier est indisponible dès la sélection
+  (pas seulement au lancement), avec le message « <Niveau> en erreur, veuillez
+  choisir un autre niveau. Prévenir Alain pour la réparation. » ; nouvelle
+  méthode `ApiAccueil.obtenir_disponibilite_niveaux()` qui expose l'info pour
+  un futur bouton désactivé d'emblée (rendu visuel laissé au lot F). Pour une
+  partie **sauvegardée** dont le niveau est devenu indisponible, `reprendre()`
+  renvoie `{"succes": False, "erreur": ...}` (même message) au lieu de
+  planter — `ValueError` levée par `_construire_trie_ia` et rattrapée par le
+  `except Exception` déjà en place.
+  La monotonie `EXPERT < CHAMPION_DU_MONDE` devient **stricte** (le lot D la
+  documentait comme égalité temporaire, faute de vocabulaire distinct) :
+  `tests/test_moteur_ia.py` simule le câblage réel (Trie restreint pour
+  EXPERT, Trie complet pour CHAMPION_DU_MONDE) via un nouveau paramètre
+  `dico_champion` de `_moyennes_par_niveau` ; `_PAIRES_EGALITE_ATTENDUE` est
+  retirée (plus aucune paire d'égalité attendue) et les mentions « temporaire »
+  disparaissent des docstrings de `scrabble.moteur.ia`.
+  Mesures `tracemalloc` (que le rapport #366 n'avait pas pu obtenir, sur les
+  vraies données ODS8/Lexique présentes sur cette machine, hors dépôt) : Trie
+  complet ODS8 (411 430 mots) — 5,5 s de construction, **175,7 Mo** de pic
+  mémoire. Trie d'un palier restreint, construit depuis l'ensemble déjà filtré
+  — DEBUTANT (16 818 mots) 0,08 s / **6,9 Mo** ; FACILE (21 784) 0,14 s /
+  **8,8 Mo** ; INTERMEDIAIRE (32 737) 0,20 s / **12,9 Mo** ; AVANCE (45 335)
+  0,39 s / **17,4 Mo** ; EXPERT (112 121) 1,18 s / **41,1 Mo**. Une table à 3
+  IA (le pire cas, ex. Débutant + Facile + Expert) charge donc au plus
+  6,9 + 8,8 + 41,1 ≈ **57 Mo**, contre 175,7 Mo pour le seul Trie complet et
+  ≈263 Mo si les six paliers étaient chargés sans discrimination : le
+  chargement paresseux des paliers présents (point 3) est donc largement
+  justifié. Le coût dominant du **premier** appel (non caché) est le
+  rechargement/normalisation de l'ODS8 depuis disque (`charger_source`, non
+  mise en cache mémoire dans `construire_ensemble_ia`, ~4 s) plutôt que la
+  construction du Trie lui-même ; le cache disque par palier (lot B) absorbe
+  ce coût aux appels suivants (~0,26 s en lecture de cache, mesuré sur le
+  palier EXPERT). Le lot D reste correct à ce stade : le lot C ne l'a pas
+  invalidé.
+  Tests synthétiques uniquement (aucun ODS8/Lexique dans l'environnement
+  CCL) : résolution des six niveaux, deux IA de niveaux différents utilisant
+  deux Tries distincts (test central du lot), chargement paresseux limité aux
+  paliers présents, reprise pilotée par les niveaux stockés, vocabulaire
+  manquant signalé sans repli silencieux, monotonie stricte Expert/Champion.
+  Non touché (hors périmètre, volontairement) : le réglage `vocabulaire_humain`
+  lui-même (lot E) et le rendu visuel de l'écran d'accueil — 6ᵉ bouton,
+  dégradé CSS, bouton désactivé (lot F).
+
 - **Issue #368** (lot D, suite de #366) — Ajout de `Niveau.CHAMPION_DU_MONDE`
   au moteur IA (`scrabble.moteur.ia`), en fin d'énumération (rétro-compatible
   avec les parties existantes, sérialisées par `.name` dans `stockage.py`).

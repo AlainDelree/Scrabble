@@ -41,6 +41,7 @@ from scrabble.persistance.stockage import (
     enregistrer_action,
     finaliser_partie,
     lister_parties,
+    niveaux_ia_stockes,
     reprendre_partie,
     supprimer_partie,
 )
@@ -243,6 +244,83 @@ def test_reprise_tous_les_niveaux_ia(tmp_path, niveau):
 
     reprise = reprendre_partie(id_partie, trie, chemin)
     assert reprise.joueurs[1].niveau == niveau
+
+
+# --------------------------------------------------------------------------- #
+# Vocabulaire IA par niveau à la reprise (issue #369, lot C)
+# --------------------------------------------------------------------------- #
+
+def test_niveaux_ia_stockes_reflete_les_niveaux_des_ia_sans_reconstruire(tmp_path):
+    """``niveaux_ia_stockes`` lit les niveaux stockés sans rejouer la partie.
+
+    Doit ignorer les joueurs humains (``niveau`` vaut ``None``) et refléter
+    exactement les niveaux des IA, dans l'ordre des joueurs — c'est ce que
+    ``ui.accueil.ApiAccueil.reprendre`` consulte pour savoir quels paliers de
+    vocabulaire charger, avant de reconstruire la partie.
+    """
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie = Partie(
+        [
+            Joueur("Humain"),
+            Joueur("Debutant", humain=False, niveau=Niveau.DEBUTANT),
+            Joueur("Champion", humain=False, niveau=Niveau.CHAMPION_DU_MONDE),
+        ],
+        trie,
+        graine=1,
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+
+    assert niveaux_ia_stockes(id_partie, chemin) == [
+        Niveau.DEBUTANT,
+        Niveau.CHAMPION_DU_MONDE,
+    ]
+
+
+def test_niveaux_ia_stockes_partie_inconnue_leve(tmp_path):
+    chemin = tmp_path / "parties.db"
+    with pytest.raises(KeyError):
+        niveaux_ia_stockes(999, chemin)
+
+
+def test_reprise_avec_dictionnaires_ia_par_niveau(tmp_path):
+    """Une partie reprise utilise, par IA, le Trie de son niveau (issue #369).
+
+    Deux IA de niveaux différents (Débutant et Expert) reçoivent chacune un
+    Trie IA distinct via ``dictionnaires_ia`` : la reprise doit préserver
+    cette distinction, pas retomber sur un seul Trie partagé.
+    """
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie = Partie(
+        [
+            Joueur("Humain"),
+            Joueur("Debutant", humain=False, niveau=Niveau.DEBUTANT),
+            Joueur("Expert", humain=False, niveau=Niveau.EXPERT),
+        ],
+        trie,
+        graine=1,
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+
+    trie_debutant = Trie.depuis_iterable(["CHAT"])
+    trie_expert = Trie.depuis_iterable(["CHIEN"])
+    reprise = reprendre_partie(
+        id_partie,
+        trie,
+        chemin,
+        dictionnaires_ia={
+            Niveau.DEBUTANT: trie_debutant,
+            Niveau.EXPERT: trie_expert,
+        },
+    )
+
+    assert reprise.dictionnaires_ia[Niveau.DEBUTANT] is trie_debutant
+    assert reprise.dictionnaires_ia[Niveau.EXPERT] is trie_expert
+    assert (
+        reprise.dictionnaires_ia[Niveau.DEBUTANT]
+        is not reprise.dictionnaires_ia[Niveau.EXPERT]
+    )
 
 
 def test_reprise_echange_sac_identique(tmp_path):

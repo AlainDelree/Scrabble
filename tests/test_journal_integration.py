@@ -157,8 +157,11 @@ class TestJournalAccueil:
             lambda source="ods", **_: Trie.depuis_iterable(["TEST"]),
         )
         monkeypatch.setattr(
+            "scrabble.ui.accueil.niveaux_ia_stockes", lambda id_partie: []
+        )
+        monkeypatch.setattr(
             "scrabble.ui.accueil.reprendre_partie",
-            lambda id_partie, trie, dictionnaire_ia=None: partie,
+            lambda id_partie, trie, dictionnaires_ia=None: partie,
         )
         api = ApiAccueil()
         res = api.reprendre(99)
@@ -171,8 +174,11 @@ class TestJournalAccueil:
             "scrabble.ui.accueil.obtenir_trie",
             lambda source="ods", **_: Trie.depuis_iterable(["TEST"]),
         )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.niveaux_ia_stockes", lambda id_partie: []
+        )
 
-        def _absente(id_partie, trie, dictionnaire_ia=None):
+        def _absente(id_partie, trie, dictionnaires_ia=None):
             raise KeyError(id_partie)
 
         monkeypatch.setattr("scrabble.ui.accueil.reprendre_partie", _absente)

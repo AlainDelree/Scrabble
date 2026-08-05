@@ -494,31 +494,34 @@ def test_jouer_tours_ia_enchaine_jusqu_a_un_humain():
 
 
 # --------------------------------------------------------------------------- #
-# Vocabulaire humain de l'IA (issue #206) : second dictionnaire optionnel
+# Vocabulaire de l'IA par niveau (issues #206, #369 lot C) :
+# mapping {Niveau: Trie} optionnel, fin du Trie IA unique
 # --------------------------------------------------------------------------- #
 
-def test_dictionnaire_ia_defaut_meme_objet():
-    """Par défaut, dictionnaire_ia EST le dictionnaire (même objet, coût nul)."""
+def test_dictionnaires_ia_defaut_vide():
+    """Par défaut, dictionnaires_ia est un mapping vide (coût nul)."""
     trie = _trie("CHAT")
     partie = Partie([Joueur("Alice")], trie, graine=1)
-    assert partie.dictionnaire_ia is partie.dictionnaire
-    assert partie.dictionnaire_ia is trie
+    assert partie.dictionnaires_ia == {}
 
 
-def test_dictionnaire_ia_distinct_quand_fourni():
-    """Un dictionnaire_ia explicite est conservé, distinct du dictionnaire complet."""
+def test_dictionnaire_ia_par_niveau_distinct_quand_fourni():
+    """Un Trie par niveau explicite est conservé, distinct du dictionnaire complet."""
     complet = _trie("CHAT", "CHIEN")
     restreint = _trie("CHAT")
     partie = Partie(
-        [Joueur("Alice")], complet, graine=1, dictionnaire_ia=restreint
+        [Joueur("Alice")],
+        complet,
+        graine=1,
+        dictionnaires_ia={Niveau.EXPERT: restreint},
     )
     assert partie.dictionnaire is complet
-    assert partie.dictionnaire_ia is restreint
-    assert partie.dictionnaire_ia is not partie.dictionnaire
+    assert partie.dictionnaires_ia[Niveau.EXPERT] is restreint
+    assert partie.dictionnaires_ia[Niveau.EXPERT] is not partie.dictionnaire
 
 
-def test_jouer_tour_ia_genere_sur_dictionnaire_ia(monkeypatch):
-    """La génération des coups IA reçoit dictionnaire_ia, pas le dico complet."""
+def test_jouer_tour_ia_genere_sur_dictionnaire_du_niveau(monkeypatch):
+    """La génération des coups IA reçoit le Trie de SON niveau, pas le dico complet."""
     import scrabble.moteur.ia as ia_mod
 
     complet = _trie("CHAT")
@@ -527,7 +530,7 @@ def test_jouer_tour_ia_genere_sur_dictionnaire_ia(monkeypatch):
         [Joueur("IA", humain=False, niveau=Niveau.EXPERT)],
         complet,
         graine=1,
-        dictionnaire_ia=restreint,
+        dictionnaires_ia={Niveau.EXPERT: restreint},
     )
     captures: dict = {}
 
@@ -540,13 +543,82 @@ def test_jouer_tour_ia_genere_sur_dictionnaire_ia(monkeypatch):
     assert captures["dico"] is restreint
 
 
+def test_jouer_tour_ia_niveau_absent_du_mapping_retombe_sur_dictionnaire(monkeypatch):
+    """Un niveau absent de ``dictionnaires_ia`` retombe sur le dico complet."""
+    import scrabble.moteur.ia as ia_mod
+
+    complet = _trie("CHAT")
+    restreint = _trie("CHIEN")
+    partie = Partie(
+        [Joueur("IA", humain=False, niveau=Niveau.DEBUTANT)],
+        complet,
+        graine=1,
+        # Seul EXPERT a un Trie propre : DEBUTANT (le niveau joué ici) n'y
+        # figure pas et doit retomber sur le dictionnaire complet.
+        dictionnaires_ia={Niveau.EXPERT: restreint},
+    )
+    captures: dict = {}
+
+    def faux_choisir(plateau, chevalet, dictionnaire, niveau):
+        captures["dico"] = dictionnaire
+        return None
+
+    monkeypatch.setattr(ia_mod, "choisir_coup", faux_choisir)
+    partie.jouer_tour_ia()
+    assert captures["dico"] is complet
+
+
+def test_deux_ia_niveaux_differents_utilisent_deux_tries_distincts(monkeypatch):
+    """Test central du lot C : deux IA de niveaux différents, deux Tries distincts.
+
+    Fin du Trie IA unique (rapport de lecture #366) : une partie avec un
+    Débutant et un Expert utilise bien un Trie propre à chacun, pas un Trie
+    global partagé.
+    """
+    import scrabble.moteur.ia as ia_mod
+
+    complet = _trie("CHAT", "CHIEN", "CANOT")
+    trie_debutant = _trie("CHAT")
+    trie_expert = _trie("CHIEN")
+    partie = Partie(
+        [
+            Joueur("Debutant", humain=False, niveau=Niveau.DEBUTANT),
+            Joueur("Expert", humain=False, niveau=Niveau.EXPERT),
+        ],
+        complet,
+        graine=1,
+        dictionnaires_ia={
+            Niveau.DEBUTANT: trie_debutant,
+            Niveau.EXPERT: trie_expert,
+        },
+    )
+    captures: list = []
+
+    def faux_choisir(plateau, chevalet, dictionnaire, niveau):
+        captures.append((niveau, dictionnaire))
+        return None
+
+    monkeypatch.setattr(ia_mod, "choisir_coup", faux_choisir)
+    partie.jouer_tour_ia()  # Débutant (index 0)
+    partie.jouer_tour_ia()  # Expert (index 1)
+
+    assert captures == [
+        (Niveau.DEBUTANT, trie_debutant),
+        (Niveau.EXPERT, trie_expert),
+    ]
+    assert captures[0][1] is not captures[1][1]
+
+
 def test_valider_coup_humain_reste_sur_dictionnaire_complet():
     """Un coup humain est validé sur le dico complet, même IA restreinte (à vide)."""
     complet = _trie("CADRE")
     restreint = _trie()  # vocabulaire IA vide : n'affecte pas l'humain
     joueur = Joueur("Alice")
     partie = Partie(
-        [joueur], complet, graine=1, dictionnaire_ia=restreint
+        [joueur],
+        complet,
+        graine=1,
+        dictionnaires_ia={Niveau.EXPERT: restreint},
     )
     joueur.chevalet[:] = list("CADRE")
 
@@ -569,7 +641,7 @@ def test_ia_restreinte_ne_joue_pas_hors_vocabulaire():
         [Joueur("Humain"), Joueur("IA", humain=False, niveau=Niveau.EXPERT)],
         complet,
         graine=1,
-        dictionnaire_ia=restreint,
+        dictionnaires_ia={Niveau.EXPERT: restreint},
     )
     partie.joueurs[0].chevalet[:] = list("CADRE")
     partie.jouer_coup(_coup_cadre_au_centre())   # pose CADRE, main à l'IA
@@ -580,25 +652,27 @@ def test_ia_restreinte_ne_joue_pas_hors_vocabulaire():
     assert entree.action == ACTION_PASSE
     # Le vocabulaire humain (dico complet) reste strictement plus large.
     assert partie.dictionnaire.contient("AS")
-    assert not partie.dictionnaire_ia.contient("AS")
+    assert not partie.dictionnaires_ia[Niveau.EXPERT].contient("AS")
 
 
-def test_recreer_partie_conserve_dictionnaire_ia_restreint():
-    """« Recommencer » repropage le Trie restreint quand l'IA était limitée."""
+def test_recreer_partie_conserve_dictionnaires_ia():
+    """« Recommencer » repropage le mapping de Tries restreints tel quel."""
     complet = _trie("CHAT", "CHIEN")
     restreint = _trie("CHAT")
     joueurs = [
         Joueur("Alice"),
         Joueur("IA", humain=False, niveau=Niveau.FACILE),
     ]
-    partie = Partie(joueurs, complet, graine=1, dictionnaire_ia=restreint)
+    partie = Partie(
+        joueurs, complet, graine=1, dictionnaires_ia={Niveau.FACILE: restreint}
+    )
 
     nouvelle = recreer_partie_meme_joueurs(
         partie, complet, graine=2, tirage_ordre=False
     )
 
     assert nouvelle.dictionnaire is complet
-    assert nouvelle.dictionnaire_ia is restreint
+    assert nouvelle.dictionnaires_ia == {Niveau.FACILE: restreint}
 
 
 def test_recreer_partie_sans_restriction_reste_sur_dictionnaire():
@@ -608,8 +682,8 @@ def test_recreer_partie_sans_restriction_reste_sur_dictionnaire():
         Joueur("Alice"),
         Joueur("IA", humain=False, niveau=Niveau.FACILE),
     ]
-    partie = Partie(joueurs, complet, graine=1)  # dictionnaire_ia is complet
-    assert partie.dictionnaire_ia is partie.dictionnaire
+    partie = Partie(joueurs, complet, graine=1)  # dictionnaires_ia vide
+    assert partie.dictionnaires_ia == {}
 
     nouveau_complet = _trie("CHAT", "CHIEN")
     nouvelle = recreer_partie_meme_joueurs(
@@ -617,4 +691,4 @@ def test_recreer_partie_sans_restriction_reste_sur_dictionnaire():
     )
 
     assert nouvelle.dictionnaire is nouveau_complet
-    assert nouvelle.dictionnaire_ia is nouvelle.dictionnaire
+    assert nouvelle.dictionnaires_ia == {}
