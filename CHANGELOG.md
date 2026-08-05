@@ -9,6 +9,42 @@ Historique des changements notables, par ordre antéchronologique. Voir aussi
 
 ### Ajouté
 
+- **Issue #372** (lot G, suite de #362) — `scripts/mesurer_force_niveaux.py`
+  gagne des **paramètres variables**, pour mesurer l'effet d'un réglage sans
+  éditer le code de production. Chaque camp (A/B) devient une *configuration*
+  (niveau + vocabulaire + calibrage), au lieu d'un simple niveau.
+  - **Vocabulaire par palier** : `--vocab palier` fait générer chaque niveau
+    sur son palier de fréquence, comme le jeu réel (via `resoudre_palier`),
+    contre `--vocab complet` (ODS8 entier pour les deux, comportement #362,
+    resté le défaut). `--vocab-a`/`--vocab-b` **forcent** un vocabulaire précis
+    (`debutant`…`expert` ou `complet`) indépendamment du niveau, pour séparer
+    l'effet du vocabulaire de celui de la stratégie. Vocabulaire de palier
+    absent → arrêt avec message clair, comme pour l'ODS8. La logique de
+    construction reprend celle d'`ApiAccueil._construire_trie_ia` (mêmes briques
+    `obtenir_trie`/`obtenir_trie_ia` + `FICHIERS_VOCABULAIRE_PALIER`/
+    `FICHIERS_CACHE_IA_PALIER`) sans la réutiliser directement : cette méthode
+    est couplée à l'UI (`import webview`) et indexe le Trie par `Niveau`, ce qui
+    empêche d'exprimer deux camps de même niveau à vocabulaires différents.
+  - **Surcharges stratégiques** : `--malus-a/-b` et `--bonus-a/-b` remplacent,
+    *le temps de la mesure seulement*, l'entrée `_MALUS_LONGUEUR`/`_BONUS_PREMIUM`
+    du niveau. Un gestionnaire de contexte (`_strategie_surchargee`) restaure les
+    valeurs de production en sortie — celles-ci ne sont **jamais** modifiées
+    (point 6 de l'issue). Cas d'usage direct : `CHAMPION_DU_MONDE CHAMPION_DU_MONDE
+    --malus-a -25 --malus-b 0` oppose deux variantes du même niveau dans la même
+    partie et rapporte l'écart.
+  - **Comparaison de deux runs** : `--comparer run1.csv run2.csv` relit deux
+    exports `--csv` et affiche, sur les graines communes, l'écart de score moyen
+    et de taux de victoire du camp A — plus besoin de comparer deux consoles à
+    l'œil. Le CSV encode désormais le *libellé de configuration* (ex.
+    `score_CHAMPION_DU_MONDE[malus=0]`) et non le seul nom de niveau.
+  - **Docstring** mise à jour (limites réévaluées, mention « filtre vocabulaire
+    non activé » supprimée) avec exemples concrets : effet du malus longueur,
+    effet du vocabulaire à stratégie constante, effet de la tranche à vocabulaire
+    constant. Script toujours **hors de la suite pytest** ; aucune valeur de
+    production changée. Validation : 6–10 parties, déterminisme vérifié (deux
+    exécutions → CSV identiques). Premier signal (non concluant à ce volume) sur
+    la question du malus -25 : selon le montage, le signe de l'effet s'inverse
+    — à trancher sur une mesure longue, hors périmètre de ce lot.
 - **Issue #371** (lot F, suite de #366/#368/#369/#370) — Dernier lot du
   chantier « vocabulaire par niveau » : Champion du monde devient
   sélectionnable à l'accueil, avec un dégradé à six paliers et les niveaux
