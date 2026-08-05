@@ -26,7 +26,7 @@ import pytest
 
 from scrabble.dictionnaire.dictionnaire import Trie
 from scrabble.moteur.ia import Niveau
-from scrabble.moteur.partie import Partie, creer_partie
+from scrabble.moteur.partie import Joueur, Partie, creer_partie
 from scrabble.moteur.plateau_partie import (
     CENTRE,
     Coup,
@@ -220,6 +220,29 @@ def test_reprise_partie_partiellement_jouee(tmp_path):
     assert obtenu["terminee"] == attendu["terminee"] is False
     # La partie reprise est prête à continuer : une action reste possible.
     assert not reprise.terminee
+
+
+@pytest.mark.parametrize("niveau", list(Niveau))
+def test_reprise_tous_les_niveaux_ia(tmp_path, niveau):
+    """Une partie sauvegardée avec n'importe quel niveau IA reste chargeable.
+
+    Paramétré sur TOUS les membres de :class:`Niveau` (plutôt qu'une liste en
+    dur) pour garantir que ``Niveau[niveau]`` (``stockage.py``) résout
+    correctement chaque valeur, y compris ``CHAMPION_DU_MONDE`` ajouté par
+    l'issue #368 (lot D) — rétro-compatibilité du blob JSON stocké par
+    ``.name``, garde-fou contre un futur ajout de niveau non résolvable.
+    """
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie = Partie(
+        [Joueur("Humain"), Joueur("IA", humain=False, niveau=niveau)],
+        trie,
+        graine=1,
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+
+    reprise = reprendre_partie(id_partie, trie, chemin)
+    assert reprise.joueurs[1].niveau == niveau
 
 
 def test_reprise_echange_sac_identique(tmp_path):

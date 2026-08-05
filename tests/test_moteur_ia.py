@@ -1,8 +1,14 @@
 """Tests des stratégies IA à niveaux de difficulté.
 
-Couvre les 5 niveaux (EXPERT, AVANCE, INTERMEDIAIRE, FACILE, DEBUTANT) sur la
-base du générateur exhaustif, la reproductibilité avec graine fixée, les cas
-limites (un seul coup, aucun coup), et l'intégration avec Partie/creer_partie.
+Couvre les 6 niveaux (EXPERT, CHAMPION_DU_MONDE, AVANCE, INTERMEDIAIRE,
+FACILE, DEBUTANT) sur la base du générateur exhaustif, la reproductibilité
+avec graine fixée, les cas limites (un seul coup, aucun coup), et
+l'intégration avec Partie/creer_partie.
+
+CHAMPION_DU_MONDE (issue #368, lot D) n'est pas encore câblé sur un
+vocabulaire distinct d'EXPERT (lot C à venir) : les deux niveaux sont
+stratégiquement identiques ici, d'où l'égalité (et non l'inégalité stricte)
+dans les tests de monotonie ci-dessous.
 """
 
 from __future__ import annotations
@@ -348,6 +354,27 @@ class TestFacile:
 # --------------------------------------------------------------------------- #
 
 
+class TestTousLesNiveauxResolventUnCoup:
+    """Garde-fou structurel contre l'oubli d'un dict indexé par Niveau.
+
+    Paramétré sur TOUS les membres de :class:`Niveau` (plutôt qu'une liste en
+    dur) : tout futur ajout de niveau est automatiquement couvert sans
+    modifier ce test, et un ``KeyError`` sur un dict comme
+    ``_MALUS_LONGUEUR``/``_BONUS_PREMIUM`` oublié lors d'un ajout est détecté
+    immédiatement (issue #368, lot D).
+    """
+
+    @pytest.mark.parametrize("niveau", list(Niveau))
+    def test_resout_un_coup_sans_exception(self, niveau):
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        dico = _trie("CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES")
+        coup = choisir_coup(plateau, chevalet, dico, niveau, random.Random(42))
+        assert coup is not None
+        coups = generer_coups(plateau, chevalet, dico)
+        assert any(cn.coup == coup for cn in coups)
+
+
 class TestCasLimites:
     """Comportement sur listes courtes ou vides."""
 
@@ -545,6 +572,11 @@ _MOTS_IA_RESTREINT = (
 #   * FACILE tire dans le top 60 % (écarte les 40 % plus faibles) → au-dessus
 #     de DEBUTANT mais nettement sous INTERMEDIAIRE ;
 #   * INTERMEDIAIRE (top 33 %), AVANCE (top 15 %), EXPERT (meilleur) → croissant.
+#   * CHAMPION_DU_MONDE réutilise EXACTEMENT la stratégie et les tranches
+#     d'EXPERT tant que le lot C (issue #368) n'a pas câblé son vocabulaire
+#     propre : à graine égale, les deux niveaux choisissent le même coup, donc
+#     leurs scores moyens sont ÉGAUX (pas strictement croissants) — dernier
+#     maillon documenté comme TEMPORAIRE dans la docstring du module.
 # NB : depuis l'issue #208, FACILE n'est plus la moitié INFÉRIEURE (ce qui le
 # plaçait sous DEBUTANT, contrairement à ce que suggèrent les noms) mais le
 # top 60 %. L'ordre réel coïncide désormais avec l'ordre des noms et avec
@@ -559,7 +591,14 @@ _ORDRE_CROISSANT_ATTENDU = [
     Niveau.INTERMEDIAIRE,
     Niveau.AVANCE,
     Niveau.EXPERT,
+    Niveau.CHAMPION_DU_MONDE,
 ]
+
+#: Paires consécutives de :data:`_ORDRE_CROISSANT_ATTENDU` dont l'ordre est
+#: une ÉGALITÉ attendue (et non une inégalité stricte). Seule la paire
+#: EXPERT/CHAMPION_DU_MONDE l'est, tant que le lot C n'a pas câblé un
+#: vocabulaire propre à CHAMPION_DU_MONDE (issue #368, lot D).
+_PAIRES_EGALITE_ATTENDUE = {(Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE)}
 
 
 def _moyennes_par_niveau(
@@ -606,18 +645,26 @@ class TestProgressionTrieIaRestreint:
         assert len({cn.score for cn in coups_ia}) >= 3
 
     def test_progression_monotone_avec_filtre_actif(self):
-        """La progression reste strictement monotone avec le Trie IA restreint.
+        """La progression reste monotone (au sens large) avec le Trie IA restreint.
 
         Confirme l'hypothèse du rapport #203 : le filtre étant global, la
         monotonie des scores moyens est préservée une fois le filtre actif.
+        Croissance stricte partout, SAUF sur la paire EXPERT/CHAMPION_DU_MONDE
+        (égalité attendue et temporaire, cf. docstring du module — issue #368,
+        lot D : CHAMPION_DU_MONDE ne sera câblé sur son propre vocabulaire
+        qu'au lot C).
         """
         dico_ia = Trie.depuis_iterable(_MOTS_IA_RESTREINT)
         moy = _moyennes_par_niveau(self.plateau, self.chevalet, dico_ia)
         ordre = sorted(Niveau, key=lambda niv: moy[niv])
         assert ordre == _ORDRE_CROISSANT_ATTENDU
-        # Strictement croissant le long de l'ordre attendu.
-        valeurs = [moy[niv] for niv in _ORDRE_CROISSANT_ATTENDU]
-        assert all(a < b for a, b in zip(valeurs, valeurs[1:]))
+        # Croissant le long de l'ordre attendu, strictement sauf aux paires
+        # d'égalité documentées (EXPERT/CHAMPION_DU_MONDE).
+        for a, b in zip(_ORDRE_CROISSANT_ATTENDU, _ORDRE_CROISSANT_ATTENDU[1:]):
+            if (a, b) in _PAIRES_EGALITE_ATTENDUE:
+                assert moy[a] == moy[b], f"{a} et {b} devraient être égaux : {moy}"
+            else:
+                assert moy[a] < moy[b], f"{a} devrait être < {b} : {moy}"
 
     def test_niveaux_restent_perceptiblement_distincts(self):
         """Aucun niveau ne se confond avec son voisin sous le filtre.
@@ -625,13 +672,18 @@ class TestProgressionTrieIaRestreint:
         Point #3 de l'issue : on veut détecter le cas où un niveau ne se
         distinguerait plus suffisamment d'un autre. On exige un écart d'au moins
         1 point entre niveaux adjacents dans l'ordre de progression, seuil
-        au-delà duquel la différence reste perceptible en jeu.
+        au-delà duquel la différence reste perceptible en jeu — SAUF pour la
+        paire EXPERT/CHAMPION_DU_MONDE, dont l'égalité est attendue et
+        temporaire (issue #368, lot D ; levée par le lot C).
         """
         dico_ia = Trie.depuis_iterable(_MOTS_IA_RESTREINT)
         moy = _moyennes_par_niveau(self.plateau, self.chevalet, dico_ia)
-        valeurs = [moy[niv] for niv in _ORDRE_CROISSANT_ATTENDU]
-        ecarts = [b - a for a, b in zip(valeurs, valeurs[1:])]
-        assert min(ecarts) >= 1.0, f"Niveaux trop proches sous filtre : {ecarts}"
+        for a, b in zip(_ORDRE_CROISSANT_ATTENDU, _ORDRE_CROISSANT_ATTENDU[1:]):
+            ecart = moy[b] - moy[a]
+            if (a, b) in _PAIRES_EGALITE_ATTENDUE:
+                assert ecart == 0.0, f"{a} et {b} devraient être égaux : {moy}"
+            else:
+                assert ecart >= 1.0, f"{a} et {b} trop proches sous filtre : {moy}"
 
     def test_ordre_relatif_identique_avec_et_sans_filtre(self):
         """L'ordre RELATIF des niveaux est identique avec et sans filtre.

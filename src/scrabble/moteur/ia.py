@@ -7,6 +7,12 @@ de sélection dans la liste triée par score varie.
 
 Niveaux de difficulté
 ---------------------
+* **CHAMPION_DU_MONDE** : même stratégie de sélection qu'EXPERT (meilleur
+  coup) et même tranche de malus/bonus stratégiques. Ne se distingue
+  d'EXPERT que par le vocabulaire (ODS8 complet au lieu de l'intersection
+  Lexique), câblé par le lot C (issue #368, lot D) — tant que ce câblage
+  n'existe pas, CHAMPION_DU_MONDE se comporte à l'identique d'EXPERT, égalité
+  DOCUMENTÉE ET TEMPORAIRE (voir « Ordre réel de force » ci-dessous).
 * **EXPERT** : choisit le meilleur coup (premier de la liste triée). En cas
   d'égalité de score entre plusieurs coups de tête, choix aléatoire parmi eux.
 * **AVANCE** : choix aléatoire uniforme parmi les 15 % meilleurs coups (top
@@ -28,8 +34,9 @@ Niveaux de difficulté
 Ordre réel de force (score moyen)
 ---------------------------------
 Les stratégies ci-dessus produisent, en moyenne, l'ordre croissant
-``DEBUTANT < FACILE < INTERMEDIAIRE < AVANCE < EXPERT`` — cohérent avec l'ordre
-de la classe :class:`Niveau` et avec ce que suggèrent les noms des niveaux.
+``DEBUTANT < FACILE < INTERMEDIAIRE < AVANCE < EXPERT <= CHAMPION_DU_MONDE``
+— cohérent avec l'ordre de la classe :class:`Niveau` et avec ce que
+suggèrent les noms des niveaux.
 
 Cette monotonie est STRUCTURELLE : tous les niveaux passent par le même
 mécanisme (tri par score stratégique puis tirage uniforme dans une tranche
@@ -42,6 +49,17 @@ indépendamment du dictionnaire employé (avec ou sans le filtre de
 spécifique : l'issue #359 avait doté DEBUTANT d'un filtre sur la longueur
 (``nb_nouvelles >= 3``) qui le rendait plus sélectif que FACILE et cassait la
 monotonie ; l'issue #361 l'a remplacé par la tranche top 85 %.
+
+Le dernier maillon, EXPERT <= CHAMPION_DU_MONDE, est une ÉGALITÉ et non une
+inégalité stricte : à ce stade (lot D de l'issue #368), CHAMPION_DU_MONDE
+n'est câblé sur aucun vocabulaire distinct d'EXPERT (le lot C s'en charge),
+et partage exactement la même stratégie et les mêmes tranches de malus/bonus.
+Les deux niveaux produisent donc, à graine égale, EXACTEMENT le même coup —
+l'égalité est mécanique, pas approximative. Cette égalité est TEMPORAIRE :
+une fois le lot C câblé (ODS8 complet pour CHAMPION_DU_MONDE contre
+l'intersection Lexique pour EXPERT), le vocabulaire plus large de
+CHAMPION_DU_MONDE lui ouvrira des coups inaccessibles à EXPERT et l'inégalité
+deviendra stricte.
 
 Pourquoi « top 60 % » pour FACILE plutôt qu'une moitié/tranche centrale ? La
 distribution des scores est fortement asymétrique : quelques coups à très
@@ -78,13 +96,20 @@ if TYPE_CHECKING:
 
 
 class Niveau(Enum):
-    """Niveaux de difficulté IA, du plus faible au plus fort."""
+    """Niveaux de difficulté IA, du plus faible au plus fort.
+
+    :attr:`CHAMPION_DU_MONDE` est ajouté en fin de liste (issue #368, lot D) :
+    la position en fin garantit la rétro-compatibilité des parties existantes
+    sérialisées par ``.name`` (voir ``stockage.py``), la position des
+    ``auto()`` précédents n'ayant aucun impact sur les données stockées.
+    """
 
     DEBUTANT = auto()
     FACILE = auto()
     INTERMEDIAIRE = auto()
     AVANCE = auto()
     EXPERT = auto()
+    CHAMPION_DU_MONDE = auto()
 
 
 #: Malus (négatif) appliqué au score de tri d'un coup posant peu de lettres
@@ -97,6 +122,7 @@ _MALUS_LONGUEUR: dict[Niveau, int] = {
     Niveau.INTERMEDIAIRE: -12,
     Niveau.AVANCE: -18,
     Niveau.EXPERT: -25,
+    Niveau.CHAMPION_DU_MONDE: -25,
 }
 
 #: Bonus (positif) appliqué au score de tri d'un coup exploitant au moins
@@ -108,6 +134,7 @@ _BONUS_PREMIUM: dict[Niveau, int] = {
     Niveau.INTERMEDIAIRE: 8,
     Niveau.AVANCE: 12,
     Niveau.EXPERT: 20,
+    Niveau.CHAMPION_DU_MONDE: 20,
 }
 
 #: Cases dont le bonus porte sur le mot entier (plus précieuses que les
@@ -187,7 +214,7 @@ def choisir_coup(
 
     coups = sorted(coups, key=lambda cn: _score_strategique(cn, niveau), reverse=True)
 
-    if niveau == Niveau.EXPERT:
+    if niveau in (Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE):
         return _choisir_expert(coups, rng)
     if niveau == Niveau.AVANCE:
         return _choisir_avance(coups, rng)
@@ -199,7 +226,12 @@ def choisir_coup(
 
 
 def _choisir_expert(coups: list[CoupNote], rng: random.Random) -> Coup:
-    """EXPERT : meilleur coup, aléatoire en cas d'égalité de score."""
+    """EXPERT et CHAMPION_DU_MONDE : meilleur coup, aléatoire en cas d'égalité.
+
+    CHAMPION_DU_MONDE réutilise cette fonction tant que le lot C (issue #368)
+    n'a pas câblé son vocabulaire propre (ODS8 complet) : jusque-là, les deux
+    niveaux sont stratégiquement identiques.
+    """
     meilleur_score = coups[0].score
     meilleurs = [cn for cn in coups if cn.score == meilleur_score]
     return rng.choice(meilleurs).coup

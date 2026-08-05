@@ -9,6 +9,31 @@ Historique des changements notables, par ordre antéchronologique. Voir aussi
 
 ### Ajouté
 
+- **Issue #368** (lot D, suite de #366) — Ajout de `Niveau.CHAMPION_DU_MONDE`
+  au moteur IA (`scrabble.moteur.ia`), en fin d'énumération (rétro-compatible
+  avec les parties existantes, sérialisées par `.name` dans `stockage.py`).
+  Réutilise EXACTEMENT la stratégie et les tranches de malus/bonus d'EXPERT
+  (`_MALUS_LONGUEUR`/`_BONUS_PREMIUM` : -25/+20, sélection du meilleur coup) :
+  il ne s'en distinguera par le vocabulaire (ODS8 complet) qu'à partir du lot
+  C, câblage explicitement hors périmètre de ce lot. Nouveau test paramétré
+  sur tous les membres de `Niveau` (`TestTousLesNiveauxResolventUnCoup`),
+  garde-fou structurel contre l'oubli d'un dict indexé par `Niveau` lors d'un
+  futur ajout de niveau. Tests de monotonie adaptés pour attendre l'ordre
+  `DEBUTANT < FACILE < INTERMEDIAIRE < AVANCE < EXPERT <= CHAMPION_DU_MONDE`
+  (égalité Expert/Champion documentée comme temporaire dans la docstring du
+  module, levée par le lot C) plutôt que relâchés. Nouveau test paramétré de
+  rétro-compatibilité de la sauvegarde (`test_reprise_tous_les_niveaux_ia`,
+  `tests/test_persistance.py`) confirmant que `Niveau[niveau]` résout chaque
+  membre, y compris le nouveau. CHAMPION_DU_MONDE n'est volontairement PAS
+  proposable au joueur à ce stade (écran d'accueil et dégradé CSS réservés au
+  lot F) — `tests/test_accueil.py::TestNiveauxLabels::test_tous_les_niveaux_ont_un_label`
+  l'exclut explicitement de sa vérification pour cette raison. D'autres
+  emplacements indexés par `Niveau` ont été recensés hors périmètre de ce lot
+  et non modifiés : `NIVEAUX_LABELS` (`scrabble.ui.accueil`, lot F) et la map
+  de libellés JS de `scrabble/ui/web/jeu.js` (celle-ci a un filet de repli qui
+  affiche le nom brut de l'enum pour toute clé absente, donc pas de crash ;
+  elle manquait déjà `AVANCE` avant ce lot).
+
 - **Issue #366** (lot A, suite de #205/#206) — `scripts/generer_mots_courants.py
   --tous` : produit en une seule commande les cinq fichiers de vocabulaire IA
   par palier de difficulté (`mots_courants_debutant/facile/intermediaire/
