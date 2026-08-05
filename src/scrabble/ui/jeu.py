@@ -468,11 +468,24 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     score individuel de référence (voir :func:`evaluer_score_total`) ; ``None``
     tant que la partie n'est pas terminée.
 
-    ``historique`` (issue #37, #144) est l'**intégralité** de l'historique des
-    actions (voir :func:`serialiser_historique`) : la plus récente en premier,
-    chacune avec le détail du score inclus pour l'ouverture au clic — l'UI
-    alimente son encart glissant (scrollable) à partir de ce seul champ, rafraîchi
-    après chaque action (coup humain ou série de tours IA).
+    ``historique`` a été retiré de cette charge (issue #364, suite de #363) :
+    l'**intégralité** de l'historique (mots, scores, détail complet de chaque
+    coup) était retransmise à **chaque** diffusion continue, une charge non
+    bornée qui croît avec la longueur de la partie — suspectée de contribuer à
+    un ``SyntaxError`` en fin de partie (payload trop volumineux). Ne subsistent
+    ici que :
+
+    * ``nb_historique`` : le seul **compteur** de coups joués, suffisant pour le
+      panneau « Derniers coups » replié (badge du nombre) ;
+    * ``dernier_coup`` (:func:`serialiser_dernier_coup`) : un résumé minimal du
+      DERNIER coup seul (positions posées, score, drapeau scrabble), de taille
+      bornée, nécessaire à l'animation de pose et à la surbrillance persistante
+      du dernier coup joué — sans le détail complet du score.
+
+    La liste complète des coups (sans détail) et le détail d'un coup donné se
+    chargent désormais à la demande, respectivement via
+    :meth:`ApiJeu.obtenir_historique` (dépliage du panneau) et
+    :meth:`ApiJeu.obtenir_detail_coup` (clic sur une ligne).
     """
     positions = calculer_positions(partie.joueurs)
     avatar_principal = charger_config().get("avatar_principal", "")
@@ -501,7 +514,41 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
         "evaluation_score": (
             evaluer_score_total(partie.joueurs) if partie.terminee else None
         ),
-        "historique": serialiser_historique(partie),
+        "nb_historique": len(partie.historique),
+        "dernier_coup": serialiser_dernier_coup(partie),
+    }
+
+
+def serialiser_dernier_coup(partie: Partie) -> dict[str, Any] | None:
+    """Résumé minimal du **dernier** coup, pour l'animation côté plateau.
+
+    Contrairement à :func:`serialiser_historique` (retiré de la diffusion
+    continue, issue #364), ce résumé ne porte que les quelques champs dont le
+    JS a besoin pour animer la dernière action (surbrillance persistante des
+    cases posées, toast « +N points », célébration scrabble) : sa taille est
+    bornée, indépendante de la longueur de la partie — contrairement à
+    l'historique complet qu'il remplace dans :func:`etat_public`. ``None`` si
+    aucune action n'a encore été jouée.
+
+    ``bonus_scrabble`` est un simple booléen (contrairement au détail complet
+    de :func:`serialiser_detail_score`) : seule sa présence pilote la
+    célébration côté JS, jamais le détail des mots formés.
+    """
+    if not partie.historique:
+        return None
+    index = len(partie.historique) - 1
+    entree = partie.historique[index]
+    return {
+        "index": index,
+        "index_joueur": entree.index_joueur,
+        "positions": [
+            {"ligne": ligne, "colonne": colonne}
+            for (ligne, colonne) in entree.positions_posees
+        ],
+        "score_action": entree.detail.total if entree.detail is not None else 0,
+        "bonus_scrabble": bool(
+            entree.detail is not None and entree.detail.bonus_scrabble
+        ),
     }
 
 
@@ -518,12 +565,14 @@ def serialiser_entree_historique(
     ou un échange) et, pour un coup, le mot principal (``mot``).
 
     ``index`` est la position de l'entrée dans ``partie.historique`` : c'est
-    l'identifiant stable de l'action, transmis tel quel pour retrouver le détail
-    au clic. Choix documenté (issue #37) : le ``detail`` complet (réutilisant
-    :func:`serialiser_detail_score`) est **inclus directement** dans la
-    sérialisation quand l'action en a un — le clic n'a alors besoin d'aucun
-    aller-retour supplémentaire vers Python. Une passe ou un échange n'a pas de
-    détail : ``detail`` vaut ``None`` (l'UI signale « rien à détailler »).
+    l'identifiant stable de l'action. Depuis l'issue #364 (suite de #363), le
+    détail complet du score n'est **plus** inclus ici — c'était, de très loin,
+    le champ le plus volumineux de l'historique, retransmis pour chaque coup à
+    chaque diffusion alors qu'il n'est consulté que ponctuellement, sur une
+    seule entrée à la fois. Seul le booléen ``a_detail`` indique si l'action a
+    un détail à afficher (un coup en a un, une passe ou un échange non) : le
+    clic sur une ligne récupère le détail à la demande via
+    :func:`obtenir_detail_coup`, en repassant cet ``index``.
 
     ``positions`` (issue #58) liste les cases ``{ligne, colonne}`` nouvellement
     posées par le coup, reprises telles quelles de
@@ -551,12 +600,35 @@ def serialiser_entree_historique(
             {"ligne": ligne, "colonne": colonne}
             for (ligne, colonne) in entree.positions_posees
         ],
-        "detail": (
-            serialiser_detail_score(entree.detail)
-            if entree.detail is not None
-            else None
-        ),
+        "a_detail": entree.detail is not None,
     }
+
+
+def obtenir_detail_coup(partie: Partie, index: int) -> dict[str, Any]:
+    """Détail du score d'**une seule** entrée d'historique, chargé à la demande.
+
+    Cœur non-UI de :meth:`ApiJeu.obtenir_detail_coup` (issue #364) : c'est le
+    troisième et dernier palier de chargement de l'historique, le plus
+    volumineux (mots formés, cases bonus, bonus scrabble) mais consulté
+    ponctuellement, sur une seule entrée à la fois — au clic sur une ligne du
+    panneau « Derniers coups » déplié.
+
+    ``index`` est l'identifiant stable renvoyé par
+    :func:`serialiser_entree_historique` (position dans ``partie.historique`` —
+    l'historique ne croît que par la fin, cet index reste donc valide tant que
+    la partie n'a pas été remplacée par une nouvelle).
+
+    Renvoie ``{"succes": True, "detail": <detail sérialisé>}`` si l'entrée
+    existe et porte un détail, sinon ``{"succes": False, "erreur": ...}``
+    (index hors bornes, ou action sans détail — passe/échange).
+    """
+    historique = partie.historique
+    if not (0 <= index < len(historique)):
+        return {"succes": False, "erreur": "Index de coup invalide."}
+    detail = historique[index].detail
+    if detail is None:
+        return {"succes": False, "erreur": "Aucun détail pour cette action."}
+    return {"succes": True, "detail": serialiser_detail_score(detail)}
 
 
 def serialiser_historique(partie: Partie) -> list[dict[str, Any]]:
@@ -575,7 +647,12 @@ def serialiser_historique(partie: Partie) -> list[dict[str, Any]]:
 
     Chaque entrée est sérialisée par :func:`serialiser_entree_historique`, en
     conservant son index d'origine dans ``partie.historique`` (identifiant stable
-    du coup).
+    du coup) — **sans** le détail du score de chaque entrée depuis l'issue #364
+    (voir :func:`obtenir_detail_coup`). Depuis cette même issue, cette fonction
+    n'est plus appelée en diffusion continue (:func:`etat_public` n'expose plus
+    qu'un compteur, voir :func:`serialiser_dernier_coup`) : elle alimente
+    désormais uniquement :meth:`ApiJeu.obtenir_historique`, appelée à la demande
+    quand l'utilisateur déplie le panneau.
     """
     entrees = [
         serialiser_entree_historique(partie, entree, index)
@@ -1227,6 +1304,13 @@ class ApiJeu(MixinDiffusion, MixinTirageOrdre, MixinTourEtFinPartie, MixinPose, 
         # afficher. On mémorise ici les infos (``noms_creation``/``graine``/
         # ``noms_humains``) que :func:`lancer_jeu` passera à la nouvelle ``ApiJeu``.
         self._nouvelles_infos_tirage: dict[str, Any] | None = None
+        # Verrou anti-réentrance du tour IA (issue #364, suite de #363) : un clic
+        # rapide répété sur le bouton « ▶ Jouer » d'un ordinateur — dont le JS
+        # désactive certes le bouton cliqué, mais que le panneau reconstruit à
+        # chaque diffusion peut recréer actif avant la réponse de l'appel en
+        # cours — ne doit jamais faire jouer deux tours IA en parallèle. Voir
+        # :meth:`MixinTourEtFinPartie.faire_jouer_ia`.
+        self._ia_en_cours: bool = False
 
     def charger_partie(
         self,
@@ -1307,6 +1391,38 @@ class ApiJeu(MixinDiffusion, MixinTirageOrdre, MixinTourEtFinPartie, MixinPose, 
         if self._partie is None:
             return self._erreur_aucune_partie()
         return self._etat_chevalet()
+
+    def obtenir_historique(self) -> list[dict[str, Any]]:
+        """Liste des coups **sans** le détail du score, chargée à la demande.
+
+        Deuxième palier de chargement de l'historique (issue #364, suite de
+        #363) : appelé par le JS quand l'utilisateur déplie le panneau
+        « Derniers coups » (ou quand une diffusion survient pendant qu'il est
+        déjà déplié). Ne porte plus le détail du score de chaque entrée — le
+        plus volumineux, retiré de cette liste comme de la diffusion continue
+        (:func:`etat_public`) — seul un booléen ``a_detail`` signale les lignes
+        cliquables ; leur détail se charge à son tour à la demande, au clic, via
+        :meth:`obtenir_detail_coup`. Liste vide (plutôt qu'une charge d'erreur)
+        si aucune partie n'est chargée : un getter listé simplifie l'appelant JS.
+        """
+        if self._partie is None:
+            return []
+        return serialiser_historique(self._partie)
+
+    def obtenir_detail_coup(self, index: int) -> dict[str, Any]:
+        """Détail du score d'**une seule** entrée d'historique, chargé à la demande.
+
+        Troisième et dernier palier de chargement de l'historique (issue #364,
+        suite de #363) : appelé au clic sur une ligne du panneau « Derniers
+        coups » déplié. ``index`` est l'identifiant stable renvoyé par
+        :meth:`obtenir_historique` (position dans ``partie.historique`` :
+        l'historique ne croît que par la fin, cet index reste donc valide tant
+        que la partie n'a pas été remplacée). Voir :func:`obtenir_detail_coup`
+        (module) pour le contrat de retour.
+        """
+        if self._partie is None:
+            return {"succes": False, "erreur": "Aucune partie chargée."}
+        return obtenir_detail_coup(self._partie, index)
 
 
 

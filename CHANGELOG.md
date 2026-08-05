@@ -28,6 +28,28 @@ Historique des changements notables, par ordre antéchronologique. Voir aussi
 
 ### Modifié
 
+- **Issue #364** (suite de #363) — Historique diffusé allégé en trois paliers
+  de chargement à la demande, pour supprimer la principale source de
+  croissance non bornée de la charge poussée à chaque diffusion continue
+  (suspectée de contribuer au `SyntaxError: Unexpected end of script` de fin
+  de partie observé dans #363, non reproduit). `etat_public()` (`jeu.py`)
+  n'expose plus l'intégralité de l'historique : seul un compteur
+  (`nb_historique`) et un résumé minimal du dernier coup seul
+  (`dernier_coup`, taille bornée, nécessaire à l'animation de pose et à la
+  surbrillance du dernier coup) subsistent. La liste des coups sans détail
+  se charge désormais à la demande via `ApiJeu.obtenir_historique()` (au
+  dépliage du panneau « Derniers coups »), et le détail du score d'une
+  entrée via `ApiJeu.obtenir_detail_coup(index)` (au clic sur une ligne).
+  Mesuré sur une partie IA de 29 coups (dictionnaire réel) : le payload de
+  `etat_public()` passe de ~26,4 Ko à un plateau constant d'environ 15,2 Ko,
+  indépendant de la longueur de la partie (contre une croissance linéaire
+  avant correctif). `MixinDiffusion._pousser` (`api_diffusion.py`)
+  journalise désormais la taille de chaque script poussé en **octets UTF-8**
+  avant l'appel `evaluate_js`, pour disposer d'une mesure réelle si le bug
+  venait à se reproduire. `jeu.js` adapté en conséquence (rafraîchissement
+  de la liste au dépliage et après une diffusion si le panneau est déjà
+  ouvert, chargement du détail au clic).
+
 - **Issue #359** — Stratégie IA : ajout d'un score stratégique de tri
   (`_score_strategique` dans `moteur/ia.py`), distinct du score réel du coup,
   corrigeant deux biais du tri glouton sur score brut : pénalité sur les
@@ -44,6 +66,19 @@ Historique des changements notables, par ordre antéchronologique. Voir aussi
   remplacé par l'issue #361 (voir ci-dessous).
 
 ### Corrigé
+
+- **Issue #364** (suite de #363) — `ApiJeu.faire_jouer_ia()` protégé contre les
+  appels concurrents : un drapeau `_ia_en_cours`, posé en tête de méthode et
+  remis à zéro dans un bloc `finally` (y compris en cas d'exception),
+  refuse tout second appel reçu pendant qu'un premier est encore en cours.
+  Le JS désactivait déjà le bouton « ▶ Jouer » cliqué, mais le panneau du
+  joueur courant est reconstruit à chaque diffusion (`jeu.js`) — un bouton
+  neuf et actif pouvait donc réapparaître avant la réponse de l'appel en
+  vol, permettant à des clics rapides répétés de déclencher deux tours IA en
+  parallèle. `jeu.js` désactive désormais tous les boutons « ▶ Jouer »
+  présents pendant l'attente (pas seulement celui cliqué), doublé d'un
+  drapeau JS ignorant tout clic pendant qu'une requête est déjà en vol —
+  défense en profondeur en complément du verrou côté Python.
 
 - **Issue #361** — Monotonie des niveaux IA rétablie. Le filtre dur
   `nb_nouvelles >= 3` introduit par #359 pour DEBUTANT le rendait plus

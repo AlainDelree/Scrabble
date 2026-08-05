@@ -177,12 +177,24 @@ class MixinDiffusion:
     def _pousser(
         window: "webview.Window | None", fonction: str, charge: dict[str, Any]
     ) -> None:
-        """Appelle ``window.<fonction>(<charge JSON>)`` si la fenêtre existe."""
+        """Appelle ``window.<fonction>(<charge JSON>)`` si la fenêtre existe.
+
+        Journalise (issue #364, suite de #363) la taille du script en **octets
+        UTF-8** (``len(script.encode("utf-8"))``, pas en caractères — c'est la
+        mesure la plus proche de ce qui transite réellement vers pywebview)
+        juste avant l'appel. Objectif purement diagnostique : disposer d'une
+        mesure réelle du volume diffusé si le ``SyntaxError: Unexpected end of
+        script`` de l'issue #363 (dont la cause exacte — troncature côté
+        pywebview ? — n'a pas pu être confirmée) venait à se reproduire.
+        """
         if window is None:
             return
         script = (
             f"window.{fonction} && window.{fonction}("
             f"{json.dumps(charge, ensure_ascii=False)})"
+        )
+        journal.info(
+            f"Jeu : diffusion {fonction} — {len(script.encode('utf-8'))} octets."
         )
         try:
             window.evaluate_js(script)

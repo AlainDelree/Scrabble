@@ -18,6 +18,7 @@ Attributs attendus sur ``self`` :
 - ``_retour_menu``, ``_recommencer`` : drapeaux d'action post-fermeture.
 - ``_nouvelle_partie``, ``_nouvel_id_partie``, ``_nouvelles_infos_tirage`` : recommencer.
 - ``_window_plateau`` : fenêtre pywebview à fermer.
+- ``_ia_en_cours`` : verrou anti-réentrance du tour IA (issue #364).
 """
 
 from __future__ import annotations
@@ -92,22 +93,43 @@ class MixinTourEtFinPartie:
 
         C'est la seule façon prévue de faire avancer le jeu pendant un tour IA :
         l'humain n'a jamais à manipuler le chevalet d'un ordinateur à sa place.
+
+        Verrou anti-réentrance (``_ia_en_cours``, issue #364, suite de #363) :
+        un second appel reçu pendant qu'un premier est encore en cours de
+        traitement est **refusé** (``{"succes": False, "erreur": ...}``) sans
+        toucher à la partie. Utile en défense en profondeur : le JS désactive
+        déjà le bouton cliqué, mais le panneau du joueur courant est reconstruit
+        à **chaque** diffusion (voir ``jeu.js``), ce qui recrée un bouton actif
+        avant que la réponse de l'appel en cours ne soit revenue — des clics
+        rapides répétés pouvaient donc déclencher un second tour IA en
+        parallèle. Le drapeau est remis à zéro dans un bloc ``finally`` : même
+        une exception inattendue pendant le tour ne le laisse jamais bloqué.
         """
-        nom = self._partie.joueur_courant().nom
-        nb_avant = len(self._partie.historique)
-        resultat = _mod_jeu().jouer_tours_ia_ui(self._partie, self._id_partie)
-        if resultat.get("nb_tours"):
-            _mod_jeu().journal.info(f"Jeu : tour d'ordinateur joué ({nom}).")
-            self._persister_entrees(self._partie.historique[nb_avant:])
-            self._journaliser_fin_partie()
-            self._finaliser_si_terminee()
-            # Tour suivant : état de pose remis à zéro et rediffusé (nouvel état
-            # public au plateau, nouveau chevalet en zone C intégrée) — #90.
-            self._selection = None
-            self._en_attente = []
-            self._joker_demande = None
-            self._diffuser()
-        return resultat
+        if self._ia_en_cours:
+            return {
+                "succes": False,
+                "erreur": "Un tour d'ordinateur est déjà en cours.",
+            }
+        self._ia_en_cours = True
+        try:
+            nom = self._partie.joueur_courant().nom
+            nb_avant = len(self._partie.historique)
+            resultat = _mod_jeu().jouer_tours_ia_ui(self._partie, self._id_partie)
+            if resultat.get("nb_tours"):
+                _mod_jeu().journal.info(f"Jeu : tour d'ordinateur joué ({nom}).")
+                self._persister_entrees(self._partie.historique[nb_avant:])
+                self._journaliser_fin_partie()
+                self._finaliser_si_terminee()
+                # Tour suivant : état de pose remis à zéro et rediffusé (nouvel
+                # état public au plateau, nouveau chevalet en zone C intégrée)
+                # — #90.
+                self._selection = None
+                self._en_attente = []
+                self._joker_demande = None
+                self._diffuser()
+            return resultat
+        finally:
+            self._ia_en_cours = False
 
     def _persister_entrees(self, entrees: list[EntreeHistorique]) -> None:
         """Persiste en base chaque action produite par le moteur (issue #81).

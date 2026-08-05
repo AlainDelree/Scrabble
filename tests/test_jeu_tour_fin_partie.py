@@ -293,6 +293,55 @@ class TestJouerToursIaUi:
         assert res["nb_tours"] == 0
         assert partie.index_courant == 0
 
+    def test_faire_jouer_ia_refuse_appel_concurrent(self):
+        """Verrou anti-réentrance (issue #364) : un second appel est refusé.
+
+        Simule un clic rapide répété — le panneau reconstruit à chaque
+        diffusion peut recréer un bouton « ▶ Jouer » actif avant la réponse
+        du premier appel — en posant directement le drapeau ``_ia_en_cours``
+        avant d'appeler ``faire_jouer_ia`` une seconde fois : la partie ne
+        doit pas avancer.
+        """
+        partie = self._partie_ia()
+        partie.index_courant = 1
+        partie.joueurs[1].chevalet[:] = list("BCDFGHJ")
+        partie.joueurs[2].chevalet[:] = list("BCDFGHJ")
+        api = ApiJeu(partie, None)
+        api._ia_en_cours = True  # simule un premier appel encore en vol
+        res = api.faire_jouer_ia()
+        assert res["succes"] is False
+        assert "cours" in res["erreur"].lower()
+        assert partie.index_courant == 1  # rien n'a bougé
+
+    def test_faire_jouer_ia_remet_le_drapeau_a_zero_apres_exception(self, monkeypatch):
+        """Le drapeau ``_ia_en_cours`` est remis à zéro même si le tour explose.
+
+        Garanti par le bloc ``finally`` de ``faire_jouer_ia`` (issue #364) :
+        un appel suivant, une fois l'incident passé, doit pouvoir rejouer
+        normalement plutôt que rester bloqué en permanence.
+        """
+        import scrabble.ui.jeu as mod_jeu
+
+        partie = self._partie_ia()
+        partie.index_courant = 1
+        partie.joueurs[1].chevalet[:] = list("BCDFGHJ")
+        partie.joueurs[2].chevalet[:] = list("BCDFGHJ")
+        api = ApiJeu(partie, None)
+
+        def _explose(*args, **kwargs):
+            raise RuntimeError("boum")
+
+        with monkeypatch.context() as m:
+            m.setattr(mod_jeu, "jouer_tours_ia_ui", _explose)
+            with pytest.raises(RuntimeError):
+                api.faire_jouer_ia()
+
+        assert api._ia_en_cours is False
+        # Le patch est levé : un appel suivant fonctionne à nouveau normalement.
+        res = api.faire_jouer_ia()
+        assert res["succes"] is True
+        assert res["nb_tours"] == 1
+
 
 class TestApiJeuRetourMenu:
     """Tests de ``ApiJeu.retour_menu`` (issue #74).

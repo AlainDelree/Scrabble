@@ -23,6 +23,7 @@ from scrabble.persistance import demarrer_suivi, reprendre_partie
 from scrabble.regles.lettres import JOKER
 from scrabble.regles.plateau import CENTRE, TAILLE, TypeCase
 from scrabble.ui.jeu import (
+    ApiJeu,
     AVATARS,
     calculer_avatars,
     calculer_positions,
@@ -33,8 +34,10 @@ from scrabble.ui.jeu import (
     index_humain_reference,
     index_panneau_interactif,
     jouer_placements,
+    obtenir_detail_coup,
     serialiser_case,
     serialiser_chevalet,
+    serialiser_dernier_coup,
     serialiser_detail_score,
     serialiser_historique,
     serialiser_joueur_public,
@@ -793,7 +796,11 @@ class TestSerialiserHistorique:
         partie.passer()               # passe : idem
         historique = serialiser_historique(partie)
         for entree in historique:
-            assert entree["detail"] is None
+            # Depuis l'issue #364, ``detail`` n'existe plus dans la liste (chargé
+            # à la demande, voir obtenir_detail_coup) : seul le booléen
+            # ``a_detail`` signale une action sans rien à détailler.
+            assert "detail" not in entree
+            assert entree["a_detail"] is False
             assert entree["score_action"] == 0
             assert entree["mot"] is None
         assert {e["action"] for e in historique} == {"echange", "passe"}
@@ -809,9 +816,11 @@ class TestSerialiserHistorique:
         assert entree["nom_joueur"] == "Alice"
         assert entree["humain"] is True
         assert entree["mot"] == "CHAT"
-        assert entree["detail"] is not None
-        assert entree["score_action"] == entree["detail"]["total"]
-        assert any(m["texte"] == "CHAT" for m in entree["detail"]["mots"])
+        # Le détail lui-même n'est plus embarqué (issue #364) — seul le
+        # booléen de clic. Le contenu du détail est couvert par
+        # TestObtenirDetailCoup.
+        assert "detail" not in entree
+        assert entree["a_detail"] is True
 
     def test_coup_expose_les_positions_posees(self):
         # Issue #58 : un coup expose les cases nouvellement posées pour que l'UI
@@ -845,15 +854,161 @@ class TestSerialiserHistorique:
         assert par_nom["Alice"]["humain"] is True
         assert par_nom["Robot"]["humain"] is False
 
-    def test_expose_dans_etat_public(self):
+    def test_plus_expose_dans_etat_public(self):
+        # Issue #364 (suite de #363) : la diffusion continue n'embarque plus
+        # l'historique complet — c'était sa principale source de croissance non
+        # bornée. Seuls un compteur et un résumé minimal du dernier coup
+        # subsistent (voir TestEtatPublicCompteurSeul).
         partie = _partie_quatre_joueurs()
         for _ in range(10):
             _echanger_une_lettre(partie)
         etat = etat_public(partie, id_partie=3)
-        assert "historique" in etat
-        # Même contenu et même ordre que serialiser_historique (tout l'historique).
-        assert etat["historique"] == serialiser_historique(partie)
-        assert len(etat["historique"]) == 10
+        assert "historique" not in etat
+
+
+class TestEtatPublicCompteurSeul:
+    """``etat_public`` n'expose plus qu'un compteur (issue #364, suite #363).
+
+    Vérifie, sur une partie longue simulée (≈ 29 coups comme dans le rapport
+    #363), que la charge diffusée en continu ne contient plus ni la liste des
+    coups ni le détail d'aucun — seuls ``nb_historique`` (compteur) et
+    ``dernier_coup`` (résumé minimal du dernier coup, taille bornée) subsistent.
+    """
+
+    def test_nb_historique_reflete_la_longueur_reelle(self):
+        partie = _partie_quatre_joueurs()
+        for _ in range(29):
+            _echanger_une_lettre(partie)
+        etat = etat_public(partie, id_partie=1)
+        assert etat["nb_historique"] == 29 == len(partie.historique)
+
+    def test_aucun_detail_ni_liste_dans_la_charge_diffusee(self):
+        partie = _partie_quatre_joueurs()
+        for _ in range(29):
+            _echanger_une_lettre(partie)
+        etat = etat_public(partie, id_partie=1)
+        assert "historique" not in etat
+        # ``dernier_coup`` est un DICT unique (pas une liste), et ne porte
+        # jamais de champ ``detail``/``mots`` complet.
+        assert isinstance(etat["dernier_coup"], dict)
+        assert "detail" not in etat["dernier_coup"]
+        assert "mots" not in etat["dernier_coup"]
+
+    def test_partie_vide_compteur_zero_et_dernier_coup_none(self):
+        partie = _partie_simple()
+        etat = etat_public(partie, id_partie=None)
+        assert etat["nb_historique"] == 0
+        assert etat["dernier_coup"] is None
+
+
+class TestSerialiserDernierCoup:
+    """Résumé minimal du dernier coup pour l'animation côté plateau (issue #364)."""
+
+    def test_partie_neuve_renvoie_none(self):
+        partie = _partie_simple()
+        assert serialiser_dernier_coup(partie) is None
+
+    def test_reflete_le_dernier_coup_joue(self):
+        partie = _partie_simple()
+        partie.index_courant = 0
+        _poser_chat_au_centre(partie)
+        resume = serialiser_dernier_coup(partie)
+        assert resume["index"] == len(partie.historique) - 1
+        assert resume["index_joueur"] == 0
+        assert resume["score_action"] > 0
+        assert resume["positions"] == [
+            {"ligne": 7, "colonne": 7},
+            {"ligne": 7, "colonne": 8},
+            {"ligne": 7, "colonne": 9},
+            {"ligne": 7, "colonne": 10},
+        ]
+        assert resume["bonus_scrabble"] is False
+
+    def test_echange_sans_positions_ni_score(self):
+        partie = _partie_simple()
+        _echanger_une_lettre(partie)
+        resume = serialiser_dernier_coup(partie)
+        assert resume["positions"] == []
+        assert resume["score_action"] == 0
+        assert resume["bonus_scrabble"] is False
+
+    def test_index_avance_a_chaque_nouveau_coup(self):
+        partie = _partie_quatre_joueurs()
+        for i in range(5):
+            _echanger_une_lettre(partie)
+            assert serialiser_dernier_coup(partie)["index"] == i
+
+
+class TestObtenirDetailCoup:
+    """Troisième palier de chargement : le détail d'UN coup, à la demande (issue #364)."""
+
+    def test_detail_dune_entree_coup(self):
+        partie = _partie_simple()
+        partie.index_courant = 0
+        _poser_chat_au_centre(partie)
+        res = obtenir_detail_coup(partie, 0)
+        assert res["succes"] is True
+        assert res["detail"] == serialiser_detail_score(partie.historique[0].detail)
+        assert any(m["texte"] == "CHAT" for m in res["detail"]["mots"])
+
+    def test_action_sans_detail_erreur_explicite(self):
+        partie = _partie_simple()
+        _echanger_une_lettre(partie)
+        res = obtenir_detail_coup(partie, 0)
+        assert res["succes"] is False
+        assert "erreur" in res
+
+    def test_index_hors_bornes_erreur_explicite(self):
+        partie = _partie_simple()
+        _echanger_une_lettre(partie)
+        for index_invalide in (-1, 1, 99):
+            res = obtenir_detail_coup(partie, index_invalide)
+            assert res["succes"] is False
+
+    def test_index_stable_entre_plusieurs_appels(self):
+        # L'historique ne croît que par la fin : l'index d'une entrée déjà
+        # jouée reste valide (et pointe vers le même détail) après d'autres
+        # actions ultérieures (issue #364, garde-fou explicitement demandé).
+        partie = _partie_simple()
+        partie.index_courant = 0
+        _poser_chat_au_centre(partie)
+        premier = obtenir_detail_coup(partie, 0)
+        _echanger_une_lettre(partie)
+        _echanger_une_lettre(partie)
+        encore = obtenir_detail_coup(partie, 0)
+        assert premier == encore
+
+
+class TestApiJeuHistoriqueADemande:
+    """``ApiJeu.obtenir_historique`` / ``obtenir_detail_coup`` (issue #364)."""
+
+    def test_obtenir_historique_sans_detail(self):
+        partie = _partie_quatre_joueurs()
+        for _ in range(10):
+            _echanger_une_lettre(partie)
+        api = ApiJeu(partie, 1)
+        historique = api.obtenir_historique()
+        assert len(historique) == 10
+        assert all("detail" not in e for e in historique)
+        assert historique == serialiser_historique(partie)
+
+    def test_obtenir_historique_sans_partie_chargee(self):
+        api = ApiJeu()
+        assert api.obtenir_historique() == []
+
+    def test_obtenir_detail_coup_delegue(self):
+        partie = _partie_simple()
+        partie.index_courant = 0
+        _poser_chat_au_centre(partie)
+        api = ApiJeu(partie, 1)
+        res = api.obtenir_detail_coup(0)
+        assert res["succes"] is True
+        assert any(m["texte"] == "CHAT" for m in res["detail"]["mots"])
+
+    def test_obtenir_detail_coup_sans_partie_chargee(self):
+        api = ApiJeu()
+        res = api.obtenir_detail_coup(0)
+        assert res["succes"] is False
 
 
 class TestClasserScoreTotal:

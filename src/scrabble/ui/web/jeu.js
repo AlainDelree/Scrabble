@@ -185,16 +185,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /**
      * Ensemble des cases posées lors du DERNIER coup joué (issue #125), sous
-     * forme de clés ``"ligne,colonne"``. Réutilise ``historique[0].positions``
-     * (déjà exposé côté Python pour l'animation de pose, issue #62/#58) : aucun
-     * nouveau champ n'est ajouté à l'état public. Sert à mettre en surbrillance
+     * forme de clés ``"ligne,colonne"``. Réutilise ``etat.dernier_coup.positions``
+     * (résumé minimal du dernier coup côté Python, issue #364, ex-
+     * ``historique[0].positions`` avant que l'intégralité de l'historique ne
+     * soit retirée de la diffusion continue). Sert à mettre en surbrillance
      * persistante ces cases (classe ``.derniere-pose``) jusqu'au coup suivant —
      * contrairement à l'animation de pose, qui n'est que temporaire. Vide pour
-     * une passe/un échange (positions vides) ou en l'absence d'historique.
+     * une passe/un échange (positions vides) ou en l'absence de coup joué.
      */
     function casesDernierCoup() {
-        const historique = etat.historique;
-        const tete = Array.isArray(historique) && historique.length ? historique[0] : null;
+        const tete = etat.dernier_coup;
         const positions = tete && Array.isArray(tete.positions) ? tete.positions : [];
         return new Set(positions.map((p) => `${p.ligne},${p.colonne}`));
     }
@@ -309,7 +309,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // reconstruit à chaque diffusion, donc l'écouteur est (ré)attaché ici.
         const boutonJouer = item.querySelector('.panneau-btn-jouer');
         if (boutonJouer) {
-            boutonJouer.addEventListener('click', () => lancerTourIA(boutonJouer));
+            boutonJouer.addEventListener('click', () => lancerTourIA());
         }
         return item;
     }
@@ -472,8 +472,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ------------------------------------------------------------------ //
-    // Historique glissant (issue #37)
+    // Historique glissant (issue #37, allégé en trois paliers issue #364)
     // ------------------------------------------------------------------ //
+    // Trois paliers de chargement à la demande (issue #364, suite de #363) :
+    //   a. le COMPTEUR (etat.nb_historique) est le seul champ diffusé en
+    //      continu (voir appliquerEtatPlateau / majCompteurHistorique) ;
+    //   b. la LISTE des coups sans détail (api.obtenir_historique) se charge
+    //      au dépliage du panneau (chargerHistorique) ;
+    //   c. le DÉTAIL du score d'UNE entrée (api.obtenir_detail_coup) se charge
+    //      au clic sur une ligne (ouvrirDetailHistorique).
+    // Ce découpage supprime la principale source de croissance non bornée de
+    // la charge diffusée à chaque mutation, sans rien retirer de visible.
 
     const LABEL_ACTION = {
         'coup': 'a posé',
@@ -490,12 +499,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         return verbe;
     }
 
-    function rendreHistorique(historique) {
-        historiqueListe.innerHTML = '';
-        const nb = Array.isArray(historique) ? historique.length : 0;
+    // Dernière liste reçue de ``api.obtenir_historique()`` (palier b) : sert de
+    // référentiel local pour retrouver l'entrée cliquée (index → objet), sans
+    // que Python n'ait plus besoin de porter l'historique complet dans l'état
+    // public diffusé en continu.
+    let historiqueCache = [];
+
+    /** Palier (a) : met à jour le seul badge du COMPTEUR depuis l'état diffusé. */
+    function majCompteurHistorique() {
+        const nb = etat ? etat.nb_historique : 0;
         if (historiqueCompte) {
             historiqueCompte.textContent = nb ? `(${nb})` : '';
         }
+    }
+
+    /** Construit les lignes de la liste (palier b, déjà chargée) — sans détail. */
+    function rendreHistorique(historique) {
+        historiqueListe.innerHTML = '';
+        const nb = Array.isArray(historique) ? historique.length : 0;
         if (!nb) {
             const vide = document.createElement('li');
             vide.className = 'historique-vide';
@@ -506,7 +527,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         historique.forEach((entree) => {
             const item = document.createElement('li');
             const nature = entree.humain ? 'humain' : 'ordinateur';
-            const cliquable = Boolean(entree.detail);
+            const cliquable = Boolean(entree.a_detail);
             item.className = `historique-ligne ${nature}` + (cliquable ? ' cliquable' : '');
             item.dataset.index = entree.index;
             if (cliquable) {
@@ -523,6 +544,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             `;
             historiqueListe.appendChild(item);
         });
+    }
+
+    /** Palier (b) : charge la liste des coups (sans détail) depuis Python. */
+    async function chargerHistorique() {
+        let res;
+        try {
+            res = await api.obtenir_historique();
+        } catch (err) {
+            return;
+        }
+        historiqueCache = Array.isArray(res) ? res : [];
+        rendreHistorique(historiqueCache);
+    }
+
+    /**
+     * Si le panneau « Derniers coups » est actuellement déplié, rafraîchit sa
+     * liste après une diffusion (issue #364) — sans jamais réintroduire le
+     * détail complet dans la charge diffusée : un simple appel API supplémentaire
+     * à la demande, comme au dépliage initial.
+     */
+    function rafraichirHistoriqueSiOuvert() {
+        if (!historiqueListe.hidden) {
+            chargerHistorique();
+        }
     }
 
     /**
@@ -557,8 +602,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             .forEach((el) => el.classList.remove('coup-consulte'));
     }
 
-    /** Ouvre le détail d'une action de l'historique au clic (issue #37). */
-    function ouvrirDetailHistorique(entree) {
+    /**
+     * Ouvre le détail d'une action de l'historique au clic (issue #37). Depuis
+     * l'issue #364, ``entree`` (venue du palier b, ``obtenir_historique``) ne
+     * porte plus le détail lui-même — seulement le booléen ``a_detail`` — : le
+     * détail (palier c, le plus volumineux) est chargé à la demande via
+     * ``api.obtenir_detail_coup(entree.index)``, uniquement au moment de ce clic.
+     */
+    async function ouvrirDetailHistorique(entree) {
         if (!entree) {
             return;
         }
@@ -566,10 +617,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         // c'est déjà le dernier coup (le liseré bleu prime alors le vert). Une
         // passe/un échange (positions vide) n'ajoute aucune surbrillance.
         surbrillerCoupConsulte(entree.positions);
-        if (entree.detail) {
+        if (!entree.a_detail) {
+            modaleScore.afficherSansDetail(entree.nom_joueur, entree.action);
+            return;
+        }
+        let res;
+        try {
+            res = await api.obtenir_detail_coup(entree.index);
+        } catch (err) {
+            modaleScore.afficherSansDetail(entree.nom_joueur, entree.action);
+            return;
+        }
+        if (res && res.succes) {
             const titre = `Détail du coup de ${entree.nom_joueur}`
                 + (entree.mot ? ` — « ${entree.mot} »` : '');
-            modaleScore.afficher(entree.detail, titre);
+            modaleScore.afficher(res.detail, titre);
         } else {
             modaleScore.afficherSansDetail(entree.nom_joueur, entree.action);
         }
@@ -814,7 +876,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         rendrePlateau();
         rendrePanneaux(etat.joueurs || []);
         rendreFinPartie(etat.terminee, etat.gagnants, etat.joueurs, etat.evaluation_score);
-        rendreHistorique(etat.historique);
+        // Historique (issue #364) : seul le COMPTEUR est diffusé en continu — la
+        // liste complète et le détail de chaque coup se chargent à la demande
+        // (voir plus bas, section « Encart d'historique glissant »). Si le
+        // panneau est déplié au moment de cette diffusion, sa liste est
+        // rafraîchie (sans jamais réintroduire le détail dans la charge reçue
+        // ici).
+        majCompteurHistorique();
+        rafraichirHistoriqueSiOuvert();
         sacNombre.textContent = etat.jetons_sac != null ? etat.jetons_sac : '—';
         majModeTour();
         animerDernierCoupSiNouveau();
@@ -1153,15 +1222,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Anime le dernier coup s'il vient d'apparaître en tête d'historique
-     * (issue #62). Détecte l'apparition d'un NOUVEAU coup (index de tête qui
-     * change) plutôt que de ré-animer à chaque diffusion (une simple pose en
-     * attente rediffuse l'état sans changer l'historique). Au premier chargement
-     * on n'anime rien : on ne fait qu'enregistrer l'index courant.
+     * Anime le dernier coup s'il vient d'apparaître (issue #62). Détecte
+     * l'apparition d'un NOUVEAU coup (index qui change) plutôt que de ré-animer
+     * à chaque diffusion (une simple pose en attente rediffuse l'état sans
+     * changer le dernier coup joué). Au premier chargement on n'anime rien : on
+     * ne fait qu'enregistrer l'index courant. Depuis l'issue #364, s'appuie sur
+     * ``etat.dernier_coup`` — le résumé minimal du dernier coup seul (ex-
+     * ``etat.historique[0]``, avant que l'intégralité de l'historique ne soit
+     * retirée de la diffusion continue) — dont ``bonus_scrabble`` est déjà un
+     * booléen (plus de détail complet à déréférencer ici).
      */
     function animerDernierCoupSiNouveau() {
-        const historique = etat.historique;
-        const tete = Array.isArray(historique) && historique.length ? historique[0] : null;
+        const tete = etat.dernier_coup || null;
         const index = tete ? tete.index : null;
         if (premiereApplication) {
             premiereApplication = false;
@@ -1172,9 +1244,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         dernierCoupIndex = index;
-        // Un nouveau coup en tête d'historique = une action de tour vient d'être
-        // appliquée (pose, échange ou passage), y compris déclenchée depuis la
-        // fenêtre chevalet. On referme alors les popovers du plateau restés ouverts
+        // Un nouveau dernier coup = une action de tour vient d'être appliquée
+        // (pose, échange ou passage), y compris déclenchée depuis la fenêtre
+        // chevalet. On referme alors les popovers du plateau restés ouverts
         // (« Derniers coups », « Vérification dictionnaire ») : c'est ce signal
         // applicatif qui pallie l'absence de clic extérieur cross-fenêtre (issue #151).
         C.fermerTousPopovers();
@@ -1187,7 +1259,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (marquant) {
                     afficherToastPoints(tete.index_joueur, tete.score_action);
                 }
-                if (tete.detail && tete.detail.bonus_scrabble) {
+                if (tete.bonus_scrabble) {
                     celebrerScrabble();
                 }
             });
@@ -1446,17 +1518,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     // l'animation de la pose est déclenchée par ``appliquerEtatPlateau`` (nouveau
     // coup en tête d'historique). Le panneau est reconstruit à chaque diffusion :
     // un bouton neuf réapparaît si le joueur suivant est encore un ordinateur.
-    async function lancerTourIA(bouton) {
-        if (bouton) bouton.disabled = true;
+    //
+    // Double protection contre les clics rapides répétés (issue #364, suite de
+    // #363) : le panneau étant reconstruit à chaque diffusion, un bouton neuf et
+    // ACTIF peut réapparaître avant que la réponse de l'appel en cours ne soit
+    // revenue — désactiver seulement le bouton cliqué ne suffit donc pas.
+    // ``iaEnCours`` ignore tout clic pendant qu'un appel est en vol (y compris
+    // sur un bouton fraîchement recréé), et tous les boutons « ▶ Jouer » présents
+    // au moment du clic (normalement un seul à la fois, un seul joueur étant
+    // courant) sont désactivés le temps de l'attente. Python porte la même
+    // garde côté serveur (``ApiJeu._ia_en_cours``, défense en profondeur).
+    let iaEnCours = false;
+
+    async function lancerTourIA() {
+        if (iaEnCours) {
+            return;
+        }
+        iaEnCours = true;
+        const boutons = document.querySelectorAll('.panneau-btn-jouer');
+        boutons.forEach((b) => { b.disabled = true; });
         let res;
         try {
             res = await api.faire_jouer_ia();
         } catch (err) {
-            if (bouton) bouton.disabled = false;
+            iaEnCours = false;
+            boutons.forEach((b) => { b.disabled = false; });
             return;
         }
-        if (!(res && res.succes) && bouton) {
-            bouton.disabled = false;
+        iaEnCours = false;
+        if (!(res && res.succes)) {
+            boutons.forEach((b) => { b.disabled = false; });
         }
     }
 
@@ -1779,16 +1870,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // d'aria-expanded. La liste (``historiqueListe``, id #historique-liste)
     // sert de popover : les clics à l'intérieur (ouverture du détail d'un coup)
     // ne la ferment pas, configurerPopover stoppant leur propagation vers
-    // document.
+    // document. Depuis l'issue #364, la liste n'est plus déjà présente dans
+    // l'état diffusé : ``chargerHistorique`` (palier b) est passé en ``onOuvrir``
+    // pour la charger à la demande, à chaque dépliage.
     const btnHistorique = document.getElementById('btn-historique');
-    C.configurerPopover(btnHistorique, historiqueListe);
+    C.configurerPopover(btnHistorique, historiqueListe, chargerHistorique);
 
     function entreeHistoriqueDe(li) {
-        if (!li || !etat || !Array.isArray(etat.historique)) {
+        if (!li) {
             return null;
         }
         const index = Number(li.dataset.index);
-        return etat.historique.find((e) => e.index === index) || null;
+        return historiqueCache.find((e) => e.index === index) || null;
     }
 
     historiqueListe.addEventListener('click', (evt) => {
