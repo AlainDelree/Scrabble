@@ -133,6 +133,23 @@ FICHIERS_VOCABULAIRE_PALIER: dict[str, Path] = {
     "expert": DOSSIER_DICO / "mots_courants_expert.txt",
 }
 
+# Cache disque du Trie IA par palier (issue #367, lot B, suite de #366 lot A).
+# Défaut bloquant identifié par le rapport de lecture #366 : le cache du Trie IA
+# utilisait un chemin fixe unique (:data:`CHEMIN_CACHE_IA`), donc six paliers
+# écriraient tous par-dessus le même fichier — le code servirait alors
+# silencieusement le Trie du **dernier** palier construit, sans erreur ni
+# avertissement (même version/source/mode belge à la relecture). Un chemin
+# distinct par palier élimine ce risque à la racine. Mêmes clés que
+# :data:`FICHIERS_VOCABULAIRE_PALIER` (dérivées directement de cette constante :
+# une seule source de vérité pour la liste des paliers) : le palier
+# « champion_du_monde » n'a pas d'entrée ici non plus — il se résout vers
+# :func:`obtenir_trie` et réutilise le cache du Trie complet existant
+# (:data:`CHEMIN_CACHE`), sans notion de palier.
+FICHIERS_CACHE_IA_PALIER: dict[str, Path] = {
+    palier: DOSSIER_DICO / f"trie_ia_cache_{palier}.pkl"
+    for palier in FICHIERS_VOCABULAIRE_PALIER
+}
+
 # Belgicismes à revoir (issue #274) : CSV colonnes ``mot`` /
 # ``définition(s) belge(s)`` / ``origine_wallonne`` / ``existe_sens_standard``,
 # maintenu manuellement. Chargé uniquement quand le mode Belgicisme est actif
@@ -143,6 +160,14 @@ CHEMIN_CACHE = DOSSIER_DICO / "trie_cache.pkl"
 # Cache disque du Trie restreint de l'IA (issue #206), distinct du cache du Trie
 # complet. Invalidé par mtime des mêmes sources que le Trie complet, plus
 # ``mots_courants.txt`` et la paire ``classiques_ajoutes/retires.txt``.
+#
+# Reste le défaut de ``chemin_cache`` d':func:`obtenir_trie_ia` (issue #367,
+# lot B, choix de compatibilité retenu parmi les deux options du point 3 de
+# l'issue) : le jeu tourne aujourd'hui avec ce chemin unique (un seul palier
+# actif tant que le lot C n'est pas fait, notamment ``accueil.py`` qui appelle
+# ``obtenir_trie_ia(source, mode_belgicisme=...)`` sans notion de palier). Le
+# lot C, quand il branchera plusieurs paliers, utilisera
+# :data:`FICHIERS_CACHE_IA_PALIER` pour les chemins propres à chaque palier.
 CHEMIN_CACHE_IA = DOSSIER_DICO / "trie_ia_cache.pkl"
 # Index mot → définition(s) restreint aux mots de l'ODS8 (issue #15). Ce fichier
 # est volumineux et gitignoré : construit hors-ligne par
@@ -151,7 +176,9 @@ CHEMIN_DEFINITIONS = DOSSIER_DICO / "definitions.json"
 
 # Version du format de cache : incrémenter invalide tous les caches existants.
 # 2 (issue #281) : le Trie contient désormais des entrées désaccentuées.
-VERSION_CACHE = 2
+# 3 (issue #367, lot B) : l'en-tête gagne la clé "palier" (défense en
+# profondeur du cache Trie IA multi-paliers, voir _cache_valide).
+VERSION_CACHE = 3
 
 
 # --------------------------------------------------------------------------- #
@@ -963,8 +990,18 @@ def _cache_valide(
     source: str,
     sources: list[Path],
     mode_belgicisme: bool = False,
+    palier: str | None = None,
 ) -> bool:
-    """Vrai si le cache existe, cible la bonne source/mode et n'est pas périmé."""
+    """Vrai si le cache existe, cible la bonne source/mode/palier et n'est pas périmé.
+
+    ``palier`` (issue #367, lot B) est une défense en profondeur : le chemin de
+    cache est déjà propre à chaque palier (:data:`FICHIERS_CACHE_IA_PALIER`),
+    mais si un chemin venait à être mal résolu, ou un fichier copié/renommé à la
+    main, l'en-tête rattrape l'erreur au lieu de servir silencieusement le Trie
+    d'un autre palier. Défaut ``None`` : comportement inchangé pour le Trie
+    complet (:func:`obtenir_trie`, sans notion de palier) et pour un appel de
+    :func:`obtenir_trie_ia` sans palier explicite.
+    """
     if not chemin_cache.exists():
         return False
     try:
@@ -978,6 +1015,7 @@ def _cache_valide(
         entete.get("version") != VERSION_CACHE
         or entete.get("source") != source
         or entete.get("belge", False) != mode_belgicisme
+        or entete.get("palier") != palier
     ):
         return False
     mtime_cache = chemin_cache.stat().st_mtime
@@ -1001,11 +1039,20 @@ def _lire_trie_cache(chemin_cache: Path) -> Trie | None:
 
 
 def _ecrire_trie_cache(
-    chemin_cache: Path, source: str, trie: Trie, mode_belgicisme: bool = False
+    chemin_cache: Path,
+    source: str,
+    trie: Trie,
+    mode_belgicisme: bool = False,
+    palier: str | None = None,
 ) -> None:
-    """Sérialise le Trie et son en-tête (version + source + mode) dans le cache."""
+    """Sérialise le Trie et son en-tête (version + source + mode + palier) dans le cache."""
     chemin_cache.parent.mkdir(parents=True, exist_ok=True)
-    entete = {"version": VERSION_CACHE, "source": source, "belge": mode_belgicisme}
+    entete = {
+        "version": VERSION_CACHE,
+        "source": source,
+        "belge": mode_belgicisme,
+        "palier": palier,
+    }
     with open(chemin_cache, "wb") as fichier:
         pickle.dump(entete, fichier, protocol=pickle.HIGHEST_PROTOCOL)
         pickle.dump(trie, fichier, protocol=pickle.HIGHEST_PROTOCOL)
@@ -1244,19 +1291,44 @@ def obtenir_trie_ia(
     chemin_cache: Path = CHEMIN_CACHE_IA,
     mode_belgicisme: bool = False,
     chemin_belgicismes: Path = CHEMIN_BELGICISMES,
+    palier: str | None = None,
 ) -> Trie:
     """Retourne le Trie restreint de l'IA (issue #206), via le cache disque.
 
     Construit :func:`construire_ensemble_ia` puis le met en cache sur le modèle
-    exact d':func:`obtenir_trie` (en-tête version + source + mode, invalidation
-    par mtime), dans un fichier distinct (:data:`CHEMIN_CACHE_IA`). Les sources
-    surveillées incluent en plus ``mots_courants.txt`` et la paire des classiques
-    (:func:`_sources_pertinentes_ia`). Les chemins d'ajouts/retraits par défaut
-    sont ceux propres à la source ; des chemins explicites restent prioritaires
-    (utile en test).
+    exact d':func:`obtenir_trie` (en-tête version + source + mode + palier,
+    invalidation par mtime). Les sources surveillées incluent en plus
+    ``mots_courants.txt`` et la paire des classiques (:func:`_sources_pertinentes_ia`).
+    Les chemins d'ajouts/retraits par défaut sont ceux propres à la source ; des
+    chemins explicites restent prioritaires (utile en test).
 
     ``mode_belgicisme`` (issue #274, défaut ``False``) : voir
     :func:`construire_ensemble_ia`.
+
+    Cache par palier (issue #367, lot B, suite de #366 lot A)
+    -----------------------------------------------------------
+    Le rapport de lecture #366 a identifié un défaut bloquant : avec un seul
+    chemin de cache fixe, six paliers réutilisant cette fonction écraseraient
+    tous le même fichier, et ``_cache_valide`` (même version/source/mode)
+    servirait alors silencieusement le Trie du **dernier** palier construit.
+    Deux mesures corrigent ce défaut :
+
+    1. **Un chemin par palier.** ``chemin_cache`` reste le paramètre existant :
+       le lot C doit y passer l'entrée correspondante de
+       :data:`FICHIERS_CACHE_IA_PALIER` plutôt que d'inventer un chemin. Le
+       palier « champion_du_monde » n'a pas d'entrée : il se résout vers
+       :func:`obtenir_trie` (Trie complet), hors du périmètre de cette fonction.
+    2. **Défense en profondeur.** ``palier`` est écrit dans l'en-tête du cache
+       et contrôlé par :func:`_cache_valide` : même si un chemin était mal
+       résolu ou un fichier copié/renommé à la main, l'en-tête rattrape
+       l'erreur au lieu de servir un vocabulaire faux à l'insu de l'appelant.
+
+    **Compatibilité** : ``chemin_cache`` garde son défaut historique
+    (:data:`CHEMIN_CACHE_IA`) et ``palier`` son défaut ``None`` — un appel sans
+    aucune notion de palier (``accueil.py``, avant le lot C) continue de
+    fonctionner à l'identique. ``VERSION_CACHE`` a été incrémenté (format d'en-
+    tête changé) : les caches écrits avant ce lot seront reconstruits une fois,
+    quel que soit l'appelant.
     """
     defaut_ajoutes, defaut_retires = chemins_modifs(source)
     if chemin_ajoutes is None:
@@ -1274,7 +1346,7 @@ def obtenir_trie_ia(
         mode_belgicisme,
         chemin_belgicismes,
     )
-    if _cache_valide(chemin_cache, source, sources, mode_belgicisme):
+    if _cache_valide(chemin_cache, source, sources, mode_belgicisme, palier):
         trie = _lire_trie_cache(chemin_cache)
         if trie is not None:
             return trie
@@ -1290,7 +1362,7 @@ def obtenir_trie_ia(
     )
     trie = Trie.depuis_iterable(ensemble)
     try:
-        _ecrire_trie_cache(chemin_cache, source, trie, mode_belgicisme)
+        _ecrire_trie_cache(chemin_cache, source, trie, mode_belgicisme, palier)
     except OSError:
         pass  # Un cache non écrit n'empêche pas de fonctionner.
     return trie

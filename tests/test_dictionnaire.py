@@ -21,6 +21,7 @@ import scrabble.dictionnaire.dictionnaire as d
 from scrabble.dictionnaire.dictionnaire import (
     CHEMINS_MODIFS,
     DOSSIER_DICO,
+    FICHIERS_CACHE_IA_PALIER,
     FICHIERS_VOCABULAIRE_PALIER,
     Dictionnaire,
     Trie,
@@ -73,6 +74,30 @@ def test_fichiers_vocabulaire_palier_cinq_entrees_sous_dossier_dico():
     for palier, chemin in FICHIERS_VOCABULAIRE_PALIER.items():
         assert chemin.parent == DOSSIER_DICO
         assert chemin.name == f"mots_courants_{palier}.txt"
+        noms.add(chemin.name)
+    assert len(noms) == 5  # aucun doublon de nom de fichier entre paliers
+
+
+# --------------------------------------------------------------------------- #
+# Cache Trie IA par palier (issue #367, lot B)
+# --------------------------------------------------------------------------- #
+
+def test_fichiers_cache_ia_palier_meme_cles_que_vocabulaire_et_chemins_distincts():
+    """La constante de mapping palier → cache IA reprend les clés du lot A.
+
+    Le rapport de lecture #366 a identifié un défaut bloquant : un chemin de
+    cache fixe unique partagé entre paliers ferait écraser silencieusement le
+    cache d'un palier par le suivant. Un chemin distinct par palier, dérivé de
+    :data:`FICHIERS_VOCABULAIRE_PALIER` (même source de vérité), élimine ce
+    risque. Le palier « champion_du_monde » n'a pas d'entrée : il réutilise le
+    cache du Trie complet via :func:`obtenir_trie`.
+    """
+    assert set(FICHIERS_CACHE_IA_PALIER) == set(FICHIERS_VOCABULAIRE_PALIER)
+    assert "champion_du_monde" not in FICHIERS_CACHE_IA_PALIER
+    noms = set()
+    for palier, chemin in FICHIERS_CACHE_IA_PALIER.items():
+        assert chemin.parent == DOSSIER_DICO
+        assert chemin.name == f"trie_ia_cache_{palier}.pkl"
         noms.add(chemin.name)
     assert len(noms) == 5  # aucun doublon de nom de fichier entre paliers
 
@@ -1439,6 +1464,57 @@ def test_obtenir_trie_ia_cache_invalide_si_classiques_change(tmp_path, monkeypat
 
     trie2 = obtenir_trie_ia(**kwargs)
     assert "WU" in trie2                          # cache invalidé
+
+
+def test_obtenir_trie_ia_palier_dans_entete_evite_le_bug_du_dernier_palier_ecrit(
+    tmp_path, monkeypatch
+):
+    """Reproduit le défaut bloquant identifié par le rapport de lecture #366.
+
+    Sans la clé ``palier`` dans l'en-tête du cache, un chemin de cache partagé
+    par erreur entre deux paliers servirait silencieusement le Trie du
+    **dernier** palier écrit — y compris quand le vocabulaire courant du
+    palier demandé diffère et que son mtime ne dépasse pas celui du cache
+    (donc invisible au seul contrôle par date de modification). C'est le test
+    central du lot B (issue #367) : il vérifie la défense en profondeur de
+    l'en-tête, indépendamment du fait que :data:`FICHIERS_CACHE_IA_PALIER`
+    évite ce partage de chemin en usage normal.
+    """
+    ods, aj, re_ = _preparer_dico(tmp_path, source_mots=["chat", "chien"])
+    _preparer_classiques(tmp_path, monkeypatch)
+
+    co_debutant = tmp_path / "mots_courants_debutant.txt"
+    co_expert = tmp_path / "mots_courants_expert.txt"
+    _ecrire_liste(co_debutant, ["chat"])
+    _ecrire_liste(co_expert, ["chat", "chien"])
+    # Les deux fichiers de vocabulaire sont antérieurs au cache qui va être
+    # écrit : leur mtime ne déclenchera donc jamais, à lui seul, une
+    # invalidation par date lors du second appel.
+    passe = time.time() - 100
+    os.utime(co_debutant, (passe, passe))
+    os.utime(co_expert, (passe, passe))
+
+    # Chemin de cache partagé par erreur entre les deux paliers — le scénario
+    # que FICHIERS_CACHE_IA_PALIER évite en pratique ; ce test vérifie la
+    # ceinture (en-tête), pas seulement les bretelles (chemins distincts).
+    cache_partage = tmp_path / "trie_ia_cache_partage.pkl"
+
+    trie_debutant = obtenir_trie_ia(
+        source="ods", chemin_ods=ods, chemin_ajoutes=aj, chemin_retires=re_,
+        chemin_mots_courants=co_debutant, chemin_cache=cache_partage,
+        palier="debutant",
+    )
+    assert "CHAT" in trie_debutant and "CHIEN" not in trie_debutant
+
+    trie_expert = obtenir_trie_ia(
+        source="ods", chemin_ods=ods, chemin_ajoutes=aj, chemin_retires=re_,
+        chemin_mots_courants=co_expert, chemin_cache=cache_partage,
+        palier="expert",
+    )
+    # Sans la clé "palier" dans l'en-tête, ce Trie aurait été relu tel quel
+    # depuis le cache écrit pour "debutant" (même version/source/mode, mtime
+    # non dépassé) et n'aurait donc jamais contenu "chien".
+    assert "CHIEN" in trie_expert
 
 
 def test_construire_ensemble_ia_mode_belgicisme_hors_courants_reste_exclu(
