@@ -99,7 +99,6 @@ def test_fichier_valide_non_reecrit(tmp_path):
         "prenom_principal": "Marie",
         "theme_plateau": "vert",
         "bonus_fin_partie": True,
-        "vocabulaire_humain": True,
         "type_echange": "partiel",
         "avatar_principal": "avatar-04",
     }
@@ -124,7 +123,6 @@ def test_sauvegarder_puis_recharger(tmp_path):
             "prenom_principal": "Alice",
             "theme_plateau": "abrege",
             "bonus_fin_partie": True,
-            "vocabulaire_humain": True,
             "type_echange": "partiel",
             "avatar_principal": "avatar-11",
         },
@@ -139,7 +137,6 @@ def test_sauvegarder_puis_recharger(tmp_path):
         "prenom_principal": "Alice",
         "theme_plateau": "abrege",
         "bonus_fin_partie": True,
-        "vocabulaire_humain": True,
         "type_echange": "partiel",
         "avatar_principal": "avatar-11",
     }
@@ -155,7 +152,6 @@ def test_prenom_principal_vide_par_defaut_non_reecrit(tmp_path):
         "prenom_principal": "",
         "theme_plateau": "classique",
         "bonus_fin_partie": False,
-        "vocabulaire_humain": False,
         "type_echange": "complet",
         "avatar_principal": "",
     }
@@ -340,45 +336,27 @@ def test_bonus_fin_partie_valeur_non_booleenne_reparee(tmp_path, invalide):
 
 
 # --------------------------------------------------------------------------- #
-# Vocabulaire humain de l'IA (issue #206)
+# Clé orpheline « vocabulaire_humain » (issue #370, lot E)
 # --------------------------------------------------------------------------- #
 
-def test_vocabulaire_humain_active_par_defaut(tmp_path):
-    """Le réglage « vocabulaire humain » (issue #206) est activé par défaut (issue #342)."""
-    chemin = tmp_path / "config.json"
-
-    config = charger_config(chemin)
-
-    assert config["vocabulaire_humain"] is True
-    assert CONFIG_DEFAUT["vocabulaire_humain"] is True
-
-
-@pytest.mark.parametrize("valeur", [True, False])
-def test_vocabulaire_humain_booleen_conserve(tmp_path, valeur):
-    """Un vrai booléen est conservé tel quel, sans réparation."""
+def test_vocabulaire_humain_orpheline_ignoree(tmp_path):
+    """Une config existante avec la clé supprimée (issue #206) se charge sans
+    planter ni la réintroduire : traitée comme toute clé inconnue, elle est
+    silencieusement nettoyée (risque signalé par le rapport de lecture #366 —
+    la clé est présente dans les config.json existantes d'Alain, sa mère et
+    Béatrice)."""
     chemin = tmp_path / "config.json"
     chemin.write_text(
-        json.dumps({"vocabulaire_humain": valeur}), encoding="utf-8"
+        json.dumps({"niveau_ia": "expert", "vocabulaire_humain": True}),
+        encoding="utf-8",
     )
 
     config = charger_config(chemin)
 
-    assert config["vocabulaire_humain"] is valeur
-
-
-@pytest.mark.parametrize("invalide", ["true", 1, 0, None, "oui"])
-def test_vocabulaire_humain_valeur_non_booleenne_reparee(tmp_path, invalide):
-    """Toute valeur non booléenne (str, entier, None) retombe sur le défaut."""
-    chemin = tmp_path / "config.json"
-    chemin.write_text(
-        json.dumps({"vocabulaire_humain": invalide}), encoding="utf-8"
-    )
-
-    config = charger_config(chemin)
-
-    assert config["vocabulaire_humain"] is True
+    assert config == CONFIG_DEFAUT | {"niveau_ia": "expert"}
+    assert "vocabulaire_humain" not in config
     releu = json.loads(chemin.read_text(encoding="utf-8"))
-    assert releu["vocabulaire_humain"] is True
+    assert "vocabulaire_humain" not in releu
 
 
 # --------------------------------------------------------------------------- #

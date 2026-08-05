@@ -9,6 +9,44 @@ Historique des changements notables, par ordre antéchronologique. Voir aussi
 
 ### Ajouté
 
+- **Issue #370** (lot E, suite de #366/#369) — Suppression du réglage global
+  « vocabulaire humain » (issue #206), devenu redondant et contradictoire
+  depuis le lot C (#369) : chaque niveau joue désormais sur son propre palier
+  de vocabulaire, et la case décochée (défaut historique du réglage avant
+  #342) faisait retomber **tous** les niveaux sur l'ODS8 complet, annulant
+  toute la différenciation introduite par le lot C. `config.py` : clé
+  `vocabulaire_humain` retirée de `CONFIG_DEFAUT` et de `CLES_BOOLEENNES`.
+  `ui/accueil.py` : `_construire_trie_ia` construit désormais
+  inconditionnellement le mapping des niveaux présents (fin de la branche
+  « réglage désactivé → mapping vide ») ; `_disponibilite_niveau` ne dépend
+  plus que de la présence du fichier de vocabulaire du palier ;
+  `obtenir_reglages_generaux` n'expose plus la clé. Écran d'accueil
+  (`ui/web/accueil.html`/`.js`) : case à cocher, texte d'aide et gestionnaire
+  JS retirés. Le repli défensif sur le dictionnaire complet pour un niveau
+  absent du mapping (`Partie.__init__`/`jouer_tour_ia`) n'est PAS touché : il
+  reste le filet de sécurité générique (mapping `None`, ou niveau non couvert
+  par un futur ajout), indépendamment de tout réglage désormais.
+  Risque principal validé (rapport #366) : une `config.json` **existante**
+  contenant encore la clé (celles d'Alain, de sa mère et de Béatrice
+  l'avaient toutes) se charge sans planter ni la réintroduire — la clé
+  orpheline est traitée comme toute clé inconnue par la config
+  auto-réparante (`_fusionner_defauts` ne construit `config` qu'à partir de
+  `CONFIG_DEFAUT.items()`, et marque `doit_reparer=True` dès qu'une clé du
+  fichier n'en fait pas partie), donc silencieusement nettoyée au premier
+  chargement. Nouveau test dédié
+  (`test_config.py::test_vocabulaire_humain_orpheline_ignoree`).
+  Tests adaptés/retirés dans `test_reglages.py`, `test_config.py`,
+  `test_accueil.py`, `test_jeu_pose.py`, `test_reglages_ui.py` : les tests qui
+  testaient spécifiquement le réglage (round-trip booléen, exposition dans
+  `obtenir_reglages_generaux`, branche « mapping vide si inactif ») sont
+  supprimés ; ceux qui testaient autre chose au passage (disponibilité par
+  palier, refus d'un niveau indisponible, reprise d'un niveau devenu
+  indisponible, source du dictionnaire jusqu'à la validation d'un coup) sont
+  conservés, débarrassés de la clé désormais inerte. Suite complète : 833
+  tests verts.
+  Non touché (hors périmètre, lot F) : écran d'accueil visuel — 6ᵉ bouton,
+  dégradé CSS, boutons désactivés.
+
 - **Issue #369** (lot C, suite de #366/#367/#368) — Résolution du Trie IA par
   niveau : fin du Trie IA unique de `Partie` (verrou structurel identifié par
   le rapport de lecture #366). `scrabble.moteur.ia.resoudre_palier(Niveau) ->

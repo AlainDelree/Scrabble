@@ -108,22 +108,16 @@ _LIBELLES_NIVEAUX: dict[Niveau, str] = {
 def _disponibilite_niveau(niveau: Niveau) -> tuple[bool, str | None]:
     """Disponibilité du vocabulaire IA d'un niveau (issue #369, lot C, point 5).
 
-    Réglage « vocabulaire humain » (issue #206) désactivé (défaut) → toujours
-    disponible : tous les niveaux jouent alors sur l'ODS8 complet (point 7 de
-    l'issue #369), le fichier de vocabulaire d'un palier n'entre donc jamais
-    en jeu et ne doit pas bloquer la sélection d'un niveau. Activé → un
-    niveau est indisponible quand son palier (:func:`resoudre_palier`) est
+    Un niveau est indisponible quand son palier (:func:`resoudre_palier`) est
     connu mais que le fichier de vocabulaire correspondant est absent du
     disque (:func:`~scrabble.dictionnaire.dictionnaire.paliers_disponibles`).
     :data:`~scrabble.moteur.ia.Niveau.CHAMPION_DU_MONDE` (palier ``None``) ne
-    dépend d'aucun fichier : toujours disponible, réglage ou pas.
+    dépend d'aucun fichier : toujours disponible.
 
     Renvoie ``(True, None)`` si disponible, ``(False, message)`` sinon, où
     ``message`` reprend le libellé retenu par l'issue : « <Niveau> en erreur,
     veuillez choisir un autre niveau. Prévenir Alain pour la réparation. ».
     """
-    if not bool(charger_config().get("vocabulaire_humain", False)):
-        return True, None
     palier = resoudre_palier(niveau)
     if palier is None or paliers_disponibles().get(palier, False):
         return True, None
@@ -548,15 +542,14 @@ class ApiAccueil:
         variation (config courante vs niveaux **stockés**, voir
         :func:`~scrabble.persistance.stockage.niveaux_ia_stockes`).
 
-        Réglage global « vocabulaire humain » (issue #206), toujours
-        indépendant du niveau de difficulté : désactivé (défaut) → mapping
-        **vide** ; chaque IA retombe alors sur le dictionnaire complet dans
-        ``Partie`` (comportement historique inchangé, coût nul — voir le
-        docstring de ``Partie`` pour ce repli). Activé → un Trie par niveau
-        **présent uniquement** (chargement paresseux, point 3 de l'issue) :
-        au plus 3 IA à une table, donc au plus 3 paliers chargés, jamais les
-        six — le rapport #366 chiffre un Trie complet à plusieurs dizaines de
-        Mo, et les mesures du lot C (voir CHANGELOG) confirment l'écart.
+        Vocabulaire par palier appliqué inconditionnellement (issue #370, lot
+        E : suppression du réglage global « vocabulaire humain », issue #206,
+        devenu redondant depuis que chaque niveau a son propre palier) : un
+        Trie par niveau **présent uniquement** (chargement paresseux, point 3
+        de l'issue #369) — au plus 3 IA à une table, donc au plus 3 paliers
+        chargés, jamais les six — le rapport #366 chiffre un Trie complet à
+        plusieurs dizaines de Mo, et les mesures du lot C (voir CHANGELOG)
+        confirment l'écart.
 
         Chaque niveau se résout vers un palier via
         :func:`~scrabble.moteur.ia.resoudre_palier` :
@@ -594,8 +587,6 @@ class ApiAccueil:
         relue ici via un second ``charger_config()`` qui pourrait en théorie
         diverger. ``mode_belgicisme`` (issue #274) suit la même logique.
         """
-        if not bool(charger_config().get("vocabulaire_humain", False)):
-            return {}
         resultat: dict[Niveau, Any] = {}
         for niveau in dict.fromkeys(niveaux):  # dédoublonne, ordre préservé
             palier = resoudre_palier(niveau)
@@ -677,9 +668,9 @@ class ApiAccueil:
             # Réglage du bonus officiel au finisseur (issue #134), câblé dans le
             # moteur via creer_partie.
             bonus_fin_partie = bool(config.get("bonus_fin_partie", False))
-            # Réglage « vocabulaire humain » (issue #206) : un Trie par niveau
-            # d'IA présent (issue #369, lot C), construit sur la même source et
-            # le même mode que le Trie complet (issues #210, #274).
+            # Vocabulaire par palier (issue #369, lot C) : un Trie par niveau
+            # d'IA présent, construit sur la même source et le même mode que
+            # le Trie complet (issues #210, #274).
             tries_ia = self._construire_trie_ia(
                 source, niveaux_ia, mode_belgicisme, trie_complet=trie
             )
@@ -806,10 +797,10 @@ class ApiAccueil:
             # l'IA sur la source active (Hunspell/ODS), pas sur l'ODS par défaut.
             source = charger_config().get("source_dictionnaire", "ods")
             trie = obtenir_trie(source)
-            # Réglage « vocabulaire humain » (issue #206) : une partie reprise doit
-            # continuer de restreindre son IA si le réglage est actif — sur la même
-            # source que le Trie complet (issue #210), et niveau par niveau
-            # (issue #369, lot C) selon les niveaux **stockés**.
+            # Vocabulaire par palier (issue #369, lot C) : une partie reprise
+            # continue de restreindre son IA niveau par niveau, sur la même
+            # source que le Trie complet (issue #210), selon les niveaux
+            # **stockés**.
             niveaux_stockes = niveaux_ia_stockes(id_partie)
             tries_ia = self._construire_trie_ia(
                 source, niveaux_stockes, trie_complet=trie
@@ -871,7 +862,6 @@ class ApiAccueil:
             "theme_plateau": self._lire("theme_plateau"),
             "source_dictionnaire": self._lire("source_dictionnaire"),
             "bonus_fin_partie": self._lire_bool("bonus_fin_partie"),
-            "vocabulaire_humain": self._lire_bool("vocabulaire_humain"),
             "type_echange": self._lire("type_echange"),
             "avatar_principal": self._lire("avatar_principal"),
             # Grille d'avatars disponibles pour le sélecteur visuel (issue #143) :

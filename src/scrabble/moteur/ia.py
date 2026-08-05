@@ -60,8 +60,7 @@ Lexique), CHAMPION_DU_MONDE sur le Trie complet ODS8. Le vocabulaire plus
 large de CHAMPION_DU_MONDE lui ouvre des coups inaccessibles à EXPERT, d'où
 l'inégalité stricte en moyenne. Contrairement aux cinq premiers niveaux, ce
 n'est donc PAS une propriété de ce module : à dictionnaire identique (par
-exemple si l'appelant transmettait le même Trie aux deux, ou avec le
-vocabulaire humain désactivé — voir ``ui.accueil``), les deux niveaux
+exemple si l'appelant transmettait le même Trie aux deux), les deux niveaux
 redeviennent mécaniquement égaux, comme le vérifie la fixture de test dédiée.
 
 Pourquoi « top 60 % » pour FACILE plutôt qu'une moitié/tranche centrale ? La

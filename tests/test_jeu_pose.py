@@ -608,7 +608,6 @@ class TestSourceDictionnaireValidationCoup:
             "scrabble.ui.accueil.charger_config",
             lambda: {
                 "source_dictionnaire": source,
-                "vocabulaire_humain": False,
                 "bonus_fin_partie": False,
             },
         )

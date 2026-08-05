@@ -315,10 +315,10 @@ class Partie:
     niveau, voir ``scrabble.moteur.ia.resoudre_palier``). Un niveau **absent**
     du mapping (dont ``dictionnaires_ia`` vide ou ``None``, tout comme
     :data:`~scrabble.moteur.ia.Niveau.CHAMPION_DU_MONDE` construit sans entrée)
-    retombe sur ``dictionnaire`` complet — comportement historique inchangé, y
-    compris quand le réglage « vocabulaire humain » (issue #206) est désactivé :
-    l'appelant UI transmet alors un mapping vide et toutes les IA jouent sur
-    l'ODS8 complet.
+    retombe sur ``dictionnaire`` complet — comportement historique inchangé et
+    défensif, conservé même si l'appelant UI construit désormais toujours le
+    mapping par palier sans condition (issue #370, lot E : suppression du
+    réglage global « vocabulaire humain », issue #206).
     """
 
     def __init__(

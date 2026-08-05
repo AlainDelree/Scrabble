@@ -58,16 +58,6 @@ CONFIG_DEFAUT: dict[str, Any] = {
     # utilisatrice cible) : le comportement historique (pénalité seule,
     # issue #22) reste accessible en désactivant ce réglage.
     "bonus_fin_partie": True,
-    # Vocabulaire humain de l'IA (issue #206) : quand activé, l'IA (tous niveaux
-    # confondus) ne choisit ses coups que parmi les mots « courants »
-    # (``mots_courants.txt``, issue #205) et les « classiques du jeu » (statut de
-    # l'issue #204, WU/SIX/ZOO…), plutôt que dans tout le dictionnaire. Réglage
-    # global unique, indépendant du niveau de difficulté. Activé par défaut
-    # (issue #342, préférence de Béatrice, utilisatrice cible) : le comportement
-    # historique (IA sur le dictionnaire complet) reste accessible en désactivant
-    # ce réglage. N'affecte jamais ce que le joueur humain peut jouer ou
-    # vérifier (``valider_coup`` reste sur le dictionnaire complet).
-    "vocabulaire_humain": True,
     # Type d'échange des lettres autorisé pendant un tour (issue #138) :
     # "complet" (défaut, comportement historique : on remet tout le chevalet et
     # on repioche sept lettres) ou "partiel" (le joueur choisit librement une à
@@ -91,9 +81,7 @@ CLES_TEXTE_LIBRE: frozenset[str] = frozenset({"prenom_principal", "avatar_princi
 
 # Clés dont la valeur est un booléen (et non une chaîne) : validées à part,
 # toute valeur non booléenne déclenchant une réparation vers le défaut.
-CLES_BOOLEENNES: frozenset[str] = frozenset(
-    {"bonus_fin_partie", "vocabulaire_humain"}
-)
+CLES_BOOLEENNES: frozenset[str] = frozenset({"bonus_fin_partie"})
 
 # Thèmes visuels de plateau reconnus. Doivent rester alignés avec les classes
 # CSS ``theme-<nom>`` de ``ui/web/jeu.css`` et les libellés de ``ui/web/jeu.js``.
