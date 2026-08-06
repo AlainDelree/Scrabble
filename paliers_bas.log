@@ -1,0 +1,38 @@
+nohup: les entrées sont ignorées
+Chargement du dictionnaire (dictionnaire)...
+Dictionnaire de validation chargé : 411430 mots.
+Vocabulaire de génération — A (FACILE) : facile (21784 mots) ; B (DEBUTANT) : debutant (16818 mots).
+Mesure : FACILE (A) vs DEBUTANT (B) sur 200 partie(s) (graines 0..199).
+  10/200 parties — écoulé 4s — restant estimé 1min31s
+  20/200 parties — écoulé 10s — restant estimé 1min37s
+  30/200 parties — écoulé 16s — restant estimé 1min32s
+  40/200 parties — écoulé 21s — restant estimé 1min27s
+  50/200 parties — écoulé 28s — restant estimé 1min25s
+  60/200 parties — écoulé 33s — restant estimé 1min18s
+  70/200 parties — écoulé 39s — restant estimé 1min13s
+  80/200 parties — écoulé 46s — restant estimé 1min09s
+  90/200 parties — écoulé 52s — restant estimé 1min04s
+  100/200 parties — écoulé 1min01s — restant estimé 1min01s
+  110/200 parties — écoulé 1min08s — restant estimé 56s
+  120/200 parties — écoulé 1min17s — restant estimé 51s
+  130/200 parties — écoulé 1min27s — restant estimé 46s
+  140/200 parties — écoulé 1min36s — restant estimé 41s
+  150/200 parties — écoulé 1min43s — restant estimé 34s
+  160/200 parties — écoulé 1min51s — restant estimé 27s
+  170/200 parties — écoulé 1min58s — restant estimé 20s
+  180/200 parties — écoulé 2min06s — restant estimé 14s
+  190/200 parties — écoulé 2min14s — restant estimé 7s
+  200/200 parties — écoulé 2min20s — restant estimé 0s
+Détail exporté vers paliers_bas.csv
+
+============================================================
+RÉSUMÉ — FACILE (A) vs DEBUTANT (B) sur 200 partie(s)
+============================================================
+Taux de victoire FACILE : 71.0% ± 6.3% (142/200)
+Taux de victoire DEBUTANT : 29.0% ± 6.3% (58/200)
+Matchs nuls : 0/200
+Score moyen FACILE : 189.6
+Score moyen DEBUTANT : 160.5
+Écart moyen par partie (FACILE - DEBUTANT) : +29.1
+A commencé la partie : 95/200 (47.5%) — B : 105/200 (52.5%)
+============================================================
