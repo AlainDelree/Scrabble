@@ -43,6 +43,12 @@ installeur/output/
 # commités, jamais nécessaires ailleurs que sur la machine qui compile.
 .tools/
 
+# Sorties du script de mesure (scripts/mesurer_force_niveaux.py) — jamais
+# commitées (produites localement à chaque exécution).
+malus.csv
+paliers_bas.csv
+paliers_bas.log
+
 # Divers
 .pytest_cache/
 tmp_diag_wiktionnaire/
