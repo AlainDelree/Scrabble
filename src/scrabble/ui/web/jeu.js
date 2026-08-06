@@ -917,6 +917,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // garantie de l'issue #99 est donc inchangée ; seule la localisation du DOM
     // change.
     const panneauEl = document.getElementById('panneau');
+    // Boutons de rangement du chevalet (issue #373) : regroupent d'un clic les
+    // lettres restantes à gauche/droite, ordre relatif préservé.
+    const btnRangerGauche = document.getElementById('btn-ranger-gauche');
+    const btnRangerDroite = document.getElementById('btn-ranger-droite');
 
     // Dernier payload chevalet reçu de Python (état privé du joueur de référence).
     // Distinct de ``etat`` (état public du plateau) : ne jamais les confondre.
@@ -949,6 +953,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!panneauEl) {
             return;
         }
+        majBoutonsRangement();
         panneauEl.innerHTML = '';
         if (panneauLettres.length === 0) {
             panneauEl.innerHTML = '<span class="panneau-vide">Chevalet vide.</span>';
@@ -1221,6 +1226,72 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await api.selectionner_lettre(null);
             }
         });
+    }
+
+    /** Active/désactive les boutons de rangement (issue #373) : rien à ranger
+     *  si le chevalet est vide, et pas de réarrangement en mode échange
+     *  partiel (issue #138, même restriction que le clic droit). */
+    function majBoutonsRangement() {
+        if (!btnRangerGauche || !btnRangerDroite) {
+            return;
+        }
+        const desactive = panneauLettres.length === 0 || enModeEchange();
+        btnRangerGauche.disabled = desactive;
+        btnRangerDroite.disabled = desactive;
+    }
+
+    /**
+     * Regroupe les lettres RESTANTES du chevalet tout à gauche ou tout à
+     * droite, en préservant leur ordre relatif — on compacte, on ne trie pas
+     * (issue #373). Une lettre déjà posée en attente sur le plateau (case
+     * « utilisee ») reste figée à son emplacement visuel : seules les
+     * lettres encore au chevalet et les cases vides se déplacent, si bien
+     * qu'une pose en cours n'est jamais perturbée par ce rangement. Purement
+     * local (même mécanisme que le glisser au clic ci-dessus) : voir la
+     * docstring de la section « Chevalet du joueur humain de référence »
+     * plus haut pour le constat sur la non-persistance côté Python.
+     */
+    function rangerChevalet(direction) {
+        if (enModeEchange() || panneauLettres.length === 0) {
+            return;
+        }
+        const utilises = indexUtilises();
+        // Positions libres de bouger (non « utilisee ») et lettres restantes
+        // trouvées à ces positions, dans leur ordre d'apparition.
+        const positions = [];
+        const lettresLibres = [];
+        panneauLettres.forEach((l, i) => {
+            if (l !== null && utilises.has(l.indexOrigine)) {
+                return;
+            }
+            positions.push(i);
+            if (l !== null) {
+                lettresLibres.push(l);
+            }
+        });
+        if (lettresLibres.length === 0 || lettresLibres.length === positions.length) {
+            return; // rien de libre à déplacer, ou déjà totalement tassé
+        }
+        const decalage = direction === 'droite' ? positions.length - lettresLibres.length : 0;
+        positions.forEach((pos, i) => {
+            const rang = i - decalage;
+            panneauLettres[pos] =
+                (rang >= 0 && rang < lettresLibres.length) ? lettresLibres[rang] : null;
+        });
+        // Une sélection de pose en cours porte sur un index de panneauLettres
+        // qui vient de bouger : on l'annule, comme au déplacement par clic.
+        if (panneauSelection !== null) {
+            panneauSelection = null;
+            api.selectionner_lettre(null);
+        }
+        rendrePanneau();
+    }
+
+    if (btnRangerGauche) {
+        btnRangerGauche.addEventListener('click', () => rangerChevalet('gauche'));
+    }
+    if (btnRangerDroite) {
+        btnRangerDroite.addEventListener('click', () => rangerChevalet('droite'));
     }
 
     /**

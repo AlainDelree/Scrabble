@@ -269,6 +269,17 @@ body {
     min-width: 0;
 }
 
+/* Boutons de rangement du chevalet (issue #373) : regrouper d'un clic les
+   lettres restantes tout à gauche ou tout à droite, sans changer leur ordre
+   relatif — utile après quelques poses qui laissent des trous. Réutilisent
+   .btn-icone-seule (cible min 40px, public senior) déjà éprouvé pour
+   « ↻ Resynchroniser ». */
+.panneau-rangement {
+    display: flex;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
 /* Rangée unique (issue #189) : les 9 emplacements (7 lettres + 2 vides) alignés
    horizontalement sans repli (``nowrap``), centrés dans la largeur du panneau.
    Remplace la grille 3×3 de #187 : la marge élargie (voir .container) offre

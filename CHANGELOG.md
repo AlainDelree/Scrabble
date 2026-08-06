@@ -9,6 +9,26 @@ Historique des changements notables, par ordre antéchronologique. Voir aussi
 
 ### Ajouté
 
+- **Issue #373** (lot H) — Deux boutons de rangement du chevalet, « ⇤ » (tout
+  à gauche) et « ⇥ » (tout à droite), placés dans l'en-tête du bloc « 🎴 Mes
+  lettres » : regroupent d'un clic les lettres restantes en comblant les trous
+  laissés par des poses précédentes, ordre relatif préservé (compactage, pas
+  de tri). Boutons `.btn-icone-seule` (cible min 40px, déjà éprouvée pour
+  « ↻ Resynchroniser ») avec `title` au survol, pensés pour une joueuse de
+  plus de 80 ans manipulant à la souris. Cas limites : chevalet vide ou
+  aucune lettre libre → bouton sans effet ; lettres déjà posées en attente
+  sur le plateau → laissées à leur emplacement, seules les lettres restantes
+  du chevalet bougent ; mode échange partiel actif → rangement désactivé
+  (même restriction que le glisser au clic droit existant, issue #138).
+  Réutilise le même mécanisme JS local que le réarrangement manuel déjà en
+  place (« cliquez, réarrangez ») : **l'ordre du chevalet n'est jamais
+  persisté côté Python** (`obtenir_chevalet`/`serialiser_chevalet` ne
+  sérialisent qu'un ensemble de lettres) — un nouveau tirage ou un échange
+  reconstruit le panneau depuis zéro. Les boutons ne sont donc ni plus ni
+  moins durables que le réarrangement manuel existant : aucune régression,
+  mais aucune persistance non plus, comme documenté dans
+  `tests/test_chevalet_rangement.py`.
+
 - **Issue #372** (lot G, suite de #362) — `scripts/mesurer_force_niveaux.py`
   gagne des **paramètres variables**, pour mesurer l'effet d'un réglage sans
   éditer le code de production. Chaque camp (A/B) devient une *configuration*
