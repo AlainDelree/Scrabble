@@ -22,8 +22,13 @@
 ; utilisateur doit pointer vers lui, jamais directement vers Scrabble.exe.
 ; Version d'Actualise embarquée (Release GitHub AlainDelree/Actualise) :
 ; reflète le "build_installe" écrit dans config.json par CreerConfigActualise
-; ci-dessous (issue #352 — évite la valeur figée en dur).
-#define MyActualiseVersion "3"
+; ci-dessous (issue #352 — évite la valeur figée en dur). Valeur reelle
+; injectee par rebuild_scrabble.bat via /DActualiseVersion=<build lu dans
+; manifest.json du zip Actualise telecharge> ; "3" n'est qu'un repli de
+; secours pour une compilation manuelle isolee de ce script.
+#ifndef ActualiseVersion
+  #define ActualiseVersion "3"
+#endif
 #define MyActualiseExeName "Actualise.exe"
 ; Icône affichée sur les raccourcis (Bureau/menu Démarrer), déployée dans
 ; {app} par la section [Files] ci-dessous (embarquée par PyInstaller, cf.
@@ -34,6 +39,13 @@
 ; son dossier _internal\, runtime Python + DLL, mode PyInstaller --onedir).
 #define MyActualiseSrcDir "C:\Temp\ScrabbleBuild\Actualise_dist"
 #define MyActualiseDir "{sd}\Actualise_Scrabble"
+; Numero de build de Scrabble reellement embarque dans ce setup (lu dans
+; version.json a la racine du depot par rebuild_scrabble.bat, injecte via
+; /DScrabbleBuildInstalle=<build>) ; "1" n'est qu'un repli de secours pour
+; une compilation manuelle isolee de ce script.
+#ifndef ScrabbleBuildInstalle
+  #define ScrabbleBuildInstalle "1"
+#endif
 
 [Setup]
 ; GUID fixe et unique à l'application : NE PAS régénérer (sert à Windows pour
@@ -116,19 +128,19 @@ begin
   Contenu :=
     '{' + #13#10 +
     '  "actualise": {' + #13#10 +
-    '    "build_installe": {#MyActualiseVersion},' + #13#10 +
+    '    "build_installe": {#ActualiseVersion},' + #13#10 +
     '    "depot_github": "AlainDelree/Actualise"' + #13#10 +
     '  },' + #13#10 +
     '  "application_cible": {' + #13#10 +
     '    "nom": "Scrabble",' + #13#10 +
     '    "depot_github": "AlainDelree/Scrabble",' + #13#10 +
-    '    "build_installe": 1,' + #13#10 +
+    '    "build_installe": {#ScrabbleBuildInstalle},' + #13#10 +
     '    "repertoire_installation": "' + EchapperJSON(RepertoireInstallation) + '",' + #13#10 +
     '    "executable": "Scrabble.exe",' + #13#10 +
     '    "icone": "' + EchapperJSON(ExpandConstant('{app}') + '\scrabble.ico') + '"' + #13#10 +
     '  },' + #13#10 +
     '  "zone_attente": "' + EchapperJSON(ZoneAttente) + '",' + #13#10 +
-    '  "topic_ntfy": ""' + #13#10 +
+    '  "topic_ntfy": "hippocampe-scrabble-y9htxM7q"' + #13#10 +
     '}' + #13#10;
 
   SaveStringToFile(DossierActualise + 'config.json', Contenu, False);
