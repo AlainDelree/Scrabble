@@ -275,11 +275,6 @@ echo interactive pour verifier que tout fonctionne bien
 echo ^(WebView2, dictionnaire, interface^).
 echo.
 
-echo Nettoyage du clone CCW (reset commits locaux)...
-git -C Z:\CCW\scrabble reset --hard origin/master
-echo Clone CCW propre.
-echo.
-
 if "%PUBLIER%"=="1" (
     echo ============================================
     echo   PUBLICATION ^(--publier^)
@@ -343,6 +338,11 @@ if "%PUBLIER%"=="1" (
     echo ============================================
     echo.
 )
+
+echo Nettoyage du clone CCW (reset commits locaux)...
+git -C Z:\CCW\scrabble reset --hard origin/master
+echo Clone CCW propre.
+echo.
 
 popd
 exit /b 0
