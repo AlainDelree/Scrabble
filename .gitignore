@@ -53,3 +53,4 @@ avance_vs_champion.csv
 # Divers
 .pytest_cache/
 tmp_diag_wiktionnaire/
+avance_vs_champion.log
