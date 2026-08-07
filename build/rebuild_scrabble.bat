@@ -339,10 +339,16 @@ if "%PUBLIER%"=="1" (
     echo.
 )
 
-echo Nettoyage du clone CCW (reset commits locaux)...
-git -C Z:\CCW\scrabble reset --hard origin/master
-echo Clone CCW propre.
-echo.
+if "%PUBLIER%"=="1" (
+    echo Mode --publier : clone CCW conserve tel quel ^(commit version.json en
+    echo place^), aucun reset. Push et release restent MANUELS.
+    echo.
+) else (
+    echo Nettoyage du clone CCW (reset commits locaux)...
+    git -C Z:\CCW\scrabble reset --hard origin/master
+    echo Clone CCW propre.
+    echo.
+)
 
 popd
 exit /b 0
