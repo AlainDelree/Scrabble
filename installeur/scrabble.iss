@@ -53,7 +53,7 @@
 ; versions).
 AppId={{EC04D19C-69EA-4116-9EB8-C51A30E56EBA}
 AppName={#MyAppName}
-AppVersion={#MyAppVersion}
+AppVersion={#ScrabbleBuildInstalle}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
