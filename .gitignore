@@ -48,6 +48,7 @@ installeur/output/
 malus.csv
 paliers_bas.csv
 paliers_bas.log
+avance_vs_champion.csv
 
 # Divers
 .pytest_cache/
