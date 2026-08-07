@@ -39,6 +39,43 @@ if not exist "data\dictionnaire\French-Scrabble-ODS8-main" (
 echo Dependances externes presentes. OK.
 echo.
 
+REM --- 0bis. Determiner le numero de build (nom du zip scrabble-vN.zip) -----
+REM En mode --publier : N = NOUVEAU_BUILD (parametre fourni, ou build actuel
+REM de version.json + 1). Hors --publier : N = SCRABBLE_BUILD, le build actuel
+REM de version.json (pas d'incrementation, puisque rien n'est publie).
+echo Determination du numero de build (pour nommer le zip)...
+if /i "%PUBLIER%"=="1" (
+    if not "%PUBLIER_BUILD%"=="" (
+        set "NOUVEAU_BUILD=%PUBLIER_BUILD%"
+        echo Numero de build fourni en parametre : !NOUVEAU_BUILD!
+    ) else (
+        set "ANCIEN_BUILD="
+        for /f "usebackq" %%b in (`powershell -NoProfile -Command "try { (Get-Content 'version.json' -Raw | ConvertFrom-Json).build } catch { '' }"`) do set "ANCIEN_BUILD=%%b"
+        if "!ANCIEN_BUILD!"=="" (
+            echo.
+            echo ERREUR : impossible de lire le champ build de version.json a la racine du clone.
+            popd
+            exit /b 1
+        )
+        set /a NOUVEAU_BUILD=!ANCIEN_BUILD!+1
+        echo Build actuel dans version.json : !ANCIEN_BUILD! -^> nouveau build : !NOUVEAU_BUILD!
+    )
+    set "SCRABBLE_BUILD=!NOUVEAU_BUILD!"
+) else (
+    set "SCRABBLE_BUILD="
+    for /f "usebackq" %%b in (`powershell -NoProfile -Command "try { (Get-Content 'version.json' -Raw | ConvertFrom-Json).build } catch { '' }"`) do set "SCRABBLE_BUILD=%%b"
+    if "!SCRABBLE_BUILD!"=="" (
+        echo.
+        echo ERREUR : impossible de lire le champ build de version.json a la racine du clone.
+        popd
+        exit /b 1
+    )
+    echo Numero de build actuel ^(hors --publier^) : !SCRABBLE_BUILD!
+)
+set "ZIP_NAME=scrabble-v!SCRABBLE_BUILD!.zip"
+echo Nom du zip : !ZIP_NAME!
+echo.
+
 REM --- 1. Copier les sources vers un repertoire local de la VM ---------------
 REM Contournement temporaire (~10 jours, avant migration vers PC Windows
 REM physique) : PyInstaller et ISCC produisent des fichiers tronques quand le
@@ -209,32 +246,32 @@ copy "C:\Temp\ScrabbleOutput\Scrabble-Setup.exe" "installeur\output\Scrabble-Set
 echo [OK] Installeur copié vers installeur\output\ ^(local^)
 echo.
 
-REM --- 8. Creer manifest.json et zipper vers scrabble.zip (issue #345) ------
-REM scrabble.zip = dist\Scrabble\ + manifest.json, sans dossier englobant
+REM --- 8. Creer manifest.json et zipper vers scrabble-vN.zip (issue #345, issue #396)
+REM scrabble-vN.zip = dist\Scrabble\ + manifest.json, sans dossier englobant
 REM (l'updater Actualise l'extrait directement par-dessus le dossier installe).
-REM Nom fixe (pas de numero de version) : le numero vit dans le tag de la
-REM Release GitHub, pas dans le nom de fichier.
-echo [8/9] Creation de manifest.json et de scrabble.zip...
+REM N = SCRABBLE_BUILD/NOUVEAU_BUILD, determine plus haut (etape 0bis), pour
+REM que le nom du zip soit coherent avec le tag de la Release GitHub (vN).
+echo [8/9] Creation de manifest.json et de %ZIP_NAME%...
 echo {"build": 1, "supprimer": []}>manifest.json
 if not exist "installeur\output" mkdir "installeur\output"
-if exist "installeur\output\scrabble.zip" del /f /q "installeur\output\scrabble.zip"
-powershell -NoProfile -Command "try { Compress-Archive -Path 'dist\Scrabble\*','manifest.json' -DestinationPath 'installeur\output\scrabble.zip' -Force } catch { exit 1 }"
+if exist "installeur\output\%ZIP_NAME%" del /f /q "installeur\output\%ZIP_NAME%"
+powershell -NoProfile -Command "try { Compress-Archive -Path 'dist\Scrabble\*','manifest.json' -DestinationPath 'installeur\output\%ZIP_NAME%' -Force } catch { exit 1 }"
 if errorlevel 1 (
     echo.
-    echo ERREUR : la creation de scrabble.zip a echoue.
+    echo ERREUR : la creation de %ZIP_NAME% a echoue.
     popd
     popd
     exit /b 1
 )
-if not exist "installeur\output\scrabble.zip" (
+if not exist "installeur\output\%ZIP_NAME%" (
     echo.
-    echo ERREUR : installeur\output\scrabble.zip introuvable apres compression.
+    echo ERREUR : installeur\output\%ZIP_NAME% introuvable apres compression.
     popd
     popd
     exit /b 1
 )
-for /f "usebackq" %%s in (`powershell -NoProfile -Command "'{0:N2} Mo' -f ((Get-Item 'installeur\output\scrabble.zip').Length / 1MB)"`) do (
-    echo [OK] scrabble.zip genere, taille : %%s
+for /f "usebackq" %%s in (`powershell -NoProfile -Command "'{0:N2} Mo' -f ((Get-Item 'installeur\output\%ZIP_NAME%').Length / 1MB)"`) do (
+    echo [OK] %ZIP_NAME% genere, taille : %%s
 )
 echo.
 
@@ -250,21 +287,21 @@ if errorlevel 1 (
     exit /b 1
 )
 echo [OK] Installeur copié vers %ORIGDIR%\installeur\output\
-copy /y "installeur\output\scrabble.zip" "%ORIGDIR%\installeur\output\scrabble.zip"
+copy /y "installeur\output\%ZIP_NAME%" "%ORIGDIR%\installeur\output\%ZIP_NAME%"
 if errorlevel 1 (
     echo.
-    echo ERREUR : la recopie de scrabble.zip vers le partage a echoue.
+    echo ERREUR : la recopie de %ZIP_NAME% vers le partage a echoue.
     popd
     popd
     exit /b 1
 )
-echo [OK] scrabble.zip copié vers %ORIGDIR%\installeur\output\
+echo [OK] %ZIP_NAME% copié vers %ORIGDIR%\installeur\output\
 
 popd
 rmdir /s /q "%LOCALBUILD%"
 echo [OK] Repertoire de build local nettoye ^(%LOCALBUILD%^)
 echo.
-echo installeur\output\Scrabble-Setup.exe et installeur\output\scrabble.zip generes.
+echo installeur\output\Scrabble-Setup.exe et installeur\output\%ZIP_NAME% generes.
 echo.
 echo ============================================
 echo   REBUILD TERMINE AVEC SUCCES
@@ -280,51 +317,33 @@ if "%PUBLIER%"=="1" (
     echo   PUBLICATION ^(--publier^)
     echo ============================================
     echo.
-    echo [Publier 1/4] Calcul du SHA-256 de installeur\output\scrabble.zip...
-    if not exist "installeur\output\scrabble.zip" (
+    echo [Publier 1/3] Calcul du SHA-256 de installeur\output\%ZIP_NAME%...
+    if not exist "installeur\output\%ZIP_NAME%" (
         echo.
-        echo ERREUR : installeur\output\scrabble.zip introuvable, publication annulee.
+        echo ERREUR : installeur\output\%ZIP_NAME% introuvable, publication annulee.
         popd
         exit /b 1
     )
     set "ZIP_SHA256="
-    for /f "usebackq" %%h in (`powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 'installeur\output\scrabble.zip').Hash.ToLower()"`) do set "ZIP_SHA256=%%h"
+    for /f "usebackq" %%h in (`powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 'installeur\output\%ZIP_NAME%').Hash.ToLower()"`) do set "ZIP_SHA256=%%h"
     if "!ZIP_SHA256!"=="" (
         echo.
-        echo ERREUR : le calcul du SHA-256 de scrabble.zip a echoue.
+        echo ERREUR : le calcul du SHA-256 de %ZIP_NAME% a echoue.
         popd
         exit /b 1
     )
     echo SHA-256 : !ZIP_SHA256!
     echo.
 
-    echo [Publier 2/4] Determination du numero de build...
-    if not "%PUBLIER_BUILD%"=="" (
-        set "NOUVEAU_BUILD=%PUBLIER_BUILD%"
-        echo Numero de build fourni en parametre : !NOUVEAU_BUILD!
-    ) else (
-        set "ANCIEN_BUILD="
-        for /f "usebackq" %%b in (`powershell -NoProfile -Command "try { (Get-Content 'version.json' -Raw | ConvertFrom-Json).build } catch { '' }"`) do set "ANCIEN_BUILD=%%b"
-        if "!ANCIEN_BUILD!"=="" (
-            echo.
-            echo ERREUR : impossible de lire le champ build de version.json a la racine du clone.
-            popd
-            exit /b 1
-        )
-        set /a NOUVEAU_BUILD=!ANCIEN_BUILD!+1
-        echo Build actuel dans version.json : !ANCIEN_BUILD! -^> nouveau build : !NOUVEAU_BUILD!
-    )
-    echo.
-
-    echo [Publier 3/4] Ecriture de version.json...
+    echo [Publier 2/3] Ecriture de version.json ^(build !NOUVEAU_BUILD!^)...
     echo {"build": !NOUVEAU_BUILD!, "sha256": "!ZIP_SHA256!"}>version.json
     type version.json
     echo.
     echo.
 
-    echo [Publier 4/4] Commit git de version.json...
+    echo [Publier 3/3] Commit git de version.json...
     git add version.json
-    git commit -m "version.json : build !NOUVEAU_BUILD!, sha256 scrabble.zip"
+    git commit -m "version.json : build !NOUVEAU_BUILD!, sha256 !ZIP_NAME!"
     if errorlevel 1 (
         echo.
         echo ERREUR : le commit git de version.json a echoue.
