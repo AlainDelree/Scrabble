@@ -34,6 +34,12 @@
   #define ActualiseVersion "3"
 #endif
 #define MyActualiseExeName "Actualise.exe"
+; Interface graphique optionnelle d'Actualise (mode PyInstaller --onefile,
+; un seul .exe autonome), incluse dans l'instance partagée C:\Actualise\
+; depuis la Release v8 d'Actualise (issue #387). Déposée par
+; build\rebuild_scrabble.bat aux côtés d'Actualise.exe dans le même dossier
+; de staging (cf. MyActualiseSrcDir ci-dessous).
+#define MyActualiseUIExeName "ActualiseUI.exe"
 ; Icône affichée sur les raccourcis (Bureau/menu Démarrer), déployée dans
 ; {app} par la section [Files] ci-dessous (embarquée par PyInstaller, cf.
 ; scrabble.spec) : sans elle, les raccourcis pointant vers Actualise.exe
@@ -108,6 +114,12 @@ Source: "{#MyDistDir}\*"; DestDir: "{app}"; Excludes: "config.json,logs\*,data\p
 ; version plus à jour installée entretemps par une autre application
 ; partageant cette même instance.
 Source: "{#MyActualiseSrcDir}\*"; DestDir: "{#MyActualiseDir}"; Flags: recursesubdirs createallsubdirs
+; ActualiseUI.exe (issue #387) : déployé explicitement aux côtés d'Actualise.exe
+; dans l'instance partagée, même logique de non-remplacement que ci-dessus (pas
+; d'"ignoreversion" : on ne remplace que si la version embarquée est plus
+; récente que celle déjà présente, au cas où une autre application partageant
+; C:\Actualise\ en aurait déjà déposé une version plus à jour).
+Source: "{#MyActualiseSrcDir}\{#MyActualiseUIExeName}"; DestDir: "{#MyActualiseDir}"
 
 [Dirs]
 Name: "{#MyActualiseDir}"
