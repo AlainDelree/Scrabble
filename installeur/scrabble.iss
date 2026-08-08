@@ -64,12 +64,12 @@ AppVersion={#ScrabbleBuildInstalle}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
-; Aucun droit administrateur requis : installation dans le profil utilisateur
-; courant. Avec PrivilegesRequired=lowest, {autopf}/{autodesktop}/{autoprograms}
-; résolvent respectivement vers %LOCALAPPDATA%\Programs, le Bureau et le menu
-; Démarrer de l'utilisateur courant (pas les emplacements "tous les
-; utilisateurs", qui nécessiteraient des droits admin).
-PrivilegesRequired=lowest
+; Droits administrateur requis (issue #388) : nécessaire pour écrire dans
+; C:\Actualise\ (racine du disque système, protégée pour les utilisateurs
+; standard). Avec PrivilegesRequired=admin, {autopf}/{autodesktop}/
+; {autoprograms} résolvent respectivement vers C:\Program Files\, le Bureau
+; commun et le menu Démarrer commun (emplacements "tous les utilisateurs").
+PrivilegesRequired=admin
 DisableProgramGroupPage=yes
 SetupIconFile=..\assets\scrabble.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -192,9 +192,8 @@ begin
 end;
 
 // Dépose le chemin de l'instance partagée d'Actualise dans un emplacement
-// fixe, indépendant du dossier d'installation de Scrabble (qui varie selon
-// l'utilisateur avec PrivilegesRequired=lowest) : consommé dans un chantier
-// ultérieur par Scrabble pour localiser ActualiseUI (issue #385).
+// fixe, indépendant du dossier d'installation de Scrabble : consommé dans
+// un chantier ultérieur par Scrabble pour localiser ActualiseUI (issue #385).
 procedure CreerActualisePathTxt();
 var
   DossierScrabble: String;
