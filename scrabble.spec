@@ -259,6 +259,11 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=os.path.join(RACINE, "assets", "scrabble.ico"),
+    # Métadonnées Windows (clic droit -> Propriétés -> Détails -> Version du
+    # fichier) du .exe produit, issue #389 : version_info.txt à la racine du
+    # dépôt, dont build\rebuild_scrabble.bat substitue le numéro de build réel
+    # avant cet appel PyInstaller.
+    version=os.path.join(RACINE, "version_info.txt"),
     # Désactive le sous-dossier "_internal" (nouveau défaut depuis PyInstaller
     # 6.0) : sys._MEIPASS reste alors le dossier de l'exe lui-même, à côté
     # duquel scrabble.config.RACINE_PROJET écrit config.json/logs/data en mode

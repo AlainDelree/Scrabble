@@ -155,7 +155,18 @@ if not errorlevel 1 (
 echo.
 
 REM --- 4. Lancer le build PyInstaller ---------------------------------------
-echo [4/9] Build PyInstaller en cours (peut prendre plusieurs minutes)...
+echo [4/9] Injection du numero de build dans version_info.txt...
+powershell -NoProfile -Command "(Get-Content 'version_info.txt' -Raw) -replace 'BUILD', '!SCRABBLE_BUILD!' | Set-Content 'version_info.txt' -NoNewline"
+if errorlevel 1 (
+    echo.
+    echo ERREUR : l'injection du numero de build dans version_info.txt a echoue.
+    popd
+    popd
+    exit /b 1
+)
+echo Numero de build !SCRABBLE_BUILD! injecte dans version_info.txt. OK.
+echo.
+echo Build PyInstaller en cours (peut prendre plusieurs minutes)...
 call ".venv_build\Scripts\pyinstaller.exe" scrabble.spec -y
 if errorlevel 1 (
     echo.

@@ -62,6 +62,13 @@ AppId={{EC04D19C-69EA-4116-9EB8-C51A30E56EBA}
 AppName={#MyAppName}
 AppVersion={#ScrabbleBuildInstalle}
 AppPublisher={#MyAppPublisher}
+; Numéro de build visible dans les métadonnées Windows de Scrabble-Setup.exe
+; (clic droit -> Propriétés -> Détails -> Version du fichier), issue #389 :
+; sans cela, impossible de distinguer visuellement deux exécutables sans les
+; ouvrir.
+VersionInfoVersion={#ScrabbleBuildInstalle}.0.0.0
+VersionInfoProductName=Scrabble
+VersionInfoDescription=Scrabble Setup build {#ScrabbleBuildInstalle}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 ; Droits administrateur requis (issue #388) : nécessaire pour écrire dans
