@@ -34,6 +34,9 @@ scrabble.ui.application``) **sans** modifier le chemin de production par défaut
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -559,6 +562,22 @@ def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
         journal.info(
             "Application unifiée : fenêtre unique ouverte sur l'accueil."
         )
+
+        def _handler_fermeture_actualise() -> None:
+            # Mise à jour Actualise en attente (issue #386) : à la fermeture de
+            # la fenêtre, on lance le bat de mise à jour puis on laisse la
+            # fermeture se poursuivre normalement (le handler ne bloque pas).
+            _flag = Path(sys.executable).parent / "actualise_update.flag"
+            if _flag.exists():
+                try:
+                    _data = json.loads(_flag.read_text(encoding="utf-8"))
+                    _flag.unlink(missing_ok=True)
+                    subprocess.Popen([_data["bat"]], shell=True)
+                except Exception:
+                    pass
+
+        window.events.closing += _handler_fermeture_actualise
+
         # UNE seule boucle pywebview pour toute l'application (issue #179).
         webview.start(deployer_fenetre_maximisee, (window, "application"))
         return routeur
