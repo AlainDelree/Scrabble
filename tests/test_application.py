@@ -225,6 +225,24 @@ class TestChargerJeu:
         assert routeur._vue_active == VUE_ACCUEIL
 
 
+class _EvenementFactice:
+    """Registre d'écouteurs minimal imitant ``webview.util.Event`` (``+=``, issue #386)."""
+
+    def __init__(self) -> None:
+        self.ecouteurs: list = []
+
+    def __iadd__(self, ecouteur):
+        self.ecouteurs.append(ecouteur)
+        return self
+
+
+class _EvenementsFactice:
+    """Espace de noms d'événements factice, seul ``closing`` est utilisé (issue #386)."""
+
+    def __init__(self) -> None:
+        self.closing = _EvenementFactice()
+
+
 class _FenetreFactice:
     """Fenêtre pywebview minimale traçant ``load_url``/``hide``/``show`` (issues #180/#181)."""
 
@@ -232,6 +250,7 @@ class _FenetreFactice:
         self.urls: list[str] = []
         self.masquee = False
         self.montree = False
+        self.events = _EvenementsFactice()
 
     def load_url(self, url: str) -> None:
         self.urls.append(url)

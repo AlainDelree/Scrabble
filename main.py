@@ -22,6 +22,8 @@ invoqué par défaut — disponible pour un rollback rapide si nécessaire.
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -46,5 +48,22 @@ if __name__ == "__main__":
 
         GLib.set_prgname("Scrabble")
         GLib.set_application_name("Scrabble")
+
+    # Détection du flag de mise à jour Actualise (issue #386) : déposé par
+    # Actualise dans le dossier d'installation quand une mise à jour est prête.
+    # Lancé avant l'ouverture de la fenêtre pywebview, sans jamais bloquer le
+    # démarrage de Scrabble en cas de flag absent ou malformé.
+    _flag = Path(sys.executable).parent / "actualise_update.flag"
+    if _flag.exists():
+        try:
+            _data = json.loads(_flag.read_text(encoding="utf-8"))
+            subprocess.Popen([
+                _data["actualise_ui"],
+                "--bat", _data["bat"],
+                "--flag", str(_flag),
+                "--relancer", sys.executable,
+            ])
+        except Exception:
+            pass  # ne jamais bloquer le démarrage de Scrabble
 
     raise SystemExit(main())
