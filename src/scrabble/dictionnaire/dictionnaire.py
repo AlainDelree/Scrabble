@@ -120,17 +120,17 @@ CHEMIN_MOTS_COURANTS = DOSSIER_DICO / "mots_courants.txt"
 # #205/#206). Chaque palier correspond à un seuil de fréquence différent sur le
 # même croisement ODS8 × Lexique 3 (``scripts/generer_mots_courants.py --tous``),
 # un fichier « un mot par ligne » par palier, même convention/normalisation que
-# :data:`CHEMIN_MOTS_COURANTS`. Le palier « champion_du_monde » (ODS8 complet,
-# sans filtre) n'a volontairement **pas d'entrée** ici : il se résout vers
-# :func:`obtenir_trie` directement, sans passer par un fichier de vocabulaire
-# restreint — voir le lot C (résolution ``Niveau`` → palier) pour l'usage de
-# cette constante à l'exécution.
+# :data:`CHEMIN_MOTS_COURANTS`. Depuis la refonte des niveaux (issue #400), les
+# paliers « expert » et « champion_du_monde » n'ont volontairement **pas
+# d'entrée** ici : ces deux niveaux se résolvent vers :func:`obtenir_trie`
+# directement (ODS8 complet, sans filtre), sans passer par un fichier de
+# vocabulaire restreint — voir le lot C (résolution ``Niveau`` → palier) pour
+# l'usage de cette constante à l'exécution.
 FICHIERS_VOCABULAIRE_PALIER: dict[str, Path] = {
     "debutant": DOSSIER_DICO / "mots_courants_debutant.txt",
     "facile": DOSSIER_DICO / "mots_courants_facile.txt",
     "intermediaire": DOSSIER_DICO / "mots_courants_intermediaire.txt",
     "avance": DOSSIER_DICO / "mots_courants_avance.txt",
-    "expert": DOSSIER_DICO / "mots_courants_expert.txt",
 }
 
 # Cache disque du Trie IA par palier (issue #367, lot B, suite de #366 lot A).
@@ -141,10 +141,10 @@ FICHIERS_VOCABULAIRE_PALIER: dict[str, Path] = {
 # avertissement (même version/source/mode belge à la relecture). Un chemin
 # distinct par palier élimine ce risque à la racine. Mêmes clés que
 # :data:`FICHIERS_VOCABULAIRE_PALIER` (dérivées directement de cette constante :
-# une seule source de vérité pour la liste des paliers) : le palier
-# « champion_du_monde » n'a pas d'entrée ici non plus — il se résout vers
-# :func:`obtenir_trie` et réutilise le cache du Trie complet existant
-# (:data:`CHEMIN_CACHE`), sans notion de palier.
+# une seule source de vérité pour la liste des paliers) : les paliers
+# « expert » et « champion_du_monde » n'ont pas d'entrée ici non plus — ils se
+# résolvent vers :func:`obtenir_trie` et réutilisent le cache du Trie complet
+# existant (:data:`CHEMIN_CACHE`), sans notion de palier.
 FICHIERS_CACHE_IA_PALIER: dict[str, Path] = {
     palier: DOSSIER_DICO / f"trie_ia_cache_{palier}.pkl"
     for palier in FICHIERS_VOCABULAIRE_PALIER
@@ -163,11 +163,12 @@ def paliers_disponibles(
     être signalé à l'utilisatrice (niveau désactivé), pas remplacé
     silencieusement par un vocabulaire vide ou un autre palier.
 
-    Ne couvre pas le palier ``"champion_du_monde"`` (aucune entrée dans
-    :data:`FICHIERS_VOCABULAIRE_PALIER` : il se résout vers
+    Ne couvre pas les paliers ``"expert"`` et ``"champion_du_monde"`` (aucune
+    entrée dans :data:`FICHIERS_VOCABULAIRE_PALIER` : ils se résolvent vers
     :func:`obtenir_trie`, toujours disponible, sans fichier de vocabulaire).
-    L'appelant qui a besoin de la disponibilité de CHAMPION_DU_MONDE la
-    considère donc ``True`` par construction, en dehors de cette fonction.
+    L'appelant qui a besoin de la disponibilité d'EXPERT ou de
+    CHAMPION_DU_MONDE la considère donc ``True`` par construction, en dehors
+    de cette fonction.
 
     ``fichiers`` par défaut :data:`FICHIERS_VOCABULAIRE_PALIER` ; un mapping
     explicite reste accepté pour les tests.
@@ -202,7 +203,10 @@ CHEMIN_DEFINITIONS = DOSSIER_DICO / "definitions.json"
 # 2 (issue #281) : le Trie contient désormais des entrées désaccentuées.
 # 3 (issue #367, lot B) : l'en-tête gagne la clé "palier" (défense en
 # profondeur du cache Trie IA multi-paliers, voir _cache_valide).
-VERSION_CACHE = 3
+# 4 (issue #402) : refonte des niveaux — EXPERT n'a plus de palier restreint
+# (suppression de la clé "expert" de FICHIERS_VOCABULAIRE_PALIER), invalide
+# les caches du Trie IA construits sous l'ancien mapping.
+VERSION_CACHE = 4
 
 
 # --------------------------------------------------------------------------- #
@@ -1339,9 +1343,10 @@ def obtenir_trie_ia(
 
     1. **Un chemin par palier.** ``chemin_cache`` reste le paramètre existant :
        le lot C doit y passer l'entrée correspondante de
-       :data:`FICHIERS_CACHE_IA_PALIER` plutôt que d'inventer un chemin. Le
-       palier « champion_du_monde » n'a pas d'entrée : il se résout vers
-       :func:`obtenir_trie` (Trie complet), hors du périmètre de cette fonction.
+       :data:`FICHIERS_CACHE_IA_PALIER` plutôt que d'inventer un chemin. Les
+       paliers « expert » et « champion_du_monde » n'ont pas d'entrée : ils se
+       résolvent vers :func:`obtenir_trie` (Trie complet), hors du périmètre
+       de cette fonction.
     2. **Défense en profondeur.** ``palier`` est écrit dans l'en-tête du cache
        et contrôlé par :func:`_cache_valide` : même si un chemin était mal
        résolu ou un fichier copié/renommé à la main, l'en-tête rattrape
