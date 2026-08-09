@@ -29,9 +29,9 @@ d'ordre, et une graine de ``random.Random`` **distincte pour chaque joueur
 IA**. Deux exécutions avec les mêmes paramètres (mêmes configurations, même
 nombre de parties, même graine de départ) produisent donc **exactement** le
 même résultat — condition nécessaire pour comparer deux runs avant/après un
-changement de calibrage (``_MALUS_LONGUEUR``, ``_BONUS_PREMIUM`` dans
-``moteur/ia.py``), ce que ce script permet désormais **sans éditer le code de
-production** (voir « Paramètres surchargeables » ci-dessous).
+changement de calibrage (``_MALUS_LONGUEUR``, ``_BONUS_PREMIUM``, ``_POIDS_LEAVE``
+dans ``moteur/ia.py``), ce que ce script permet désormais **sans éditer le code
+de production** (voir « Paramètres surchargeables » ci-dessous).
 
 Ce que la mesure sait faire (issue #372)
 ----------------------------------------
@@ -44,12 +44,13 @@ niveau. Une configuration se compose de :
   suit le niveau (voir ``--vocab`` ci-dessous), mais on peut le **forcer**
   indépendamment (``--vocab-a``/``--vocab-b``) pour séparer l'effet du
   vocabulaire de celui de la stratégie ;
-* des **surcharges stratégiques** optionnelles (``--malus-a``/``--bonus-a`` et
-  leurs équivalents B) qui remplacent, *le temps de la mesure uniquement*,
-  l'entrée de ``_MALUS_LONGUEUR``/``_BONUS_PREMIUM`` du niveau considéré. La
-  surcharge est appliquée par un gestionnaire de contexte
-  (:func:`_strategie_surchargee`) qui restaure les valeurs de production en
-  sortie : **le code de production n'est jamais modifié**.
+* des **surcharges stratégiques** optionnelles (``--malus-a``/``--bonus-a``/
+  ``--poids-leave-a`` et leurs équivalents B) qui remplacent, *le temps de la
+  mesure uniquement*, l'entrée de ``_MALUS_LONGUEUR``/``_BONUS_PREMIUM``/
+  ``_POIDS_LEAVE`` du niveau considéré. La surcharge est appliquée par un
+  gestionnaire de contexte (:func:`_strategie_surchargee`) qui restaure les
+  valeurs de production en sortie : **le code de production n'est jamais
+  modifié**.
 
 Vocabulaire par palier
 ----------------------
@@ -126,6 +127,12 @@ tous deux sur l'ODS8 complet ::
 Mesure fidèle au jeu réel (chaque niveau sur son palier) ::
 
     python scripts/mesurer_force_niveaux.py FACILE DEBUTANT --vocab palier
+
+Effet de la leave value (issue #395) — AVANCE contre CHAMPION_DU_MONDE, ce
+dernier sans leave value ::
+
+    python scripts/mesurer_force_niveaux.py AVANCE CHAMPION_DU_MONDE \\
+        --vocab palier --poids-leave-b 0.0
 
 Comparer deux exports CSV ::
 
@@ -214,6 +221,7 @@ class ConfigJoueur:
     vocab: str | None = None
     malus: int | None = None
     bonus: int | None = None
+    poids_leave: float | None = None
 
     def label(self) -> str:
         """Libellé lisible du camp, annotant les écarts à la config par défaut.
@@ -229,6 +237,8 @@ class ConfigJoueur:
             annotations.append(f"malus={self.malus}")
         if self.bonus is not None:
             annotations.append(f"bonus={self.bonus}")
+        if self.poids_leave is not None:
+            annotations.append(f"poids_leave={self.poids_leave}")
         if not annotations:
             return self.niveau.name
         return f"{self.niveau.name}[{','.join(annotations)}]"
@@ -342,13 +352,16 @@ def _resoudre_trie(cle_vocab: str, mode_belgicisme: bool, trie_complet):
 
 @contextmanager
 def _strategie_surchargee(
-    niveau: Niveau, malus: int | None, bonus: int | None
+    niveau: Niveau,
+    malus: int | None,
+    bonus: int | None,
+    poids_leave: float | None = None,
 ) -> Iterator[None]:
-    """Surcharge transitoirement le malus/bonus stratégique d'un niveau (issue #372).
+    """Surcharge transitoirement le malus/bonus/poids-leave stratégique d'un niveau (issues #372, #399).
 
     Remplace, le temps du bloc ``with``, l'entrée ``niveau`` de
-    :data:`scrabble.moteur.ia._MALUS_LONGUEUR` et/ou
-    :data:`~scrabble.moteur.ia._BONUS_PREMIUM`, puis **restaure** les valeurs
+    :data:`scrabble.moteur.ia._MALUS_LONGUEUR`, :data:`~scrabble.moteur.ia._BONUS_PREMIUM`
+    et/ou :data:`~scrabble.moteur.ia._POIDS_LEAVE`, puis **restaure** les valeurs
     d'origine en sortie (y compris sur exception). Le code de production n'est
     donc jamais modifié de façon durable : la surcharge reste cantonnée à
     l'outil de mesure, exactement comme le demande le point 2 de l'issue #372.
@@ -361,15 +374,19 @@ def _strategie_surchargee(
     """
     malus_origine = ia._MALUS_LONGUEUR[niveau]
     bonus_origine = ia._BONUS_PREMIUM[niveau]
+    poids_leave_origine = ia._POIDS_LEAVE[niveau]
     if malus is not None:
         ia._MALUS_LONGUEUR[niveau] = malus
     if bonus is not None:
         ia._BONUS_PREMIUM[niveau] = bonus
+    if poids_leave is not None:
+        ia._POIDS_LEAVE[niveau] = poids_leave
     try:
         yield
     finally:
         ia._MALUS_LONGUEUR[niveau] = malus_origine
         ia._BONUS_PREMIUM[niveau] = bonus_origine
+        ia._POIDS_LEAVE[niveau] = poids_leave_origine
 
 
 def jouer_une_partie(
@@ -424,7 +441,10 @@ def jouer_une_partie(
         joueur = partie.joueur_courant()
         trie_joueur, config_joueur, rng_joueur = contexte_par_joueur[id(joueur)]
         with _strategie_surchargee(
-            joueur.niveau, config_joueur.malus, config_joueur.bonus
+            joueur.niveau,
+            config_joueur.malus,
+            config_joueur.bonus,
+            config_joueur.poids_leave,
         ):
             coup = ia.choisir_coup(
                 partie.plateau,
@@ -779,6 +799,15 @@ def _construire_parser() -> argparse.ArgumentParser:
         help="Surcharge _BONUS_PREMIUM du niveau du camp B (idem).",
     )
     parser.add_argument(
+        "--poids-leave-a", type=float, default=None,
+        help="Surcharge _POIDS_LEAVE du niveau du camp A, le temps de la "
+        "mesure uniquement (le code de production n'est pas modifié).",
+    )
+    parser.add_argument(
+        "--poids-leave-b", type=float, default=None,
+        help="Surcharge _POIDS_LEAVE du niveau du camp B (idem).",
+    )
+    parser.add_argument(
         "--comparer", type=Path, nargs=2, metavar=("CSV1", "CSV2"), default=None,
         help="Mode comparaison : relit deux CSV produits par --csv et affiche "
         "l'écart graine par graine, sans rejouer de partie.",
@@ -798,10 +827,18 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("--parties doit être strictement positif.")
 
     config_a = ConfigJoueur(
-        niveau=args.niveau_a, vocab=args.vocab_a, malus=args.malus_a, bonus=args.bonus_a
+        niveau=args.niveau_a,
+        vocab=args.vocab_a,
+        malus=args.malus_a,
+        bonus=args.bonus_a,
+        poids_leave=args.poids_leave_a,
     )
     config_b = ConfigJoueur(
-        niveau=args.niveau_b, vocab=args.vocab_b, malus=args.malus_b, bonus=args.bonus_b
+        niveau=args.niveau_b,
+        vocab=args.vocab_b,
+        malus=args.malus_b,
+        bonus=args.bonus_b,
+        poids_leave=args.poids_leave_b,
     )
     executer_mesure(
         config_a,
