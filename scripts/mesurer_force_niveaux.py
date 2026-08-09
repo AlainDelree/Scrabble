@@ -55,8 +55,10 @@ niveau. Une configuration se compose de :
 Vocabulaire par palier
 ----------------------
 Depuis le lot C (#369), chaque niveau du jeu réel génère ses coups sur un Trie
-**restreint à son palier de fréquence** (CHAMPION_DU_MONDE seul utilise l'ODS8
-complet). Le mode ``--vocab`` choisit ce que le script reproduit :
+**restreint à son palier de fréquence** — sauf EXPERT et CHAMPION_DU_MONDE, qui
+utilisent tous deux l'ODS8 complet (issue #401 : EXPERT a rejoint
+CHAMPION_DU_MONDE hors palier restreint). Le mode ``--vocab`` choisit ce que
+le script reproduit :
 
 * ``complet`` (défaut, comportement historique #362) : les deux camps génèrent
   sur l'ODS8 complet, quel que soit le niveau. Utile pour isoler l'effet de la
@@ -67,10 +69,10 @@ complet). Le mode ``--vocab`` choisit ce que le script reproduit :
 
 ``--vocab-a``/``--vocab-b`` forcent un vocabulaire précis pour un camp,
 indépendamment de son niveau et du mode ``--vocab`` global. Valeurs possibles :
-``debutant``, ``facile``, ``intermediaire``, ``avance``, ``expert`` (paliers
-restreints) ou ``complet`` (ODS8 entier). Si le fichier de vocabulaire d'un
-palier requis est absent, le script s'arrête avec un message clair, comme il le
-fait déjà pour l'ODS8.
+``debutant``, ``facile``, ``intermediaire``, ``avance`` (paliers restreints)
+ou ``complet`` (ODS8 entier, issue #401 : plus de palier ``expert`` séparé).
+Si le fichier de vocabulaire d'un palier requis est absent, le script s'arrête
+avec un message clair, comme il le fait déjà pour l'ODS8.
 
 Comparer deux runs
 ------------------
@@ -114,10 +116,11 @@ niveau avec malus 0, dans la même partie, mêmes graines ::
         --malus-a -25 --malus-b 0 --parties 200 --csv malus.csv
 
 Effet du vocabulaire à stratégie constante — un EXPERT jouant sur le palier
-``avance`` contre un EXPERT jouant sur son palier normal ::
+restreint ``avance`` contre un EXPERT jouant sur l'ODS8 complet (son
+vocabulaire normal depuis l'issue #401) ::
 
     python scripts/mesurer_force_niveaux.py EXPERT EXPERT \\
-        --vocab-a avance --vocab-b expert --parties 200
+        --vocab-a avance --vocab-b complet --parties 200
 
 Effet de la tranche (stratégie) à vocabulaire constant — AVANCE contre EXPERT,
 tous deux sur l'ODS8 complet ::

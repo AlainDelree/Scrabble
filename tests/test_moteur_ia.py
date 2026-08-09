@@ -1,22 +1,28 @@
 """Tests des stratégies IA à niveaux de difficulté.
 
-Couvre les 6 niveaux (EXPERT, CHAMPION_DU_MONDE, AVANCE, INTERMEDIAIRE,
-FACILE, DEBUTANT) sur la base du générateur exhaustif, la reproductibilité
+Couvre les 6 niveaux (DEBUTANT, FACILE, INTERMEDIAIRE, AVANCE, EXPERT,
+CHAMPION_DU_MONDE) sur la base du générateur exhaustif, la reproductibilité
 avec graine fixée, les cas limites (un seul coup, aucun coup), et
 l'intégration avec Partie/creer_partie.
 
-CHAMPION_DU_MONDE et EXPERT partagent EXACTEMENT la même stratégie de
-sélection (:func:`~scrabble.moteur.ia._choisir_expert`) : à dictionnaire
-identique, les deux niveaux restent mécaniquement égaux — c'est ce que
-vérifient la plupart des tests ci-dessous, qui appellent
-``choisir_coup(..., dico, niveau, ...)`` avec un seul ``dico`` partagé. Ce
-qui les distingue en jeu réel est le vocabulaire reçu en paramètre, câblé par
-l'appelant (issue #369, lot C, voir ``scrabble.moteur.ia.resoudre_palier`` et
-``scrabble.ui.accueil``) : EXPERT sur le Trie restreint du palier
-``"expert"``, CHAMPION_DU_MONDE sur le Trie complet. Les tests de monotonie
-de ``TestProgressionTrieIaRestreint`` simulent ce câblage en donnant
-explicitement un dictionnaire plus large à CHAMPION_DU_MONDE
-(``dico_champion``), pour vérifier l'inégalité stricte qui en résulte.
+Échelle refondue par l'issue #401 (sur la base du rapport #400) : chaque
+niveau reprend la stratégie de sélection d'un ancien niveau plus fort, ce qui
+resserre l'échelle vers le haut, et EXPERT devient un niveau à part entière
+intercalé entre AVANCE et CHAMPION_DU_MONDE. AVANCE et CHAMPION_DU_MONDE
+partagent EXACTEMENT la même stratégie de sélection (:func:`~scrabble.moteur.ia._choisir_avance`,
+meilleur coup) : à dictionnaire identique, les deux niveaux restent
+mécaniquement égaux — c'est ce que vérifient la plupart des tests
+ci-dessous, qui appellent ``choisir_coup(..., dico, niveau, ...)`` avec un
+seul ``dico`` partagé. Ce qui les distingue en jeu réel est le vocabulaire
+reçu en paramètre, câblé par l'appelant (issue #369, lot C, voir
+``scrabble.moteur.ia.resoudre_palier`` et ``scrabble.ui.accueil``) : AVANCE
+sur le Trie restreint du palier ``"avance"``, CHAMPION_DU_MONDE sur le Trie
+complet. EXPERT, lui, change à la fois de stratégie (top 5 % plutôt que
+meilleur coup) et de vocabulaire (Trie complet ODS8, comme CHAMPION_DU_MONDE
+— ``resoudre_palier`` renvoie ``None`` pour les deux, issue #401). Les tests
+de monotonie de ``TestProgressionTrieIaRestreint`` simulent ce câblage en
+donnant explicitement le dictionnaire complet à EXPERT et CHAMPION_DU_MONDE
+(``dico_champion``), pour vérifier l'inégalité qui en résulte.
 """
 
 from __future__ import annotations
@@ -78,13 +84,21 @@ class TestResoudrePalier:
             (Niveau.FACILE, "facile"),
             (Niveau.INTERMEDIAIRE, "intermediaire"),
             (Niveau.AVANCE, "avance"),
-            (Niveau.EXPERT, "expert"),
         ],
     )
-    def test_cinq_premiers_niveaux_resolvent_vers_leur_palier(
+    def test_quatre_premiers_niveaux_resolvent_vers_leur_palier(
         self, niveau, palier_attendu
     ):
         assert resoudre_palier(niveau) == palier_attendu
+
+    def test_expert_ne_resout_vers_aucun_palier(self):
+        """EXPERT n'a pas de palier (issue #401) : Trie complet, pas de fichier.
+
+        Contrairement aux quatre premiers niveaux, EXPERT joue sur le Trie ODS8
+        complet — comme CHAMPION_DU_MONDE, dont il reprend le vocabulaire (mais
+        pas la stratégie de sélection, voir :func:`~scrabble.moteur.ia._choisir_top5`).
+        """
+        assert resoudre_palier(Niveau.EXPERT) is None
 
     def test_champion_du_monde_ne_resout_vers_aucun_palier(self):
         """CHAMPION_DU_MONDE n'a pas de palier : Trie complet, pas de fichier."""
@@ -225,50 +239,17 @@ class TestLeaveValue:
 # --------------------------------------------------------------------------- #
 
 
-class TestExpert:
-    """EXPERT choisit toujours le meilleur coup."""
-
-    def test_choisit_le_meilleur_score(self):
-        plateau = PlateauPartie()
-        chevalet = list("CADRES")
-        dico = _trie("CADRE", "CADRES", "AS", "A")
-        coup = choisir_coup(plateau, chevalet, dico, Niveau.EXPERT, random.Random(42))
-        coups = generer_coups(plateau, chevalet, dico)
-        meilleur_score = coups[0].score
-        assert coup is not None
-        coup_note = next(cn for cn in coups if cn.coup == coup)
-        assert coup_note.score == meilleur_score
-
-    def test_egalite_choisit_parmi_les_meilleurs(self):
-        plateau = PlateauPartie()
-        chevalet = list("AB")
-        dico = _trie("AB", "BA")
-        coups = generer_coups(plateau, chevalet, dico)
-        scores = [cn.score for cn in coups]
-        max_score = max(scores)
-        meilleurs_coups = [cn.coup for cn in coups if cn.score == max_score]
-        choisis = set()
-        for graine in range(100):
-            coup = choisir_coup(
-                plateau, chevalet, dico, Niveau.EXPERT, random.Random(graine)
-            )
-            if coup is not None:
-                choisis.add((coup.ligne, coup.colonne, coup.direction.value))
-        assert len(choisis) >= 1
-
-
 class TestDebutant:
-    """DEBUTANT choisit uniformément dans les 85 % meilleurs coups (top 85 %).
+    """DEBUTANT choisit uniformément dans les 70 % meilleurs coups (top 70 %).
 
-    Depuis l'issue #361, DEBUTANT passe par le même mécanisme de tranche que
-    les autres niveaux (il n'a plus le filtre dur ``nb_nouvelles >= 3`` de
-    l'issue #359, qui le rendait plus sélectif que FACILE). Le dictionnaire
+    Depuis l'issue #401, DEBUTANT fusionne les anciens DEBUTANT (top 85 %) et
+    FACILE (top 60 %) en un seul niveau d'entrée de gamme. Le dictionnaire
     de ce test mélange mots de 3+ lettres (CADRE, ACRE, CAR) et mots courts
-    pour offrir assez de coups : la tranche top 85 % y écarte réellement les
+    pour offrir assez de coups : la tranche top 70 % y écarte réellement les
     coups les plus faibles au sens du score stratégique.
     """
 
-    def test_choisit_dans_le_top_85_pct(self):
+    def test_choisit_dans_le_top_70_pct(self):
         plateau = PlateauPartie()
         chevalet = list("CADRE")
         dico = _trie("CADRE", "ACRE", "CAR", "DE", "RE", "A", "DA")
@@ -278,7 +259,7 @@ class TestDebutant:
             reverse=True,
         )
         assert len(coups) > 1
-        taille_haut = max(1, len(coups) * 85 // 100)
+        taille_haut = max(1, len(coups) * 70 // 100)
         haut = coups[:taille_haut]
 
         choisis: dict[tuple, int] = {}
@@ -318,24 +299,32 @@ class TestScoreMoyenParNiveau:
         moy_debutant = moyenne_scores(Niveau.DEBUTANT)
         assert moy_expert > moy_debutant
 
-    def test_avance_score_moyen_entre_intermediaire_et_expert(self):
-        """AVANCE se situe strictement entre INTERMEDIAIRE et EXPERT.
+    def test_expert_score_moyen_entre_intermediaire_et_avance(self):
+        """EXPERT (top 5 %) se situe strictement entre INTERMEDIAIRE et AVANCE.
 
         Vérification statistique sur de nombreux tirages à graines variées
-        (issue #202) : sur un plateau/chevalet offrant de nombreux coups aux
-        scores étalés, la distribution de scores d'AVANCE (top 15 %) doit être
-        supérieure à celle d'INTERMEDIAIRE (top 33 %) et inférieure ou égale à
-        celle d'EXPERT (meilleur coup).
+        (issue #202, seuils issue #401) : sous un MÊME vocabulaire (pas de
+        câblage palier vs Trie complet ici, voir
+        ``TestProgressionTrieIaRestreint`` pour ce cas), les tranches restent
+        strictement emboîtées jusqu'à AVANCE — top 15 % (INTERMEDIAIRE) ⊃
+        top 5 % (EXPERT) ⊃ meilleur coup (AVANCE, qui choisit littéralement
+        le premier de la liste triée). Le score moyen d'AVANCE majore donc
+        celui d'EXPERT ; l'inégalité inverse (AVANCE < EXPERT), observée en
+        jeu réel, tient uniquement au vocabulaire différent reçu par chacun
+        (voir la fixture dédiée plus bas).
+
+        Réutilise le vocabulaire riche ``_MOTS_COMPLET``/chevalet ``CARTONS``
+        (voir plus bas) plutôt qu'un petit dictionnaire ad hoc : sur une
+        tranche aussi étroite que le top 5 %, un vocabulaire trop pauvre est
+        instable (le reliquat pondéré, issue #397, peut faire basculer les
+        quelques coups de la bande).
         """
         plateau = PlateauPartie()
-        chevalet = list("CADRES")
-        dico = _trie(
-            "CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES",
-            "SE", "ED", "AR", "RA", "CAR", "ARC", "SAC", "ACRE", "CARDE",
-        )
+        chevalet = list("CARTONS")
+        dico = _trie(*_MOTS_COMPLET)
         coups_ref = generer_coups(plateau, chevalet, dico)
         # Le test n'a de sens que si les coups sont assez nombreux et étalés
-        # pour que top 15 % et top 33 % diffèrent réellement.
+        # pour que top 5 % et top 15 % diffèrent réellement.
         assert len(coups_ref) >= 10
         assert len({cn.score for cn in coups_ref}) >= 3
 
@@ -351,35 +340,13 @@ class TestScoreMoyenParNiveau:
             return statistics.mean(scores) if scores else 0.0
 
         moy_inter = moyenne_scores(Niveau.INTERMEDIAIRE)
-        moy_avance = moyenne_scores(Niveau.AVANCE)
         moy_expert = moyenne_scores(Niveau.EXPERT)
-        assert moy_inter < moy_avance < moy_expert
+        moy_avance = moyenne_scores(Niveau.AVANCE)
+        assert moy_inter < moy_expert <= moy_avance
 
 
 class TestIntermediaire:
-    """INTERMEDIAIRE choisit dans le meilleur tiers."""
-
-    def test_choisit_dans_le_tiers_superieur(self):
-        plateau = PlateauPartie()
-        chevalet = list("CADRES")
-        dico = _trie("CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES")
-        coups = generer_coups(plateau, chevalet, dico)
-        if len(coups) < 3:
-            pytest.skip("Pas assez de coups pour tester le tiers")
-        taille_tiers = max(1, len(coups) // 3)
-        scores_tiers = {cn.score for cn in coups[:taille_tiers]}
-
-        for graine in range(50):
-            coup = choisir_coup(
-                plateau, chevalet, dico, Niveau.INTERMEDIAIRE, random.Random(graine)
-            )
-            if coup is not None:
-                cn = next(c for c in coups if c.coup == coup)
-                assert cn.score in scores_tiers or cn in coups[:taille_tiers]
-
-
-class TestAvance:
-    """AVANCE choisit dans les 15 % meilleurs coups (top 15 %)."""
+    """INTERMEDIAIRE choisit dans les 15 % meilleurs coups (top 15 %) — issue #401."""
 
     def test_choisit_dans_le_top_15_pct(self):
         plateau = PlateauPartie()
@@ -392,42 +359,132 @@ class TestAvance:
 
         for graine in range(50):
             coup = choisir_coup(
-                plateau, chevalet, dico, Niveau.AVANCE, random.Random(graine)
+                plateau, chevalet, dico, Niveau.INTERMEDIAIRE, random.Random(graine)
             )
             if coup is not None:
                 cn = next(c for c in coups if c.coup == coup)
                 assert cn.score in scores_haut or cn in haut
 
 
-class TestFacile:
-    """FACILE choisit dans les 60 % meilleurs coups (top 60 %) — issue #208."""
+class TestAvance:
+    """AVANCE choisit toujours le meilleur coup (issue #401, reprend la
+    stratégie de sélection de l'ancien EXPERT)."""
 
-    def test_choisit_dans_le_top_60_pct(self):
+    def test_choisit_le_meilleur_score(self):
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        # Pas de mot alternatif de longueur intermédiaire (ex. CADRE) : depuis
+        # l'issue #397, AVANCE pondère aussi le reliquat (_POIDS_LEAVE non
+        # nul), qui pourrait sinon faire préférer un coup à score brut
+        # inférieur mais au reliquat plus précieux. Ce dictionnaire ne laisse
+        # le choix qu'entre le mot consommant tout le chevalet et des hooks
+        # courts nettement pénalisés.
+        dico = _trie("CADRES", "AS", "A")
+        coup = choisir_coup(plateau, chevalet, dico, Niveau.AVANCE, random.Random(42))
+        coups = generer_coups(plateau, chevalet, dico)
+        meilleur_score = coups[0].score
+        assert coup is not None
+        coup_note = next(cn for cn in coups if cn.coup == coup)
+        assert coup_note.score == meilleur_score
+
+    def test_egalite_choisit_parmi_les_meilleurs(self):
+        plateau = PlateauPartie()
+        chevalet = list("AB")
+        dico = _trie("AB", "BA")
+        coups = generer_coups(plateau, chevalet, dico)
+        scores = [cn.score for cn in coups]
+        max_score = max(scores)
+        meilleurs_coups = [cn.coup for cn in coups if cn.score == max_score]
+        choisis = set()
+        for graine in range(100):
+            coup = choisir_coup(
+                plateau, chevalet, dico, Niveau.AVANCE, random.Random(graine)
+            )
+            if coup is not None:
+                choisis.add((coup.ligne, coup.colonne, coup.direction.value))
+        assert len(choisis) >= 1
+
+
+class TestExpert:
+    """EXPERT choisit dans les 5 % meilleurs coups (top 5 %, issue #401).
+
+    Nouveau niveau intercalé entre AVANCE (meilleur coup, palier de
+    vocabulaire restreint) et CHAMPION_DU_MONDE (meilleur coup, vocabulaire
+    complet) — voir :func:`~scrabble.moteur.ia._choisir_top5`.
+    """
+
+    def test_choisit_dans_le_top_5_pct(self):
+        """Bande de référence calculée avec le même tri à deux passes que
+        :func:`~scrabble.moteur.ia.choisir_coup` (score stratégique puis
+        reliquat), pas le score brut : EXPERT pondère le reliquat
+        (``_POIDS_LEAVE`` non nul depuis l'issue #397), qui peut réordonner
+        des coups à score brut proche — surtout sur une tranche aussi étroite
+        que le top 5 %.
+        """
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        dico = _trie(
+            "CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES",
+            "SE", "ED", "AR", "RA", "CAR", "ARC", "SAC", "ACRE", "CARDE",
+        )
+        coups = generer_coups(plateau, chevalet, dico)
+
+        def _lettres_restantes(cn):
+            restantes = list(chevalet)
+            for lettre in cn.lettres_du_chevalet:
+                restantes.remove(lettre)
+            return restantes
+
+        coups_tries = sorted(
+            coups, key=lambda cn: _score_strategique(cn, Niveau.EXPERT), reverse=True
+        )
+        coups_tries = sorted(
+            coups_tries,
+            key=lambda cn: _score_strategique(
+                cn, Niveau.EXPERT, _lettres_restantes(cn)
+            ),
+            reverse=True,
+        )
+        taille_haut = max(1, len(coups_tries) * 5 // 100)
+        haut = coups_tries[:taille_haut]
+
+        for graine in range(50):
+            coup = choisir_coup(
+                plateau, chevalet, dico, Niveau.EXPERT, random.Random(graine)
+            )
+            if coup is not None:
+                assert any(cn.coup == coup for cn in haut)
+
+
+class TestFacile:
+    """FACILE choisit dans le meilleur tiers des coups (top 33 %) — issue #401."""
+
+    def test_choisit_dans_le_top_33_pct(self):
         plateau = PlateauPartie()
         chevalet = list("CADRES")
         dico = _trie("CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES")
         coups = generer_coups(plateau, chevalet, dico)
-        if len(coups) < 2:
-            pytest.skip("Pas assez de coups pour tester le top 60 %")
-        taille_haut = max(1, len(coups) * 60 // 100)
-        haut = coups[:taille_haut]
+        if len(coups) < 3:
+            pytest.skip("Pas assez de coups pour tester le top 33 %")
+        taille_tiers = max(1, len(coups) // 3)
+        haut = coups[:taille_tiers]
+        scores_haut = {cn.score for cn in haut}
 
         for graine in range(50):
             coup = choisir_coup(
                 plateau, chevalet, dico, Niveau.FACILE, random.Random(graine)
             )
             if coup is not None:
-                assert any(cn.coup == coup for cn in haut)
+                cn = next(c for c in coups if c.coup == coup)
+                assert cn.score in scores_haut or cn in haut
 
     def test_score_moyen_superieur_a_debutant(self):
         """FACILE bat DEBUTANT en score moyen, tout en restant sous INTERMEDIAIRE.
 
-        Cœur de l'issue #208 : l'ancienne stratégie (moitié inférieure) rendait
-        FACILE plus FAIBLE que DEBUTANT ; le passage au top 60 % corrige cette
-        inversion sur un plateau/chevalet offrant des scores étalés. Depuis
-        l'issue #361, DEBUTANT tire dans le top 85 % (sur-ensemble strict du
-        top 60 % de FACILE), donc la chaîne DEBUTANT < FACILE < INTERMEDIAIRE
-        est structurelle et vérifiée en entier.
+        Les tranches restent strictement emboîtées (issue #401) : top 70 %
+        (DEBUTANT) ⊃ top 33 % (FACILE) ⊃ top 15 % (INTERMEDIAIRE), donc la
+        chaîne DEBUTANT < FACILE < INTERMEDIAIRE est structurelle et vérifiée
+        en entier sur un plateau/chevalet offrant des scores étalés.
         """
         plateau = PlateauPartie()
         chevalet = list("CADRES")
@@ -671,26 +728,28 @@ _MOTS_IA_RESTREINT = (
 )
 
 # Ordre des niveaux par score moyen croissant, tel qu'il découle RÉELLEMENT des
-# stratégies de sélection (cf. ia.py) :
-#   * DEBUTANT tire dans le top 85 % (n'écarte que les 15 % plus faibles)
-#     → moyenne la plus basse (issue #361) ;
-#   * FACILE tire dans le top 60 % (écarte les 40 % plus faibles) → au-dessus
-#     de DEBUTANT mais nettement sous INTERMEDIAIRE ;
-#   * INTERMEDIAIRE (top 33 %), AVANCE (top 15 %), EXPERT (meilleur) → croissant.
-#   * CHAMPION_DU_MONDE réutilise EXACTEMENT la stratégie et les tranches
-#     d'EXPERT (:func:`~scrabble.moteur.ia._choisir_expert` sert les deux
-#     identiquement) : ce qui les distingue est le vocabulaire reçu en
-#     paramètre, câblé par l'appelant (issue #369, lot C) — EXPERT sur le
-#     Trie restreint du palier, CHAMPION_DU_MONDE sur le Trie complet. Les
-#     tests ci-dessous simulent ce câblage via ``dico_champion``.
-# NB : depuis l'issue #208, FACILE n'est plus la moitié INFÉRIEURE (ce qui le
-# plaçait sous DEBUTANT, contrairement à ce que suggèrent les noms) mais le
-# top 60 %. L'ordre réel coïncide désormais avec l'ordre des noms et avec
-# l'énoncé de l'issue #207 : « Débutant < Facile < Intermédiaire < Avancé <
-# Expert ». Cette monotonie est structurelle — les tranches sont strictement
-# emboîtées (85 % ⊃ 60 % ⊃ 33 % ⊃ 15 % ⊃ meilleur) — et vaut donc à
-# l'identique avec et sans le filtre de vocabulaire ; ces tests le vérifient
-# empiriquement, y compris en présence de mots courts (hooks) depuis #361.
+# stratégies de sélection ET du câblage vocabulaire (cf. ia.py, issue #401) :
+#   * DEBUTANT tire dans le top 70 % (n'écarte que les 30 % plus faibles) sur
+#     le palier restreint "debutant" → moyenne la plus basse ;
+#   * FACILE (top 33 %), INTERMEDIAIRE (top 15 %), chacun sur son propre
+#     palier restreint → croissant, tranches strictement emboîtées ;
+#   * AVANCE choisit le meilleur coup, mais toujours sur un palier de
+#     vocabulaire restreint ("avance", issue #369, lot C) — moins large que
+#     le Trie complet reçu par les deux derniers niveaux ;
+#   * EXPERT (top 5 %) et CHAMPION_DU_MONDE (meilleur coup) jouent tous deux
+#     sur le Trie ODS8 complet, ``resoudre_palier`` renvoyant ``None`` pour
+#     les deux (issue #401) : aucun filtre de vocabulaire ne s'applique à ces
+#     deux niveaux, contrairement aux quatre premiers.
+# Le dernier maillon AVANCE < EXPERT n'est donc PAS structurel comme les
+# précédents (une stratégie moins "gourmande", top 5 %, l'emporte sur le
+# meilleur coup d'AVANCE) : c'est l'accès à un vocabulaire strictement plus
+# large qui fait basculer la moyenne en faveur d'EXPERT. EXPERT <
+# CHAMPION_DU_MONDE, à l'inverse, reste structurel : à vocabulaire identique
+# (le Trie complet, pour les deux), seule la stratégie diffère (top 5 % ⊆
+# meilleur coup). Les fixtures ci-dessous donnent donc le Trie complet
+# (``dico_champion``) à EXPERT ET CHAMPION_DU_MONDE simultanément, et le Trie
+# restreint aux quatre premiers niveaux, pour reproduire fidèlement ce
+# câblage réel (``scrabble.ui.accueil``).
 _ORDRE_CROISSANT_ATTENDU = [
     Niveau.DEBUTANT,
     Niveau.FACILE,
@@ -699,6 +758,10 @@ _ORDRE_CROISSANT_ATTENDU = [
     Niveau.EXPERT,
     Niveau.CHAMPION_DU_MONDE,
 ]
+
+# Niveaux dont resoudre_palier() renvoie None (issue #401) : toujours sur le
+# Trie complet en jeu réel, jamais sur un palier de vocabulaire restreint.
+_NIVEAUX_SANS_PALIER = (Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE)
 
 
 def _moyennes_par_niveau(
@@ -715,12 +778,14 @@ def _moyennes_par_niveau(
     score du coup choisi pour chaque graine. Le score d'un coup ne dépend que
     des tuiles/plateau, pas du dictionnaire.
 
-    ``dico_champion`` (issue #369, lot C), s'il est fourni, est le
-    dictionnaire utilisé pour :data:`Niveau.CHAMPION_DU_MONDE` à la place de
-    ``dico`` — simule le câblage réel (``scrabble.ui.accueil``), où
-    CHAMPION_DU_MONDE joue sur le Trie complet quand les autres niveaux jouent
-    sur un palier restreint. ``None`` (défaut) : CHAMPION_DU_MONDE partage
-    ``dico`` avec les autres niveaux, comme avant l'issue #369.
+    ``dico_champion`` (issue #369, lot C ; étendu à EXPERT par l'issue #401),
+    s'il est fourni, est le dictionnaire utilisé pour :data:`Niveau.EXPERT` et
+    :data:`Niveau.CHAMPION_DU_MONDE` à la place de ``dico`` — simule le
+    câblage réel (``scrabble.ui.accueil``), où ces deux niveaux jouent
+    toujours sur le Trie complet (:func:`~scrabble.moteur.ia.resoudre_palier`
+    renvoie ``None`` pour les deux) quand les quatre premiers niveaux jouent
+    chacun sur leur palier restreint. ``None`` (défaut) : EXPERT et
+    CHAMPION_DU_MONDE partagent ``dico`` avec les autres niveaux.
     """
     coups_ref = generer_coups(plateau, chevalet, dico)
     coups_ref_champion = (
@@ -732,7 +797,7 @@ def _moyennes_par_niveau(
     for niveau in Niveau:
         dico_niveau = (
             dico_champion
-            if niveau is Niveau.CHAMPION_DU_MONDE and dico_champion is not None
+            if niveau in _NIVEAUX_SANS_PALIER and dico_champion is not None
             else dico
         )
         reference = (
@@ -770,14 +835,12 @@ class TestProgressionTrieIaRestreint:
     def test_progression_monotone_avec_filtre_actif(self):
         """La progression reste STRICTEMENT monotone avec le Trie IA restreint.
 
-        Confirme l'hypothèse du rapport #203 : le filtre étant appliqué
-        uniformément aux cinq premiers niveaux, la monotonie des scores moyens
-        est préservée. Le dernier maillon EXPERT < CHAMPION_DU_MONDE est
-        désormais lui aussi strict (issue #369, lot C) : on simule ici le
-        câblage réel en donnant à CHAMPION_DU_MONDE le Trie complet
-        (``dico_champion``) pendant qu'EXPERT reste sur le Trie restreint —
-        le bingo CARTONS (70 pts, absent de ``_MOTS_IA_RESTREINT``) n'est
-        alors accessible qu'à CHAMPION_DU_MONDE.
+        Confirme l'hypothèse du rapport #203, adaptée au câblage de l'issue
+        #401 : le filtre de vocabulaire ne s'applique plus qu'aux quatre
+        premiers niveaux (chacun sur son palier restreint) ; EXPERT et
+        CHAMPION_DU_MONDE reçoivent toujours le Trie complet
+        (``dico_champion``), le bingo CARTONS (70 pts, absent de
+        ``_MOTS_IA_RESTREINT``) leur restant accessible à tous les deux.
         """
         dico_ia = Trie.depuis_iterable(_MOTS_IA_RESTREINT)
         dico_complet = Trie.depuis_iterable(_MOTS_COMPLET)
@@ -796,8 +859,9 @@ class TestProgressionTrieIaRestreint:
         distinguerait plus suffisamment d'un autre. On exige un écart d'au
         moins 1 point entre niveaux adjacents dans l'ordre de progression,
         seuil au-delà duquel la différence reste perceptible en jeu — y
-        compris désormais pour la paire EXPERT/CHAMPION_DU_MONDE (issue #369,
-        lot C, monotonie devenue stricte : voir ``dico_champion``).
+        compris désormais pour la paire AVANCE/EXPERT (issue #401 : palier
+        restreint contre Trie complet) et EXPERT/CHAMPION_DU_MONDE (issue
+        #369, lot C, monotonie devenue stricte : voir ``dico_champion``).
         """
         dico_ia = Trie.depuis_iterable(_MOTS_IA_RESTREINT)
         dico_complet = Trie.depuis_iterable(_MOTS_COMPLET)
@@ -809,40 +873,62 @@ class TestProgressionTrieIaRestreint:
             assert ecart >= 1.0, f"{a} et {b} trop proches sous filtre : {moy}"
 
     def test_ordre_relatif_identique_avec_et_sans_filtre(self):
-        """L'ordre RELATIF des niveaux est identique avec et sans filtre.
+        """L'ordre RELATIF des quatre niveaux à palier est identique avec et
+        sans filtre.
 
-        Cœur de la vérification #207 / hypothèse #203 : le filtre global ne
-        réordonne pas les niveaux ; il n'abaisse que les scores absolus.
+        Cœur de la vérification #207 / hypothèse #203, restreinte depuis
+        l'issue #401 aux quatre niveaux réellement soumis au filtre de
+        vocabulaire par palier (DEBUTANT, FACILE, INTERMEDIAIRE, AVANCE) : le
+        filtre ne les réordonne pas entre eux, il n'abaisse que leurs scores
+        absolus. EXPERT et CHAMPION_DU_MONDE, jamais filtrés en jeu réel, sont
+        exclus de la comparaison — leur position relative à AVANCE peut au
+        contraire s'inverser sous filtre (c'est tout l'intérêt du câblage de
+        l'issue #401 : EXPERT franchit AVANCE une fois débarrassé de la
+        restriction de vocabulaire), voir
+        ``test_progression_monotone_avec_filtre_actif``.
         """
+        niveaux_a_palier = [
+            Niveau.DEBUTANT,
+            Niveau.FACILE,
+            Niveau.INTERMEDIAIRE,
+            Niveau.AVANCE,
+        ]
         moy_complet = _moyennes_par_niveau(
             self.plateau, self.chevalet, Trie.depuis_iterable(_MOTS_COMPLET)
         )
         moy_ia = _moyennes_par_niveau(
             self.plateau, self.chevalet, Trie.depuis_iterable(_MOTS_IA_RESTREINT)
         )
-        assert sorted(Niveau, key=lambda niv: moy_complet[niv]) == sorted(
-            Niveau, key=lambda niv: moy_ia[niv]
+        assert sorted(niveaux_a_palier, key=lambda niv: moy_complet[niv]) == sorted(
+            niveaux_a_palier, key=lambda niv: moy_ia[niv]
         )
 
-    def test_ecart_expert_debutant_se_resserre_sous_filtre(self):
-        """Mesure le resserrement Expert↔Débutant sous filtre (point #4).
+    def test_ecart_avance_debutant_se_resserre_sous_filtre(self):
+        """Mesure le resserrement Avancé↔Débutant sous filtre (point #4).
 
-        Point de vigilance du rapport #203 : même monotonie préservée, l'écart
-        absolu entre le meilleur et le plus faible niveau peut se resserrer si le
-        filtre retire les coups à très fort score (vocabulaire rare). Dans ce
-        scénario, le bingo CARTONS (70 pts) est retiré du vocabulaire IA, donc
-        Expert perd sa pointe : l'écart Expert↔Débutant chute nettement, tout en
-        restant strictement positif (les niveaux restent ordonnés).
+        Point de vigilance du rapport #203, reporté sur la paire pertinente
+        depuis l'issue #401 : AVANCE et DEBUTANT sont désormais les deux
+        niveaux réellement soumis au filtre de vocabulaire par palier (EXPERT
+        et CHAMPION_DU_MONDE y échappent, voir ci-dessus). Même monotonie
+        préservée, l'écart absolu entre AVANCE (meilleur coup) et DEBUTANT
+        (top 70 %) peut se resserrer si le filtre retire les coups à très
+        fort score (vocabulaire rare). Dans ce scénario, le bingo CARTONS
+        (70 pts) est retiré du vocabulaire IA restreint, donc AVANCE perd sa
+        pointe : l'écart Avancé↔Débutant chute nettement, tout en restant
+        strictement positif (les niveaux restent ordonnés).
         """
         moy_complet = _moyennes_par_niveau(
             self.plateau, self.chevalet, Trie.depuis_iterable(_MOTS_COMPLET)
         )
         moy_ia = _moyennes_par_niveau(
-            self.plateau, self.chevalet, Trie.depuis_iterable(_MOTS_IA_RESTREINT)
+            self.plateau,
+            self.chevalet,
+            Trie.depuis_iterable(_MOTS_IA_RESTREINT),
+            dico_champion=Trie.depuis_iterable(_MOTS_COMPLET),
         )
-        ecart_complet = moy_complet[Niveau.EXPERT] - moy_complet[Niveau.DEBUTANT]
-        ecart_ia = moy_ia[Niveau.EXPERT] - moy_ia[Niveau.DEBUTANT]
-        # Reste ordonné (Expert > Débutant) même sous filtre...
+        ecart_complet = moy_complet[Niveau.AVANCE] - moy_complet[Niveau.DEBUTANT]
+        ecart_ia = moy_ia[Niveau.AVANCE] - moy_ia[Niveau.DEBUTANT]
+        # Reste ordonné (Avancé > Débutant) même sous filtre...
         assert ecart_ia > 0
         # ... mais se resserre sensiblement quand le vocabulaire rare disparaît.
         assert ecart_ia < ecart_complet

@@ -57,26 +57,27 @@ from scrabble.dictionnaire.dictionnaire import (
 # Vocabulaire IA par palier (issue #366, lot A)
 # --------------------------------------------------------------------------- #
 
-def test_fichiers_vocabulaire_palier_cinq_entrees_sous_dossier_dico():
-    """La constante de mapping palier → fichier couvre les cinq paliers filtrés.
+def test_fichiers_vocabulaire_palier_quatre_entrees_sous_dossier_dico():
+    """La constante de mapping palier → fichier couvre les quatre paliers filtrés.
 
-    Le sixième palier (« champion du monde », ODS8 complet) n'a volontairement
-    aucune entrée : il se résout vers :func:`obtenir_trie`, sans fichier.
+    Depuis la refonte de l'échelle de niveaux (issue #400/#402), EXPERT et
+    CHAMPION_DU_MONDE (ODS8 complet) n'ont volontairement aucune entrée : ils
+    se résolvent tous deux vers :func:`obtenir_trie`, sans fichier.
     """
     assert set(FICHIERS_VOCABULAIRE_PALIER) == {
         "debutant",
         "facile",
         "intermediaire",
         "avance",
-        "expert",
     }
+    assert "expert" not in FICHIERS_VOCABULAIRE_PALIER
     assert "champion_du_monde" not in FICHIERS_VOCABULAIRE_PALIER
     noms = set()
     for palier, chemin in FICHIERS_VOCABULAIRE_PALIER.items():
         assert chemin.parent == DOSSIER_DICO
         assert chemin.name == f"mots_courants_{palier}.txt"
         noms.add(chemin.name)
-    assert len(noms) == 5  # aucun doublon de nom de fichier entre paliers
+    assert len(noms) == 4  # aucun doublon de nom de fichier entre paliers
 
 
 # --------------------------------------------------------------------------- #
@@ -90,17 +91,19 @@ def test_fichiers_cache_ia_palier_meme_cles_que_vocabulaire_et_chemins_distincts
     cache fixe unique partagé entre paliers ferait écraser silencieusement le
     cache d'un palier par le suivant. Un chemin distinct par palier, dérivé de
     :data:`FICHIERS_VOCABULAIRE_PALIER` (même source de vérité), élimine ce
-    risque. Le palier « champion_du_monde » n'a pas d'entrée : il réutilise le
-    cache du Trie complet via :func:`obtenir_trie`.
+    risque. Depuis la refonte #400/#402, les paliers EXPERT et
+    « champion_du_monde » n'ont pas d'entrée : ils réutilisent le cache du
+    Trie complet via :func:`obtenir_trie`.
     """
     assert set(FICHIERS_CACHE_IA_PALIER) == set(FICHIERS_VOCABULAIRE_PALIER)
+    assert "expert" not in FICHIERS_CACHE_IA_PALIER
     assert "champion_du_monde" not in FICHIERS_CACHE_IA_PALIER
     noms = set()
     for palier, chemin in FICHIERS_CACHE_IA_PALIER.items():
         assert chemin.parent == DOSSIER_DICO
         assert chemin.name == f"trie_ia_cache_{palier}.pkl"
         noms.add(chemin.name)
-    assert len(noms) == 5  # aucun doublon de nom de fichier entre paliers
+    assert len(noms) == 4  # aucun doublon de nom de fichier entre paliers
 
 
 # --------------------------------------------------------------------------- #
@@ -135,7 +138,7 @@ def test_paliers_disponibles_signale_le_fichier_manquant(tmp_path):
 
 
 def test_paliers_disponibles_defaut_utilise_fichiers_vocabulaire_palier():
-    """Sans argument, porte sur les cinq vrais paliers de production."""
+    """Sans argument, porte sur les quatre vrais paliers de production."""
     assert set(paliers_disponibles()) == set(FICHIERS_VOCABULAIRE_PALIER)
 
 

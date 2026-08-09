@@ -308,7 +308,11 @@ class TestDisponibiliteNiveaux:
         self, monkeypatch
     ):
         """Un palier absent est signalé indisponible, avec message (issue #370, lot E :
-        le vocabulaire par palier s'applique désormais sans condition)."""
+        le vocabulaire par palier s'applique désormais sans condition).
+
+        Depuis la refonte des niveaux (issue #400/#402), ``paliers_disponibles()``
+        ne couvre plus que les 4 niveaux à palier restreint (EXPERT n'en a
+        plus, voir :class:`TestDisponibiliteNiveaux`)."""
         from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
@@ -318,7 +322,6 @@ class TestDisponibiliteNiveaux:
                 "facile": True,
                 "intermediaire": True,
                 "avance": True,
-                "expert": True,
             },
         )
         api = ApiAccueil()
@@ -363,11 +366,11 @@ class TestDisponibiliteNiveaux:
 
         monkeypatch.setattr(
             "scrabble.ui.accueil.paliers_disponibles",
-            lambda: {"debutant": False, "expert": True},
+            lambda: {"debutant": False, "facile": True},
         )
         api = ApiAccueil()
 
-        result = api.ajouter_ordinateur("Expert")
+        result = api.ajouter_ordinateur("Facile")
 
         assert result["succes"] is True
         assert api.config_partie.nb_ordinateurs == 1
@@ -380,13 +383,46 @@ class TestDisponibiliteNiveaux:
         assert disponible is True
         assert message is None
 
+    def test_expert_toujours_disponible(self):
+        """EXPERT ne dépend d'aucun fichier : toujours disponible, comme
+        CHAMPION_DU_MONDE (refonte des niveaux, issue #400/#402 : EXPERT joue
+        désormais sur l'ODS8 complet, sans palier de vocabulaire restreint)."""
+        from scrabble.ui.accueil import _disponibilite_niveau
+
+        disponible, message = _disponibilite_niveau(Niveau.EXPERT)
+        assert disponible is True
+        assert message is None
+
+    def test_expert_disponible_meme_sans_fichier_de_palier_expert(self, monkeypatch):
+        """EXPERT ne consulte plus ``paliers_disponibles()`` du tout (issue
+        #400/#402) : même avec une table de paliers ne couvrant plus que les 4
+        niveaux à vocabulaire restreint (plus de clé ``"expert"``), EXPERT
+        reste disponible."""
+        from scrabble.ui.accueil import _disponibilite_niveau
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.paliers_disponibles",
+            lambda: {
+                "debutant": True,
+                "facile": True,
+                "intermediaire": True,
+                "avance": True,
+            },
+        )
+        disponible, message = _disponibilite_niveau(Niveau.EXPERT)
+        assert disponible is True
+        assert message is None
+
     def test_reprise_avec_niveau_stocke_devenu_indisponible_ne_plante_pas(
         self, monkeypatch
     ):
         """Reprise d'une partie sauvegardée dont le niveau est devenu indisponible.
 
         Doit renvoyer une erreur exploitable par le JS (retour à l'accueil),
-        pas planter (issue #369, point 5).
+        pas planter (issue #369, point 5). Utilise AVANCE (et non EXPERT) : ce
+        dernier n'a plus de palier de vocabulaire restreint depuis la refonte
+        des niveaux (issue #400/#402) et ne peut donc plus jamais devenir
+        indisponible.
         """
         from scrabble.dictionnaire.dictionnaire import Trie
         from scrabble.ui.accueil import ApiAccueil
@@ -398,17 +434,17 @@ class TestDisponibiliteNiveaux:
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.niveaux_ia_stockes",
-            lambda id_partie: [Niveau.EXPERT],
+            lambda id_partie: [Niveau.AVANCE],
         )
         monkeypatch.setattr(
-            "scrabble.ui.accueil.paliers_disponibles", lambda: {"expert": False}
+            "scrabble.ui.accueil.paliers_disponibles", lambda: {"avance": False}
         )
 
         api = ApiAccueil()
         result = api.reprendre(99)
 
         assert result["succes"] is False
-        assert "Expert en erreur" in result["erreur"]
+        assert "Avancé en erreur" in result["erreur"]
         assert api._partie is None
 
 
@@ -683,7 +719,10 @@ class TestSourceDictionnaireAppliquee:
         """_construire_trie_ia(source, niveaux) transmet la source à obtenir_trie_ia.
 
         Vérifie aussi (issue #369, lot C) que le mapping renvoyé indexe le Trie
-        obtenu par le niveau demandé.
+        obtenu par le niveau demandé. Utilise AVANCE (et non EXPERT) : depuis
+        la refonte des niveaux (issue #400/#402), EXPERT n'a plus de palier
+        restreint et ne passe donc plus par ``obtenir_trie_ia`` (voir
+        :meth:`test_construire_trie_ia_expert_reutilise_trie_complet`).
         """
         from scrabble.moteur.ia import Niveau
         from scrabble.ui.accueil import ApiAccueil
@@ -691,7 +730,7 @@ class TestSourceDictionnaireAppliquee:
 
         appels: list[str] = []
         monkeypatch.setattr(
-            "scrabble.ui.accueil.paliers_disponibles", lambda: {"expert": True}
+            "scrabble.ui.accueil.paliers_disponibles", lambda: {"avance": True}
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie_ia",
@@ -699,8 +738,8 @@ class TestSourceDictionnaireAppliquee:
             or Trie.depuis_iterable(["TEST"]),
         )
 
-        tries_ia = ApiAccueil._construire_trie_ia("hunspell", [Niveau.EXPERT])
-        assert Niveau.EXPERT in tries_ia
+        tries_ia = ApiAccueil._construire_trie_ia("hunspell", [Niveau.AVANCE])
+        assert Niveau.AVANCE in tries_ia
         assert appels == ["hunspell"]
 
     def test_construire_trie_ia_champion_du_monde_reutilise_trie_complet(
@@ -729,15 +768,42 @@ class TestSourceDictionnaireAppliquee:
         assert tries_ia == {Niveau.CHAMPION_DU_MONDE: trie_complet}
         assert appels_ia == []  # jamais de palier restreint pour ce niveau
 
+    def test_construire_trie_ia_expert_reutilise_trie_complet(self, monkeypatch):
+        """EXPERT reçoit le Trie complet, exactement comme CHAMPION_DU_MONDE.
+
+        Depuis la refonte des niveaux (issue #400/#402), EXPERT joue sur
+        l'ODS8 complet sans palier de vocabulaire restreint : il réutilise
+        ``trie_complet`` sans jamais appeler ``obtenir_trie_ia``.
+        """
+        from scrabble.moteur.ia import Niveau
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+
+        appels_ia: list[str] = []
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie_ia",
+            lambda source="ods", **_: appels_ia.append(source),
+        )
+        trie_complet = Trie.depuis_iterable(["TEST"])
+
+        tries_ia = ApiAccueil._construire_trie_ia(
+            "ods", [Niveau.EXPERT], trie_complet=trie_complet
+        )
+
+        assert tries_ia == {Niveau.EXPERT: trie_complet}
+        assert appels_ia == []  # jamais de palier restreint pour ce niveau
+
     def test_construire_trie_ia_charge_uniquement_les_paliers_presents(
         self, monkeypatch
     ):
         """Chargement paresseux (issue #369, point 3) : seuls les paliers PRÉSENTS.
 
-        Une table avec Débutant + Expert (2 IA) ne doit construire que 2
-        paliers, jamais les cinq — le rapport #366 chiffre un Trie complet à
+        Une table avec Débutant + Avancé (2 IA) ne doit construire que 2
+        paliers, jamais les quatre — le rapport #366 chiffre un Trie complet à
         plusieurs dizaines de Mo, inutile de charger un palier absent de la
-        table.
+        table. Utilise AVANCE (et non EXPERT, sans palier depuis la refonte
+        des niveaux, issue #400/#402) pour exercer ce chargement paresseux par
+        palier restreint.
         """
         from scrabble.moteur.ia import Niveau
         from scrabble.ui.accueil import ApiAccueil
@@ -746,7 +812,7 @@ class TestSourceDictionnaireAppliquee:
         appels: list[str] = []
         monkeypatch.setattr(
             "scrabble.ui.accueil.paliers_disponibles",
-            lambda: {p: True for p in ("debutant", "facile", "intermediaire", "avance", "expert")},
+            lambda: {p: True for p in ("debutant", "facile", "intermediaire", "avance")},
         )
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie_ia",
@@ -755,11 +821,44 @@ class TestSourceDictionnaireAppliquee:
         )
 
         tries_ia = ApiAccueil._construire_trie_ia(
+            "ods", [Niveau.DEBUTANT, Niveau.AVANCE]
+        )
+
+        assert set(tries_ia) == {Niveau.DEBUTANT, Niveau.AVANCE}
+        assert set(appels) == {"debutant", "avance"}  # jamais facile/intermediaire
+
+    def test_construire_trie_ia_expert_ne_charge_jamais_de_palier(self, monkeypatch):
+        """EXPERT n'apparaît jamais dans les paliers chargés par obtenir_trie_ia.
+
+        Contrairement aux 4 premiers niveaux, EXPERT (comme CHAMPION_DU_MONDE)
+        ne consulte aucun fichier de vocabulaire par palier depuis la refonte
+        des niveaux (issue #400/#402) : seul le Trie complet est utilisé.
+        """
+        from scrabble.moteur.ia import Niveau
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+
+        appels: list[str] = []
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.paliers_disponibles",
+            lambda: {p: True for p in ("debutant", "facile", "intermediaire", "avance")},
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie_ia",
+            lambda source="ods", palier=None, **_: appels.append(palier)
+            or Trie.depuis_iterable(["TEST"]),
+        )
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda source="ods", **_: Trie.depuis_iterable(["TEST"]),
+        )
+
+        tries_ia = ApiAccueil._construire_trie_ia(
             "ods", [Niveau.DEBUTANT, Niveau.EXPERT]
         )
 
         assert set(tries_ia) == {Niveau.DEBUTANT, Niveau.EXPERT}
-        assert set(appels) == {"debutant", "expert"}  # jamais facile/intermediaire/avance
+        assert appels == ["debutant"]
 
     def test_construire_trie_ia_niveau_indisponible_leve(self, monkeypatch):
         """Un palier requis mais indisponible lève ValueError (issue #369, point 5).
@@ -767,17 +866,19 @@ class TestSourceDictionnaireAppliquee:
         Filet de sécurité : la sélection est censée être bloquée en amont à
         l'accueil (:meth:`~scrabble.ui.accueil.ApiAccueil.ajouter_ordinateur`),
         mais une partie sauvegardée peut redemander un niveau devenu
-        indisponible depuis (ex. reprise).
+        indisponible depuis (ex. reprise). Utilise AVANCE (et non EXPERT, qui
+        depuis la refonte des niveaux — issue #400/#402 — n'a plus de palier
+        et ne peut donc plus jamais devenir indisponible).
         """
         from scrabble.moteur.ia import Niveau
         from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
-            "scrabble.ui.accueil.paliers_disponibles", lambda: {"expert": False}
+            "scrabble.ui.accueil.paliers_disponibles", lambda: {"avance": False}
         )
 
-        with pytest.raises(ValueError, match="Expert en erreur"):
-            ApiAccueil._construire_trie_ia("ods", [Niveau.EXPERT])
+        with pytest.raises(ValueError, match="Avancé en erreur"):
+            ApiAccueil._construire_trie_ia("ods", [Niveau.AVANCE])
 
     def test_lancer_partie_hunspell_valide_mot_hunspell_rejette_ods(
         self, monkeypatch

@@ -173,7 +173,7 @@ def test_mesure_couverture_intersection_et_balayage(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# Palier « expert » : seuil 0 == intersection brute (issue #366, lot A)
+# Seuil 0 == intersection brute (issue #366, lot A)
 # --------------------------------------------------------------------------- #
 
 def test_selection_seuil_zero_egale_intersection_brute(tmp_path):
@@ -181,8 +181,10 @@ def test_selection_seuil_zero_egale_intersection_brute(tmp_path):
 
     Y compris pour une forme à fréquence mesurée nulle dans les deux corpus :
     la comparaison est large (``>=``), pas stricte, donc rien n'est exclu à
-    tort — c'est cette propriété que le palier Expert exploite (voir le
-    docstring du script).
+    tort. Note (refonte #400/#404) : ce comportement à seuil 0 n'est plus
+    exploité par un palier de fichier — depuis la refonte, EXPERT et
+    CHAMPION_DU_MONDE jouent directement sur l'ODS8 complet, sans passer par
+    un fichier de vocabulaire filtré (voir :data:`SEUILS_PALIER` plus bas).
     """
     lexique = tmp_path / "lex.tsv"
     _ecrire_lexique(
@@ -205,21 +207,25 @@ def test_selection_seuil_zero_egale_intersection_brute(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# Mode --tous : cinq paliers en une commande (issue #366, lot A)
+# Mode --tous : quatre paliers en une commande (issue #366, lot A ; refonte #400/#404)
 # --------------------------------------------------------------------------- #
 
 def test_ordre_et_seuils_paliers_couvrent_les_memes_cles():
     """``ORDRE_PALIERS``, ``SEUILS_PALIER`` et ``FICHIERS_VOCABULAIRE_PALIER``.
 
-    doivent porter exactement les mêmes cinq paliers, sans quoi
+    doivent porter exactement les mêmes quatre paliers, sans quoi
     :func:`generer_tous_paliers` lèverait un ``KeyError`` à l'exécution.
+    Depuis la refonte de l'échelle de niveaux (issue #400/#404), EXPERT et
+    CHAMPION_DU_MONDE n'ont plus de palier de fichier (ODS8 complet) : il ne
+    reste que debutant/facile/intermediaire/avance.
     """
     assert set(gmc.ORDRE_PALIERS) == set(gmc.SEUILS_PALIER)
     assert set(gmc.ORDRE_PALIERS) == set(gmc.FICHIERS_VOCABULAIRE_PALIER)
-    assert len(gmc.ORDRE_PALIERS) == 5
+    assert set(gmc.ORDRE_PALIERS) == {"debutant", "facile", "intermediaire", "avance"}
+    assert len(gmc.ORDRE_PALIERS) == 4
 
 
-def test_generer_tous_paliers_ecrit_les_cinq_fichiers(tmp_path, monkeypatch):
+def test_generer_tous_paliers_ecrit_les_quatre_fichiers(tmp_path, monkeypatch):
     """``generer_tous_paliers`` écrit un fichier par palier, filtré à son seuil."""
     chemins = {palier: tmp_path / f"{palier}.txt" for palier in gmc.ORDRE_PALIERS}
     monkeypatch.setattr(gmc, "FICHIERS_VOCABULAIRE_PALIER", chemins)
@@ -229,9 +235,9 @@ def test_generer_tous_paliers_ecrit_les_cinq_fichiers(tmp_path, monkeypatch):
         lexique,
         [
             ("tres", 10.0, 10.0),      # >= 3.0 : dans tous les paliers
-            ("moyen", 1.5, 1.5),       # >= 1.0 mais < 2.0 : intermédiaire/avancé/expert
-            ("faible", 0.6, 0.6),      # >= 0.5 mais < 1.0 : avancé/expert seuls
-            ("nul", 0.0, 0.0),         # présent mais fréquence nulle : expert seul
+            ("moyen", 1.5, 1.5),       # >= 1.0 mais < 2.0 : intermédiaire/avancé
+            ("faible", 0.6, 0.6),      # >= 0.5 mais < 1.0 : avancé seul
+            ("nul", 0.0, 0.0),         # présent mais fréquence nulle : aucun palier
         ],
     )
     freq = gmc.lire_frequences_lexique(lexique)
@@ -244,7 +250,7 @@ def test_generer_tous_paliers_ecrit_les_cinq_fichiers(tmp_path, monkeypatch):
     assert effectifs["facile"] == 1       # TRES seul (seuil 2.0)
     assert effectifs["intermediaire"] == 2  # TRES + MOYEN (seuil 1.0)
     assert effectifs["avance"] == 3       # + FAIBLE (seuil 0.5)
-    assert effectifs["expert"] == 4       # + NUL (seuil 0.0, intersection brute)
+    assert "expert" not in effectifs      # plus de palier de fichier pour EXPERT
 
     for palier, chemin in chemins.items():
         assert chemin.exists()
@@ -253,7 +259,7 @@ def test_generer_tous_paliers_ecrit_les_cinq_fichiers(tmp_path, monkeypatch):
 
 
 def test_generer_tous_paliers_dry_run_ecrit_rien(tmp_path, monkeypatch):
-    """``dry_run=True`` mesure sans écrire aucun des cinq fichiers."""
+    """``dry_run=True`` mesure sans écrire aucun des quatre fichiers."""
     chemins = {palier: tmp_path / f"{palier}.txt" for palier in gmc.ORDRE_PALIERS}
     monkeypatch.setattr(gmc, "FICHIERS_VOCABULAIRE_PALIER", chemins)
 
@@ -268,7 +274,7 @@ def test_generer_tous_paliers_dry_run_ecrit_rien(tmp_path, monkeypatch):
 
 
 def test_main_tous_produit_le_recapitulatif(tmp_path, monkeypatch, capsys):
-    """``main(["--tous"])`` génère les cinq fichiers et affiche un récapitulatif."""
+    """``main(["--tous"])`` génère les quatre fichiers et affiche un récapitulatif."""
     chemins = {palier: tmp_path / f"{palier}.txt" for palier in gmc.ORDRE_PALIERS}
     monkeypatch.setattr(gmc, "FICHIERS_VOCABULAIRE_PALIER", chemins)
     monkeypatch.setattr(gmc, "charger_ods", lambda: {"MAISON", "ZEBRE"})
