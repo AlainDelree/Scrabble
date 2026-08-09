@@ -83,7 +83,7 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2
 SolidCompression=yes
 OutputDir=C:\Temp\ScrabbleOutput
-OutputBaseFilename=Scrabble-Setup
+OutputBaseFilename=Scrabble-Setup-v{#ScrabbleBuildInstalle}
 ; Application graphique volumineuse (~90 Mo) : pas de mode "onefile", on
 ; installe le contenu tel quel (cf. [Files] ci-dessous).
 ArchitecturesInstallIn64BitMode=x64compatible
