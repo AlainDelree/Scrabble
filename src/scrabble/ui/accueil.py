@@ -109,13 +109,19 @@ def _disponibilite_niveau(niveau: Niveau) -> tuple[bool, str | None]:
     Un niveau est indisponible quand son palier (:func:`resoudre_palier`) est
     connu mais que le fichier de vocabulaire correspondant est absent du
     disque (:func:`~scrabble.dictionnaire.dictionnaire.paliers_disponibles`).
-    :data:`~scrabble.moteur.ia.Niveau.CHAMPION_DU_MONDE` (palier ``None``) ne
-    dépend d'aucun fichier : toujours disponible.
+    :data:`~scrabble.moteur.ia.Niveau.EXPERT` et
+    :data:`~scrabble.moteur.ia.Niveau.CHAMPION_DU_MONDE` (ODS8 complet, sans
+    palier restreint depuis la refonte des niveaux, issue #400/#402) ne
+    dépendent d'aucun fichier : toujours disponibles. Le test explicite
+    ci-dessous ne dépend pas de ce que renvoie :func:`resoudre_palier` pour
+    EXPERT — défense en profondeur pendant la transition (issue #402).
 
     Renvoie ``(True, None)`` si disponible, ``(False, message)`` sinon, où
     ``message`` reprend le libellé retenu par l'issue : « <Niveau> en erreur,
     veuillez choisir un autre niveau. Prévenir Alain pour la réparation. ».
     """
+    if niveau in (Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE):
+        return True, None
     palier = resoudre_palier(niveau)
     if palier is None or paliers_disponibles().get(palier, False):
         return True, None
@@ -552,7 +558,7 @@ class ApiAccueil:
         Chaque niveau se résout vers un palier via
         :func:`~scrabble.moteur.ia.resoudre_palier` :
 
-        * un palier connu (5 premiers niveaux) → Trie restreint
+        * un palier connu (4 premiers niveaux) → Trie restreint
           (:func:`~scrabble.dictionnaire.dictionnaire.obtenir_trie_ia`), avec
           le chemin de vocabulaire et le chemin de cache propres à ce palier
           (:data:`~scrabble.dictionnaire.dictionnaire.FICHIERS_VOCABULAIRE_PALIER`,
@@ -560,11 +566,14 @@ class ApiAccueil:
           et ``palier=palier`` passé à ``obtenir_trie_ia`` — chemin distinct
           **et** défense en profondeur de l'en-tête, recommandation explicite
           du lot B ;
-        * ``None`` (CHAMPION_DU_MONDE) → Trie complet
+        * ``None`` (EXPERT, CHAMPION_DU_MONDE) → Trie complet
           (:func:`~scrabble.dictionnaire.dictionnaire.obtenir_trie`), en
           réutilisant ``trie_complet`` s'il est déjà construit par l'appelant
           (le Trie de validation de la partie, jamais reconstruit deux fois)
-          plutôt que d'en reconstruire un second.
+          plutôt que d'en reconstruire un second. EXPERT est traité comme
+          ``None`` explicitement ci-dessous, sans dépendre de la valeur
+          renvoyée par ``resoudre_palier`` (issue #400/#402 : refonte des
+          niveaux, même défense en profondeur qu'à :func:`_disponibilite_niveau`).
 
         Vocabulaire manquant (issue #369, point 5) : si le fichier de
         vocabulaire d'un palier **requis** (présent dans ``niveaux``) est
@@ -587,7 +596,7 @@ class ApiAccueil:
         """
         resultat: dict[Niveau, Any] = {}
         for niveau in dict.fromkeys(niveaux):  # dédoublonne, ordre préservé
-            palier = resoudre_palier(niveau)
+            palier = None if niveau is Niveau.EXPERT else resoudre_palier(niveau)
             if palier is None:
                 resultat[niveau] = (
                     trie_complet

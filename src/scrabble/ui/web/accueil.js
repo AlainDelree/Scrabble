@@ -437,8 +437,9 @@ document.addEventListener('DOMContentLoaded', async () => {
      * rendu visuel issue #371 lot F). Appelée une seule fois à l'affichage de
      * l'accueil (voir l'initialisation plus bas) : Béatrice voit l'état
      * indisponible AVANT de cliquer, elle ne clique pas pour échouer ensuite.
-     * Champion du monde ne dépend d'aucun fichier : toujours disponible,
-     * jamais concerné par cette fonction.
+     * Expert et Champion du monde (ODS8 complet, sans palier restreint depuis
+     * la refonte des niveaux, issue #400/#402) ne dépendent d'aucun fichier :
+     * toujours disponibles, jamais concernés par cette fonction.
      */
     async function appliquerDisponibiliteNiveaux() {
         let disponibilites;
