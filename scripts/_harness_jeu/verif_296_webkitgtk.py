@@ -34,7 +34,7 @@ setTimeout(() => {
       peut_ajouter_humain: true, peut_ajouter_ordinateur: true, peut_lancer: false,
       mode_belgicisme: false,
     }),
-    obtenir_niveaux: async () => ['Débutant','Facile','Intermédiaire','Expert'],
+    obtenir_niveaux: async () => ['Débutant','Facile','Intermédiaire','Avancé','Expert','Champion du monde'],
     lister_parties_en_cours: async () => [],
     obtenir_prenom_principal: async () => 'Alain',
     definir_mode_belgicisme: async (actif) => {
@@ -55,14 +55,14 @@ setTimeout(() => {
       joueurs: [
         {nom:'Alain', humain:true, niveau:null},
         {nom:'Béatrice', humain:true, niveau:null},
-        {nom:'Ordinateur 1', humain:false, niveau:'avance'},
-        {nom:'Ordinateur 2', humain:false, niveau:'expert'},
+        {nom:'Ordinateur 1', humain:false, niveau:'AVANCE'},
+        {nom:'Ordinateur 2', humain:false, niveau:'EXPERT'},
       ],
       nb_humains: 2, nb_ordinateurs: 2, nb_total: 4,
       peut_ajouter_humain: false, peut_ajouter_ordinateur: false, peut_lancer: true,
       mode_belgicisme: false,
     }),
-    obtenir_niveaux: async () => ['Débutant','Facile','Intermédiaire','Expert'],
+    obtenir_niveaux: async () => ['Débutant','Facile','Intermédiaire','Avancé','Expert','Champion du monde'],
     lister_parties_en_cours: async () => [
       {
         id: 1,
