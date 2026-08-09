@@ -61,11 +61,17 @@ class CoupNote:
         placement, hors lettres déjà présentes sur le plateau). Sert de base
         à la pénalité « hooks » de la sélection IA (voir
         :mod:`scrabble.moteur.ia`).
+    lettres_du_chevalet:
+        Lettres du chevalet effectivement posées par ce coup, dans l'ordre
+        des cases nouvelles : ``JOKER`` (``"*"``) pour un joker, sinon la
+        lettre de la tuile. Sert au calcul de la valeur du reliquat (leave
+        value) de la sélection IA.
     """
 
     coup: Coup
     detail: DetailScore
     nb_nouvelles: int
+    lettres_du_chevalet: tuple[str, ...]
 
     @property
     def score(self) -> int:
@@ -284,7 +290,13 @@ def generer_coups(
         if not nouvelles:
             continue
         detail = detailler_score(copie, nouvelles, coup.direction)
-        resultats.append(CoupNote(coup, detail, len(nouvelles)))
+        nouvelles_set = set(nouvelles)
+        lettres_du_chevalet = tuple(
+            JOKER if tuile.joker else tuile.lettre
+            for (l, c, tuile) in coup.cases()
+            if (l, c) in nouvelles_set
+        )
+        resultats.append(CoupNote(coup, detail, len(nouvelles), lettres_du_chevalet))
 
     # Trier par score décroissant
     resultats.sort(key=lambda cn: cn.score, reverse=True)

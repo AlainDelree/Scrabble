@@ -117,7 +117,7 @@ def _coup_note(mot: str, score: int, nb_nouvelles: int, cases_bonus=()) -> CoupN
         bonus_scrabble=0,
         total=score,
     )
-    return CoupNote(coup, detail, nb_nouvelles)
+    return CoupNote(coup, detail, nb_nouvelles, ())
 
 
 class TestScoreStrategique:
