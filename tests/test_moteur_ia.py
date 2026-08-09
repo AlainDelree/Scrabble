@@ -28,7 +28,14 @@ import pytest
 
 from scrabble.dictionnaire.dictionnaire import FICHIERS_VOCABULAIRE_PALIER, Trie
 from scrabble.moteur.generateur import CoupNote, generer_coups
-from scrabble.moteur.ia import Niveau, _score_strategique, choisir_coup, resoudre_palier
+from scrabble.moteur.ia import (
+    Niveau,
+    _POIDS_LEAVE,
+    _score_strategique,
+    choisir_coup,
+    leave_value,
+    resoudre_palier,
+)
 from scrabble.moteur.partie import (
     ACTION_COUP,
     ACTION_PASSE,
@@ -168,6 +175,49 @@ class TestScoreStrategique:
         ajustement_debutant = _score_strategique(cn, Niveau.DEBUTANT) - cn.score
         ajustement_expert = _score_strategique(cn, Niveau.EXPERT) - cn.score
         assert 0 < ajustement_debutant < ajustement_expert
+
+
+class TestLeaveValue:
+    """Valeur heuristique du reliquat et son intégration par niveau (issue #397)."""
+
+    def test_leave_value_liste_vide(self):
+        assert leave_value([]) == 0.0
+
+    def test_joker_plus_precieux_que_lettre_rare(self):
+        assert leave_value(["*"]) > leave_value(["Z"])
+
+    def test_chevalet_equilibre_bat_desequilibre(self):
+        assert leave_value(["A", "E", "I", "S", "R", "T", "N"]) > leave_value(
+            ["A", "E", "I", "O", "U", "Q", "Z"]
+        )
+
+    def test_bonus_equilibre_voyelles(self):
+        """Un reliquat à 3 voyelles (plage bonus 2-4) bat le même noyau
+        élargi aux 5 voyelles (hors plage, malus).
+
+        Note : l'issue #397 proposait ``["A", "E", "I", "O", "U", "U", "U"]``
+        comme second reliquat, mais les deux ``U`` supplémentaires ajoutent
+        plus de valeur brute (+4.0) que le malus d'équilibre n'en retire
+        (-8.0 net, cf. :func:`leave_value`), si bien que l'assertion ne
+        tenait pas (16.5 < 17.5). Reliquat corrigé à 5 lettres pour isoler
+        l'effet d'équilibre sans excès de valeur brute.
+        """
+        assert leave_value(["A", "E", "I"]) > leave_value(["A", "E", "I", "O", "U"])
+
+    def test_poids_leave_debutant_nul(self):
+        assert _POIDS_LEAVE[Niveau.DEBUTANT] == 0.0
+
+    def test_poids_leave_facile_nul(self):
+        assert _POIDS_LEAVE[Niveau.FACILE] == 0.0
+
+    def test_poids_leave_croissant(self):
+        assert (
+            _POIDS_LEAVE[Niveau.CHAMPION_DU_MONDE]
+            >= _POIDS_LEAVE[Niveau.EXPERT]
+            > _POIDS_LEAVE[Niveau.AVANCE]
+            > _POIDS_LEAVE[Niveau.INTERMEDIAIRE]
+            > _POIDS_LEAVE[Niveau.FACILE]
+        )
 
 
 # --------------------------------------------------------------------------- #
