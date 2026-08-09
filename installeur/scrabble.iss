@@ -42,10 +42,10 @@
 ; Déposé par build\rebuild_scrabble.bat avant l'appel à ISCC (Actualise.exe +
 ; son dossier _internal\, runtime Python + DLL, mode PyInstaller --onedir).
 #define MyActualiseSrcDir "C:\Temp\ScrabbleBuild\Actualise_dist"
-#define MyActualiseDir "{sd}\Actualise"
+#define MyActualiseDir "C:\Actualise"
 ; Ancien emplacement (une instance d'Actualise par application) : nettoyé
 ; avant installation si présent (issue #385, cf. [Code] ci-dessous).
-#define MyOldActualiseDir "{sd}\Actualise_Scrabble"
+#define MyOldActualiseDir "C:\Actualise_Scrabble"
 ; Numero de build de Scrabble reellement embarque dans ce setup (lu dans
 ; version.json a la racine du depot par rebuild_scrabble.bat, injecte via
 ; /DScrabbleBuildInstalle=<build>) ; "1" n'est qu'un repli de secours pour
