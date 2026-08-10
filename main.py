@@ -66,4 +66,16 @@ if __name__ == "__main__":
         except Exception:
             pass  # ne jamais bloquer le démarrage de Scrabble
 
+    # Lancement d'Actualise au démarrage (issue #405) : si l'application est
+    # installée, on la démarre en arrière-plan (subprocess non-bloquant) pour
+    # qu'elle puisse gérer les mises à jour de Scrabble. Absente ou en échec
+    # de lancement : on continue normalement, sans jamais bloquer ni faire
+    # planter le démarrage de Scrabble.
+    _actualise_exe = Path(r"C:\Actualise\Actualise.exe")
+    if _actualise_exe.exists():
+        try:
+            subprocess.Popen([str(_actualise_exe), "--config", "scrabble"])
+        except Exception:
+            pass  # ne jamais bloquer le démarrage de Scrabble
+
     raise SystemExit(main())
