@@ -75,7 +75,7 @@ if __name__ == "__main__":
     if _actualise_exe.exists():
         try:
             subprocess.Popen([str(_actualise_exe), "--config", "scrabble"])
-        except Exception:
-            pass  # ne jamais bloquer le démarrage de Scrabble
+        except Exception as exc:
+            print(f"[Scrabble] Lancement d'Actualise ignoré : {exc}", file=sys.stderr)
 
     raise SystemExit(main())
