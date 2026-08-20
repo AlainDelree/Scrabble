@@ -78,13 +78,12 @@ set "SETUP_NAME=Scrabble-Setup-v!SCRABBLE_BUILD!.exe"
 echo Nom de l'installeur : !SETUP_NAME!
 echo.
 
-REM --- 1. Copier les sources vers un repertoire local de la VM ---------------
-REM Contournement temporaire (~10 jours, avant migration vers PC Windows
-REM physique) : PyInstaller et ISCC produisent des fichiers tronques quand le
-REM build tourne directement sur le partage VirtualBox (\\VBOXSVR\...). On
-REM copie donc tout ce qui est necessaire au build vers un dossier local
-REM (C:\Temp\ScrabbleBuild), on construit entierement la-bas, puis on recopie
-REM uniquement l'installeur final vers le partage.
+REM --- 1. Copier les sources vers un repertoire local -------------------------
+REM Sur le PC fixe physique, PyInstaller et ISCC produisent des fichiers
+REM tronques quand le build tourne directement sur le partage local
+REM (C:\CCW_Share\...). On copie donc tout ce qui est necessaire au build vers
+REM un dossier local (C:\Temp\ScrabbleBuild), on construit entierement la-bas,
+REM puis on recopie uniquement l'installeur final vers le partage.
 echo [1/8] Copie des sources vers le repertoire de build local...
 set "LOCALBUILD=C:\Temp\ScrabbleBuild"
 if exist "%LOCALBUILD%" (
@@ -341,7 +340,7 @@ if "%PUBLIER%"=="1" (
     echo.
 ) else (
     echo Nettoyage du clone CCW (reset commits locaux)...
-    git -C Z:\CCW\scrabble reset --hard origin/master
+    git -C C:\CCW_Share\CCW\scrabble reset --hard origin/master
     echo Clone CCW propre.
     echo.
 )
