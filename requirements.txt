@@ -1,5 +1,10 @@
 # Dépendances du projet Scrabble.
 pywebview
+# pythonnet est une dépendance transitive de pywebview sous Windows (backend
+# EdgeChromium/WinForms) ; épinglée explicitement en 3.x car 2.5.2 n'a pas de
+# roue précompilée pour les nouvelles versions de Python et sa compilation
+# source échoue (nuget.exe legacy) — issue #411.
+pythonnet>=3.0,<4.0; sys_platform == "win32"
 pyinstaller
 pytest
 # Dépliage ("unmunch") du dictionnaire Hunspell fr-toutesvariantes
