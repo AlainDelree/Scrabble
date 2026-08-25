@@ -31,9 +31,6 @@ data/*.db
 # Journaux de diagnostic par session (scrabble.journal) — jamais commités
 logs/
 
-# Photos de plateaux réels fournies pour inspiration visuelle (non commitées)
-Exemples plateau/
-
 # Installeur Windows (Inno Setup, issue #217) : setup.exe générés jamais
 # commités (volumineux, régénérables via installeur\scrabble.iss) — seul le
 # script .iss et le README du dossier sont suivis. Voir installeur\README.md.
