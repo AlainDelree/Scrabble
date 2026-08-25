@@ -97,7 +97,6 @@ ELEMENTS_DICTIONNAIRE = [
     ("mots_courants_facile.txt", True),
     ("mots_courants_intermediaire.txt", True),
     ("mots_courants_avance.txt", True),
-    ("mots_courants_expert.txt", True),
     ("mots_ajoutes.txt", True),
     ("mots_ajoutes_hunspell.txt", True),
     ("mots_ajoutes_ods.txt", True),

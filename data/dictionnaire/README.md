@@ -28,17 +28,17 @@ Déposez manuellement ici, à cet emplacement, sans les ajouter au suivi git :
   Se régénère à tout moment ; n'a pas à être déposé manuellement.
 
 - `mots_courants_debutant.txt`, `mots_courants_facile.txt`,
-  `mots_courants_intermediaire.txt`, `mots_courants_avance.txt`,
-  `mots_courants_expert.txt` — vocabulaire IA par palier de difficulté (issue
-  #366, lot A), même croisement ODS8 × Lexique 3 à cinq seuils de fréquence
-  différents (respectivement ≥ 3,0, ≥ 2,0, ≥ 1,0, ≥ 0,5 et l'intersection
-  brute sans seuil pour Expert). Se produisent **tous en une seule commande** :
+  `mots_courants_intermediaire.txt`, `mots_courants_avance.txt` — vocabulaire
+  IA par palier de difficulté (issue #366, lot A ; refonte de l'échelle de
+  niveaux issue #401/#404), même croisement ODS8 × Lexique 3 à quatre seuils
+  de fréquence différents (respectivement ≥ 3,0, ≥ 2,0, ≥ 1,0 et ≥ 0,5). Se
+  produisent **tous en une seule commande** :
 
       python scripts/generer_mots_courants.py --tous
 
-  Le sixième palier, **Champion du monde**, ne nécessite **aucun fichier** :
-  il correspond à l'ODS8 complet, servi directement depuis le Trie déjà
-  chargé (`obtenir_trie()`). Ces cinq fichiers sont des sorties purement
+  Expert et Champion du monde ne nécessitent **aucun fichier** : ils
+  correspondent à l'ODS8 complet, servi directement depuis le Trie déjà
+  chargé (`obtenir_trie()`). Ces quatre fichiers sont des sorties purement
   dérivées (jamais éditées à la main) : la commande ci-dessus les réécrit
   systématiquement, sans confirmation ni `--force`.
 
