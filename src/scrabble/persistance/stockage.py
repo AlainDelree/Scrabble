@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-from scrabble.config import RACINE_PROJET
+from scrabble.config import RACINE_DONNEES_UTILISATEUR
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import (
     ACTION_COUP,
@@ -68,8 +68,9 @@ from scrabble.moteur.score import DetailMot, DetailScore
 from scrabble.moteur.validation import DictionnaireMots
 from scrabble.regles.plateau import TypeCase
 
-#: Emplacement par défaut de la base (dans ``data/``, gitignoré).
-CHEMIN_DEFAUT = RACINE_PROJET / "data" / "parties.db"
+#: Emplacement par défaut de la base (dans ``data/``, gitignoré), sous
+#: ``RACINE_DONNEES_UTILISATEUR`` (issue #421) : inscriptible sans droits admin.
+CHEMIN_DEFAUT = RACINE_DONNEES_UTILISATEUR / "data" / "parties.db"
 
 #: Valeurs de la colonne ``parties.statut``.
 STATUT_EN_COURS = "en_cours"

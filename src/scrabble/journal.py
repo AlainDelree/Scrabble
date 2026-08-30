@@ -52,10 +52,12 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any
 
-from scrabble.config import RACINE_PROJET
+from scrabble.config import RACINE_DONNEES_UTILISATEUR
 
-#: Dossier des journaux, à côté de ``data/`` et gitignoré comme lui.
-DOSSIER_LOGS = RACINE_PROJET / "logs"
+#: Dossier des journaux, à côté de ``data/`` et gitignoré comme lui. Sous
+#: ``RACINE_DONNEES_UTILISATEUR`` (issue #421) : des logs, comme la config ou
+#: les parties sauvegardées, doivent rester inscriptibles sans droits admin.
+DOSSIER_LOGS = RACINE_DONNEES_UTILISATEUR / "logs"
 
 #: Nom de l'index de fréquence des erreurs (dans le dossier des journaux).
 NOM_INDEX = "index_erreurs.json"

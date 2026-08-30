@@ -24,11 +24,32 @@ from typing import Any
 # bundle) : parents[2] pointerait alors hors du dossier de l'exécutable.
 # ``sys._MEIPASS`` (mode --onedir : le dossier de l'exe lui-même, persistant
 # d'un lancement à l'autre) est donc utilisé à la place quand l'app est gelée.
+#
+# ``RACINE_PROJET`` ne sert plus qu'aux ressources en lecture seule livrées
+# avec l'app (dictionnaires sources ODS/Hunspell, définitions...) : en mode
+# gelé, elle pointe vers le dossier d'installation (``Program Files\Scrabble``
+# typiquement), non inscriptible sans droits admin (issue #421). Les données
+# utilisateur (config, logs, parties, personnalisations/caches du dictionnaire)
+# doivent donc passer par ``RACINE_DONNEES_UTILISATEUR`` ci-dessous, qui pointe
+# vers un dossier dédié inscriptible sans droits admin (``C:\Scrabble``, racine
+# ``C:\`` non protégée comme ``Program Files``) une fois l'app gelée, et vers
+# ``RACINE_PROJET`` en mode non gelé (dev/tests, comportement inchangé).
 if getattr(sys, "frozen", False):
     RACINE_PROJET = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    RACINE_DONNEES_UTILISATEUR = Path(r"C:\Scrabble")
+    try:
+        RACINE_DONNEES_UTILISATEUR.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise RuntimeError(
+            f"Impossible de créer le dossier de données {RACINE_DONNEES_UTILISATEUR} "
+            "(config, sauvegardes de parties, dictionnaire personnalisé...). "
+            "Vérifiez qu'une politique de sécurité ne bloque pas l'écriture à la "
+            "racine de C:\\."
+        ) from exc
 else:
     RACINE_PROJET = Path(__file__).resolve().parents[2]
-CHEMIN_CONFIG = RACINE_PROJET / "config.json"
+    RACINE_DONNEES_UTILISATEUR = RACINE_PROJET
+CHEMIN_CONFIG = RACINE_DONNEES_UTILISATEUR / "config.json"
 
 # Valeurs par défaut sûres, utilisées quand le fichier est absent/corrompu.
 CONFIG_DEFAUT: dict[str, Any] = {

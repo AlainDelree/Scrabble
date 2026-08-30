@@ -21,6 +21,7 @@ import scrabble.dictionnaire.dictionnaire as d
 from scrabble.dictionnaire.dictionnaire import (
     CHEMINS_MODIFS,
     DOSSIER_DICO,
+    DOSSIER_DICO_UTILISATEUR,
     FICHIERS_CACHE_IA_PALIER,
     FICHIERS_VOCABULAIRE_PALIER,
     Dictionnaire,
@@ -100,7 +101,9 @@ def test_fichiers_cache_ia_palier_meme_cles_que_vocabulaire_et_chemins_distincts
     assert "champion_du_monde" not in FICHIERS_CACHE_IA_PALIER
     noms = set()
     for palier, chemin in FICHIERS_CACHE_IA_PALIER.items():
-        assert chemin.parent == DOSSIER_DICO
+        # Cache écrit à l'exécution : sous DOSSIER_DICO_UTILISATEUR, pas
+        # DOSSIER_DICO (sources en lecture seule livrées avec l'app, issue #421).
+        assert chemin.parent == DOSSIER_DICO_UTILISATEUR
         assert chemin.name == f"trie_ia_cache_{palier}.pkl"
         noms.add(chemin.name)
     assert len(noms) == 4  # aucun doublon de nom de fichier entre paliers

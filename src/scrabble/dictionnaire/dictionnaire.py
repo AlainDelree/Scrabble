@@ -67,13 +67,23 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from scrabble import journal
-from scrabble.config import RACINE_PROJET, charger_config
+from scrabble.config import RACINE_DONNEES_UTILISATEUR, RACINE_PROJET, charger_config
 
 # --------------------------------------------------------------------------- #
 # Emplacements des fichiers
 # --------------------------------------------------------------------------- #
 
+# Sources en lecture seule livrées avec l'app (ODS8/Hunspell déplié,
+# définitions, vocabulaire IA...) : jamais écrites à l'exécution, donc laissées
+# sous ``RACINE_PROJET`` (dossier d'installation en mode gelé, issue #421).
 DOSSIER_DICO = RACINE_PROJET / "data" / "dictionnaire"
+
+# Personnalisations et caches propres à l'utilisatrice (ajouts/retraits
+# manuels, Tries sérialisés en .pkl) : ces fichiers sont écrits à l'exécution,
+# donc placés sous ``RACINE_DONNEES_UTILISATEUR`` (issue #421), inscriptible
+# sans droits admin — distinct de ``DOSSIER_DICO`` pour ne jamais tenter
+# d'écrire dans le dossier d'installation.
+DOSSIER_DICO_UTILISATEUR = RACINE_DONNEES_UTILISATEUR / "data" / "dictionnaire"
 
 CHEMIN_ODS = (
     DOSSIER_DICO / "French-Scrabble-ODS8-main" / "French ODS dictionary.txt"
@@ -88,12 +98,12 @@ BASE_HUNSPELL = (
 # d'agrégation) ; ``chemins_modifs`` sélectionne la paire de la source demandée.
 CHEMINS_MODIFS: dict[str, tuple[Path, Path]] = {
     "ods": (
-        DOSSIER_DICO / "mots_ajoutes_ods.txt",
-        DOSSIER_DICO / "mots_retires_ods.txt",
+        DOSSIER_DICO_UTILISATEUR / "mots_ajoutes_ods.txt",
+        DOSSIER_DICO_UTILISATEUR / "mots_retires_ods.txt",
     ),
     "hunspell": (
-        DOSSIER_DICO / "mots_ajoutes_hunspell.txt",
-        DOSSIER_DICO / "mots_retires_hunspell.txt",
+        DOSSIER_DICO_UTILISATEUR / "mots_ajoutes_hunspell.txt",
+        DOSSIER_DICO_UTILISATEUR / "mots_retires_hunspell.txt",
     ),
 }
 # Statut « classique du jeu » (issue #204). Contrairement aux personnalisations
@@ -105,8 +115,8 @@ CHEMINS_MODIFS: dict[str, tuple[Path, Path]] = {
 # normalisation. La liste candidate initiale (~531 mots) est produite par
 # ``scripts/generer_classiques.py`` et amorce ``classiques_ajoutes.txt``.
 CHEMINS_CLASSIQUES: tuple[Path, Path] = (
-    DOSSIER_DICO / "classiques_ajoutes.txt",
-    DOSSIER_DICO / "classiques_retires.txt",
+    DOSSIER_DICO_UTILISATEUR / "classiques_ajoutes.txt",
+    DOSSIER_DICO_UTILISATEUR / "classiques_retires.txt",
 )
 
 # Vocabulaire « humain » de l'IA (issue #205) : liste des mots courants produite
@@ -146,7 +156,7 @@ FICHIERS_VOCABULAIRE_PALIER: dict[str, Path] = {
 # résolvent vers :func:`obtenir_trie` et réutilisent le cache du Trie complet
 # existant (:data:`CHEMIN_CACHE`), sans notion de palier.
 FICHIERS_CACHE_IA_PALIER: dict[str, Path] = {
-    palier: DOSSIER_DICO / f"trie_ia_cache_{palier}.pkl"
+    palier: DOSSIER_DICO_UTILISATEUR / f"trie_ia_cache_{palier}.pkl"
     for palier in FICHIERS_VOCABULAIRE_PALIER
 }
 
@@ -181,7 +191,7 @@ def paliers_disponibles(
 # (``ConfigPartie.mode_belgicisme``) — voir :func:`charger_belgicismes`.
 CHEMIN_BELGICISMES = DOSSIER_DICO / "belgicismes_a_revoir.csv"
 
-CHEMIN_CACHE = DOSSIER_DICO / "trie_cache.pkl"
+CHEMIN_CACHE = DOSSIER_DICO_UTILISATEUR / "trie_cache.pkl"
 # Cache disque du Trie restreint de l'IA (issue #206), distinct du cache du Trie
 # complet. Invalidé par mtime des mêmes sources que le Trie complet, plus
 # ``mots_courants.txt`` et la paire ``classiques_ajoutes/retires.txt``.
@@ -193,7 +203,7 @@ CHEMIN_CACHE = DOSSIER_DICO / "trie_cache.pkl"
 # ``obtenir_trie_ia(source, mode_belgicisme=...)`` sans notion de palier). Le
 # lot C, quand il branchera plusieurs paliers, utilisera
 # :data:`FICHIERS_CACHE_IA_PALIER` pour les chemins propres à chaque palier.
-CHEMIN_CACHE_IA = DOSSIER_DICO / "trie_ia_cache.pkl"
+CHEMIN_CACHE_IA = DOSSIER_DICO_UTILISATEUR / "trie_ia_cache.pkl"
 # Index mot → définition(s) restreint aux mots de l'ODS8 (issue #15). Ce fichier
 # est volumineux et gitignoré : construit hors-ligne par
 # ``scripts/construire_definitions.py``. Son absence est tolérée (dict vide).
