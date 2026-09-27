@@ -2,6 +2,140 @@
 
 Convention d'ajout : voir §10 de BRIDGE_AGENT_DOC.md.
 
+### Corrigé
+
+- **Issue #427** — `PermissionError [WinError 5]` au premier lancement sur un
+  compte Windows standard (non-administrateur), confirmé en conditions
+  réelles. La correction de l'issue #421 redirigeait déjà toutes les
+  écritures runtime (logs, `config.json`, `parties.db`, caches/personnali-
+  sations du dictionnaire) vers un dossier unique `RACINE_DONNEES_UTILISATEUR`
+  hors du dossier d'installation — mais avait choisi `C:\Scrabble` (racine du
+  disque système) en le supposant non protégé comme `Program Files`. Testé en
+  situation réelle, cette hypothèse s'est révélée fausse : Windows refuse
+  aussi la création de dossiers à la racine de `C:\` à un compte standard.
+  `src/scrabble/config.py` calcule désormais ce dossier via
+  `%LOCALAPPDATA%\Scrabble` sous Windows (`os.environ["LOCALAPPDATA"]`,
+  emplacement conçu pour les données utilisateur, toujours inscriptible sans
+  droits admin), avec repli XDG (`~/.local/share/Scrabble`) si l'app gelée
+  tournait un jour hors Windows. Comme tous les autres modules (`journal.py`,
+  `persistance/stockage.py`, `dictionnaire/dictionnaire.py`) dérivaient déjà
+  leurs chemins d'écriture de cette même constante, aucun autre fichier n'a dû
+  être modifié. Comportement inchangé en mode non gelé (dev/tests sous
+  Linux) : `RACINE_DONNEES_UTILISATEUR` reste la racine du projet.
+
+# Changelog — Issue #413
+
+## Corrigé
+- `build/rebuild_scrabble.bat` : échappement des parenthèses dans le `echo`
+  du bloc `else` final (branche hors `--publier`), qui cassait
+  l'interpréteur batch (« ... was unexpected at this time. ») et empêchait
+  le `git reset --hard` final de s'exécuter.
+
+# Issue #404 : refonte niveaux — tests et scripts (D/4)
+
+Dernier lot de la refonte de l'échelle des niveaux IA (issue #400) : aligne
+`tests/` et `scripts/` sur le nouveau mapping (DEBUTANT top 70 %, FACILE
+top 33 %, INTERMEDIAIRE top 15 %, AVANCE meilleur coup, EXPERT top 5 %/ODS8
+complet, CHAMPION_DU_MONDE inchangé).
+
+- `tests/test_moteur_ia.py` : tests de monotonie et de stratégie par niveau
+  entièrement réécrits pour les nouvelles tranches ; nouvelle classe
+  `TestExpert` (top 5 %) ; `_NIVEAUX_SANS_PALIER` pour simuler le câblage
+  vocabulaire réel (EXPERT et CHAMPION_DU_MONDE sur le Trie complet, les
+  quatre autres niveaux sur leur palier restreint).
+- `tests/test_accueil.py` : disponibilité et construction du Trie IA
+  alignées sur EXPERT traité comme CHAMPION_DU_MONDE (toujours disponible,
+  sans fichier de palier) ; nouveaux tests dédiés
+  (`test_expert_toujours_disponible`,
+  `test_construire_trie_ia_expert_reutilise_trie_complet`, etc.).
+  `tests/test_accueil_niveaux_visuels.py` : aucun changement nécessaire
+  (contenu purement CSS/HTML/JS, non affecté).
+- `tests/test_dictionnaire.py` et `tests/test_generer_mots_courants.py` :
+  alignés sur les quatre paliers de fichier restants (debutant/facile/
+  intermediaire/avance, plus de clé "expert").
+- `tests/test_moteur_partie.py`, `test_persistance.py`,
+  `test_jeu_serialisation.py` et les petits fichiers `test_jeu_*`/
+  `test_application.py`/`test_journal_integration.py`/`_aides_test_jeu.py` :
+  audités, aucun changement nécessaire (les niveaux n'y servent que de
+  valeur de configuration arbitraire, sans dépendre de la stratégie précise
+  d'un niveau). `test_config.py` confirmé sans rapport avec l'enum `Niveau`
+  (clé `"niveau_ia"` vestige indépendante).
+- `scripts/generer_mots_courants.py` : `SEUILS_PALIER`/`ORDRE_PALIERS`
+  réduits aux quatre paliers restants, docstring et messages CLI mis à jour
+  (suppression de toute référence au palier "expert").
+- `scripts/mesurer_force_niveaux.py` : docstring (exemples de commandes,
+  description du câblage vocabulaire) mise à jour — EXPERT rejoint
+  CHAMPION_DU_MONDE comme niveau sans palier restreint.
+- `scripts/_harness_jeu/verif_296_webkitgtk.py` et
+  `verif_belgicisme_292_webkitgtk.py` : mock `obtenir_niveaux` étendu aux
+  six niveaux réels (au lieu de quatre) ; configurations de joueurs IA
+  `niveau:'avance'`/`niveau:'expert'` corrigées en `'AVANCE'`/`'EXPERT'`
+  (noms d'enum en majuscules, format réellement envoyé par l'API réelle).
+
+## Résultat des tests
+
+`pytest tests/ -q --timeout=120` : **891 passed, 9 failed** (sur 900 tests).
+
+- **4 échecs attendus**, dus à l'issue #402 (B/4, `dictionnaire.py`/
+  `accueil.py`) pas encore mergée dans cette branche — `dictionnaire.py` y a
+  toujours l'ancien `FICHIERS_VOCABULAIRE_PALIER` à 5 clés (avec "expert") :
+  `test_dictionnaire.py::test_fichiers_vocabulaire_palier_quatre_entrees_sous_dossier_dico`,
+  `test_dictionnaire.py::test_fichiers_cache_ia_palier_meme_cles_que_vocabulaire_et_chemins_distincts`,
+  `test_generer_mots_courants.py::test_ordre_et_seuils_paliers_couvrent_les_memes_cles`,
+  `test_moteur_ia.py::TestResoudrePalier::test_paliers_resolus_correspondent_aux_cles_du_vocabulaire_ia`.
+  Passeront dès que #402 sera mergé dans cette branche.
+- **5 échecs préexistants, sans rapport avec la refonte des niveaux**
+  (vérifiés identiques avant nos modifications, via `git stash`) :
+  `test_accueil.py::TestApiAccueilInfosTirage::test_infos_tirage_memorisees`
+  (fichiers de vocabulaire par palier absents du disque dans cet
+  environnement de dev), `test_application.py::TestRoutageVueActive::…` et
+  `test_application.py::TestParcoursCompletUnifie::…` (thème persisté par un
+  `config.json` local), `test_journal_integration.py::TestJournalAccueil::…`
+  ×2 (assertions sur le contenu exact des messages de journal).
+
+# Issue #402 : refonte niveaux — dictionnaire, accueil.py, UI HTML/JS (B/4)
+
+Suite de la refonte de l'échelle des niveaux IA (issue #400) : EXPERT
+utilise désormais l'ODS8 complet (comme CHAMPION_DU_MONDE), sans palier de
+vocabulaire restreint.
+
+- `dictionnaire.py` : suppression de la clé `"expert"` de
+  `FICHIERS_VOCABULAIRE_PALIER` (4 entrées restantes : debutant/facile/
+  intermediaire/avance) ; commentaires et docstrings mis à jour partout où
+  seul CHAMPION_DU_MONDE était mentionné comme niveau sans palier ; `VERSION_CACHE`
+  incrémentée (3 → 4) pour invalider les caches Trie IA existants construits
+  sous l'ancien mapping.
+- `accueil.py` : `_disponibilite_niveau()` traite désormais EXPERT comme
+  CHAMPION_DU_MONDE — toujours disponible, sans vérification de fichier
+  palier. `_construire_trie_ia()` corrigé dans la foulée (même défense en
+  profondeur) : sans ce correctif, une partie avec un ordinateur Expert
+  levait un `KeyError: 'expert'` tant que `moteur/ia.py::resoudre_palier`
+  n'a pas lui-même été mis à jour par le lot complémentaire (hors périmètre
+  de cette issue). `NIVEAUX_LABELS` vérifié cohérent (6 entrées, inchangé).
+- `accueil.js` : commentaire de `appliquerDisponibiliteNiveaux` mis à jour
+  (EXPERT + Champion du monde, sans fichier palier). `jeu.js` déjà
+  cohérent, aucun changement nécessaire.
+
+Point d'attention : `moteur/ia.py` (`resoudre_palier`, hors périmètre
+strict de cette issue) mappe encore `Niveau.EXPERT` vers la clé de palier
+`"expert"` — ce module doit être mis à jour par un lot complémentaire pour
+que la cohérence soit complète. Plusieurs tests existants (`test_accueil.py`,
+`test_dictionnaire.py`, `test_moteur_ia.py`, `test_generer_mots_courants.py`)
+vérifient encore l'ancien mapping à 5 paliers et échoueront jusqu'à cette
+mise à jour ; les tests n'étaient pas dans le périmètre de cette issue.
+
+### Ajouté
+
+- **Issue #353** — Mode optionnel `--publier [N]` dans
+  `build/rebuild_scrabble.bat`. Sans paramètre, le script se comporte
+  exactement comme avant. Avec `--publier`, après un build réussi : calcul
+  du SHA-256 de `installeur\output\scrabble.zip` (PowerShell
+  `Get-FileHash`), détermination du numéro de build (celui fourni en
+  paramètre, sinon incrément de 1 du `build` actuel de `version.json` à la
+  racine du clone), écriture de `version.json`, puis `git add` + `git
+  commit`. Le script n'exécute jamais `git push` ni `gh release create` —
+  un rappel explicite les mentionne comme étapes manuelles restantes.
+
 Historique des changements notables, par ordre antéchronologique. Voir aussi
 `git log` pour le détail commit par commit (convention `Issue #NNN : ...`).
 
