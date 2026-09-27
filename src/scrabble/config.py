@@ -28,23 +28,39 @@ from typing import Any
 # ``RACINE_PROJET`` ne sert plus qu'aux ressources en lecture seule livrées
 # avec l'app (dictionnaires sources ODS/Hunspell, définitions...) : en mode
 # gelé, elle pointe vers le dossier d'installation (``Program Files\Scrabble``
-# typiquement), non inscriptible sans droits admin (issue #421). Les données
-# utilisateur (config, logs, parties, personnalisations/caches du dictionnaire)
-# doivent donc passer par ``RACINE_DONNEES_UTILISATEUR`` ci-dessous, qui pointe
-# vers un dossier dédié inscriptible sans droits admin (``C:\Scrabble``, racine
-# ``C:\`` non protégée comme ``Program Files``) une fois l'app gelée, et vers
-# ``RACINE_PROJET`` en mode non gelé (dev/tests, comportement inchangé).
+# ou ``%LOCALAPPDATA%\Programs\Scrabble`` selon l'installeur), potentiellement
+# non inscriptible sans droits admin. Les données utilisateur (config, logs,
+# parties, personnalisations/caches du dictionnaire) doivent donc passer par
+# ``RACINE_DONNEES_UTILISATEUR`` ci-dessous, qui pointe vers un dossier dédié
+# une fois l'app gelée, et vers ``RACINE_PROJET`` en mode non gelé (dev/tests,
+# comportement inchangé).
+#
+# Ce dossier dédié a d'abord été ``C:\Scrabble`` (issue #421), en pensant la
+# racine de ``C:\`` non protégée comme ``Program Files``. Testé en conditions
+# réelles sur un compte Windows standard (issue #427), cette hypothèse s'est
+# révélée fausse : Windows refuse aussi la création de dossiers à la racine
+# de ``C:\`` à un compte non-administrateur. ``%LOCALAPPDATA%`` (typiquement
+# ``C:\Users\<compte>\AppData\Local``) est l'emplacement conçu pour ça et
+# toujours inscriptible par le compte qui l'exécute, admin ou non.
 if getattr(sys, "frozen", False):
     RACINE_PROJET = Path(sys._MEIPASS)  # type: ignore[attr-defined]
-    RACINE_DONNEES_UTILISATEUR = Path(r"C:\Scrabble")
+    if sys.platform == "win32":
+        _dossier_local = os.environ.get("LOCALAPPDATA")
+        _base_donnees_utilisateur = (
+            Path(_dossier_local) if _dossier_local else Path.home() / "AppData" / "Local"
+        )
+    else:
+        # L'app n'est empaquetée (PyInstaller) que pour Windows ; ce repli XDG
+        # ne sert qu'à couvrir un build gelé exécutée hors Windows (dev/tests).
+        _dossier_xdg = os.environ.get("XDG_DATA_HOME")
+        _base_donnees_utilisateur = Path(_dossier_xdg) if _dossier_xdg else Path.home() / ".local" / "share"
+    RACINE_DONNEES_UTILISATEUR = _base_donnees_utilisateur / "Scrabble"
     try:
         RACINE_DONNEES_UTILISATEUR.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise RuntimeError(
             f"Impossible de créer le dossier de données {RACINE_DONNEES_UTILISATEUR} "
-            "(config, sauvegardes de parties, dictionnaire personnalisé...). "
-            "Vérifiez qu'une politique de sécurité ne bloque pas l'écriture à la "
-            "racine de C:\\."
+            "(config, sauvegardes de parties, dictionnaire personnalisé...)."
         ) from exc
 else:
     RACINE_PROJET = Path(__file__).resolve().parents[2]
