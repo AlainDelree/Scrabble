@@ -339,16 +339,16 @@ if "%PUBLIER%"=="1" (
     echo place^), aucun reset. Push et release restent MANUELS.
     echo.
 ) else (
-    echo Verification des commits locaux non pousses dans C:\CCW_Share\CCW\scrabble...
+    echo Verification des commits locaux non pousses dans %ORIGDIR%...
     set "UNPUSHED_COUNT="
-    for /f "usebackq" %%c in (`git -C C:\CCW_Share\CCW\scrabble rev-list --count origin/master..HEAD 2^>nul`) do set "UNPUSHED_COUNT=%%c"
+    for /f "usebackq" %%c in (`git -C %ORIGDIR% rev-list --count origin/master..HEAD 2^>nul`) do set "UNPUSHED_COUNT=%%c"
     if "!UNPUSHED_COUNT!"=="" set "UNPUSHED_COUNT=0"
     if not "!UNPUSHED_COUNT!"=="0" (
         echo.
         echo ****************************************************************
         echo *  ATTENTION : RESET IGNORE - COMMITS LOCAUX NON POUSSES       *
         echo ****************************************************************
-        echo !UNPUSHED_COUNT! commit^(s^) present^(s^) dans C:\CCW_Share\CCW\scrabble
+        echo !UNPUSHED_COUNT! commit^(s^) present^(s^) dans %ORIGDIR%
         echo ^(HEAD^) ne sont pas encore pousses sur origin/master. Le reset --hard
         echo a ete saute pour ne pas les ecraser. Poussez ou sauvegardez ces
         echo commits avant de relancer un build.
@@ -356,7 +356,7 @@ if "%PUBLIER%"=="1" (
         echo.
     ) else (
         echo Aucun commit local non pousse : nettoyage du clone CCW ^(reset^)...
-        git -C C:\CCW_Share\CCW\scrabble reset --hard origin/master
+        git -C %ORIGDIR% reset --hard origin/master
         echo Clone CCW propre.
         echo.
     )
