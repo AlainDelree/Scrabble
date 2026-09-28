@@ -360,8 +360,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Gestionnaires d'événements ---
 
-    // Bouton ajouter humain
-    btnAjouterHumain.addEventListener('click', async () => {
+    /**
+     * Ajoute le joueur humain de référence, ou ouvre la modale de saisie
+     * (prénom + avatar) à défaut.
+     *
+     * Logique du clic sur « Ajouter un joueur » — extraite ici (issue #434)
+     * pour être réutilisée à l'ouverture de l'écran : si aucun humain n'est
+     * encore présent dans la configuration en cours, cette même saisie doit
+     * être proposée d'office, sans attendre que l'utilisateur clique.
+     */
+    async function proposerAjoutHumain() {
         const prenomPrincipal = await api.obtenir_prenom_principal();
 
         // Si prénom principal existe ET c'est le premier humain, ajouter directement
@@ -378,7 +386,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         checkboxSauvegarder.checked = false;
         afficherModale(modaleHumain);
         inputPrenom.focus();
-    });
+    }
+
+    // Bouton ajouter humain
+    btnAjouterHumain.addEventListener('click', proposerAjoutHumain);
 
     // Formulaire ajout humain
     formHumain.addEventListener('submit', async (e) => {
@@ -992,4 +1003,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Contrôle de disponibilité des niveaux À L'AFFICHAGE (issue #369 lot C,
     // rendu visuel issue #371 lot F), pas seulement au lancement.
     await appliquerDisponibiliteNiveaux();
+
+    // Issue #434 : aucune configuration de partie ne doit démarrer sans
+    // joueur humain présent (ou en cours de saisie). Le seeding automatique
+    // côté Python (initialiser_joueur_humain, issue #141) ne s'applique que
+    // si un prénom principal est déjà enregistré dans les réglages ; à
+    // défaut, ou à l'ouverture initiale, on propose ici la même saisie que
+    // le clic sur « Ajouter un joueur », sans attendre d'action de
+    // l'utilisateur.
+    if (etatInitial.nb_humains === 0 && etatInitial.peut_ajouter_humain) {
+        await proposerAjoutHumain();
+    }
 });
