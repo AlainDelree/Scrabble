@@ -37,6 +37,7 @@ from scrabble.moteur.generateur import CoupNote, generer_coups
 from scrabble.moteur.ia import (
     Niveau,
     _POIDS_LEAVE,
+    ProfilPersonnage,
     _score_strategique,
     choisir_coup,
     leave_value,
@@ -586,6 +587,129 @@ class TestReproductibilite:
             coup1 = choisir_coup(plateau, chevalet, dico, niveau, random.Random(123))
             coup2 = choisir_coup(plateau, chevalet, dico, niveau, random.Random(123))
             assert coup1 == coup2
+
+
+# --------------------------------------------------------------------------- #
+# Profil de personnage (issue #438, lot A) : couche additive sans effet
+# --------------------------------------------------------------------------- #
+
+
+class TestProfilPersonnageNeutre:
+    """Un profil vide (tous champs ``None``) doit être un pur no-op.
+
+    C'est la garantie centrale du lot A : l'infrastructure de personnage ne
+    doit avoir AUCUN effet observable tant qu'aucun champ n'est renseigné —
+    ni sur le score stratégique, ni sur le coup choisi, pour aucun niveau.
+    """
+
+    @pytest.mark.parametrize("niveau", list(Niveau))
+    def test_score_strategique_profil_vide_egale_absence_de_profil(self, niveau):
+        cn = _coup_note(
+            "CARDE", score=20, nb_nouvelles=5, cases_bonus=[(3, 3, TypeCase.MOT_TRIPLE)]
+        )
+        lettres_restantes = ["A", "E", "I", "S", "*"]
+        sans_profil = _score_strategique(cn, niveau, lettres_restantes)
+        avec_profil_vide = _score_strategique(
+            cn, niveau, lettres_restantes, profil=ProfilPersonnage()
+        )
+        avec_profil_none = _score_strategique(
+            cn, niveau, lettres_restantes, profil=None
+        )
+        assert avec_profil_vide == sans_profil
+        assert avec_profil_none == sans_profil
+
+    @pytest.mark.parametrize("niveau", list(Niveau))
+    def test_choisir_coup_profil_vide_egale_absence_de_profil(self, niveau):
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        dico = _trie("CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES")
+        for graine in range(20):
+            coup_sans_profil = choisir_coup(
+                plateau, chevalet, dico, niveau, random.Random(graine)
+            )
+            coup_profil_vide = choisir_coup(
+                plateau,
+                chevalet,
+                dico,
+                niveau,
+                random.Random(graine),
+                profil=ProfilPersonnage(),
+            )
+            assert coup_profil_vide == coup_sans_profil
+
+    def test_profil_par_defaut_a_tous_ses_champs_a_none(self):
+        """Valeur neutre explicite : un ``ProfilPersonnage()`` sans argument
+        ne surcharge rien — condition nécessaire au no-op ci-dessus."""
+        profil = ProfilPersonnage()
+        assert profil.malus_longueur is None
+        assert profil.bonus_premium is None
+        assert profil.poids_leave is None
+
+
+class TestProfilPersonnageSurcharge:
+    """Un champ renseigné surcharge bien le réglage du niveau, sans y toucher."""
+
+    def test_malus_longueur_surcharge(self):
+        hook = _coup_note("CADRES", score=10, nb_nouvelles=1)
+        sans_profil = _score_strategique(hook, Niveau.INTERMEDIAIRE)
+        avec_profil = _score_strategique(
+            hook,
+            Niveau.INTERMEDIAIRE,
+            profil=ProfilPersonnage(malus_longueur=0),
+        )
+        assert avec_profil != sans_profil
+        assert avec_profil == hook.score
+
+    def test_bonus_premium_surcharge(self):
+        cn = _coup_note(
+            "CARDE", score=20, nb_nouvelles=5, cases_bonus=[(3, 3, TypeCase.MOT_TRIPLE)]
+        )
+        sans_profil = _score_strategique(cn, Niveau.EXPERT)
+        avec_profil = _score_strategique(
+            cn, Niveau.EXPERT, profil=ProfilPersonnage(bonus_premium=0)
+        )
+        assert avec_profil != sans_profil
+        assert avec_profil == cn.score
+
+    def test_poids_leave_surcharge(self):
+        cn = _coup_note("CAR", score=9, nb_nouvelles=3)
+        lettres_restantes = ["A", "E", "I", "S", "*"]
+        sans_profil = _score_strategique(cn, Niveau.DEBUTANT, lettres_restantes)
+        avec_profil = _score_strategique(
+            cn,
+            Niveau.DEBUTANT,
+            lettres_restantes,
+            profil=ProfilPersonnage(poids_leave=1.0),
+        )
+        assert avec_profil != sans_profil
+
+    def test_les_reglages_par_niveau_restent_inchanges_apres_usage(self):
+        """Un profil ne doit jamais muter les dicts indexés par niveau."""
+        from scrabble.moteur.ia import _BONUS_PREMIUM, _MALUS_LONGUEUR, _POIDS_LEAVE
+
+        avant = (
+            dict(_MALUS_LONGUEUR),
+            dict(_BONUS_PREMIUM),
+            dict(_POIDS_LEAVE),
+        )
+        cn = _coup_note(
+            "CARDE", score=20, nb_nouvelles=5, cases_bonus=[(3, 3, TypeCase.MOT_TRIPLE)]
+        )
+        for niveau in Niveau:
+            _score_strategique(
+                cn,
+                niveau,
+                ["A", "E"],
+                profil=ProfilPersonnage(
+                    malus_longueur=-99, bonus_premium=99, poids_leave=9.0
+                ),
+            )
+        apres = (
+            dict(_MALUS_LONGUEUR),
+            dict(_BONUS_PREMIUM),
+            dict(_POIDS_LEAVE),
+        )
+        assert avant == apres
 
 
 # --------------------------------------------------------------------------- #

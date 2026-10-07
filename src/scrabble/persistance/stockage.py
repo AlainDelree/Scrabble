@@ -87,9 +87,10 @@ _TypeChemin = str | Path
 class ResumePartie:
     """Fiche synthétique d'une partie pour un écran de sélection/historique.
 
-    ``joueurs`` liste des dictionnaires ``{"nom", "humain", "niveau"}`` (niveau
-    ``None`` pour un humain). ``scores_finaux`` et ``gagnants`` valent ``None``
-    tant que la partie n'est pas terminée.
+    ``joueurs`` liste des dictionnaires ``{"nom", "humain", "niveau",
+    "personnage"}`` (niveau ``None`` pour un humain ; personnage une chaîne
+    vide par défaut, issue #438 lot A). ``scores_finaux`` et ``gagnants``
+    valent ``None`` tant que la partie n'est pas terminée.
 
     ``scores_actuels`` donne, dans l'ordre de ``joueurs``, le score courant de
     chaque joueur (issue #76). Il est déduit sans rejeu de la partie : c'est le
@@ -199,6 +200,7 @@ def _joueurs_vers_json(joueurs: list[Joueur]) -> str:
                 "nom": j.nom,
                 "humain": j.humain,
                 "niveau": None if j.niveau is None else j.niveau.name,
+                "personnage": j.personnage,
             }
             for j in joueurs
         ],
@@ -617,6 +619,10 @@ def _reconstruire_joueurs(config: list[dict]) -> list[Joueur]:
                 nom=donnees["nom"],
                 humain=bool(donnees["humain"]),
                 niveau=None if niveau is None else Niveau[niveau],
+                # ``.get(..., "")`` : rétro-compatible avec une partie
+                # sauvegardée avant l'issue #438 (lot A), dont le JSON ne
+                # porte pas cette clé.
+                personnage=donnees.get("personnage", ""),
             )
         )
     return joueurs

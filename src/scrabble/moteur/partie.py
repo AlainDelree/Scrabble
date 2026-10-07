@@ -99,6 +99,11 @@ class Joueur:
     Pour un joueur IA (``humain=False``), le champ ``niveau`` indique la
     stratégie de sélection de coup (:class:`~scrabble.moteur.ia.Niveau`).
     Pour un joueur humain, ``niveau`` doit rester ``None``.
+
+    ``personnage`` (issue #438, lot A) est une chaîne vide par défaut :
+    aucun personnage n'est encore sélectionnable (infrastructure neutre
+    uniquement), le champ n'est donc consulté nulle part dans le moteur pour
+    l'instant — seulement sérialisé, symétriquement à ``niveau``.
     """
 
     nom: str
@@ -106,6 +111,7 @@ class Joueur:
     chevalet: list[str] = field(default_factory=list)
     score: int = 0
     niveau: Niveau | None = None
+    personnage: str = ""
 
     def valeur_chevalet(self) -> int:
         """Somme des valeurs des lettres encore sur le chevalet (jokers = 0)."""
@@ -471,7 +477,9 @@ class Partie:
 
     # -- Tours automatiques (IA) ---------------------------------------- #
 
-    def jouer_tour_ia(self) -> EntreeHistorique:
+    def jouer_tour_ia(
+        self, profil: ia.ProfilPersonnage | None = None
+    ) -> EntreeHistorique:
         """Joue le tour du joueur courant s'il est une IA.
 
         L'IA choisit un coup via :func:`scrabble.moteur.ia.choisir_coup` selon
@@ -480,6 +488,16 @@ class Partie:
         **niveau du joueur courant** (:attr:`dictionnaires_ia`), pas un Trie
         global partagé par toutes les IA de la table (issue #369, lot C) — un
         niveau absent du mapping retombe sur ``dictionnaire`` complet.
+
+        ``profil`` (issue #438, lot A) est transmis à
+        :func:`~scrabble.moteur.ia.choisir_coup`, en plus du niveau — jamais à
+        sa place. ``None`` (défaut) n'est pas transmis du tout (plutôt que
+        transmis explicitement comme ``None``), pour que l'appel reproduise
+        exactement le comportement d'avant son introduction, y compris vis-à-
+        vis des tests qui substituent :func:`~scrabble.moteur.ia.choisir_coup`
+        par un faux sans paramètre ``profil``. Aucun appelant actuel ne
+        renseigne ce paramètre encore (pas de personnage sélectionnable, voir
+        :attr:`Joueur.personnage`).
 
         :raises ActionInvalide: si le joueur courant est humain, n'a pas de
             niveau défini, ou la partie est finie.
@@ -495,9 +513,18 @@ class Partie:
                 f"Le joueur IA {joueur.nom!r} n'a pas de niveau défini."
             )
         dictionnaire_ia = self.dictionnaires_ia.get(joueur.niveau, self.dictionnaire)
-        coup = ia.choisir_coup(
-            self.plateau, joueur.chevalet, dictionnaire_ia, joueur.niveau
-        )
+        if profil is None:
+            coup = ia.choisir_coup(
+                self.plateau, joueur.chevalet, dictionnaire_ia, joueur.niveau
+            )
+        else:
+            coup = ia.choisir_coup(
+                self.plateau,
+                joueur.chevalet,
+                dictionnaire_ia,
+                joueur.niveau,
+                profil=profil,
+            )
         if coup is None:
             return self.passer()
         return self.jouer_coup(coup)

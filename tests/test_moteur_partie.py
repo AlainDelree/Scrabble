@@ -486,6 +486,48 @@ def test_jouer_tour_ia_refuse_joueur_humain():
         partie.jouer_tour_ia()
 
 
+def test_jouer_tour_ia_sans_profil_ne_transmet_pas_profil(monkeypatch):
+    """Sans ``profil``, l'appel à ``choisir_coup`` ne porte pas ce kwarg.
+
+    Garde-fou issue #438 (lot A) : un faux ``choisir_coup`` sans paramètre
+    ``profil`` (comme ceux déjà monkeypatchés par les tests existants) doit
+    continuer de fonctionner tant qu'aucun personnage n'est renseigné.
+    """
+    import scrabble.moteur.ia as ia_mod
+
+    partie = Partie(
+        [Joueur("IA", humain=False, niveau=Niveau.EXPERT)], _trie("CADRE"), graine=1
+    )
+    captures: dict = {}
+
+    def faux_choisir(plateau, chevalet, dictionnaire, niveau):
+        captures["appele"] = True
+        return None
+
+    monkeypatch.setattr(ia_mod, "choisir_coup", faux_choisir)
+    partie.jouer_tour_ia()
+    assert captures.get("appele") is True
+
+
+def test_jouer_tour_ia_avec_profil_le_transmet_a_choisir_coup(monkeypatch):
+    """Avec un ``profil`` explicite, il est bien transmis à ``choisir_coup``."""
+    import scrabble.moteur.ia as ia_mod
+
+    partie = Partie(
+        [Joueur("IA", humain=False, niveau=Niveau.EXPERT)], _trie("CADRE"), graine=1
+    )
+    profil = ia_mod.ProfilPersonnage(bonus_premium=0)
+    captures: dict = {}
+
+    def faux_choisir(plateau, chevalet, dictionnaire, niveau, profil=None):
+        captures["profil"] = profil
+        return None
+
+    monkeypatch.setattr(ia_mod, "choisir_coup", faux_choisir)
+    partie.jouer_tour_ia(profil=profil)
+    assert captures["profil"] is profil
+
+
 def test_jouer_tours_ia_enchaine_jusqu_a_un_humain():
     partie = creer_partie(["Humain"], _trie("CADRE"), nb_ia=1, graine=1)
     # Humain d'abord (index 0) : jouer_tours_ia ne doit rien faire.

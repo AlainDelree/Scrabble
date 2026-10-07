@@ -89,6 +89,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Sequence
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
@@ -281,8 +282,31 @@ def leave_value(lettres: Sequence[str]) -> float:
     return total
 
 
+@dataclass(frozen=True)
+class ProfilPersonnage:
+    """Surcharges optionnelles de réglages stratégiques (issue #438, lot A).
+
+    Pure couche additive par-dessus les réglages indexés par :class:`Niveau`
+    (:data:`_MALUS_LONGUEUR`, :data:`_BONUS_PREMIUM`, :data:`_POIDS_LEAVE`),
+    jamais une redéfinition de ces dicts : un profil absent (``None``) ou dont
+    tous les champs valent ``None`` (valeur par défaut) donne un comportement
+    identique bit à bit à l'absence de profil — c'est le personnage
+    « Classique ». Chaque champ non ``None`` remplace, pour ce coup, la valeur
+    indexée par niveau qu'il surcharge. Lots suivants : nouveaux champs pour
+    les personnages dont le style demande un calcul inédit (bonus bingo,
+    rareté, risque premium…).
+    """
+
+    malus_longueur: int | None = None
+    bonus_premium: int | None = None
+    poids_leave: float | None = None
+
+
 def _score_strategique(
-    cn: CoupNote, niveau: Niveau, lettres_restantes: Sequence[str] = ()
+    cn: CoupNote,
+    niveau: Niveau,
+    lettres_restantes: Sequence[str] = (),
+    profil: ProfilPersonnage | None = None,
 ) -> int:
     """Score ajusté servant UNIQUEMENT au tri des coups par niveau IA.
 
@@ -307,17 +331,35 @@ def _score_strategique(
     :data:`_POIDS_LEAVE` selon le niveau (nulle pour DEBUTANT/FACILE — ces
     niveaux restent inchangés) et arrondie à l'entier pour rester cohérente
     avec le type de retour ``int`` (issue #395).
+
+    ``profil`` (issue #438, lot A) permet de surcharger, pour ce coup, les
+    trois réglages ci-dessus — chaque champ non ``None`` remplace la valeur
+    indexée par ``niveau`` qu'il surcharge, les dicts ``_MALUS_LONGUEUR``/
+    ``_BONUS_PREMIUM``/``_POIDS_LEAVE`` restant par ailleurs la seule source
+    de vérité du calibrage. ``profil=None`` (ou tous ses champs ``None``,
+    défaut) reproduit exactement le calcul d'avant son introduction.
     """
+    malus_longueur = _MALUS_LONGUEUR[niveau]
+    bonus_premium = _BONUS_PREMIUM[niveau]
+    poids_leave = _POIDS_LEAVE[niveau]
+    if profil is not None:
+        if profil.malus_longueur is not None:
+            malus_longueur = profil.malus_longueur
+        if profil.bonus_premium is not None:
+            bonus_premium = profil.bonus_premium
+        if profil.poids_leave is not None:
+            poids_leave = profil.poids_leave
+
     ajustement = 0
 
     if cn.nb_nouvelles <= _SEUIL_PENALITE_LONGUEUR:
-        malus = _MALUS_LONGUEUR[niveau]
+        malus = malus_longueur
         if cn.nb_nouvelles == 1:
             malus *= 2
         ajustement += malus
 
     if any(mot.cases_bonus for mot in cn.detail.mots):
-        bonus = _BONUS_PREMIUM[niveau]
+        bonus = bonus_premium
         types_case = {
             type_case
             for mot in cn.detail.mots
@@ -327,8 +369,8 @@ def _score_strategique(
             bonus //= 2
         ajustement += bonus
 
-    if _POIDS_LEAVE[niveau] > 0.0:
-        ajustement += round(_POIDS_LEAVE[niveau] * leave_value(lettres_restantes))
+    if poids_leave > 0.0:
+        ajustement += round(poids_leave * leave_value(lettres_restantes))
 
     return cn.score + ajustement
 
@@ -339,6 +381,7 @@ def choisir_coup(
     dictionnaire: "TrieProtocol",
     niveau: Niveau,
     alea: random.Random | None = None,
+    profil: ProfilPersonnage | None = None,
 ) -> Coup | None:
     """Choisit un coup selon le niveau IA, ou None pour passer.
 
@@ -357,6 +400,10 @@ def choisir_coup(
         dictionnaire: Trie du dictionnaire.
         niveau: Stratégie de sélection à appliquer.
         alea: Générateur aléatoire optionnel pour reproductibilité.
+        profil: Surcharges optionnelles de personnage (issue #438, lot A),
+            consultées en plus des réglages indexés par ``niveau``, jamais à
+            leur place. ``None`` (défaut) reproduit exactement le
+            comportement d'avant son introduction.
 
     Returns:
         Le coup choisi, ou None si aucun coup n'est jouable (le joueur passe).
@@ -367,7 +414,11 @@ def choisir_coup(
 
     rng = alea if alea is not None else random.Random()
 
-    coups = sorted(coups, key=lambda cn: _score_strategique(cn, niveau), reverse=True)
+    coups = sorted(
+        coups,
+        key=lambda cn: _score_strategique(cn, niveau, profil=profil),
+        reverse=True,
+    )
 
     def _lettres_restantes(cn: CoupNote) -> list[str]:
         restantes = list(chevalet)
@@ -377,7 +428,9 @@ def choisir_coup(
 
     coups = sorted(
         coups,
-        key=lambda cn: _score_strategique(cn, niveau, _lettres_restantes(cn)),
+        key=lambda cn: _score_strategique(
+            cn, niveau, _lettres_restantes(cn), profil=profil
+        ),
         reverse=True,
     )
 

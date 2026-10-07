@@ -20,6 +20,8 @@ défaut (``data/parties.db``) n'est jamais touchée.
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from collections import Counter
 
 import pytest
@@ -244,6 +246,80 @@ def test_reprise_tous_les_niveaux_ia(tmp_path, niveau):
 
     reprise = reprendre_partie(id_partie, trie, chemin)
     assert reprise.joueurs[1].niveau == niveau
+
+
+# --------------------------------------------------------------------------- #
+# Personnage (issue #438, lot A) : sérialisation symétrique au niveau
+# --------------------------------------------------------------------------- #
+
+def test_reprise_personnage_vide_par_defaut(tmp_path):
+    """Un joueur sans personnage (défaut) se recharge avec ``personnage=""``."""
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie = Partie(
+        [Joueur("Humain"), Joueur("IA", humain=False, niveau=Niveau.EXPERT)],
+        trie,
+        graine=1,
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+
+    reprise = reprendre_partie(id_partie, trie, chemin)
+    assert reprise.joueurs[0].personnage == ""
+    assert reprise.joueurs[1].personnage == ""
+
+
+def test_reprise_personnage_aller_retour(tmp_path):
+    """Un personnage renseigné survit à l'aller-retour en base, symétrique au niveau."""
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie = Partie(
+        [
+            Joueur("Humain", personnage="Le Capitaine"),
+            Joueur("IA", humain=False, niveau=Niveau.EXPERT, personnage="Le Pirate"),
+        ],
+        trie,
+        graine=1,
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+
+    reprise = reprendre_partie(id_partie, trie, chemin)
+    assert reprise.joueurs[0].personnage == "Le Capitaine"
+    assert reprise.joueurs[1].personnage == "Le Pirate"
+
+
+def test_reprise_ancienne_sauvegarde_sans_cle_personnage(tmp_path):
+    """Une partie sauvegardée avant l'issue #438, sans clé ``personnage`` dans
+    le JSON des joueurs, se recharge normalement avec un personnage vide.
+
+    Simule une ancienne sauvegarde en retirant la clé directement en base,
+    plutôt qu'en passant par :func:`demarrer_suivi` qui l'écrirait toujours.
+    """
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie = Partie(
+        [Joueur("Humain"), Joueur("IA", humain=False, niveau=Niveau.EXPERT)],
+        trie,
+        graine=1,
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+
+    with sqlite3.connect(chemin) as connexion:
+        joueurs = json.loads(
+            connexion.execute(
+                "SELECT joueurs FROM parties WHERE id = ?", (id_partie,)
+            ).fetchone()[0]
+        )
+        for j in joueurs:
+            del j["personnage"]
+        connexion.execute(
+            "UPDATE parties SET joueurs = ? WHERE id = ?",
+            (json.dumps(joueurs, ensure_ascii=False), id_partie),
+        )
+        connexion.commit()
+
+    reprise = reprendre_partie(id_partie, trie, chemin)
+    assert reprise.joueurs[0].personnage == ""
+    assert reprise.joueurs[1].personnage == ""
 
 
 # --------------------------------------------------------------------------- #
