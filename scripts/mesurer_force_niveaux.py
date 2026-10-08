@@ -50,7 +50,14 @@ niveau. Une configuration se compose de :
   ``_POIDS_LEAVE`` du niveau considéré. La surcharge est appliquée par un
   gestionnaire de contexte (:func:`_strategie_surchargee`) qui restaure les
   valeurs de production en sortie : **le code de production n'est jamais
-  modifié**.
+  modifié** ;
+* un **personnage** optionnel (``--personnage-a``/``--personnage-b``, issue
+  #439, lot B) — une clé de
+  :data:`scrabble.moteur.personnages.PERSONNAGES` dont le
+  ``ProfilPersonnage`` est transmis à
+  :func:`~scrabble.moteur.ia.choisir_coup`, la même voie qu'emprunterait un
+  futur appelant en production (lot A, issue #438). Se compose sans conflit
+  avec les surcharges stratégiques ci-dessus (voir :meth:`ConfigJoueur.profil`).
 
 Vocabulaire par palier
 ----------------------
@@ -141,6 +148,13 @@ Comparer deux exports CSV ::
 
     python scripts/mesurer_force_niveaux.py --comparer avant.csv apres.csv
 
+Personnage contre Classique, au même niveau (issue #439, lot B) — Opportuniste
+contre Classique en INTERMEDIAIRE, vocabulaire du jeu réel ::
+
+    python scripts/mesurer_force_niveaux.py INTERMEDIAIRE INTERMEDIAIRE \\
+        --personnage-a opportuniste --personnage-b classique --vocab palier \\
+        --parties 200
+
 Sans argument, oppose FACILE à DEBUTANT sur 100 parties, vocabulaire ``complet``
 (comportement historique #362). Les niveaux valides sont les noms de
 :class:`~scrabble.moteur.ia.Niveau` : DEBUTANT, FACILE, INTERMEDIAIRE, AVANCE,
@@ -177,9 +191,10 @@ from scrabble.dictionnaire.dictionnaire import (  # noqa: E402
     obtenir_trie_ia,
 )
 from scrabble.moteur import ia  # noqa: E402
-from scrabble.moteur.ia import Niveau, resoudre_palier  # noqa: E402
+from scrabble.moteur.ia import Niveau, ProfilPersonnage, resoudre_palier  # noqa: E402
 from scrabble.moteur.ordre import determiner_ordre_jeu  # noqa: E402
 from scrabble.moteur.partie import Joueur, Partie  # noqa: E402
+from scrabble.moteur.personnages import PERSONNAGES  # noqa: E402
 
 #: Nombre de parties par défaut : modeste pour qu'un lancement sans argument
 #: ne parte pas pour 20 minutes (quelques minutes seulement).
@@ -214,10 +229,23 @@ class ConfigJoueur:
     """Configuration d'un camp (A ou B) pour une mesure (issue #372).
 
     Découple la stratégie (``niveau``), le vocabulaire (``vocab``) et le
-    calibrage stratégique (``malus``/``bonus``), pour pouvoir faire varier un
-    seul facteur à la fois. ``vocab`` à ``None`` signifie « suivre le mode
-    ``--vocab`` global » (voir :func:`_cle_vocab_effective`) ; ``malus``/``bonus``
-    à ``None`` signifient « valeur de production du niveau, non surchargée ».
+    calibrage stratégique (``malus``/``bonus``/``poids_leave``, ou
+    ``personnage``), pour pouvoir faire varier un seul facteur à la fois.
+    ``vocab`` à ``None`` signifie « suivre le mode ``--vocab`` global » (voir
+    :func:`_cle_vocab_effective`) ; ``malus``/``bonus``/``poids_leave`` à
+    ``None`` signifient « valeur de production du niveau, non surchargée ».
+
+    ``personnage`` (issue #439, lot B) nomme une clé de
+    :data:`scrabble.moteur.personnages.PERSONNAGES` — son
+    :class:`~scrabble.moteur.ia.ProfilPersonnage` est transmis directement à
+    :func:`~scrabble.moteur.ia.choisir_coup` (voir :meth:`profil`), la même
+    voie que celle qu'emprunterait un futur appelant en production (lot A,
+    issue #438), par opposition aux surcharges ``malus``/``bonus``/
+    ``poids_leave`` ci-dessus qui patchent transitoirement les dicts indexés
+    par niveau (:func:`_strategie_surchargee`). Les deux mécanismes se
+    composent sans conflit (le profil de personnage s'applique par-dessus la
+    valeur — éventuellement déjà patchée — du niveau), exactement comme en
+    production.
     """
 
     niveau: Niveau
@@ -225,13 +253,24 @@ class ConfigJoueur:
     malus: int | None = None
     bonus: int | None = None
     poids_leave: float | None = None
+    personnage: str | None = None
+
+    def profil(self) -> ProfilPersonnage | None:
+        """Résout :attr:`personnage` vers son :class:`~scrabble.moteur.ia.ProfilPersonnage`.
+
+        ``None`` si aucun personnage n'est renseigné (comportement standard du
+        niveau, éventuellement patché par ``malus``/``bonus``/``poids_leave``).
+        """
+        if self.personnage is None:
+            return None
+        return PERSONNAGES[self.personnage].profil
 
     def label(self) -> str:
         """Libellé lisible du camp, annotant les écarts à la config par défaut.
 
         Ex. ``CHAMPION_DU_MONDE[malus=0]`` ou ``EXPERT[vocab=avance]``. Sert de
         base aux entêtes CSV et aux lignes de résumé pour distinguer deux camps
-        de même niveau mais de calibrage/vocabulaire différent.
+        de même niveau mais de calibrage/vocabulaire/personnage différent.
         """
         annotations: list[str] = []
         if self.vocab is not None:
@@ -242,6 +281,8 @@ class ConfigJoueur:
             annotations.append(f"bonus={self.bonus}")
         if self.poids_leave is not None:
             annotations.append(f"poids_leave={self.poids_leave}")
+        if self.personnage is not None:
+            annotations.append(f"personnage={self.personnage}")
         if not annotations:
             return self.niveau.name
         return f"{self.niveau.name}[{','.join(annotations)}]"
@@ -455,6 +496,7 @@ def jouer_une_partie(
                 trie_joueur,
                 joueur.niveau,
                 rng_joueur,
+                profil=config_joueur.profil(),
             )
         if coup is None:
             partie.passer()
@@ -730,6 +772,16 @@ def _parse_niveau(valeur: str) -> Niveau:
         ) from exc
 
 
+def _parse_personnage(valeur: str) -> str:
+    cle = valeur.lower()
+    if cle not in PERSONNAGES:
+        noms = ", ".join(sorted(PERSONNAGES))
+        raise argparse.ArgumentTypeError(
+            f"Personnage inconnu : {valeur!r}. Valeurs possibles : {noms}."
+        )
+    return cle
+
+
 def _parse_vocab(valeur: str) -> str:
     cle = valeur.lower()
     if cle not in _CLES_VOCAB_VALIDES:
@@ -811,6 +863,18 @@ def _construire_parser() -> argparse.ArgumentParser:
         help="Surcharge _POIDS_LEAVE du niveau du camp B (idem).",
     )
     parser.add_argument(
+        "--personnage-a", type=_parse_personnage, default=None,
+        help="Personnage IA du camp A (issue #439, lot B), en plus de son "
+        f"niveau. Valeurs : {', '.join(sorted(PERSONNAGES))}. Son "
+        "ProfilPersonnage est transmis à choisir_coup en plus de "
+        "--malus-a/--bonus-a/--poids-leave-a (les deux mécanismes se "
+        "composent).",
+    )
+    parser.add_argument(
+        "--personnage-b", type=_parse_personnage, default=None,
+        help="Personnage IA du camp B (idem --personnage-a).",
+    )
+    parser.add_argument(
         "--comparer", type=Path, nargs=2, metavar=("CSV1", "CSV2"), default=None,
         help="Mode comparaison : relit deux CSV produits par --csv et affiche "
         "l'écart graine par graine, sans rejouer de partie.",
@@ -835,6 +899,7 @@ def main(argv: list[str] | None = None) -> None:
         malus=args.malus_a,
         bonus=args.bonus_a,
         poids_leave=args.poids_leave_a,
+        personnage=args.personnage_a,
     )
     config_b = ConfigJoueur(
         niveau=args.niveau_b,
@@ -842,6 +907,7 @@ def main(argv: list[str] | None = None) -> None:
         malus=args.malus_b,
         bonus=args.bonus_b,
         poids_leave=args.poids_leave_b,
+        personnage=args.personnage_b,
     )
     executer_mesure(
         config_a,
