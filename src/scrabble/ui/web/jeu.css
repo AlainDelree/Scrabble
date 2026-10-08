@@ -639,6 +639,32 @@ body {
     color: var(--couleur-secondaire, #5d4037);
 }
 
+/* Révélation des personnages tirés « Aléatoire » (issue #440, lot D) : même
+   discrétion que le bloc d'évaluation ci-dessus, vide (donc invisible, pas de
+   place réservée) en l'absence de tirage Aléatoire dans la partie. */
+.revelations-personnages {
+    max-width: 420px;
+    padding: 6px 14px;
+    margin: 8px auto 0;
+    background: var(--couleur-fond, #f5f5f0);
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+    text-align: center;
+    line-height: 1.35;
+}
+
+.revelations-personnages-titre {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--couleur-primaire, #2e7d32);
+    margin-bottom: 2px;
+}
+
+.revelations-personnages-ligne {
+    font-size: 0.78rem;
+    color: var(--couleur-secondaire, #5d4037);
+}
+
 /* Message éphémère de pose (issue #90) : court retour affiché en surimpression
    au clic sur une case du plateau (« sélectionnez d'abord une lettre », « case
    occupée », choix de joker à faire côté chevalet…). En ``position: fixed`` en

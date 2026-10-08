@@ -52,7 +52,7 @@ from dataclasses import dataclass, field
 
 import random
 
-from scrabble.moteur import ia
+from scrabble.moteur import ia, personnages
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.ordre import determiner_ordre_jeu
 from scrabble.moteur.plateau_partie import Coup, PlateauPartie
@@ -100,10 +100,21 @@ class Joueur:
     stratégie de sélection de coup (:class:`~scrabble.moteur.ia.Niveau`).
     Pour un joueur humain, ``niveau`` doit rester ``None``.
 
-    ``personnage`` (issue #438, lot A) est une chaîne vide par défaut :
-    aucun personnage n'est encore sélectionnable (infrastructure neutre
-    uniquement), le champ n'est donc consulté nulle part dans le moteur pour
-    l'instant — seulement sérialisé, symétriquement à ``niveau``.
+    ``personnage`` (issue #438, lot A ; sélectionnable depuis l'issue #440,
+    lot D) est une chaîne vide par défaut. Une fois renseigné, il porte
+    toujours l'identité **réelle** (une clé de
+    :data:`scrabble.moteur.personnages.PERSONNAGES`, p. ex. ``"opportuniste"``)
+    — jamais le libellé « Aléatoire » de l'écran d'accueil, y compris quand
+    c'est un tirage au hasard qui l'a choisi (voir ``personnage_aleatoire``
+    ci-dessous) : une reprise de partie ne doit jamais changer de style de
+    jeu.
+
+    ``personnage_aleatoire`` (issue #440, lot D) indique si ``personnage`` a
+    été obtenu par un tirage « Aléatoire » plutôt que choisi explicitement à
+    l'accueil. Ne change rien au déroulement de la partie — seulement à
+    l'affichage : c'est ce drapeau qui déclenche la révélation d'identité de
+    l'écran de résultat (:func:`scrabble.ui.jeu.revelations_personnages`),
+    jamais affichée pour un personnage choisi explicitement.
     """
 
     nom: str
@@ -112,6 +123,7 @@ class Joueur:
     score: int = 0
     niveau: Niveau | None = None
     personnage: str = ""
+    personnage_aleatoire: bool = False
 
     def valeur_chevalet(self) -> int:
         """Somme des valeurs des lettres encore sur le chevalet (jokers = 0)."""
@@ -167,6 +179,8 @@ def creer_partie(
     nb_ia: int = 0,
     noms_ia: list[str] | None = None,
     niveaux_ia: list[Niveau] | None = None,
+    personnages_ia: list[str] | None = None,
+    generateur_aleatoire: random.Random | None = None,
     graine: int | None = None,
     tirage_ordre: bool = False,
     bonus_fin_partie: bool = False,
@@ -206,6 +220,21 @@ def creer_partie(
     historique, zéro coût). La validation d'un coup (humain **comme** IA) reste
     toujours sur ``dictionnaire`` complet — voir :class:`Partie`.
 
+    ``personnages_ia`` (issue #440, lot D) donne, par IA, la clé de
+    :data:`scrabble.moteur.personnages.PERSONNAGES` choisie à l'accueil, ou
+    :data:`scrabble.moteur.personnages.CLE_ALEATOIRE` pour un tirage caché.
+    ``None`` (défaut, IA sans entrée) laisse :attr:`Joueur.personnage` à sa
+    chaîne vide historique — comportement inchangé pour tout appelant qui ne
+    renseigne pas ce paramètre. Pour une entrée ``CLE_ALEATOIRE``, un
+    personnage réel est tiré **une seule fois**, ici, uniformément parmi
+    *tous* les personnages du registre (Classique compris) via
+    :func:`scrabble.moteur.personnages.tirer_personnage` ; l'identité réelle
+    tirée est celle enregistrée dans :attr:`Joueur.personnage` — jamais le
+    libellé « Aléatoire » — avec :attr:`Joueur.personnage_aleatoire` à
+    ``True`` pour que l'UI sache la révéler en fin de partie.
+    ``generateur_aleatoire`` rend ce tirage déterministe en test ; à défaut
+    (``None``), il retombe sur le module :mod:`random` global.
+
     :raises ValueError: si aucun humain, si ``nb_ia`` est négatif, ou si le
         total de joueurs sort de l'intervalle 1..:data:`MAX_JOUEURS`.
     """
@@ -228,7 +257,24 @@ def creer_partie(
             niveau = niveaux_ia[indice]
         else:
             niveau = Niveau.INTERMEDIAIRE
-        joueurs.append(Joueur(nom=nom, humain=False, niveau=niveau))
+        personnage = ""
+        personnage_aleatoire = False
+        if personnages_ia is not None and indice < len(personnages_ia):
+            cle = personnages_ia[indice]
+            if cle == personnages.CLE_ALEATOIRE:
+                personnage = personnages.tirer_personnage(generateur_aleatoire).cle
+                personnage_aleatoire = True
+            else:
+                personnage = cle
+        joueurs.append(
+            Joueur(
+                nom=nom,
+                humain=False,
+                niveau=niveau,
+                personnage=personnage,
+                personnage_aleatoire=personnage_aleatoire,
+            )
+        )
     if tirage_ordre:
         resultat = determiner_ordre_jeu(joueurs, random.Random(graine))
         joueurs = [joueurs[indice] for indice in resultat.ordre]
@@ -272,10 +318,18 @@ def recreer_partie_meme_joueurs(
 
     Les joueurs sont regroupés humains puis IA (contrat de :func:`creer_partie`)
     avant l'éventuel tirage d'ordre, qui les réordonne ensuite.
+
+    Le **personnage** de chaque IA (issue #440, lot D) est lui aussi repropagé
+    tel quel, au même titre que le niveau : ``Joueur.personnage`` porte déjà
+    l'identité réelle (jamais le libellé « Aléatoire », voir
+    :func:`creer_partie`), donc aucun nouveau tirage n'a lieu ici même pour un
+    personnage obtenu par tirage au hasard dans la partie d'origine — un
+    « Recommencer » garde le même style de jeu, nouvelle partie ou pas.
     """
     noms_humains = [j.nom for j in partie.joueurs if j.humain]
     noms_ia = [j.nom for j in partie.joueurs if not j.humain]
     niveaux_ia = [j.niveau for j in partie.joueurs if not j.humain]
+    personnages_ia = [j.personnage for j in partie.joueurs if not j.humain]
     # Vocabulaire IA par niveau (issues #206, #369 lot C) : repropagé tel quel.
     # Un mapping vide (IA sur le dictionnaire complet) reste vide côté nouvelle
     # partie — pas besoin de le distinguer explicitement de ``None``, les deux
@@ -286,6 +340,7 @@ def recreer_partie_meme_joueurs(
         nb_ia=len(noms_ia),
         noms_ia=noms_ia,
         niveaux_ia=niveaux_ia,
+        personnages_ia=personnages_ia,
         graine=graine,
         tirage_ordre=tirage_ordre,
         bonus_fin_partie=partie.bonus_fin_partie,

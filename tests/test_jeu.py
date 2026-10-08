@@ -13,6 +13,7 @@ Note : ce fichier historique a été découpé en 10 fichiers spécialisés
 - test_jeu_coup.py — tests de la validation et soumission d'un coup
 - test_jeu_echange.py — tests de l'échange de lettres
 - test_jeu_integration.py — tests de bout en bout (pose/persistance/reprise)
+- test_jeu_personnages.py — révélation et câblage des personnages IA (issue #440)
 - test_jeu_point_entree.py — tests du point d'entrée de l'écran de jeu
 - test_jeu_pose.py — tests de la pose de mots sur le plateau
 - test_jeu_serialisation.py — tests de sérialisation/désérialisation de l'état

@@ -66,6 +66,7 @@ from scrabble.dictionnaire.dictionnaire import (
 )
 from scrabble.moteur.ia import Niveau, resoudre_palier
 from scrabble.moteur.partie import MAX_JOUEURS, Partie, creer_partie
+from scrabble.moteur.personnages import CLE_ALEATOIRE, DESCRIPTION_ALEATOIRE, PERSONNAGES
 from scrabble.persistance.stockage import (
     CHEMIN_DEFAUT,
     ResumePartie,
@@ -131,6 +132,27 @@ def _disponibilite_niveau(niveau: Niveau) -> tuple[bool, str | None]:
         "Prévenir Alain pour la réparation."
     )
 
+
+def _nom_sans_doublon(nom_base: str, deja_pris: set[str]) -> str:
+    """Prénom libre dérivé de ``nom_base``, sans collision avec ``deja_pris``.
+
+    Solution retenue (issue #440, lot D, point 2) pour le cas où deux
+    ordinateurs choisissent le même personnage à l'accueil : le prénom du
+    personnage (p. ex. « Opportuniste ») porterait sinon deux fois le même
+    nom autour de la table. Plutôt qu'un repli sur un prénom générique (qui
+    masquerait le personnage choisi), on suffixe d'un numéro croissant — «
+    Opportuniste 2 », « Opportuniste 3 »… — jusqu'à trouver un nom libre.
+    Comparaison insensible à la casse/espaces, symétrique à
+    :func:`~scrabble.ui.noms_ordinateur.tirer_prenoms`.
+    """
+    pris = {n.strip().casefold() for n in deja_pris}
+    if nom_base.strip().casefold() not in pris:
+        return nom_base
+    compteur = 2
+    while f"{nom_base} {compteur}".strip().casefold() in pris:
+        compteur += 1
+    return f"{nom_base} {compteur}"
+
 # Libellés français des valeurs à choix fini pour le panneau Réglages intégré
 # à l'accueil (issue #169, ex-fenêtre autonome ``ui/reglages.py``). Les clés
 # restent les identifiants de code (alignés avec config.THEMES_PLATEAU,
@@ -151,13 +173,29 @@ LABELS_TYPES_ECHANGE: dict[str, str] = {
 }
 
 
+#: Personnage par défaut d'un ordinateur (issue #440, lot D) : Classique,
+#: pour que le comportement d'un joueur qui ne touche pas au sélecteur de
+#: personnage reste celui d'avant l'introduction de ce sélecteur (profil
+#: vide, bit à bit identique à l'absence de personnage).
+PERSONNAGE_DEFAUT = "classique"
+
+
 @dataclass
 class JoueurConfig:
-    """Configuration d'un joueur avant création de la partie."""
+    """Configuration d'un joueur avant création de la partie.
+
+    ``personnage`` (issue #440, lot D) ne concerne que les ordinateurs : une
+    clé de :data:`~scrabble.moteur.personnages.PERSONNAGES`, ou
+    :data:`~scrabble.moteur.personnages.CLE_ALEATOIRE` tant que la partie n'a
+    pas encore été lancée (le tirage réel n'a lieu qu'à
+    :meth:`ApiAccueil.lancer_partie`, voir :func:`~scrabble.moteur.partie.
+    creer_partie`). Ignoré pour un joueur humain.
+    """
 
     nom: str
     humain: bool = True
     niveau: Niveau | None = None
+    personnage: str = PERSONNAGE_DEFAUT
 
 
 @dataclass
@@ -219,11 +257,15 @@ class ConfigPartie:
         self.joueurs.append(JoueurConfig(nom=nom, humain=True))
         return True
 
-    def ajouter_ordinateur(self, nom: str, niveau: Niveau) -> bool:
+    def ajouter_ordinateur(
+        self, nom: str, niveau: Niveau, personnage: str = PERSONNAGE_DEFAUT
+    ) -> bool:
         """Ajoute un ordinateur si possible. Retourne le succès."""
         if not self.peut_ajouter_ordinateur():
             return False
-        self.joueurs.append(JoueurConfig(nom=nom, humain=False, niveau=niveau))
+        self.joueurs.append(
+            JoueurConfig(nom=nom, humain=False, niveau=niveau, personnage=personnage)
+        )
         return True
 
     def retirer(self, index: int) -> bool:
@@ -472,8 +514,50 @@ class ApiAccueil:
             )
         return resultat
 
-    def ajouter_ordinateur(self, niveau_label: str) -> dict[str, Any]:
-        """Ajoute un ordinateur avec le niveau donné (label français).
+    def obtenir_personnages(self) -> list[dict[str, Any]]:
+        """Options du sélecteur de personnage (issue #440, lot D).
+
+        Un choix par entrée de :data:`~scrabble.moteur.personnages.PERSONNAGES`
+        (dans l'ordre d'insertion du registre, donc Classique en tête), puis
+        « Aléatoire » toujours en dernier. Construite dynamiquement depuis le
+        registre : un personnage ajouté plus tard au module ``personnages``
+        apparaît ici sans aucune autre modification de l'accueil.
+
+        Chaque entrée est ``{"cle", "prenom", "description"}`` — le JS affiche
+        la description sous le sélecteur quand son option est choisie. La
+        description d'« Aléatoire » (:data:`~scrabble.moteur.personnages.
+        DESCRIPTION_ALEATOIRE`) est un texte de mystère qui ne révèle rien de
+        l'identité tirée.
+        """
+        resultat = [
+            {
+                "cle": personnage.cle,
+                "prenom": personnage.prenom,
+                "description": personnage.description,
+            }
+            for personnage in PERSONNAGES.values()
+        ]
+        resultat.append(
+            {
+                "cle": CLE_ALEATOIRE,
+                "prenom": "Aléatoire",
+                "description": DESCRIPTION_ALEATOIRE,
+            }
+        )
+        return resultat
+
+    def ajouter_ordinateur(
+        self, niveau_label: str, personnage_cle: str = PERSONNAGE_DEFAUT
+    ) -> dict[str, Any]:
+        """Ajoute un ordinateur avec le niveau et le personnage donnés.
+
+        ``personnage_cle`` (issue #440, lot D) a un défaut rétro-compatible
+        (« classique », comportement inchangé pour tout appel qui ne le
+        renseigne pas) : une clé de :data:`~scrabble.moteur.personnages.
+        PERSONNAGES` ou :data:`~scrabble.moteur.personnages.CLE_ALEATOIRE`.
+        L'identité réelle d'un choix « Aléatoire » n'est tirée qu'au lancement
+        de la partie (:meth:`lancer_partie`) — ici on ne fait que mémoriser le
+        choix et attribuer un prénom qui ne la trahit pas.
 
         Refuse un niveau dont le vocabulaire IA est indisponible (issue #369,
         point 5, défense en profondeur : le bouton correspondant doit déjà
@@ -491,15 +575,31 @@ class ApiAccueil:
         disponible, message = _disponibilite_niveau(niveau)
         if not disponible:
             return {"succes": False, "erreur": message}
+        if personnage_cle != CLE_ALEATOIRE and personnage_cle not in PERSONNAGES:
+            return {
+                "succes": False,
+                "erreur": f"Personnage inconnu : {personnage_cle}",
+            }
         noms_pris = self.config_partie.noms_utilises()
         try:
-            prenoms = tirer_prenoms(1, noms_pris)
-            nom = prenoms[0]
+            if personnage_cle == CLE_ALEATOIRE:
+                # Prénom du tirage courant des prénoms d'ordinateur, pas celui
+                # d'un personnage précis (issue #440, point 2) : l'identité
+                # reste cachée pendant toute la partie, jusqu'au tirage réel
+                # fait par ``creer_partie`` au lancement.
+                nom = tirer_prenoms(1, noms_pris)[0]
+            else:
+                # Prénom du personnage choisi, dédoublonné si un autre
+                # ordinateur a déjà choisi le même (issue #440, point 2).
+                nom = _nom_sans_doublon(PERSONNAGES[personnage_cle].prenom, noms_pris)
         except Exception as e:
             journal.erreur("Accueil : échec du tirage de prénom d'ordinateur.", e)
             return {"succes": False, "erreur": f"Impossible de tirer un prénom : {e}"}
-        self.config_partie.ajouter_ordinateur(nom, niveau)
-        journal.info(f"Accueil : ordinateur ajouté ({nom}, niveau {niveau.name}).")
+        self.config_partie.ajouter_ordinateur(nom, niveau, personnage_cle)
+        journal.info(
+            f"Accueil : ordinateur ajouté ({nom}, niveau {niveau.name}, "
+            f"personnage {personnage_cle})."
+        )
         return {"succes": True, "etat": self.obtenir_etat()}
 
     def retirer_joueur(self, index: int) -> dict[str, Any]:
@@ -660,6 +760,13 @@ class ApiAccueil:
             niveaux_ia = [
                 j.niveau for j in self.config_partie.joueurs if not j.humain
             ]
+            # Personnage choisi par ordinateur (issue #440, lot D) : un choix
+            # « Aléatoire » n'est résolu en identité réelle qu'ici, dans
+            # ``creer_partie`` — jamais avant (voir ``ApiAccueil.
+            # ajouter_ordinateur``).
+            personnages_ia = [
+                j.personnage for j in self.config_partie.joueurs if not j.humain
+            ]
             graine = random.randint(0, 2**31 - 1)
             # Source du dictionnaire choisie dans les réglages (issue #210) : sans
             # cet argument, ``obtenir_trie()`` retombait silencieusement sur l'ODS
@@ -687,6 +794,7 @@ class ApiAccueil:
                 nb_ia=len(noms_ia),
                 noms_ia=noms_ia,
                 niveaux_ia=niveaux_ia,
+                personnages_ia=personnages_ia,
                 graine=graine,
                 tirage_ordre=True,
                 bonus_fin_partie=bonus_fin_partie,

@@ -88,9 +88,10 @@ class ResumePartie:
     """Fiche synthétique d'une partie pour un écran de sélection/historique.
 
     ``joueurs`` liste des dictionnaires ``{"nom", "humain", "niveau",
-    "personnage"}`` (niveau ``None`` pour un humain ; personnage une chaîne
-    vide par défaut, issue #438 lot A). ``scores_finaux`` et ``gagnants``
-    valent ``None`` tant que la partie n'est pas terminée.
+    "personnage", "personnage_aleatoire"}`` (niveau ``None`` pour un humain ;
+    personnage une chaîne vide par défaut, issue #438 lot A ;
+    personnage_aleatoire un booléen, issue #440 lot D). ``scores_finaux`` et
+    ``gagnants`` valent ``None`` tant que la partie n'est pas terminée.
 
     ``scores_actuels`` donne, dans l'ordre de ``joueurs``, le score courant de
     chaque joueur (issue #76). Il est déduit sans rejeu de la partie : c'est le
@@ -201,6 +202,7 @@ def _joueurs_vers_json(joueurs: list[Joueur]) -> str:
                 "humain": j.humain,
                 "niveau": None if j.niveau is None else j.niveau.name,
                 "personnage": j.personnage,
+                "personnage_aleatoire": j.personnage_aleatoire,
             }
             for j in joueurs
         ],
@@ -623,6 +625,11 @@ def _reconstruire_joueurs(config: list[dict]) -> list[Joueur]:
                 # sauvegardée avant l'issue #438 (lot A), dont le JSON ne
                 # porte pas cette clé.
                 personnage=donnees.get("personnage", ""),
+                # ``.get(..., False)`` : rétro-compatible avec une partie
+                # sauvegardée avant l'issue #440 (lot D), dont le JSON ne
+                # porte pas cette clé — pas de révélation en fin de partie
+                # pour un personnage qui n'a jamais pu être tiré au hasard.
+                personnage_aleatoire=bool(donnees.get("personnage_aleatoire", False)),
             )
         )
     return joueurs

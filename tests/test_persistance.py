@@ -323,6 +323,88 @@ def test_reprise_ancienne_sauvegarde_sans_cle_personnage(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# personnage_aleatoire : révélation en fin de partie (issue #440, lot D)
+# --------------------------------------------------------------------------- #
+
+def test_reprise_personnage_aleatoire_faux_par_defaut(tmp_path):
+    """Un joueur sans tirage au hasard (défaut) se recharge avec ``False``."""
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie = Partie(
+        [Joueur("Humain"), Joueur("IA", humain=False, niveau=Niveau.EXPERT)],
+        trie,
+        graine=1,
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+
+    reprise = reprendre_partie(id_partie, trie, chemin)
+    assert reprise.joueurs[0].personnage_aleatoire is False
+    assert reprise.joueurs[1].personnage_aleatoire is False
+
+
+def test_reprise_personnage_aleatoire_aller_retour(tmp_path):
+    """``personnage_aleatoire`` survit à l'aller-retour en base, pour qu'une
+    partie « Aléatoire » reprise avant sa fin garde son identité cachée."""
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie = Partie(
+        [
+            Joueur("Humain"),
+            Joueur(
+                "Thomas",
+                humain=False,
+                niveau=Niveau.EXPERT,
+                personnage="opportuniste",
+                personnage_aleatoire=True,
+            ),
+        ],
+        trie,
+        graine=1,
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+
+    reprise = reprendre_partie(id_partie, trie, chemin)
+    assert reprise.joueurs[1].personnage == "opportuniste"
+    assert reprise.joueurs[1].personnage_aleatoire is True
+
+
+def test_reprise_ancienne_sauvegarde_sans_cle_personnage_aleatoire(tmp_path):
+    """Une sauvegarde d'avant l'issue #440, sans ``personnage_aleatoire`` dans
+    le JSON, se recharge normalement avec ``personnage_aleatoire=False``."""
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie = Partie(
+        [
+            Joueur("Humain"),
+            Joueur("IA", humain=False, niveau=Niveau.EXPERT, personnage="opportuniste"),
+        ],
+        trie,
+        graine=1,
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+
+    with sqlite3.connect(chemin) as connexion:
+        joueurs = json.loads(
+            connexion.execute(
+                "SELECT joueurs FROM parties WHERE id = ?", (id_partie,)
+            ).fetchone()[0]
+        )
+        for j in joueurs:
+            del j["personnage_aleatoire"]
+        connexion.execute(
+            "UPDATE parties SET joueurs = ? WHERE id = ?",
+            (json.dumps(joueurs, ensure_ascii=False), id_partie),
+        )
+        connexion.commit()
+
+    reprise = reprendre_partie(id_partie, trie, chemin)
+    assert reprise.joueurs[0].personnage_aleatoire is False
+    assert reprise.joueurs[1].personnage_aleatoire is False
+    # Le personnage réel (choisi explicitement, pas par tirage) reste intact.
+    assert reprise.joueurs[1].personnage == "opportuniste"
+
+
+# --------------------------------------------------------------------------- #
 # Vocabulaire IA par niveau à la reprise (issue #369, lot C)
 # --------------------------------------------------------------------------- #
 

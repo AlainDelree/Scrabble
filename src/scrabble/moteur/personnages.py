@@ -59,6 +59,7 @@ seulement sur validation explicite d'Alain.
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 
 from scrabble.moteur.ia import ProfilPersonnage
@@ -68,6 +69,21 @@ from scrabble.moteur.ia import ProfilPersonnage
 #: le plus grand palier observé entre deux niveaux adjacents (+8, AVANCE ->
 #: EXPERT).
 BONUS_PREMIUM_OPPORTUNISTE = 28
+
+#: Clé pseudo-personnage exposée à l'UI (issue #440, lot D) : « Aléatoire »
+#: n'est **jamais** une entrée de :data:`PERSONNAGES` — elle désigne le choix
+#: « tire un personnage réel au lancement de la partie et cache-le ». Le
+#: moteur ne connaît que des personnages réels : cette clé n'apparaît donc
+#: jamais dans :attr:`~scrabble.moteur.partie.Joueur.personnage`, seulement
+#: dans la configuration de l'écran d'accueil, avant résolution.
+CLE_ALEATOIRE = "aleatoire"
+
+#: Texte de mystère affiché à l'accueil quand « Aléatoire » est sélectionné
+#: (issue #440, lot D) : ne doit rien révéler de l'identité qui sera tirée.
+DESCRIPTION_ALEATOIRE = (
+    "Un caractère sera tiré au sort au lancement de la partie et restera "
+    "secret jusqu'à l'écran de résultat."
+)
 
 
 @dataclass(frozen=True)
@@ -115,3 +131,17 @@ def obtenir_personnage(cle: str) -> Personnage:
         :data:`PERSONNAGES`.
     """
     return PERSONNAGES[cle]
+
+
+def tirer_personnage(generateur: random.Random | None = None) -> Personnage:
+    """Tire un personnage uniformément parmi **tous** ceux du registre.
+
+    Classique compris (issue #440, lot D, point 3) : le tirage « Aléatoire »
+    porte sur l'ensemble de :data:`PERSONNAGES`, sans favoriser ni exclure le
+    personnage neutre. ``generateur`` est injectable pour un tirage
+    déterministe en test ; à défaut, utilise le module :mod:`random` global
+    (``random.choice`` s'appelle de la même façon sur le module que sur une
+    instance de :class:`random.Random`).
+    """
+    rng = generateur if generateur is not None else random
+    return rng.choice(list(PERSONNAGES.values()))

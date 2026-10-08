@@ -15,7 +15,7 @@ import random
 from scrabble.dictionnaire.dictionnaire import Trie
 from scrabble.moteur.generateur import generer_coups
 from scrabble.moteur.ia import Niveau, choisir_coup
-from scrabble.moteur.personnages import PERSONNAGES
+from scrabble.moteur.personnages import PERSONNAGES, tirer_personnage
 from scrabble.moteur.plateau_partie import (
     CENTRE,
     Coup,
@@ -140,3 +140,28 @@ class TestPersonnageClassiqueInchange:
                     profil=profil_classique,
                 )
                 assert coup_avec_classique == coup_sans_profil
+
+
+class TestTirerPersonnage:
+    """Tirage « Aléatoire » parmi le registre (issue #440, lot D, point 3)."""
+
+    def test_tirage_deterministe_avec_generateur_injecte(self):
+        a = tirer_personnage(random.Random(7))
+        b = tirer_personnage(random.Random(7))
+        assert a.cle == b.cle
+
+    def test_tirage_renvoie_toujours_une_entree_du_registre(self):
+        for graine in range(50):
+            tire = tirer_personnage(random.Random(graine))
+            assert tire.cle in PERSONNAGES
+            assert tire is PERSONNAGES[tire.cle]
+
+    def test_tirage_peut_renvoyer_classique(self):
+        """Classique n'est pas exclu du tirage (point 3 : « Classique compris »)."""
+        cles = {tirer_personnage(random.Random(g)).cle for g in range(50)}
+        assert "classique" in cles
+
+    def test_tirage_sans_generateur_ne_leve_pas(self):
+        """Sans générateur injecté, retombe sur le module ``random`` global."""
+        tire = tirer_personnage()
+        assert tire.cle in PERSONNAGES

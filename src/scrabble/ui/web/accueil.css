@@ -816,6 +816,42 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
     width: 100%;
 }
 
+/* Sélecteur de personnage (issue #440, lot D) : au-dessus de la rangée de
+   niveaux, dans le même style sobre que le reste de `.zone-boutons`. La
+   description s'affiche sous le sélecteur, mise à jour côté JS sans aller-
+   retour Python (accueil.js, chargerPersonnages/afficherDescriptionPersonnage). */
+.zone-personnage {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.label-personnage {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--couleur-texte, #333);
+}
+
+.select-personnage {
+    flex: 0 1 auto;
+    font-size: 0.85rem;
+    padding: 6px 8px;
+    border: 2px solid var(--couleur-bordure, #caa02c);
+    border-radius: var(--rayon-bordure);
+    background: white;
+    cursor: pointer;
+}
+
+.description-personnage {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: 0.8rem;
+    font-style: italic;
+    color: var(--couleur-texte-attenue, #666);
+}
+
 .zone-boutons .btn-niveau {
     flex: 1;
     min-width: 0;

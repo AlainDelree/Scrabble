@@ -52,7 +52,7 @@ from scrabble.dictionnaire.dictionnaire import (
     desaccentuer,
     normaliser_mot,
 )
-from scrabble.moteur.ia import Niveau
+from scrabble.moteur.ia import Niveau, ProfilPersonnage
 from scrabble.moteur.ordre import determiner_ordre_jeu
 from scrabble.moteur.partie import (
     ActionInvalide,
@@ -61,6 +61,7 @@ from scrabble.moteur.partie import (
     Partie,
     recreer_partie_meme_joueurs,
 )
+from scrabble.moteur.personnages import obtenir_personnage
 from scrabble.moteur.plateau_partie import (
     Coup,
     Direction,
@@ -448,6 +449,42 @@ def index_panneau_interactif(partie: Partie) -> int | None:
     return partie.index_courant if joueur.humain else None
 
 
+def revelations_personnages(partie: Partie) -> list[dict[str, Any]]:
+    """Identité des ordinateurs dont le personnage a été tiré au hasard (issue #440, lot D).
+
+    Renvoie une liste vide tant que la partie n'est pas terminée : l'identité
+    d'un choix « Aléatoire » (:attr:`~scrabble.moteur.partie.Joueur.
+    personnage_aleatoire`) ne doit jamais fuiter pendant la partie via
+    :func:`etat_public`, diffusé en continu. Une fois la partie terminée,
+    chaque entrée est ``{"nom", "personnage_prenom", "personnage_description"}``
+    — ``nom`` est le prénom affiché pendant toute la partie (celui tiré par
+    :func:`~scrabble.ui.noms_ordinateur.tirer_prenoms`, pas celui du
+    personnage, voir ``ApiAccueil.ajouter_ordinateur``), les deux autres
+    champs viennent du personnage réellement tiré
+    (:func:`~scrabble.moteur.personnages.obtenir_personnage`). Un personnage
+    choisi explicitement (``personnage_aleatoire`` faux) n'a rien à révéler :
+    son nom l'annonçait déjà pendant toute la partie.
+    """
+    if not partie.terminee:
+        return []
+    resultat = []
+    for joueur in partie.joueurs:
+        if joueur.humain or not joueur.personnage_aleatoire:
+            continue
+        try:
+            personnage = obtenir_personnage(joueur.personnage)
+        except KeyError:  # pragma: no cover - défense en profondeur
+            continue
+        resultat.append(
+            {
+                "nom": joueur.nom,
+                "personnage_prenom": personnage.prenom,
+                "personnage_description": personnage.description,
+            }
+        )
+    return resultat
+
+
 def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     """État complet de la partie **sans aucune identité de lettre de chevalet**.
 
@@ -514,6 +551,7 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
         "evaluation_score": (
             evaluer_score_total(partie.joueurs) if partie.terminee else None
         ),
+        "revelations_personnages": revelations_personnages(partie),
         "nb_historique": len(partie.historique),
         "dernier_coup": serialiser_dernier_coup(partie),
     }
@@ -1063,6 +1101,25 @@ def passer_tour(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     return {"succes": True, "etat": etat_public(partie, id_partie)}
 
 
+def _profil_joueur_ia(joueur: Joueur) -> ProfilPersonnage | None:
+    """Résout le ``ProfilPersonnage`` du personnage choisi par ``joueur`` (issue #440, lot D).
+
+    ``joueur.personnage`` vide — défaut historique ou ancienne sauvegarde
+    sans personnage (voir :func:`scrabble.persistance.stockage.
+    _reconstruire_joueurs`) — renvoie ``None`` : exactement le comportement
+    d'avant l'introduction du sélecteur de personnage à l'accueil. Une clé
+    devenue inconnue (défense en profondeur ; le registre n'est jamais réduit
+    en pratique) retombe aussi sur ``None`` plutôt que de faire planter un
+    tour d'IA.
+    """
+    if not joueur.personnage:
+        return None
+    try:
+        return obtenir_personnage(joueur.personnage).profil
+    except KeyError:
+        return None
+
+
 def jouer_tours_ia_ui(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     """Joue **un seul** tour d'ordinateur puis renvoie l'état rafraîchi.
 
@@ -1083,7 +1140,8 @@ def jouer_tours_ia_ui(partie: Partie, id_partie: int | None) -> dict[str, Any]:
     """
     nb_tours = 0
     if not partie.terminee and not partie.joueur_courant().humain:
-        partie.jouer_tour_ia()
+        profil = _profil_joueur_ia(partie.joueur_courant())
+        partie.jouer_tour_ia(profil)
         nb_tours = 1
     return {
         "succes": True,

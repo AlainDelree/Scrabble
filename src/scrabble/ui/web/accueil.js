@@ -53,8 +53,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     const drapeauFrance = document.getElementById('drapeau-france');
     const drapeauBelgique = document.getElementById('drapeau-belgique');
 
+    // Sélecteur de personnage (issue #440, lot D)
+    const selectPersonnage = document.getElementById('select-personnage');
+    const descriptionPersonnage = document.getElementById('description-personnage');
+
     // État
     let premierHumainAjoute = false;
+
+    // Personnages du registre + Aléatoire, pour afficher la description sous
+    // le sélecteur sans round-trip Python à chaque changement (issue #440,
+    // lot D). Peuplé une seule fois à l'initialisation (voir
+    // chargerPersonnages, appelée dans l'initialisation plus bas).
+    let personnagesDisponibles = [];
 
     // Disponibilité des niveaux (issue #369 lot C, rendu visuel issue #371
     // lot F) : { [label]: message } pour chaque niveau dont le vocabulaire IA
@@ -433,7 +443,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 alert(messageIndisponible);
                 return;
             }
-            const result = await api.ajouter_ordinateur(niveau);
+            // Personnage choisi séparément du niveau (issue #440, lot D) :
+            // le sélecteur garde sa valeur courante entre deux ajouts, comme
+            // le ferait un réglage persistant — pas de modale intermédiaire,
+            // même esprit que le niveau.
+            const personnage = selectPersonnage.value || 'classique';
+            const result = await api.ajouter_ordinateur(niveau, personnage);
             if (result.succes) {
                 mettreAJourAffichage(result.etat);
             } else {
@@ -441,6 +456,38 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     });
+
+    /**
+     * Charge les personnages du registre (issue #440, lot D) et construit les
+     * <option> du sélecteur, Aléatoire toujours en dernier (déjà garanti par
+     * l'ordre renvoyé par api.obtenir_personnages()). Classique reste
+     * sélectionné par défaut : un joueur qui ne touche pas au sélecteur
+     * conserve le comportement d'avant son introduction.
+     */
+    async function chargerPersonnages() {
+        try {
+            personnagesDisponibles = await api.obtenir_personnages();
+        } catch (err) {
+            return;
+        }
+        selectPersonnage.innerHTML = '';
+        personnagesDisponibles.forEach(({ cle, prenom }) => {
+            const option = document.createElement('option');
+            option.value = cle;
+            option.textContent = prenom;
+            selectPersonnage.appendChild(option);
+        });
+        afficherDescriptionPersonnage();
+    }
+
+    /** Affiche la description du personnage actuellement sélectionné. */
+    function afficherDescriptionPersonnage() {
+        const choisi = personnagesDisponibles.find(
+            (p) => p.cle === selectPersonnage.value);
+        descriptionPersonnage.textContent = choisi ? choisi.description : '';
+    }
+
+    selectPersonnage.addEventListener('change', afficherDescriptionPersonnage);
 
     /**
      * Désactive visuellement les boutons de niveau dont le vocabulaire IA est
@@ -1003,6 +1050,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Contrôle de disponibilité des niveaux À L'AFFICHAGE (issue #369 lot C,
     // rendu visuel issue #371 lot F), pas seulement au lancement.
     await appliquerDisponibiliteNiveaux();
+    // Sélecteur de personnage (issue #440, lot D), construit depuis le
+    // registre dès l'affichage de l'accueil.
+    await chargerPersonnages();
 
     // Issue #434 : aucune configuration de partie ne doit démarrer sans
     // joueur humain présent (ou en cours de saisie). Le seeding automatique

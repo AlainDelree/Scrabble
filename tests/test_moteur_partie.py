@@ -10,6 +10,8 @@ niveaux dans ``test_moteur_ia.py``).
 
 from __future__ import annotations
 
+import random
+
 import pytest
 
 from scrabble.dictionnaire.dictionnaire import Trie
@@ -132,6 +134,79 @@ def test_creer_partie_tirage_ordre_change_effectivement_l_ordre():
 
 
 # --------------------------------------------------------------------------- #
+# Personnages IA : choix explicite et tirage « Aléatoire » (issue #440, lot D)
+# --------------------------------------------------------------------------- #
+
+def test_creer_partie_sans_personnages_ia_laisse_personnage_vide():
+    """Non-régression : ``personnages_ia`` omis == comportement d'avant le lot D."""
+    partie = creer_partie(["Alice"], _trie(), nb_ia=1, graine=1)
+    assert partie.joueurs[1].personnage == ""
+    assert partie.joueurs[1].personnage_aleatoire is False
+
+
+def test_creer_partie_personnage_explicite_est_repris_tel_quel():
+    partie = creer_partie(
+        ["Alice"],
+        _trie(),
+        nb_ia=1,
+        personnages_ia=["opportuniste"],
+        graine=1,
+    )
+    assert partie.joueurs[1].personnage == "opportuniste"
+    assert partie.joueurs[1].personnage_aleatoire is False
+
+
+def test_creer_partie_aleatoire_tire_un_personnage_reel_et_le_marque():
+    from scrabble.moteur.personnages import PERSONNAGES
+
+    partie = creer_partie(
+        ["Alice"],
+        _trie(),
+        nb_ia=1,
+        personnages_ia=["aleatoire"],
+        generateur_aleatoire=random.Random(0),
+        graine=1,
+    )
+    joueur = partie.joueurs[1]
+    # Le libellé « Aléatoire » n'est JAMAIS l'identité enregistrée : seule une
+    # clé réelle du registre doit s'y trouver.
+    assert joueur.personnage in PERSONNAGES
+    assert joueur.personnage != "aleatoire"
+    assert joueur.personnage_aleatoire is True
+
+
+def test_creer_partie_aleatoire_est_deterministe_avec_meme_generateur():
+    partie_a = creer_partie(
+        ["Alice"], _trie(), nb_ia=1, personnages_ia=["aleatoire"],
+        generateur_aleatoire=random.Random(123), graine=1,
+    )
+    partie_b = creer_partie(
+        ["Alice"], _trie(), nb_ia=1, personnages_ia=["aleatoire"],
+        generateur_aleatoire=random.Random(123), graine=1,
+    )
+    assert partie_a.joueurs[1].personnage == partie_b.joueurs[1].personnage
+
+
+def test_creer_partie_aleatoire_peut_tirer_classique():
+    """Le tirage « Aléatoire » porte sur TOUT le registre, Classique compris."""
+    from scrabble.moteur.personnages import PERSONNAGES
+
+    tires = set()
+    for graine in range(50):
+        partie = creer_partie(
+            ["Alice"], _trie(), nb_ia=1, personnages_ia=["aleatoire"],
+            generateur_aleatoire=random.Random(graine), graine=1,
+        )
+        tires.add(partie.joueurs[1].personnage)
+        if tires == set(PERSONNAGES):
+            return
+    raise AssertionError(
+        f"Le tirage n'a jamais couvert tout le registre : obtenu {tires}, "
+        f"attendu {set(PERSONNAGES)}."
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Recommencer : nouvelle partie avec les mêmes joueurs (issue #142)
 # --------------------------------------------------------------------------- #
 
@@ -181,6 +256,24 @@ def test_recreer_partie_est_une_partie_neuve():
     assert nouvelle.sac.jetons_restants() == 102 - len(nouvelle.joueurs) * TAILLE_CHEVALET
     # L'origine n'a pas été modifiée par la re-création.
     assert origine.historique
+
+
+def test_recreer_partie_conserve_le_personnage_de_chaque_ia():
+    """« Recommencer » garde le même style de jeu (issue #440, lot D).
+
+    Pas de nouveau tirage même pour un personnage obtenu par « Aléatoire » :
+    ``Joueur.personnage`` porte déjà l'identité réelle, reprise telle quelle.
+    """
+    origine = creer_partie(
+        ["Alice"],
+        _trie("CADRE"),
+        nb_ia=1,
+        personnages_ia=["opportuniste"],
+        graine=1,
+    )
+    nouvelle = recreer_partie_meme_joueurs(origine, _trie("CADRE"), graine=2)
+    ia_nouvelle = next(j for j in nouvelle.joueurs if not j.humain)
+    assert ia_nouvelle.personnage == "opportuniste"
 
 
 def test_recreer_partie_herite_du_bonus_fin_partie():

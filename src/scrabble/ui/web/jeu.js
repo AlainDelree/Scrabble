@@ -56,6 +56,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const modaleFinMessage = document.getElementById('modale-fin-message');
     const modaleFinClassement = document.getElementById('modale-fin-classement');
     const modaleFinEvaluation = document.getElementById('modale-fin-evaluation');
+    const modaleFinRevelations = document.getElementById('modale-fin-revelations');
     const btnFinRetourMenu = document.getElementById('fin-retour-menu');
     const btnFinRester = document.getElementById('fin-rester');
     const btnFinRecommencer = document.getElementById('fin-recommencer');
@@ -342,7 +343,7 @@ document.addEventListener('DOMContentLoaded', async () => {
      * par partie : si l'utilisateur la ferme (« Rester sur la partie »), un état
      * repoussé plus tard ne la rouvre pas.
      */
-    function rendreFinPartie(terminee, gagnants, joueurs, evaluation) {
+    function rendreFinPartie(terminee, gagnants, joueurs, evaluation, revelations) {
         if (!terminee) {
             finModaleAffichee = false;
             modaleFin.hidden = true;
@@ -363,6 +364,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         modaleFinEvaluation.textContent = '';
         const eval_ = construireEvaluationScore(evaluation);
         if (eval_) modaleFinEvaluation.appendChild(eval_);
+
+        modaleFinRevelations.textContent = '';
+        const revelation = construireRevelationsPersonnages(revelations);
+        if (revelation) modaleFinRevelations.appendChild(revelation);
 
         // Ouverture unique : à la transition vers « terminée ». Fermée à la main,
         // la modale ne se rouvre pas tant que la partie reste terminée.
@@ -415,6 +420,37 @@ document.addEventListener('DOMContentLoaded', async () => {
                 `soit environ ${evaluation.moyenne} points par joueur`;
             bloc.appendChild(ligneMoyenne);
         }
+        return bloc;
+    }
+
+    /**
+     * Construit le bloc de révélation des personnages tirés « Aléatoire »
+     * (issue #440, lot D) : pour chaque ordinateur dont le personnage a été
+     * tiré au hasard, révèle qui il était vraiment (prénom et description du
+     * personnage). ``revelations`` vient de ``etat.revelations_personnages``
+     * (calculé côté Python, vide tant que la partie n'est pas terminée — voir
+     * ``scrabble.ui.jeu.revelations_personnages``) ; rien n'est affiché pour
+     * un personnage choisi explicitement, ni pour une partie sans aucun
+     * tirage Aléatoire. Renvoie null si rien à révéler.
+     */
+    function construireRevelationsPersonnages(revelations) {
+        if (!Array.isArray(revelations) || revelations.length === 0) return null;
+
+        const bloc = document.createElement('div');
+        bloc.className = 'revelations-personnages';
+
+        const titre = document.createElement('div');
+        titre.className = 'revelations-personnages-titre';
+        titre.textContent = '🎭 Personnages Aléatoire dévoilés';
+        bloc.appendChild(titre);
+
+        revelations.forEach((r) => {
+            const ligne = document.createElement('div');
+            ligne.className = 'revelations-personnages-ligne';
+            ligne.textContent =
+                `${r.nom} était en réalité ${r.personnage_prenom} : ${r.personnage_description}`;
+            bloc.appendChild(ligne);
+        });
         return bloc;
     }
 
@@ -877,7 +913,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         enAttente = Array.isArray(etat.en_attente) ? etat.en_attente : [];
         rendrePlateau();
         rendrePanneaux(etat.joueurs || []);
-        rendreFinPartie(etat.terminee, etat.gagnants, etat.joueurs, etat.evaluation_score);
+        rendreFinPartie(
+            etat.terminee, etat.gagnants, etat.joueurs, etat.evaluation_score,
+            etat.revelations_personnages,
+        );
         // Historique (issue #364) : seul le COMPTEUR est diffusé en continu — la
         // liste complète et le détail de chaque coup se chargent à la demande
         // (voir plus bas, section « Encart d'historique glissant »). Si le

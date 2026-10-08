@@ -129,6 +129,18 @@
                  côte à côte hors des sections Joueurs/Continuer. Logique de
                  visibilité/désactivation inchangée (accueil.js). -->
             <div class="zone-boutons">
+                <!-- Sélecteur de personnage (issue #440, lot D) : choix séparé
+                     du niveau, appliqué au PROCHAIN ordinateur ajouté par un
+                     clic sur un bouton de niveau ci-dessous (même esprit que
+                     le niveau : un réglage courant, pas une modale). Les
+                     <option> sont construites dynamiquement par accueil.js
+                     depuis le registre (api.obtenir_personnages()), Aléatoire
+                     toujours en dernier. -->
+                <div class="zone-personnage">
+                    <label for="select-personnage" class="label-personnage">Personnage :</label>
+                    <select id="select-personnage" class="select-personnage"></select>
+                    <p id="description-personnage" class="description-personnage"></p>
+                </div>
                 <div class="zone-niveaux">
                     <button class="btn btn-niveau" data-niveau="Débutant">Débutant</button>
                     <button class="btn btn-niveau" data-niveau="Facile">Facile</button>

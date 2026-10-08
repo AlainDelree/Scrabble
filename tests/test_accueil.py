@@ -36,6 +36,11 @@ class TestJoueurConfig:
         assert joueur.humain is False
         assert joueur.niveau == Niveau.FACILE
 
+    def test_joueur_personnage_par_defaut_est_classique(self):
+        """Issue #440 (lot D) : défaut rétro-compatible, comportement neutre."""
+        joueur = JoueurConfig(nom="Antoine", humain=False, niveau=Niveau.FACILE)
+        assert joueur.personnage == "classique"
+
 
 class TestConfigPartieCompteurs:
     """Tests des compteurs de ConfigPartie."""
@@ -252,6 +257,13 @@ class TestConfigPartieAjoutAvecRetour:
         assert config.ajouter_humain("Trop") is False
         assert config.nb_humains == 1
 
+    def test_ajouter_ordinateur_personnage_optionnel_retrocompatible(self):
+        """``ConfigPartie.ajouter_ordinateur`` fonctionne sans 3e argument
+        (issue #440, lot D) : les appels existants (niveau seul) ne changent pas."""
+        config = ConfigPartie()
+        assert config.ajouter_ordinateur("Bot", Niveau.FACILE) is True
+        assert config.joueurs[0].personnage == "classique"
+
     def test_ajouter_ordinateur_succes(self):
         """Ajouter un ordinateur retourne True."""
         config = ConfigPartie()
@@ -446,6 +458,137 @@ class TestDisponibiliteNiveaux:
         assert result["succes"] is False
         assert "Avancé en erreur" in result["erreur"]
         assert api._partie is None
+
+
+class TestApiAccueilPersonnages:
+    """Sélecteur de personnage à l'accueil (issue #440, lot D).
+
+    Niveau « Expert » utilisé partout ici (jamais « Facile »/« Intermédiaire »)
+    pour ne pas dépendre des fichiers de vocabulaire par palier, absents de ce
+    worktree (voir ``_disponibilite_niveau`` : EXPERT/CHAMPION_DU_MONDE ne
+    dépendent d'aucun fichier).
+    """
+
+    def test_obtenir_personnages_contient_le_registre_puis_aleatoire_en_dernier(self):
+        from scrabble.moteur.personnages import CLE_ALEATOIRE, PERSONNAGES
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        personnages = api.obtenir_personnages()
+
+        cles = [p["cle"] for p in personnages]
+        assert cles == [*PERSONNAGES.keys(), CLE_ALEATOIRE]
+        for p in personnages:
+            assert set(p.keys()) == {"cle", "prenom", "description"}
+        assert personnages[-1]["prenom"] == "Aléatoire"
+
+    def test_ajouter_ordinateur_defaut_est_classique(self):
+        """Sans préciser de personnage, le comportement reste celui d'avant
+        l'introduction du sélecteur (issue #440) : personnage « classique »."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Expert")
+
+        assert result["succes"] is True
+        assert api.config_partie.joueurs[0].personnage == "classique"
+
+    def test_ajouter_ordinateur_personnage_explicite_porte_son_prenom(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Expert", "opportuniste")
+
+        assert result["succes"] is True
+        joueur = api.config_partie.joueurs[0]
+        assert joueur.nom == "Opportuniste"
+        assert joueur.personnage == "opportuniste"
+
+    def test_ajouter_ordinateur_personnage_inconnu_refuse(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Expert", "ninja")
+
+        assert result["succes"] is False
+        assert api.config_partie.nb_ordinateurs == 0
+
+    def test_ajouter_deux_ordinateurs_meme_personnage_noms_non_dupliques(self):
+        """Solution retenue pour deux ordinateurs sur le même personnage
+        (issue #440, point 2) : suffixe numérique plutôt qu'un nom identique."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_ordinateur("Expert", "opportuniste")
+        api.ajouter_ordinateur("Expert", "opportuniste")
+
+        noms = [j.nom for j in api.config_partie.joueurs]
+        assert noms == ["Opportuniste", "Opportuniste 2"]
+        assert len(set(noms)) == 2
+
+    def test_ajouter_ordinateur_aleatoire_porte_un_prenom_banal(self):
+        """« Aléatoire » ne doit rien trahir : prénom du tirage courant, pas
+        « Aléatoire » ni le prénom d'un personnage précis (issue #440, point 2)."""
+        from scrabble.moteur.personnages import CLE_ALEATOIRE, PERSONNAGES
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.ui.noms_ordinateur import PRENOMS_ORDINATEUR
+
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Expert", CLE_ALEATOIRE)
+
+        assert result["succes"] is True
+        joueur = api.config_partie.joueurs[0]
+        assert joueur.nom in PRENOMS_ORDINATEUR
+        assert joueur.nom not in {p.prenom for p in PERSONNAGES.values()}
+        # Le choix « Aléatoire » lui-même n'est pas encore résolu : la
+        # résolution réelle n'a lieu qu'au lancement de la partie.
+        assert joueur.personnage == CLE_ALEATOIRE
+
+    def test_lancer_partie_resout_aleatoire_en_identite_reelle(self, monkeypatch):
+        """Au lancement, « Aléatoire » devient une clé réelle, jamais le
+        libellé lui-même, et le joueur est marqué pour révélation en fin de
+        partie (issue #440, points 3 et 4)."""
+        from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.moteur.personnages import CLE_ALEATOIRE, PERSONNAGES
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda source="ods", **_: Trie.depuis_iterable(["MAISON", "TEST"]),
+        )
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie, **_: 1)
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Expert", CLE_ALEATOIRE)
+
+        result = api.lancer_partie()
+
+        assert result["succes"] is True
+        joueur_ia = next(j for j in api._partie.joueurs if not j.humain)
+        assert joueur_ia.personnage in PERSONNAGES
+        assert joueur_ia.personnage != CLE_ALEATOIRE
+        assert joueur_ia.personnage_aleatoire is True
+
+    def test_lancer_partie_personnage_explicite_non_marque_aleatoire(self, monkeypatch):
+        from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda source="ods", **_: Trie.depuis_iterable(["MAISON", "TEST"]),
+        )
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie, **_: 1)
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Expert", "opportuniste")
+
+        api.lancer_partie()
+
+        joueur_ia = next(j for j in api._partie.joueurs if not j.humain)
+        assert joueur_ia.personnage == "opportuniste"
+        assert joueur_ia.personnage_aleatoire is False
 
 
 class TestExclusionPrenoms:
