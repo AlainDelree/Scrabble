@@ -1,0 +1,60 @@
+/* personnages.css — fenêtre « Les personnages » (issue #442, lot F ; isolée
+   dans son propre fichier, chargé par les DEUX fenêtres (accueil, jeu) depuis
+   le lot F bis, issue #443, pour qu'elles ne puissent plus diverger). Liste
+   défilante plutôt qu'une hauteur fixe : reste lisible si le registre
+   s'allonge, et tient à une résolution d'environ 1280×800 (contrainte de
+   l'issue). Les variables (--couleur-bordure, --couleur-secondaire, etc.)
+   sont redéfinies à l'identique par accueil.css et par commun.css : ce
+   fichier n'a donc besoin d'aucun des deux pour s'afficher correctement. */
+.modale-personnages-contenu {
+    max-width: 480px;
+    max-height: calc(100vh - 80px);
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+
+.liste-personnages {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-right: 4px;
+}
+
+.personnage-entree {
+    border-bottom: 1px solid var(--couleur-bordure, #ccc);
+    padding-bottom: 10px;
+}
+
+.personnage-entree:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.personnage-entree-entete {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-weight: 700;
+    color: var(--couleur-secondaire, #5d4037);
+}
+
+.personnage-entree-description {
+    margin: 4px 0 0;
+    font-size: 0.92rem;
+    color: var(--couleur-texte, #2c2c2c);
+}
+
+.personnage-tag {
+    flex: 0 0 auto;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--couleur-primaire, #2e7d32);
+    background: rgba(46, 125, 50, 0.12);
+    border-radius: 10px;
+    padding: 2px 8px;
+    white-space: nowrap;
+}

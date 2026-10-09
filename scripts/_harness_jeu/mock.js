@@ -113,6 +113,15 @@
           : { succes: false }
       ),
       verifier_mot: async () => ({ succes: true, valide: true, mot: 'TEST', definition: ['Définition de démonstration.'] }),
+      // Fenêtre « Les personnages » (issue #442, lot F ; marquage Aléatoire
+      // issue #443, lot F bis) : Ordi Nord a été réglé sur Opportuniste
+      // (marqué), Ordi Ouest sur Aléatoire (jamais marqué lui-même, mais
+      // l'entrée Aléatoire l'est désormais).
+      obtenir_personnages: async () => ([
+        { cle: 'classique', prenom: 'Classique', description: 'Joue normalement selon son niveau.', dans_la_partie: false },
+        { cle: 'opportuniste', prenom: 'Opportuniste', description: 'Se précipite sur les cases bonus dès qu’elles sont à sa portée, quitte à négliger la qualité des lettres qu’il garde sur son chevalet.', dans_la_partie: true },
+        { cle: 'aleatoire', prenom: 'Aléatoire', description: 'Un caractère sera tiré au sort au lancement de la partie et restera secret jusqu’à l’écran de résultat.', dans_la_partie: true },
+      ]),
       echanger_tout: async () => ({ succes: true }),
       passer: async () => ({ succes: true }),
       faire_jouer_ia: async () => ({ succes: true }),

@@ -297,7 +297,10 @@ class TestApiJeuObtenirPersonnages:
     def test_personnage_tire_au_hasard_nest_jamais_marque(self):
         """Même si l'identité réellement tirée est connue du moteur
         (``Joueur.personnage``), le tirage ne doit rien laisser deviner avant
-        la fin de la partie : son entrée ne doit PAS être marquée."""
+        la fin de la partie : SON entrée (« Opportuniste ») ne doit pas être
+        marquée — seule l'entrée Aléatoire l'est (issue #443, lot F bis),
+        sans jamais révéler que c'est précisément Opportuniste qui a été
+        tiré."""
         partie = _partie_avec_deux_ia(
             personnage_a="opportuniste", aleatoire_a=True
         )
@@ -305,11 +308,17 @@ class TestApiJeuObtenirPersonnages:
 
         personnages = api.obtenir_personnages()
 
-        assert all(not p["dans_la_partie"] for p in personnages)
+        marques = {p["cle"] for p in personnages if p["dans_la_partie"]}
+        assert marques == {CLE_ALEATOIRE}
+        opportuniste = next(p for p in personnages if p["cle"] == "opportuniste")
+        assert opportuniste["dans_la_partie"] is False
 
-    def test_aleatoire_nest_jamais_marque_meme_si_choisi_par_ailleurs(self):
-        """Un adversaire choisi explicitement et un autre tiré au hasard
-        cohabitent : seul le premier est marqué, jamais l'entrée Aléatoire."""
+    def test_aleatoire_marque_des_quun_adversaire_y_est_regle(self):
+        """Issue #443 (lot F bis) : un adversaire choisi explicitement et un
+        autre réglé sur Aléatoire cohabitent — le premier est marqué par sa
+        propre entrée, ET l'entrée Aléatoire est marquée à son tour (elle ne
+        révèle rien : « (Aléatoire) » est déjà affiché à côté du prénom de cet
+        adversaire)."""
         partie = _partie_avec_deux_ia(
             personnage_a="opportuniste",
             aleatoire_a=False,
@@ -321,7 +330,14 @@ class TestApiJeuObtenirPersonnages:
         personnages = api.obtenir_personnages()
 
         marques = {p["cle"] for p in personnages if p["dans_la_partie"]}
-        assert marques == {"opportuniste"}
+        assert marques == {"opportuniste", CLE_ALEATOIRE}
+
+    def test_aleatoire_non_marque_si_aucun_adversaire_regle_dessus(self):
+        partie = _partie_avec_deux_ia(personnage_a="opportuniste", aleatoire_a=False)
+        api = ApiJeu(partie, id_partie=None)
+
+        personnages = api.obtenir_personnages()
+
         aleatoire = next(p for p in personnages if p["cle"] == CLE_ALEATOIRE)
         assert aleatoire["dans_la_partie"] is False
 
@@ -338,3 +354,46 @@ class TestApiJeuObtenirPersonnages:
         assert partie.index_courant == index_avant
         assert partie.terminee == terminee_avant
         assert partie is api._partie
+
+
+class TestMemesDonneesAccueilEtJeu:
+    """La fenêtre de l'accueil et celle du jeu reposent sur les mêmes données
+    et le même composant d'affichage (issue #443, lot F bis, point 4)."""
+
+    def test_meme_cle_prenom_description_sans_partie_chargee(self):
+        """Sans partie en cours (cas de l'accueil), ``ApiJeu.obtenir_personnages``
+        et ``ApiAccueil.obtenir_personnages`` décrivent exactement les mêmes
+        personnages, dans le même ordre."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        personnages_jeu = ApiJeu().obtenir_personnages()
+        personnages_accueil = ApiAccueil().obtenir_personnages()
+
+        extrait_jeu = [
+            {k: p[k] for k in ("cle", "prenom", "description")}
+            for p in personnages_jeu
+        ]
+        extrait_accueil = [
+            {k: p[k] for k in ("cle", "prenom", "description")}
+            for p in personnages_accueil
+        ]
+        assert extrait_jeu == extrait_accueil
+
+    def test_les_deux_fenetres_partagent_le_meme_controleur_js(self):
+        """``accueil.js`` et ``jeu.js`` construisent tous deux leur modale via
+        ``window.Commun.creerModalePersonnages`` (``commun.js``), et les deux
+        pages chargent ``personnages.css`` — un seul endroit pour les styles
+        de la liste, afin que les deux présentations ne puissent plus
+        diverger (voir ``src/scrabble/ui/web/personnages.css``)."""
+        from pathlib import Path
+
+        web = Path(__file__).resolve().parents[1] / "src" / "scrabble" / "ui" / "web"
+        accueil_js = (web / "accueil.js").read_text(encoding="utf-8")
+        jeu_js = (web / "jeu.js").read_text(encoding="utf-8")
+        accueil_html = (web / "accueil.html").read_text(encoding="utf-8")
+        jeu_html = (web / "jeu.html").read_text(encoding="utf-8")
+
+        assert "creerModalePersonnages" in accueil_js
+        assert "creerModalePersonnages" in jeu_js
+        assert 'href="personnages.css"' in accueil_html
+        assert 'href="personnages.css"' in jeu_html

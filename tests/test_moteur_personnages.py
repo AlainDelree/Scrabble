@@ -121,6 +121,11 @@ class TestPersonnageClassiqueInchange:
         assert profil.bonus_premium is None
         assert profil.poids_leave is None
 
+    def test_description_classique(self):
+        """Texte reformulé (issue #443, lot F bis) : plus clair que l'ancien
+        « Joue sans biais de personnalité... »."""
+        assert PERSONNAGES["classique"].description == "Joue normalement selon son niveau."
+
     def test_choisir_coup_avec_profil_classique_egale_sans_profil(self):
         """``choisir_coup`` avec le profil Classique == sans profil, graine à graine.
 
@@ -299,3 +304,15 @@ class TestListerPersonnages:
     def test_sans_cles_dans_partie_rien_nest_marque(self):
         personnages = lister_personnages()
         assert all(not p["dans_la_partie"] for p in personnages)
+
+    def test_aleatoire_dans_partie_marque_uniquement_lentree_aleatoire(self):
+        """``aleatoire_dans_partie`` (issue #443, lot F bis) ne marque QUE
+        l'entrée Aléatoire, jamais une entrée réelle du registre."""
+        personnages = lister_personnages(aleatoire_dans_partie=True)
+        marques = {p["cle"] for p in personnages if p["dans_la_partie"]}
+        assert marques == {CLE_ALEATOIRE}
+
+    def test_aleatoire_dans_partie_faux_par_defaut(self):
+        personnages = lister_personnages(frozenset({"opportuniste"}))
+        aleatoire = next(p for p in personnages if p["cle"] == CLE_ALEATOIRE)
+        assert aleatoire["dans_la_partie"] is False

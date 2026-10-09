@@ -1480,17 +1480,27 @@ class ApiJeu(MixinDiffusion, MixinTirageOrdre, MixinTourEtFinPartie, MixinPose, 
         pure : n'altère ni le tour en cours, ni la partie, ni la sauvegarde.
         Liste simplement construite (vide écartée) si aucune partie n'est
         chargée : un getter listé simplifie l'appelant JS.
+
+        L'entrée « Aléatoire » elle-même (issue #443, lot F bis) est marquée
+        dès qu'au moins un adversaire a été RÉGLÉ sur Aléatoire, sans jamais
+        révéler le personnage réellement tiré — déjà visible via le libellé
+        « (Aléatoire) » affiché à côté du prénom de cet adversaire.
         """
         cles_dans_partie: frozenset[str] = frozenset()
+        aleatoire_dans_partie = False
         if self._partie is not None:
+            adversaires = [
+                joueur for joueur in self._partie.joueurs if not joueur.humain
+            ]
             cles_dans_partie = frozenset(
                 joueur.personnage
-                for joueur in self._partie.joueurs
-                if not joueur.humain
-                and joueur.personnage
-                and not joueur.personnage_aleatoire
+                for joueur in adversaires
+                if joueur.personnage and not joueur.personnage_aleatoire
             )
-        return lister_personnages(cles_dans_partie)
+            aleatoire_dans_partie = any(
+                joueur.personnage_aleatoire for joueur in adversaires
+            )
+        return lister_personnages(cles_dans_partie, aleatoire_dans_partie)
 
     def obtenir_historique(self) -> list[dict[str, Any]]:
         """Liste des coups **sans** le détail du score, chargée à la demande.

@@ -103,10 +103,7 @@ PERSONNAGES: dict[str, Personnage] = {
     "classique": Personnage(
         cle="classique",
         prenom="Classique",
-        description=(
-            "Joue sans biais de personnalité : comportement standard du "
-            "niveau choisi."
-        ),
+        description="Joue normalement selon son niveau.",
         profil=ProfilPersonnage(),
     ),
     "opportuniste": Personnage(
@@ -207,6 +204,7 @@ def libelle_personnage_partie(
 
 def lister_personnages(
     cles_dans_partie: frozenset[str] = frozenset(),
+    aleatoire_dans_partie: bool = False,
 ) -> list[dict[str, Any]]:
     """Liste présentable pour la fenêtre « Les personnages » (issue #442, lot F).
 
@@ -221,9 +219,19 @@ def lister_personnages(
     ``cles_dans_partie`` (vide par défaut — cas de l'accueil, où il n'y a pas
     encore de partie) marque les personnages choisis À L'AVANCE par un
     adversaire de la partie en cours (``dans_la_partie``). Ne jamais y
-    inclure la clé d'un personnage tiré au hasard : l'entrée « Aléatoire »
-    porte toujours ``dans_la_partie=False``, afin que la fenêtre ne laisse
+    inclure la clé d'un personnage tiré au hasard : ce paramètre ne pilote
+    donc jamais le marquage de l'entrée « Aléatoire » elle-même (voir
+    ``aleatoire_dans_partie`` ci-dessous), afin que la fenêtre ne laisse
     jamais deviner le résultat d'un tirage avant la révélation finale.
+
+    ``aleatoire_dans_partie`` (issue #443, lot F bis) marque l'entrée
+    « Aléatoire » dès qu'au moins un adversaire a été RÉGLÉ sur Aléatoire
+    (:attr:`~scrabble.moteur.partie.Joueur.personnage_aleatoire`), quel que
+    soit le personnage réellement tiré. Cela ne révèle rien : le libellé
+    « (Aléatoire) » est déjà affiché à côté du prénom de cet adversaire
+    pendant toute la partie (voir
+    :func:`libelle_personnage_partie`) — seule l'identité tirée reste
+    secrète, jamais le fait d'avoir réglé un adversaire sur Aléatoire.
     """
     resultat = [
         {
@@ -239,7 +247,7 @@ def lister_personnages(
             "cle": CLE_ALEATOIRE,
             "prenom": "Aléatoire",
             "description": DESCRIPTION_ALEATOIRE,
-            "dans_la_partie": False,
+            "dans_la_partie": aleatoire_dans_partie,
         }
     )
     return resultat
