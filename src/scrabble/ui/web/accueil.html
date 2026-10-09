@@ -139,6 +139,13 @@
                 <div class="zone-personnage">
                     <label for="select-personnage" class="label-personnage">Personnage du prochain ordinateur :</label>
                     <select id="select-personnage" class="select-personnage"></select>
+                    <!-- Accès discret à la fenêtre « Les personnages » (issue #442,
+                         lot F) : réutilise la liste déjà chargée par
+                         chargerPersonnages (accueil.js), aucun appel API de plus. -->
+                    <button type="button" id="btn-les-personnages" class="lien-personnages"
+                            title="Voir la liste des personnages et leurs particularités">
+                        Les personnages
+                    </button>
                     <p id="description-personnage" class="description-personnage"></p>
                 </div>
                 <div class="zone-niveaux">
@@ -442,6 +449,22 @@
                     <button type="submit" class="btn btn-primaire">Ajouter</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Fenêtre « Les personnages » (issue #442, lot F) : liste de tous les
+         personnages du registre avec leur description, ouvrable depuis
+         l'accueil comme depuis l'écran de jeu (même composant, voir
+         creerModalePersonnages dans commun.js). À l'accueil, aucune partie
+         n'est en cours : jamais de mention « dans cette partie ». -->
+    <div id="modale-personnages" class="modale" hidden>
+        <div class="modale-contenu modale-personnages-contenu" role="dialog" aria-modal="true"
+             aria-labelledby="modale-personnages-titre">
+            <h3 id="modale-personnages-titre">Les personnages</h3>
+            <div id="liste-personnages" class="liste-personnages"></div>
+            <div class="modale-actions">
+                <button id="btn-fermer-personnages" class="btn btn-secondaire">Fermer</button>
+            </div>
         </div>
     </div>
 

@@ -852,6 +852,23 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
     color: var(--couleur-texte-attenue, #666);
 }
 
+/* Accès discret à la fenêtre « Les personnages » (issue #442, lot F) : un
+   lien plutôt qu'un bouton plein, pour rester en retrait du sélecteur. */
+.lien-personnages {
+    flex: 0 0 auto;
+    font-size: 0.8rem;
+    background: none;
+    border: none;
+    color: var(--couleur-primaire, #2e7d32);
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+}
+
+.lien-personnages:hover {
+    color: var(--couleur-primaire-hover, #1b5e20);
+}
+
 .zone-boutons .btn-niveau {
     flex: 1;
     min-width: 0;

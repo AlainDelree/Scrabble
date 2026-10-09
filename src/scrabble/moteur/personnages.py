@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from typing import Any
 
 from scrabble.moteur.ia import ProfilPersonnage
 
@@ -202,3 +203,43 @@ def libelle_personnage_partie(
     if not personnage_cle or personnage_cle == "classique":
         return ""
     return _prenom_affichable(personnage_cle)
+
+
+def lister_personnages(
+    cles_dans_partie: frozenset[str] = frozenset(),
+) -> list[dict[str, Any]]:
+    """Liste présentable pour la fenêtre « Les personnages » (issue #442, lot F).
+
+    Une entrée par personnage de :data:`PERSONNAGES` (dans l'ordre
+    d'insertion, donc Classique en tête), puis « Aléatoire » toujours en
+    dernier — construite dynamiquement depuis le registre comme
+    :func:`~scrabble.ui.accueil.ApiAccueil.obtenir_personnages`, pour qu'un
+    personnage ajouté plus tard au registre y apparaisse sans autre
+    modification. Chaque entrée est ``{"cle", "prenom", "description",
+    "dans_la_partie"}``.
+
+    ``cles_dans_partie`` (vide par défaut — cas de l'accueil, où il n'y a pas
+    encore de partie) marque les personnages choisis À L'AVANCE par un
+    adversaire de la partie en cours (``dans_la_partie``). Ne jamais y
+    inclure la clé d'un personnage tiré au hasard : l'entrée « Aléatoire »
+    porte toujours ``dans_la_partie=False``, afin que la fenêtre ne laisse
+    jamais deviner le résultat d'un tirage avant la révélation finale.
+    """
+    resultat = [
+        {
+            "cle": personnage.cle,
+            "prenom": personnage.prenom,
+            "description": personnage.description,
+            "dans_la_partie": personnage.cle in cles_dans_partie,
+        }
+        for personnage in PERSONNAGES.values()
+    ]
+    resultat.append(
+        {
+            "cle": CLE_ALEATOIRE,
+            "prenom": "Aléatoire",
+            "description": DESCRIPTION_ALEATOIRE,
+            "dans_la_partie": False,
+        }
+    )
+    return resultat

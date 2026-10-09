@@ -17,9 +17,11 @@ from scrabble.moteur.generateur import generer_coups
 from scrabble.moteur.ia import Niveau, choisir_coup
 from scrabble.moteur.personnages import (
     CLE_ALEATOIRE,
+    DESCRIPTION_ALEATOIRE,
     PERSONNAGES,
     libelle_choix_accueil,
     libelle_personnage_partie,
+    lister_personnages,
     tirer_personnage,
 )
 from scrabble.moteur.plateau_partie import (
@@ -244,3 +246,56 @@ class TestLibellePersonnagePartie:
         )
         assert libelle == "Aléatoire : Classique"
         assert libelle != "Classique"
+
+
+class TestListerPersonnages:
+    """Fenêtre « Les personnages » (issue #442, lot F) : liste construite depuis le registre."""
+
+    def test_contient_le_registre_puis_aleatoire_en_dernier(self):
+        personnages = lister_personnages()
+        cles = [p["cle"] for p in personnages]
+        assert cles == [*PERSONNAGES.keys(), CLE_ALEATOIRE]
+        for p in personnages:
+            assert set(p.keys()) == {
+                "cle", "prenom", "description", "dans_la_partie",
+            }
+
+    def test_un_personnage_ajoute_au_registre_apparait_dans_la_liste(self, monkeypatch):
+        """Un personnage ajouté au registre pendant le test doit apparaître,
+        sans aucune autre modification — garantit que la liste n'est pas codée
+        en dur ailleurs qu'au travers du registre."""
+        from dataclasses import replace
+
+        nouveau = replace(
+            PERSONNAGES["classique"], cle="test_lot_f", prenom="TestLotF"
+        )
+        monkeypatch.setitem(PERSONNAGES, "test_lot_f", nouveau)
+
+        cles = [p["cle"] for p in lister_personnages()]
+        assert "test_lot_f" in cles
+        # Aléatoire doit rester en dernier malgré l'ajout.
+        assert cles[-1] == CLE_ALEATOIRE
+
+    def test_aleatoire_en_dernier_meme_avec_des_entrees_dans_la_partie(self):
+        cles_dans_partie = frozenset(PERSONNAGES.keys())
+        personnages = lister_personnages(cles_dans_partie)
+        assert personnages[-1]["cle"] == CLE_ALEATOIRE
+
+    def test_aleatoire_nest_jamais_marque_dans_la_partie(self):
+        """Même si toutes les clés réelles du registre sont « dans la partie »,
+        l'entrée Aléatoire ne doit jamais être marquée — elle ne représente
+        aucune identité, et ne doit donc jamais laisser deviner un tirage."""
+        cles_dans_partie = frozenset(PERSONNAGES.keys())
+        personnages = lister_personnages(cles_dans_partie)
+        aleatoire = next(p for p in personnages if p["cle"] == CLE_ALEATOIRE)
+        assert aleatoire["dans_la_partie"] is False
+        assert aleatoire["description"] == DESCRIPTION_ALEATOIRE
+
+    def test_marquage_dans_la_partie_ne_concerne_que_les_cles_fournies(self):
+        personnages = lister_personnages(frozenset({"opportuniste"}))
+        marques = {p["cle"] for p in personnages if p["dans_la_partie"]}
+        assert marques == {"opportuniste"}
+
+    def test_sans_cles_dans_partie_rien_nest_marque(self):
+        personnages = lister_personnages()
+        assert all(not p["dans_la_partie"] for p in personnages)

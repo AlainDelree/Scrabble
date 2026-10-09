@@ -64,6 +64,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const historiqueListe = document.getElementById('historique-liste');
     const historiqueCompte = document.getElementById('historique-compte');
     const btnRafraichir = document.getElementById('btn-rafraichir');
+    // Fenêtre « Les personnages » (issue #442, lot F), contrôleur factorisé
+    // dans commun.js (même composant qu'à l'accueil).
+    const btnLesPersonnages = document.getElementById('btn-les-personnages');
+    const modalePersonnages = C.creerModalePersonnages({
+        modale: document.getElementById('modale-personnages'),
+        liste: document.getElementById('liste-personnages'),
+        fermer: document.getElementById('btn-fermer-personnages'),
+    });
     // Sélecteur de lettre du joker (issues #168/#201). Popover en position fixe,
     // masqué tant qu'aucun joker n'est en cours de pose ; ouvrirSelecteurJoker() le
     // révèle et le place DIRECTEMENT sur la case du plateau où le joker est posé
@@ -1489,6 +1497,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnRafraichir.addEventListener('click', rafraichir);
 
     // ------------------------------------------------------------------ //
+    // Fenêtre « Les personnages » (issue #442, lot F)
+    // ------------------------------------------------------------------ //
+
+    // Simple lecture à chaque ouverture (jamais mise en cache) : aucun effet
+    // sur l'état de la partie, le tour en cours ni la sauvegarde. Les
+    // personnages choisis à l'avance par les adversaires de CETTE partie sont
+    // signalés par Python (``dans_la_partie``), jamais un tirage aléatoire.
+    btnLesPersonnages.addEventListener('click', async () => {
+        let personnages;
+        try {
+            personnages = await api.obtenir_personnages();
+        } catch (err) {
+            return;
+        }
+        modalePersonnages.afficher(personnages);
+    });
+
+    // ------------------------------------------------------------------ //
     // Retour au menu (issue #74/#90)
     // ------------------------------------------------------------------ //
 
@@ -1632,6 +1658,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     document.addEventListener('keydown', (evt) => {
         if (evt.key === 'Escape' && !confirmationModale.hidden) fermerConfirmation(false);
+    });
+
+    // Fermeture de la fenêtre « Les personnages » à l'Échap (issue #442, lot F).
+    document.addEventListener('keydown', (evt) => {
+        const modale = document.getElementById('modale-personnages');
+        if (evt.key === 'Escape' && !modale.hidden) modalePersonnages.fermer();
     });
 
     // ------------------------------------------------------------------ //

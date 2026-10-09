@@ -61,7 +61,11 @@ from scrabble.moteur.partie import (
     Partie,
     recreer_partie_meme_joueurs,
 )
-from scrabble.moteur.personnages import libelle_personnage_partie, obtenir_personnage
+from scrabble.moteur.personnages import (
+    libelle_personnage_partie,
+    lister_personnages,
+    obtenir_personnage,
+)
 from scrabble.moteur.plateau_partie import (
     Coup,
     Direction,
@@ -1463,6 +1467,30 @@ class ApiJeu(MixinDiffusion, MixinTirageOrdre, MixinTourEtFinPartie, MixinPose, 
         if self._partie is None:
             return self._erreur_aucune_partie()
         return self._etat_chevalet()
+
+    def obtenir_personnages(self) -> list[dict[str, Any]]:
+        """Options de la fenêtre « Les personnages » en cours de partie (issue #442, lot F).
+
+        Même liste que l'accueil (:func:`~scrabble.moteur.personnages.
+        lister_personnages`), avec en plus le repérage ``dans_la_partie``
+        pour les personnages choisis À L'AVANCE par un adversaire de la
+        partie en cours — jamais pour un personnage tiré au hasard
+        (``Joueur.personnage_aleatoire``), afin que la fenêtre ne révèle
+        jamais le résultat d'un tirage avant la fin de la partie. Lecture
+        pure : n'altère ni le tour en cours, ni la partie, ni la sauvegarde.
+        Liste simplement construite (vide écartée) si aucune partie n'est
+        chargée : un getter listé simplifie l'appelant JS.
+        """
+        cles_dans_partie: frozenset[str] = frozenset()
+        if self._partie is not None:
+            cles_dans_partie = frozenset(
+                joueur.personnage
+                for joueur in self._partie.joueurs
+                if not joueur.humain
+                and joueur.personnage
+                and not joueur.personnage_aleatoire
+            )
+        return lister_personnages(cles_dans_partie)
 
     def obtenir_historique(self) -> list[dict[str, Any]]:
         """Liste des coups **sans** le détail du score, chargée à la demande.

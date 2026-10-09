@@ -279,6 +279,63 @@
     text-align: center;
 }
 
+/* Fenêtre « Les personnages » (issue #442, lot F), dupliquée dans les deux
+   fenêtres (accueil, jeu) comme .modale-score. Liste défilante plutôt
+   qu'une hauteur fixe : reste lisible si le registre s'allonge, et tient à
+   une résolution d'environ 1280×800 (contrainte de l'issue). */
+.modale-personnages-contenu {
+    max-width: 480px;
+    max-height: calc(100vh - 80px);
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+
+.liste-personnages {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-right: 4px;
+}
+
+.personnage-entree {
+    border-bottom: 1px solid var(--couleur-bordure, #ccc);
+    padding-bottom: 10px;
+}
+
+.personnage-entree:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.personnage-entree-entete {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-weight: 700;
+    color: var(--couleur-secondaire, #5d4037);
+}
+
+.personnage-entree-description {
+    margin: 4px 0 0;
+    font-size: 0.92rem;
+    color: var(--couleur-texte, #2c2c2c);
+}
+
+.personnage-tag {
+    flex: 0 0 auto;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--couleur-primaire, #2e7d32);
+    background: rgba(46, 125, 50, 0.12);
+    border-radius: 10px;
+    padding: 2px 8px;
+    white-space: nowrap;
+}
+
 .score-detail {
     display: flex;
     flex-direction: column;

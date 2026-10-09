@@ -57,6 +57,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectPersonnage = document.getElementById('select-personnage');
     const descriptionPersonnage = document.getElementById('description-personnage');
 
+    // Fenêtre « Les personnages » (issue #442, lot F), contrôleur factorisé
+    // dans commun.js (même composant qu'à l'écran de jeu).
+    const btnLesPersonnages = document.getElementById('btn-les-personnages');
+    const modalePersonnages = window.Commun.creerModalePersonnages({
+        modale: document.getElementById('modale-personnages'),
+        liste: document.getElementById('liste-personnages'),
+        fermer: document.getElementById('btn-fermer-personnages'),
+    });
+
     // État
     let premierHumainAjoute = false;
 
@@ -492,6 +501,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     selectPersonnage.addEventListener('change', afficherDescriptionPersonnage);
+
+    // Fenêtre « Les personnages » (issue #442, lot F) : réutilise la liste déjà
+    // chargée par chargerPersonnages ci-dessus, pas de nouvel appel API. Sans
+    // partie en cours, aucune entrée n'est marquée « dans cette partie ».
+    btnLesPersonnages.addEventListener('click', () => {
+        modalePersonnages.afficher(personnagesDisponibles);
+    });
 
     /**
      * Désactive visuellement les boutons de niveau dont le vocabulaire IA est
@@ -1033,6 +1049,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.key === 'Escape') {
             if (!modaleHumain.hidden) {
                 cacherModale(modaleHumain);
+            } else if (!document.getElementById('modale-personnages').hidden) {
+                modalePersonnages.fermer();
             } else if (!vueReglages.hidden) {
                 masquerReglages();
             }

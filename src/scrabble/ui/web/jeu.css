@@ -140,7 +140,8 @@ body {
    pastilles côte à côte : plutôt que de laisser le simple ``flex-wrap`` décider
    des retours (issue #186), on impose deux rangées via des conteneurs
    ``.zone-systeme-ligne`` :
-     - Ligne 1 : Retour au menu · Resynchroniser (icône seule) · Sac ;
+     - Ligne 1 : Retour au menu · Resynchroniser (icône seule) · Sac ·
+       Les personnages (issue #442, lot F) ;
      - Ligne 2 : loupe (vérification dictionnaire) · Derniers coups.
    La section elle-même reste une colonne (héritée de .zone-gauche) empilant ces
    deux rangées. */

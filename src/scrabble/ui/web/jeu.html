@@ -55,7 +55,8 @@
                  regrouper les pastilles côte à côte au lieu de les empiler. Deux
                  conteneurs ``.zone-systeme-ligne`` (rangées flex) portent le
                  découpage :
-                   - Ligne 1 : Retour au menu · Resynchroniser (icône seule) · Sac ;
+                   - Ligne 1 : Retour au menu · Resynchroniser (icône seule) · Sac ·
+                     Les personnages (issue #442, lot F) ;
                    - Ligne 2 : menu joker (masqué hors pose de joker).
                  Contenu et id strictement inchangés — seul le regroupement change. -->
             <section class="zone-gauche zone-systeme" aria-label="Actions système">
@@ -89,6 +90,14 @@
                         <span class="sac-nombre" id="sac-nombre">—</span>
                         <span class="sac-label">lettres</span>
                     </div>
+
+                    <!-- Bouton « Les personnages » (issue #442, lot F) : ouvre la
+                         même fenêtre qu'à l'accueil, sans effet sur l'état de la
+                         partie, le tour en cours ni la sauvegarde. -->
+                    <button id="btn-les-personnages" class="btn btn-secondaire btn-utilitaire"
+                            title="Voir la liste des personnages et leurs particularités">
+                        🎭 Personnages
+                    </button>
                 </div>
 
                 <!-- Ligne 2 : le menu joker (masqué tant qu'aucun joker n'est en
@@ -386,6 +395,25 @@
                 <button id="retour-confirmer" class="btn btn-primaire">
                     🏠 Revenir au menu
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fenêtre « Les personnages » (issue #442, lot F) : liste de tous les
+         personnages du registre avec leur description, ouvrable depuis
+         l'écran de jeu comme depuis l'accueil (même composant, voir
+         creerModalePersonnages dans commun.js). En jeu, les personnages
+         choisis à l'avance par les adversaires sont signalés « Dans cette
+         partie » — jamais un personnage tiré au hasard, pour ne rien
+         laisser deviner avant la révélation finale. Ouverture/fermeture
+         sans effet sur la partie : simple lecture (ApiJeu.obtenir_personnages). -->
+    <div id="modale-personnages" class="modale" hidden>
+        <div class="modale-contenu modale-personnages-contenu" role="dialog" aria-modal="true"
+             aria-labelledby="modale-personnages-titre">
+            <h3 id="modale-personnages-titre">Les personnages</h3>
+            <div id="liste-personnages" class="liste-personnages"></div>
+            <div class="modale-actions">
+                <button id="btn-fermer-personnages" class="btn btn-secondaire">Fermer</button>
             </div>
         </div>
     </div>

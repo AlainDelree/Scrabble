@@ -400,6 +400,53 @@
         return { afficher, afficherSansDetail, fermer };
     }
 
+    /**
+     * Construit un contrôleur de la fenêtre « Les personnages » (issue #442,
+     * lot F), commune à l'accueil et à l'écran de jeu (chacun héberge sa
+     * propre copie du marquage ``#modale-personnages``, même esprit que
+     * :func:`creerModaleScore`). ``refs`` = {modale, liste, fermer}.
+     *
+     * ``afficher(personnages)`` reçoit la liste construite côté Python
+     * (``ApiAccueil.obtenir_personnages`` / ``ApiJeu.obtenir_personnages``) —
+     * chaque entrée ``{cle, prenom, description, dans_la_partie?}`` — et se
+     * contente de l'afficher telle quelle : la confidentialité d'un
+     * personnage tiré au hasard est garantie côté Python (jamais marqué
+     * ``dans_la_partie``), pas par ce rendu. Renvoie {afficher, fermer}.
+     */
+    function creerModalePersonnages(refs) {
+        function fermer() {
+            refs.modale.hidden = true;
+        }
+        function afficher(personnages) {
+            refs.liste.innerHTML = '';
+            (personnages || []).forEach((p) => {
+                const entree = document.createElement('div');
+                entree.className = 'personnage-entree';
+                const tag = p.dans_la_partie
+                    ? '<span class="personnage-tag">Dans cette partie</span>'
+                    : '';
+                entree.innerHTML = `
+                    <div class="personnage-entree-entete">
+                        <span class="personnage-entree-nom">${escapeHtml(p.prenom)}</span>
+                        ${tag}
+                    </div>
+                    <p class="personnage-entree-description">${escapeHtml(p.description)}</p>
+                `;
+                refs.liste.appendChild(entree);
+            });
+            refs.modale.hidden = false;
+        }
+        if (refs.fermer) {
+            refs.fermer.addEventListener('click', fermer);
+        }
+        refs.modale.addEventListener('click', (evt) => {
+            if (evt.target === refs.modale) {
+                fermer();
+            }
+        });
+        return { afficher, fermer };
+    }
+
     window.Commun = {
         pretPywebview,
         escapeHtml,
@@ -415,6 +462,7 @@
         fermerTousPopovers,
         choisirLettreJoker,
         creerModaleScore,
+        creerModalePersonnages,
     };
 })();
 
