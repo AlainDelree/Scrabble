@@ -61,7 +61,7 @@ from scrabble.moteur.partie import (
     Partie,
     recreer_partie_meme_joueurs,
 )
-from scrabble.moteur.personnages import obtenir_personnage
+from scrabble.moteur.personnages import libelle_personnage_partie, obtenir_personnage
 from scrabble.moteur.plateau_partie import (
     Coup,
     Direction,
@@ -310,6 +310,7 @@ def serialiser_joueur_public(
     courant: bool,
     position: str | None = None,
     avatar: str | None = None,
+    reveler_personnage: bool = False,
 ) -> dict[str, Any]:
     """Sérialise les infos **publiques** d'un joueur (sans révéler ses lettres).
 
@@ -321,10 +322,22 @@ def serialiser_joueur_public(
     Python), la lecture de haut en bas suivant l'ordre de jeu (issue #195).
     ``avatar`` est l'identifiant du portrait SVG attribué (voir
     :func:`calculer_avatars`), également calculé côté Python.
+
+    ``personnage_libelle`` (issue #441) est le texte à afficher entre
+    parenthèses après ``nom`` — vide pour Classique (ou l'absence de
+    personnage) — voir :func:`~scrabble.moteur.personnages.
+    libelle_personnage_partie`. ``nom`` lui-même reste **toujours** le
+    prénom seul : seul l'affichage ajoute le personnage, ni l'historique des
+    coups ni les sauvegardes n'en sont affectés. ``reveler_personnage``
+    (``partie.terminee``, voir :func:`etat_public`) ne change le libellé que
+    pour un personnage tiré au hasard, révélé en fin de partie.
     """
     return {
         "index": index,
         "nom": joueur.nom,
+        "personnage_libelle": libelle_personnage_partie(
+            joueur.personnage, joueur.personnage_aleatoire, reveler_personnage
+        ),
         "humain": joueur.humain,
         "niveau": joueur.niveau.name if joueur.niveau is not None else None,
         "score": joueur.score,
@@ -538,6 +551,7 @@ def etat_public(partie: Partie, id_partie: int | None) -> dict[str, Any]:
                 index == partie.index_courant,
                 positions[index],
                 avatars[index],
+                reveler_personnage=partie.terminee,
             )
             for index, joueur in enumerate(partie.joueurs)
         ],

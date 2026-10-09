@@ -15,7 +15,13 @@ import random
 from scrabble.dictionnaire.dictionnaire import Trie
 from scrabble.moteur.generateur import generer_coups
 from scrabble.moteur.ia import Niveau, choisir_coup
-from scrabble.moteur.personnages import PERSONNAGES, tirer_personnage
+from scrabble.moteur.personnages import (
+    CLE_ALEATOIRE,
+    PERSONNAGES,
+    libelle_choix_accueil,
+    libelle_personnage_partie,
+    tirer_personnage,
+)
 from scrabble.moteur.plateau_partie import (
     CENTRE,
     Coup,
@@ -165,3 +171,76 @@ class TestTirerPersonnage:
         """Sans générateur injecté, retombe sur le module ``random`` global."""
         tire = tirer_personnage()
         assert tire.cle in PERSONNAGES
+
+
+class TestLibelleChoixAccueil:
+    """Libellé entre parenthèses pour le sélecteur de l'accueil (issue #441).
+
+    Porte sur la clé encore non résolue mémorisée par ``JoueurConfig`` —
+    jamais sur une identité réelle tirée (pas de révélation possible avant le
+    lancement de la partie).
+    """
+
+    def test_classique_pas_de_parenthese(self):
+        assert libelle_choix_accueil("classique") == ""
+
+    def test_absence_de_personnage_pas_de_parenthese(self):
+        """Un humain (``JoueurConfig.personnage`` jamais exploité) ou une
+        ancienne configuration sans personnage renvoient aussi une chaîne vide."""
+        assert libelle_choix_accueil("") == ""
+
+    def test_personnage_explicite_porte_son_prenom(self):
+        assert libelle_choix_accueil("opportuniste") == "Opportuniste"
+
+    def test_aleatoire_porte_le_libelle_mystere(self):
+        """Avant résolution, « Aléatoire » lui-même, jamais une identité réelle."""
+        assert libelle_choix_accueil(CLE_ALEATOIRE) == "Aléatoire"
+
+
+class TestLibellePersonnagePartie:
+    """Libellé entre parenthèses pour un ``Joueur`` déjà en partie (issue #441).
+
+    Porte sur l'identité réelle (``Joueur.personnage``) et le drapeau
+    ``Joueur.personnage_aleatoire`` — jamais sur le libellé « Aléatoire » de
+    l'accueil.
+    """
+
+    def test_classique_choisi_explicitement_pas_de_parenthese(self):
+        assert libelle_personnage_partie("classique", personnage_aleatoire=False) == ""
+
+    def test_absence_de_personnage_pas_de_parenthese(self):
+        """Sauvegarde antérieure à l'issue #438, sans personnage du tout."""
+        assert libelle_personnage_partie("", personnage_aleatoire=False) == ""
+
+    def test_personnage_explicite_porte_son_prenom(self):
+        assert (
+            libelle_personnage_partie("opportuniste", personnage_aleatoire=False)
+            == "Opportuniste"
+        )
+
+    def test_aleatoire_non_revele_affiche_aleatoire_seul(self):
+        """Pendant toute la partie (``reveler=False``), quel que soit le
+        personnage réellement tiré — y compris Classique — rien ne doit fuiter."""
+        for cle in PERSONNAGES:
+            assert (
+                libelle_personnage_partie(cle, personnage_aleatoire=True, reveler=False)
+                == "Aléatoire"
+            )
+
+    def test_aleatoire_revele_affiche_le_personnage_tire_pour_chaque_entree(self):
+        """En fin de partie (``reveler=True``), le personnage réel apparaît,
+        Classique compris — jamais le prénom seul (point 3 de l'issue #441)."""
+        for cle, personnage in PERSONNAGES.items():
+            assert (
+                libelle_personnage_partie(cle, personnage_aleatoire=True, reveler=True)
+                == f"Aléatoire : {personnage.prenom}"
+            )
+
+    def test_aleatoire_revele_classique_nest_jamais_le_prenom_seul(self):
+        """Cas explicite rappelé par l'issue : « Aléatoire : Classique », pas
+        « Classique » tout court, pour ne pas ressembler à un défaut d'affichage."""
+        libelle = libelle_personnage_partie(
+            "classique", personnage_aleatoire=True, reveler=True
+        )
+        assert libelle == "Aléatoire : Classique"
+        assert libelle != "Classique"

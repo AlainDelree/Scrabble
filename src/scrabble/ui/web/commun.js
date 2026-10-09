@@ -37,6 +37,17 @@
     }
 
     /**
+     * Prénom suivi du personnage entre parenthèses, s'il y a lieu (issue #441).
+     * ``personnageLibelle`` vient de ``personnage_libelle`` (accueil) ou
+     * ``etat.joueurs[i].personnage_libelle`` (jeu) — vide pour Classique (et
+     * pour un joueur humain), auquel cas le prénom seul est renvoyé, comme
+     * avant l'introduction des personnages.
+     */
+    function nomAvecPersonnage(nom, personnageLibelle) {
+        return personnageLibelle ? `${nom} (${personnageLibelle})` : nom;
+    }
+
+    /**
      * Construit une tuile posée (sur le plateau ou en indice du chevalet) avec sa
      * valeur en points en indice. ``enAttente`` marque une tuile non validée.
      */
@@ -393,6 +404,7 @@
         pretPywebview,
         escapeHtml,
         icone,
+        nomAvecPersonnage,
         creerTuile,
         LABEL_TOOLTIP,
         LABEL_COMPLET,

@@ -145,3 +145,60 @@ def tirer_personnage(generateur: random.Random | None = None) -> Personnage:
     """
     rng = generateur if generateur is not None else random
     return rng.choice(list(PERSONNAGES.values()))
+
+
+def _prenom_affichable(cle: str) -> str:
+    """Prénom affichable d'un personnage réel du registre, Classique compris.
+
+    Défense en profondeur : une clé devenue inconnue (le registre n'est
+    jamais réduit en pratique) retombe sur la clé elle-même plutôt que de
+    faire planter l'affichage.
+    """
+    personnage = PERSONNAGES.get(cle)
+    return personnage.prenom if personnage is not None else cle
+
+
+def libelle_choix_accueil(personnage_cle: str) -> str:
+    """Texte à afficher entre parenthèses pour un choix fait à l'accueil (issue #441).
+
+    ``personnage_cle`` est ici la clé **encore non résolue** mémorisée par
+    :class:`~scrabble.ui.accueil.JoueurConfig` : soit une clé de
+    :data:`PERSONNAGES`, soit :data:`CLE_ALEATOIRE` (le tirage réel n'a lieu
+    qu'au lancement de la partie, voir
+    :func:`~scrabble.moteur.partie.creer_partie`). Chaîne vide pour Classique
+    (ou l'absence de personnage) : l'accueil affiche alors le prénom seul,
+    comme avant l'introduction du sélecteur.
+    """
+    if personnage_cle == CLE_ALEATOIRE:
+        return "Aléatoire"
+    if not personnage_cle or personnage_cle == "classique":
+        return ""
+    return _prenom_affichable(personnage_cle)
+
+
+def libelle_personnage_partie(
+    personnage_cle: str, personnage_aleatoire: bool, reveler: bool = False
+) -> str:
+    """Texte à afficher entre parenthèses pour un ``Joueur`` en partie (issue #441).
+
+    ``personnage_cle``/``personnage_aleatoire`` reprennent les champs de
+    :class:`~scrabble.moteur.partie.Joueur` — ``personnage_cle`` porte ici
+    toujours l'identité **réelle** (jamais le libellé « Aléatoire »).
+
+    Pour un personnage tiré au hasard (``personnage_aleatoire`` vrai), le
+    libellé reste « Aléatoire » tant que ``reveler`` est faux (pendant toute
+    la partie — l'identité ne doit pas fuiter), puis devient « Aléatoire :
+    <Personnage> » une fois révélé, Classique compris : jamais le prénom seul,
+    pour que le joueur ne croie pas à un défaut d'affichage.
+
+    Pour un personnage choisi explicitement, chaîne vide pour Classique (ou
+    l'absence de personnage, sauvegarde antérieure à l'issue #438) : seul un
+    personnage tiré au hasard doit être annoncé pour Classique.
+    """
+    if personnage_aleatoire:
+        if reveler:
+            return f"Aléatoire : {_prenom_affichable(personnage_cle)}"
+        return "Aléatoire"
+    if not personnage_cle or personnage_cle == "classique":
+        return ""
+    return _prenom_affichable(personnage_cle)

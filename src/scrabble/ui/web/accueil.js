@@ -121,10 +121,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     typeLabel += ` (${niveauLabel})`;
                 }
 
+                // Personnage entre parenthèses après le prénom (issue #441) :
+                // vide pour Classique, auquel cas le prénom seul est affiché,
+                // comme avant les personnages.
+                const nomAffiche = window.Commun.nomAvecPersonnage(joueur.nom, joueur.personnage_libelle);
                 item.innerHTML = `
                     ${icone}
                     <div class="joueur-info">
-                        <div class="joueur-nom">${escapeHtml(joueur.nom)}</div>
+                        <div class="joueur-nom">${escapeHtml(nomAffiche)}</div>
                         <div class="joueur-type">${typeLabel}</div>
                     </div>
                     <button class="btn-retirer" title="Retirer" data-index="${index}">✕</button>

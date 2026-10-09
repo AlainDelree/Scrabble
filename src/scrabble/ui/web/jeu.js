@@ -296,10 +296,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const badgeNiveau = niveauLabel
             ? `<span class="panneau-niveau">${C.escapeHtml(niveauLabel)}</span>`
             : '';
+        // Personnage entre parenthèses après le prénom (issue #441) : vide
+        // pour Classique, auquel cas le prénom seul est affiché, comme avant
+        // les personnages. ``(Aléatoire)`` pendant toute la partie pour un
+        // tirage au hasard, révélé (``(Aléatoire : <Personnage>)``) une fois
+        // ``etat.terminee`` (voir ``serialiser_joueur_public`` côté Python).
+        const nomAffiche = C.nomAvecPersonnage(joueur.nom, joueur.personnage_libelle);
         item.innerHTML = `
             ${avatarHtml}
             <span class="panneau-identite">
-                <span class="panneau-nom">${C.escapeHtml(joueur.nom)}</span>
+                <span class="panneau-nom">${C.escapeHtml(nomAffiche)}</span>
                 ${badgeNiveau}
             </span>
             <span class="panneau-score">${joueur.score} pts</span>
@@ -352,9 +358,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // (Re)construit le contenu à chaque diffusion : le classement reflète
         // toujours l'état public reçu, même si la modale est déjà (ou pas encore)
-        // ouverte.
-        modaleFinMessage.textContent = gagnants && gagnants.length
-            ? `🏁 Partie terminée — ${gagnants.join(', ')}`
+        // ouverte. ``gagnants`` ne porte que les prénoms seuls (comparaison par
+        // nom, voir plus bas) ; on retrouve leur libellé personnage affiché
+        // (issue #441) dans ``joueurs``, déjà calculé côté Python.
+        const nomsAffichesGagnants = (joueurs || [])
+            .filter((j) => Array.isArray(gagnants) && gagnants.includes(j.nom))
+            .map((j) => C.nomAvecPersonnage(j.nom, j.personnage_libelle));
+        modaleFinMessage.textContent = nomsAffichesGagnants.length
+            ? `🏁 Partie terminée — ${nomsAffichesGagnants.join(', ')}`
             : '🏁 Partie terminée';
 
         modaleFinClassement.textContent = '';
@@ -468,7 +479,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function construireClassement(joueurs) {
         if (!Array.isArray(joueurs) || joueurs.length === 0) return null;
         const tries = joueurs
-            .map((j) => ({ nom: j.nom, score: Number(j.score) || 0 }))
+            .map((j) => ({
+                nom: C.nomAvecPersonnage(j.nom, j.personnage_libelle),
+                score: Number(j.score) || 0,
+            }))
             .sort((a, b) => b.score - a.score);
         // Rang « sportif » : à score égal, même rang ; le rang suivant tient
         // compte du nombre d'ex-æquo déjà classés (l'index dans la liste triée).

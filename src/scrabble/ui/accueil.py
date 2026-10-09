@@ -66,7 +66,12 @@ from scrabble.dictionnaire.dictionnaire import (
 )
 from scrabble.moteur.ia import Niveau, resoudre_palier
 from scrabble.moteur.partie import MAX_JOUEURS, Partie, creer_partie
-from scrabble.moteur.personnages import CLE_ALEATOIRE, DESCRIPTION_ALEATOIRE, PERSONNAGES
+from scrabble.moteur.personnages import (
+    CLE_ALEATOIRE,
+    DESCRIPTION_ALEATOIRE,
+    PERSONNAGES,
+    libelle_choix_accueil,
+)
 from scrabble.persistance.stockage import (
     CHEMIN_DEFAUT,
     ResumePartie,
@@ -132,26 +137,6 @@ def _disponibilite_niveau(niveau: Niveau) -> tuple[bool, str | None]:
         "Prévenir Alain pour la réparation."
     )
 
-
-def _nom_sans_doublon(nom_base: str, deja_pris: set[str]) -> str:
-    """Prénom libre dérivé de ``nom_base``, sans collision avec ``deja_pris``.
-
-    Solution retenue (issue #440, lot D, point 2) pour le cas où deux
-    ordinateurs choisissent le même personnage à l'accueil : le prénom du
-    personnage (p. ex. « Opportuniste ») porterait sinon deux fois le même
-    nom autour de la table. Plutôt qu'un repli sur un prénom générique (qui
-    masquerait le personnage choisi), on suffixe d'un numéro croissant — «
-    Opportuniste 2 », « Opportuniste 3 »… — jusqu'à trouver un nom libre.
-    Comparaison insensible à la casse/espaces, symétrique à
-    :func:`~scrabble.ui.noms_ordinateur.tirer_prenoms`.
-    """
-    pris = {n.strip().casefold() for n in deja_pris}
-    if nom_base.strip().casefold() not in pris:
-        return nom_base
-    compteur = 2
-    while f"{nom_base} {compteur}".strip().casefold() in pris:
-        compteur += 1
-    return f"{nom_base} {compteur}"
 
 # Libellés français des valeurs à choix fini pour le panneau Réglages intégré
 # à l'accueil (issue #169, ex-fenêtre autonome ``ui/reglages.py``). Les clés
@@ -462,6 +447,10 @@ class ApiAccueil:
                     "nom": j.nom,
                     "humain": j.humain,
                     "niveau": j.niveau.name if j.niveau else None,
+                    # Texte à afficher entre parenthèses après le prénom
+                    # (issue #441) : vide pour Classique (et pour un humain,
+                    # dont ``personnage`` reste à son défaut inexploité).
+                    "personnage_libelle": libelle_choix_accueil(j.personnage),
                     "avatar": (
                         avatar_principal
                         if (i == reference and avatar_principal)
@@ -557,7 +546,14 @@ class ApiAccueil:
         PERSONNAGES` ou :data:`~scrabble.moteur.personnages.CLE_ALEATOIRE`.
         L'identité réelle d'un choix « Aléatoire » n'est tirée qu'au lancement
         de la partie (:meth:`lancer_partie`) — ici on ne fait que mémoriser le
-        choix et attribuer un prénom qui ne la trahit pas.
+        choix.
+
+        Le prénom attribué (issue #441) vient toujours du tirage habituel des
+        prénoms d'ordinateur (:func:`~scrabble.ui.noms_ordinateur.
+        tirer_prenoms`), quel que soit le personnage choisi : le prénom ne
+        révèle donc jamais le personnage (voir :func:`~scrabble.moteur.
+        personnages.libelle_choix_accueil` pour l'affichage entre parenthèses
+        côté UI).
 
         Refuse un niveau dont le vocabulaire IA est indisponible (issue #369,
         point 5, défense en profondeur : le bouton correspondant doit déjà
@@ -582,16 +578,7 @@ class ApiAccueil:
             }
         noms_pris = self.config_partie.noms_utilises()
         try:
-            if personnage_cle == CLE_ALEATOIRE:
-                # Prénom du tirage courant des prénoms d'ordinateur, pas celui
-                # d'un personnage précis (issue #440, point 2) : l'identité
-                # reste cachée pendant toute la partie, jusqu'au tirage réel
-                # fait par ``creer_partie`` au lancement.
-                nom = tirer_prenoms(1, noms_pris)[0]
-            else:
-                # Prénom du personnage choisi, dédoublonné si un autre
-                # ordinateur a déjà choisi le même (issue #440, point 2).
-                nom = _nom_sans_doublon(PERSONNAGES[personnage_cle].prenom, noms_pris)
+            nom = tirer_prenoms(1, noms_pris)[0]
         except Exception as e:
             journal.erreur("Accueil : échec du tirage de prénom d'ordinateur.", e)
             return {"succes": False, "erreur": f"Impossible de tirer un prénom : {e}"}

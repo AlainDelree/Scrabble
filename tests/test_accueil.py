@@ -493,15 +493,19 @@ class TestApiAccueilPersonnages:
         assert result["succes"] is True
         assert api.config_partie.joueurs[0].personnage == "classique"
 
-    def test_ajouter_ordinateur_personnage_explicite_porte_son_prenom(self):
+    def test_ajouter_ordinateur_personnage_explicite_porte_un_prenom_tire_au_hasard(self):
+        """Depuis l'issue #441, le prénom reste le tirage habituel des
+        prénoms d'ordinateur, indépendant du personnage choisi — fini le
+        prénom = personnage du lot D (#440)."""
         from scrabble.ui.accueil import ApiAccueil
+        from scrabble.ui.noms_ordinateur import PRENOMS_ORDINATEUR
 
         api = ApiAccueil()
         result = api.ajouter_ordinateur("Expert", "opportuniste")
 
         assert result["succes"] is True
         joueur = api.config_partie.joueurs[0]
-        assert joueur.nom == "Opportuniste"
+        assert joueur.nom in PRENOMS_ORDINATEUR
         assert joueur.personnage == "opportuniste"
 
     def test_ajouter_ordinateur_personnage_inconnu_refuse(self):
@@ -513,18 +517,24 @@ class TestApiAccueilPersonnages:
         assert result["succes"] is False
         assert api.config_partie.nb_ordinateurs == 0
 
-    def test_ajouter_deux_ordinateurs_meme_personnage_noms_non_dupliques(self):
-        """Solution retenue pour deux ordinateurs sur le même personnage
-        (issue #440, point 2) : suffixe numérique plutôt qu'un nom identique."""
+    def test_ajouter_deux_ordinateurs_meme_personnage_prenoms_distincts(self):
+        """Deux ordinateurs choisissant le même personnage gardent des
+        prénoms distincts (issue #441) : le tirage habituel exclut déjà les
+        prénoms pris à la table — plus de suffixe numérique (ancien
+        comportement du lot D, #440, abandonné)."""
         from scrabble.ui.accueil import ApiAccueil
+        from scrabble.ui.noms_ordinateur import PRENOMS_ORDINATEUR
 
         api = ApiAccueil()
         api.ajouter_ordinateur("Expert", "opportuniste")
         api.ajouter_ordinateur("Expert", "opportuniste")
 
         noms = [j.nom for j in api.config_partie.joueurs]
-        assert noms == ["Opportuniste", "Opportuniste 2"]
         assert len(set(noms)) == 2
+        assert all(nom in PRENOMS_ORDINATEUR for nom in noms)
+        assert all(" 2" not in nom and " 3" not in nom for nom in noms)
+        personnages = [j.personnage for j in api.config_partie.joueurs]
+        assert personnages == ["opportuniste", "opportuniste"]
 
     def test_ajouter_ordinateur_aleatoire_porte_un_prenom_banal(self):
         """« Aléatoire » ne doit rien trahir : prénom du tirage courant, pas
@@ -589,6 +599,48 @@ class TestApiAccueilPersonnages:
         joueur_ia = next(j for j in api._partie.joueurs if not j.humain)
         assert joueur_ia.personnage == "opportuniste"
         assert joueur_ia.personnage_aleatoire is False
+
+
+class TestObtenirEtatPersonnageLibelle:
+    """``obtenir_etat`` expose le libellé entre parenthèses à afficher à côté
+    du prénom (issue #441, point 2)."""
+
+    def test_personnage_classique_pas_de_parenthese(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_ordinateur("Expert")  # défaut : classique
+
+        etat = api.obtenir_etat()
+        assert etat["joueurs"][0]["personnage_libelle"] == ""
+
+    def test_personnage_explicite_porte_son_prenom(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_ordinateur("Expert", "opportuniste")
+
+        etat = api.obtenir_etat()
+        assert etat["joueurs"][0]["personnage_libelle"] == "Opportuniste"
+
+    def test_personnage_aleatoire_affiche_aleatoire(self):
+        from scrabble.moteur.personnages import CLE_ALEATOIRE
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_ordinateur("Expert", CLE_ALEATOIRE)
+
+        etat = api.obtenir_etat()
+        assert etat["joueurs"][0]["personnage_libelle"] == "Aléatoire"
+
+    def test_joueur_humain_pas_de_parenthese(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+
+        etat = api.obtenir_etat()
+        assert etat["joueurs"][0]["personnage_libelle"] == ""
 
 
 class TestExclusionPrenoms:
@@ -1083,7 +1135,13 @@ class TestApiAccueilJoueurHumainParDefaut:
         etat = api.obtenir_etat()
         assert etat["nb_humains"] == 1
         assert etat["joueurs"] == [
-            {"nom": "Alain", "humain": True, "niveau": None, "avatar": None}
+            {
+                "nom": "Alain",
+                "humain": True,
+                "niveau": None,
+                "personnage_libelle": "",
+                "avatar": None,
+            }
         ]
         # La configuration est directement lançable, sans action manuelle.
         assert etat["peut_lancer"] is True
@@ -1187,7 +1245,13 @@ class TestApiAccueilAvatarPrincipal:
         api.initialiser_joueur_humain()
 
         assert api.obtenir_etat()["joueurs"] == [
-            {"nom": "Alain", "humain": True, "niveau": None, "avatar": "avatar-07"}
+            {
+                "nom": "Alain",
+                "humain": True,
+                "niveau": None,
+                "personnage_libelle": "",
+                "avatar": "avatar-07",
+            }
         ]
 
     def test_sans_avatar_configure_aucun_avatar(self, monkeypatch):

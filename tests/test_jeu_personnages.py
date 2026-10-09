@@ -1,4 +1,5 @@
-"""Tests de l'affichage des personnages IA côté écran de jeu (issue #440, lot D).
+"""Tests de l'affichage des personnages IA côté écran de jeu (issue #440, lot D ;
+affichage « Prénom (Personnage) » : issue #441, lot D bis).
 
 Couvre :
 - la révélation en fin de partie des personnages tirés « Aléatoire »
@@ -7,6 +8,11 @@ Couvre :
 - l'exposition de cette révélation dans ``etat_public`` ;
 - la résolution du ``ProfilPersonnage`` effectivement transmis à l'IA
   (``_profil_joueur_ia``) et son câblage dans ``jouer_tours_ia_ui``.
+- le libellé ``personnage_libelle`` exposé par ``serialiser_joueur_public``/
+  ``etat_public`` (issue #441) : vide pour Classique, le prénom du personnage
+  sinon, « Aléatoire » pendant la partie et « Aléatoire : <Personnage> » une
+  fois celle-ci terminée — jamais révélé pour un personnage choisi
+  explicitement. Le champ ``nom`` lui-même reste inchangé (prénom seul).
 """
 
 from __future__ import annotations
@@ -14,7 +20,12 @@ from __future__ import annotations
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import Joueur, Partie
 from scrabble.moteur.personnages import PERSONNAGES
-from scrabble.ui.jeu import _profil_joueur_ia, etat_public, revelations_personnages
+from scrabble.ui.jeu import (
+    _profil_joueur_ia,
+    etat_public,
+    revelations_personnages,
+    serialiser_joueur_public,
+)
 from tests._aides_test_jeu import _DicoFactice
 
 
@@ -160,3 +171,68 @@ class TestJouerToursIaUiTransmetLePersonnage:
         jouer_tours_ia_ui(partie, id_partie=None)
 
         assert captures.get("appele") is True
+
+
+class TestPersonnageLibelleAffichage:
+    """``personnage_libelle`` affiché à côté du prénom (issue #441).
+
+    ``nom`` reste toujours le prénom seul (historique des coups, sauvegardes
+    et tests qui s'appuient sur le nom inchangés) : seul ``personnage_libelle``
+    porte le texte à mettre entre parenthèses, calculé côté Python.
+    """
+
+    def test_personnage_classique_pas_de_parenthese(self):
+        joueur = Joueur(
+            nom="Thomas", humain=False, niveau=Niveau.FACILE, personnage="classique"
+        )
+        pub = serialiser_joueur_public(joueur, index=0, courant=False)
+        assert pub["nom"] == "Thomas"
+        assert pub["personnage_libelle"] == ""
+
+    def test_sans_personnage_pas_de_parenthese(self):
+        """Sauvegarde antérieure à l'issue #438 : personnage vide."""
+        joueur = Joueur(nom="Thomas", humain=False, niveau=Niveau.FACILE)
+        pub = serialiser_joueur_public(joueur, index=0, courant=False)
+        assert pub["personnage_libelle"] == ""
+
+    def test_personnage_explicite_porte_son_prenom(self):
+        joueur = Joueur(
+            nom="Thomas", humain=False, niveau=Niveau.FACILE, personnage="opportuniste"
+        )
+        pub = serialiser_joueur_public(joueur, index=0, courant=False)
+        assert pub["nom"] == "Thomas"
+        assert pub["personnage_libelle"] == "Opportuniste"
+
+    def test_aleatoire_pendant_la_partie_affiche_aleatoire_seul(self):
+        partie = _partie_avec_ia("opportuniste", personnage_aleatoire=True)
+        etat = etat_public(partie, id_partie=1)
+        joueur_ia = next(j for j in etat["joueurs"] if not j["humain"])
+        assert joueur_ia["nom"] == "Thomas"
+        assert joueur_ia["personnage_libelle"] == "Aléatoire"
+
+    def test_aleatoire_revele_en_fin_de_partie_pour_chaque_personnage(self):
+        """Une fois ``partie.terminee``, le libellé devient « Aléatoire :
+        <Personnage> », Classique compris (point 3 de l'issue #441)."""
+        for cle, personnage in PERSONNAGES.items():
+            partie = _partie_avec_ia(cle, personnage_aleatoire=True)
+            partie.terminee = True
+            etat = etat_public(partie, id_partie=1)
+            joueur_ia = next(j for j in etat["joueurs"] if not j["humain"])
+            assert joueur_ia["nom"] == "Thomas"
+            assert joueur_ia["personnage_libelle"] == f"Aléatoire : {personnage.prenom}"
+
+    def test_personnage_choisi_explicitement_jamais_revele_en_fin_de_partie(self):
+        """Un personnage choisi à l'avance n'a rien à « révéler » : son nom
+        l'annonçait déjà pendant toute la partie (contrainte du point 3)."""
+        partie = _partie_avec_ia("opportuniste", personnage_aleatoire=False)
+        partie.terminee = True
+        etat = etat_public(partie, id_partie=1)
+        joueur_ia = next(j for j in etat["joueurs"] if not j["humain"])
+        assert joueur_ia["personnage_libelle"] == "Opportuniste"
+
+    def test_humain_jamais_de_parenthese(self):
+        partie = _partie_avec_ia("opportuniste", personnage_aleatoire=True)
+        partie.terminee = True
+        etat = etat_public(partie, id_partie=1)
+        humain = next(j for j in etat["joueurs"] if j["humain"])
+        assert humain["personnage_libelle"] == ""
