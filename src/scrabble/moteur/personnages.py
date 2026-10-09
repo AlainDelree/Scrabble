@@ -25,7 +25,7 @@ les autres plutôt que de traiter « pas de personnage » comme un cas à part.
 
 Personnage Opportuniste
 ------------------------
-Se précipite sur les cases à multiplicateur, néglige ce qu'il garde sur son
+Se précipite sur les cases bonus, néglige ce qu'il garde sur son
 chevalet. D'après le rapport d'investigation (issue #437), ce style s'exprime
 entièrement avec deux réglages déjà existants de ``ProfilPersonnage`` —
 aucun nouveau calcul :
@@ -112,7 +112,7 @@ PERSONNAGES: dict[str, Personnage] = {
         cle="opportuniste",
         prenom="Opportuniste",
         description=(
-            "Se précipite sur les cases à multiplicateur dès qu'elles sont à "
+            "Se précipite sur les cases bonus dès qu'elles sont à "
             "sa portée, quitte à négliger la qualité des lettres qu'il garde "
             "sur son chevalet."
         ),
