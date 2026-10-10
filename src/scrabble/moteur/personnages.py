@@ -33,15 +33,15 @@ aucun nouveau calcul :
 * ``poids_leave=0.0`` : indifférence totale à la qualité du reliquat. Reprend
   tel quel la valeur de production de DEBUTANT/FACILE
   (:data:`scrabble.moteur.ia._POIDS_LEAVE`), pas une valeur inédite.
-* ``bonus_premium`` renforcé au-delà de la valeur la plus haute déjà en
-  production. :data:`scrabble.moteur.ia._BONUS_PREMIUM` va de 3 (DEBUTANT) à
-  20 (EXPERT/CHAMPION_DU_MONDE) par paliers croissants : +2, +3, +4, +8, +0
-  d'un niveau au suivant. Le plus grand de ces paliers est +8 (AVANCE →
-  EXPERT). Opportuniste reprend la valeur la plus haute déjà calibrée (20) et
-  lui applique ce même plus grand palier une fois de plus
-  (:data:`BONUS_PREMIUM_OPPORTUNISTE` = 100, choisi par mesure : 28 se voyait à peine, et au-delà de 100 plus rien ne change) : un biais nettement
-  au-dessus de tout niveau existant, mais du même ordre de grandeur que
-  l'échelle déjà validée plutôt qu'une valeur arbitraire.
+* ``bonus_premium`` fortement renforcé : :data:`BONUS_PREMIUM_OPPORTUNISTE`
+  = 100, valeur choisie par mesure avec ``scripts/mesurer_force_niveaux.py``.
+  Les réglages de production de :data:`scrabble.moteur.ia._BONUS_PREMIUM`
+  vont de 3 (DEBUTANT) à 20 (EXPERT/CHAMPION_DU_MONDE) ; une première
+  valeur de 28, déduite de cette échelle, ne se voyait presque pas en jeu.
+  À 100, Opportuniste joue nettement plus de coups sur cases mot
+  double/triple que Classique, pour une force comparable à niveau égal
+  (44 à 50 % de victoires sur les six niveaux, 100 parties chacun) ;
+  au-delà de 100, plus rien ne change.
 
   Cette surcharge est **plate** (une constante, pas une table indexée par
   niveau) : par construction de ``ProfilPersonnage`` (issue #438, lot A),
