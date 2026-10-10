@@ -162,6 +162,26 @@ NIVEAUX_CHASSEUR_SCRABBLES: frozenset[Niveau] = frozenset(
     {Niveau.AVANCE, Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE}
 )
 
+#: Toutes les tailles de table (nombre total de joueurs) — valeur par défaut
+#: de :attr:`Personnage.nb_joueurs_disponibles` (issue #449, lot I) : un
+#: personnage qui ne déclare rien reste disponible à toutes les tailles,
+#: comme Classique. Une table ne compte jamais moins de deux joueurs (il
+#: faut au moins un adversaire) ni plus de quatre
+#: (:data:`scrabble.moteur.partie.MAX_JOUEURS`).
+TOUTES_TAILLES: frozenset[int] = frozenset({2, 3, 4})
+
+#: Tailles de table où Opportuniste est disponible (issue #449, lot I) :
+#: deux joueurs seulement. Tous les réglages et mesures des personnages ont
+#: été faits en parties à deux (rapport d'investigation #437) ; rien n'a été
+#: vérifié à trois ou quatre joueurs (plateau qui se remplit plus vite, moins
+#: de coups par joueur) — réservé par prudence pour cette première diffusion,
+#: à élargir par Alain après mesure, **en un seul endroit** (cette constante).
+NB_JOUEURS_OPPORTUNISTE: frozenset[int] = frozenset({2})
+
+#: Tailles de table où Chasseur de scrabbles est disponible (issue #449, lot
+#: I) : deux joueurs seulement, même raison qu'Opportuniste ci-dessus.
+NB_JOUEURS_CHASSEUR_SCRABBLES: frozenset[int] = frozenset({2})
+
 
 @dataclass(frozen=True)
 class Personnage:
@@ -171,6 +191,13 @@ class Personnage:
     personnage peut être choisi — facultatif, vaut :data:`TOUS_NIVEAUX` par
     défaut (cas de Classique), pour qu'un futur personnage sans déclaration
     explicite reste disponible partout.
+
+    ``nb_joueurs_disponibles`` (issue #449, lot I) : l'ensemble des tailles de
+    table (nombre total de joueurs) où ce personnage peut être choisi —
+    facultatif lui aussi, vaut :data:`TOUTES_TAILLES` par défaut (cas de
+    Classique), indépendamment de ``niveaux_disponibles``. Les deux
+    restrictions se combinent (ET logique) : un personnage doit être
+    disponible à la fois au niveau et à la taille de table concernés.
     """
 
     cle: str
@@ -179,6 +206,9 @@ class Personnage:
     profil: ProfilPersonnage
     niveaux_disponibles: frozenset[Niveau] = field(
         default_factory=lambda: TOUS_NIVEAUX
+    )
+    nb_joueurs_disponibles: frozenset[int] = field(
+        default_factory=lambda: TOUTES_TAILLES
     )
 
 
@@ -204,6 +234,7 @@ PERSONNAGES: dict[str, Personnage] = {
             poids_leave=0.0,
         ),
         niveaux_disponibles=NIVEAUX_OPPORTUNISTE,
+        nb_joueurs_disponibles=NB_JOUEURS_OPPORTUNISTE,
     ),
     "chasseur_de_scrabbles": Personnage(
         cle="chasseur_de_scrabbles",
@@ -217,6 +248,7 @@ PERSONNAGES: dict[str, Personnage] = {
             poids_leave=POIDS_LEAVE_CHASSEUR_SCRABBLES,
         ),
         niveaux_disponibles=NIVEAUX_CHASSEUR_SCRABBLES,
+        nb_joueurs_disponibles=NB_JOUEURS_CHASSEUR_SCRABBLES,
     ),
 }
 
@@ -231,9 +263,12 @@ def obtenir_personnage(cle: str) -> Personnage:
 
 
 def tirer_personnage(
-    generateur: random.Random | None = None, niveau: Niveau | None = None
+    generateur: random.Random | None = None,
+    niveau: Niveau | None = None,
+    nb_joueurs: int | None = None,
 ) -> Personnage:
-    """Tire un personnage parmi ceux du registre disponibles à ``niveau``.
+    """Tire un personnage parmi ceux du registre disponibles à ``niveau`` et
+    ``nb_joueurs``.
 
     Classique compris (issue #440, lot D, point 3) : le tirage « Aléatoire »
     ne favorise ni n'exclut le personnage neutre. ``generateur`` est
@@ -245,17 +280,25 @@ def tirer_personnage(
     disponibles à ce niveau (:func:`personnages_disponibles_a_niveau`) — à
     appeler uniquement là où :func:`aleatoire_disponible_a_niveau` est vrai
     (au moins deux personnages y figurent), ce que le contrôle côté serveur
-    garantit déjà avant tout tirage. ``None`` (défaut) conserve l'ancien
-    comportement : tirage sur tout le registre, sans restriction de niveau —
-    utilisé par les appelants qui ne connaissent pas encore de niveau
-    particulier.
+    garantit déjà avant tout tirage.
+
+    ``nb_joueurs`` (issue #449, lot I) restreint pareillement le tirage aux
+    personnages disponibles à cette taille de table
+    (:func:`personnages_disponibles_a_nb_joueurs`). Les deux restrictions se
+    combinent (ET logique) quand elles sont fournies ensemble — c'est
+    ``creer_partie`` qui les transmet toutes les deux pour une IA donnée.
+
+    ``None`` (défaut pour chacun des deux) conserve l'ancien comportement :
+    tirage sur tout le registre, sans la restriction correspondante — utilisé
+    par les appelants qui ne connaissent pas encore de niveau ou de taille de
+    table particuliers.
     """
     rng = generateur if generateur is not None else random
-    reserve = (
-        list(PERSONNAGES.values())
-        if niveau is None
-        else personnages_disponibles_a_niveau(niveau)
-    )
+    reserve = list(PERSONNAGES.values())
+    if niveau is not None:
+        reserve = [p for p in reserve if niveau in p.niveaux_disponibles]
+    if nb_joueurs is not None:
+        reserve = [p for p in reserve if nb_joueurs in p.nb_joueurs_disponibles]
     return rng.choice(reserve)
 
 
@@ -297,6 +340,141 @@ def personnage_disponible_a_niveau(personnage_cle: str, niveau: Niveau) -> bool:
         return aleatoire_disponible_a_niveau(niveau)
     personnage = PERSONNAGES.get(personnage_cle)
     return personnage is not None and niveau in personnage.niveaux_disponibles
+
+
+def personnages_disponibles_a_nb_joueurs(nb_joueurs: int) -> list[Personnage]:
+    """Personnages réels du registre disponibles à ``nb_joueurs`` (issue #449, lot I).
+
+    Dans l'ordre d'insertion de :data:`PERSONNAGES` (Classique en tête).
+    N'inclut jamais l'entrée pseudo-personnage « Aléatoire » : voir
+    :func:`aleatoire_disponible_a_nb_joueurs` pour sa propre règle de
+    disponibilité, déduite de celle-ci. Indépendant de
+    :func:`personnages_disponibles_a_niveau` (deux dimensions distinctes qui
+    se combinent chez l'appelant).
+    """
+    return [p for p in PERSONNAGES.values() if nb_joueurs in p.nb_joueurs_disponibles]
+
+
+def aleatoire_disponible_a_nb_joueurs(nb_joueurs: int) -> bool:
+    """Vrai si « Aléatoire » a un sens à ``nb_joueurs`` (issue #449, lot I).
+
+    Règle déduite automatiquement des déclarations des personnages réels,
+    sans qu'Aléatoire ait lui-même à déclarer quoi que ce soit : il lui faut
+    au moins **deux** personnages disponibles à cette taille de table (hors
+    lui-même), tirer au hasard parmi un seul personnage n'ayant aucun sens.
+    Un futur personnage ajouté au registre et compatible avec une taille
+    aujourd'hui à un seul personnage disponible rend donc Aléatoire à nouveau
+    disponible à cette taille, sans aucune autre modification. Aujourd'hui :
+    disponible à deux joueurs (Classique + Opportuniste + Chasseur de
+    scrabbles), indisponible à trois ou quatre (seul Classique y figure).
+    """
+    return len(personnages_disponibles_a_nb_joueurs(nb_joueurs)) >= 2
+
+
+def personnage_disponible_a_nb_joueurs(personnage_cle: str, nb_joueurs: int) -> bool:
+    """Vrai si ``personnage_cle`` (réel, ou :data:`CLE_ALEATOIRE`) peut être
+    choisi pour une table de ``nb_joueurs`` (issue #449, lot I).
+
+    Une clé inconnue du registre (et différente de :data:`CLE_ALEATOIRE`)
+    renvoie ``False`` plutôt que de lever : à l'appelant (contrôle côté
+    serveur) de distinguer « personnage inconnu » de « indisponible à cette
+    taille de table » s'il le souhaite.
+    """
+    if personnage_cle == CLE_ALEATOIRE:
+        return aleatoire_disponible_a_nb_joueurs(nb_joueurs)
+    personnage = PERSONNAGES.get(personnage_cle)
+    return personnage is not None and nb_joueurs in personnage.nb_joueurs_disponibles
+
+
+#: Message affiché quand les personnages sont réservés aux parties à deux
+#: joueurs (issue #449, lot I, points 2, 3 et 4) : explication du sélecteur
+#: désactivé à l'accueil (point 2), remise à Classique d'un adversaire déjà
+#: configuré (point 3) et refus côté serveur (point 4) partagent le même
+#: texte.
+MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS = (
+    "Les personnages sont réservés aux parties à deux joueurs."
+)
+
+#: Libellés français des nombres de joueurs (issue #449, lot I), réservés à
+#: l'affichage des tailles de table de disponibilité d'un personnage
+#: (:func:`libelle_tailles`, :func:`libelle_tailles_aleatoire`).
+_MOTS_NB_JOUEURS: dict[int, str] = {2: "deux", 3: "trois", 4: "quatre"}
+
+#: Message affiché pour une taille de table où « Aléatoire » est
+#: indisponible (issue #449, lot I) — le même quelle que soit la taille
+#: concernée, puisque la raison ne dépend jamais de la taille elle-même,
+#: seulement du nombre de personnages réels qui y sont disponibles.
+MESSAGE_ALEATOIRE_NB_JOUEURS_INSUFFISANT = (
+    "Aléatoire demande au moins deux personnages disponibles à cette taille "
+    "de table."
+)
+
+
+def _libelle_tailles(tailles: frozenset[int]) -> str:
+    """Texte des tailles de table d'un ensemble, pour affichage (issue #449, lot I).
+
+    « Toutes les parties » si ``tailles`` couvre :data:`TOUTES_TAILLES` ;
+    « Parties à <nombre> joueurs » pour une taille unique ; « Parties de
+    <premier> à <dernier> joueurs » pour un intervalle contigu de plusieurs
+    tailles ; sinon (motif non contigu, hypothétique) « Parties à <nombre> ou
+    <nombre> joueurs ».
+    """
+    if tailles == TOUTES_TAILLES:
+        return "Toutes les parties"
+    ordre = sorted(TOUTES_TAILLES)
+    presentes = [n for n in ordre if n in tailles]
+    mots = [_MOTS_NB_JOUEURS[n] for n in presentes]
+    if len(mots) == 1:
+        return f"Parties à {mots[0]} joueurs"
+    if presentes == list(range(presentes[0], presentes[-1] + 1)):
+        return f"Parties de {mots[0]} à {mots[-1]} joueurs"
+    return "Parties à " + " ou ".join(mots) + " joueurs"
+
+
+def libelle_tailles(personnage: Personnage) -> str:
+    """Texte des tailles de table où ``personnage`` est disponible (issue
+    #449, lot I, point 5) : « Toutes les parties » ou « Parties à deux
+    joueurs »."""
+    return _libelle_tailles(personnage.nb_joueurs_disponibles)
+
+
+def tailles_disponibles_aleatoire() -> frozenset[int]:
+    """Tailles de table où « Aléatoire » est disponible (issue #449, lot I, point 5)."""
+    return frozenset(n for n in TOUTES_TAILLES if aleatoire_disponible_a_nb_joueurs(n))
+
+
+def libelle_tailles_aleatoire() -> str:
+    """Texte des tailles de table où « Aléatoire » est disponible, même
+    présentation que :func:`libelle_tailles` (issue #449, lot I, point 5)."""
+    return _libelle_tailles(tailles_disponibles_aleatoire())
+
+
+def explication_disponibilite_tailles(personnage_cle: str) -> str:
+    """Courte explication de la restriction de tailles de table de
+    ``personnage_cle`` (issue #449, lot I), à afficher au même titre que
+    :func:`explication_disponibilite_niveaux`.
+
+    Chaîne vide quand le personnage est disponible à toutes les tailles (cas
+    de Classique, et de tout personnage sans déclaration) : rien à expliquer.
+    Pour Aléatoire, :data:`MESSAGE_ALEATOIRE_NB_JOUEURS_INSUFFISANT` dès
+    qu'au moins une taille lui est fermée. Pour un personnage réel restreint
+    à deux joueurs (motif observé à ce jour, Opportuniste et Chasseur de
+    scrabbles compris) : :data:`MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS`.
+    Motif différent (hypothétique) : repli sur :func:`libelle_tailles`.
+    """
+    if personnage_cle == CLE_ALEATOIRE:
+        if tailles_disponibles_aleatoire() == TOUTES_TAILLES:
+            return ""
+        return MESSAGE_ALEATOIRE_NB_JOUEURS_INSUFFISANT
+    personnage = PERSONNAGES.get(personnage_cle)
+    if personnage is None:
+        return ""
+    tailles = personnage.nb_joueurs_disponibles
+    if tailles == TOUTES_TAILLES:
+        return ""
+    if tailles == frozenset({2}):
+        return MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS
+    return f"Disponible : {_libelle_tailles(tailles)}"
 
 
 #: Libellés français des niveaux (issue #447, lot G), dans l'ordre de
@@ -456,13 +634,15 @@ def lister_personnages(
     :func:`~scrabble.ui.accueil.ApiAccueil.obtenir_personnages`, pour qu'un
     personnage ajouté plus tard au registre y apparaisse sans autre
     modification. Chaque entrée est ``{"cle", "prenom", "description",
-    "dans_la_partie", "niveaux_label"}`` — ``niveaux_label`` (issue #447, lot
-    G, point 5) est le texte des niveaux où le personnage est disponible
-    (:func:`libelle_niveaux`/:func:`libelle_niveaux_aleatoire`), même
-    présentation à l'accueil et en jeu puisque les deux fenêtres consomment
-    cette même fonction (directement ici, ou via
-    :meth:`~scrabble.ui.accueil.ApiAccueil.obtenir_personnages` qui reprend la
-    même logique).
+    "dans_la_partie", "niveaux_label", "tailles_label"}`` — ``niveaux_label``
+    (issue #447, lot G, point 5) est le texte des niveaux où le personnage
+    est disponible (:func:`libelle_niveaux`/:func:`libelle_niveaux_aleatoire`)
+    et ``tailles_label`` (issue #449, lot I, point 5) le texte des tailles de
+    table où il est disponible (:func:`libelle_tailles`/
+    :func:`libelle_tailles_aleatoire`), même présentation à l'accueil et en
+    jeu puisque les deux fenêtres consomment cette même fonction (directement
+    ici, ou via :meth:`~scrabble.ui.accueil.ApiAccueil.obtenir_personnages`
+    qui reprend la même logique).
 
     ``cles_dans_partie`` (vide par défaut — cas de l'accueil, où il n'y a pas
     encore de partie) marque les personnages choisis À L'AVANCE par un
@@ -488,6 +668,7 @@ def lister_personnages(
             "description": personnage.description,
             "dans_la_partie": personnage.cle in cles_dans_partie,
             "niveaux_label": libelle_niveaux(personnage),
+            "tailles_label": libelle_tailles(personnage),
         }
         for personnage in PERSONNAGES.values()
     ]
@@ -498,6 +679,7 @@ def lister_personnages(
             "description": DESCRIPTION_ALEATOIRE,
             "dans_la_partie": aleatoire_dans_partie,
             "niveaux_label": libelle_niveaux_aleatoire(),
+            "tailles_label": libelle_tailles_aleatoire(),
         }
     )
     return resultat

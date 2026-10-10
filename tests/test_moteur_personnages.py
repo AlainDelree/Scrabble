@@ -23,18 +23,27 @@ from scrabble.moteur.ia import Niveau, choisir_coup
 from scrabble.moteur.personnages import (
     CLE_ALEATOIRE,
     DESCRIPTION_ALEATOIRE,
+    MESSAGE_ALEATOIRE_NB_JOUEURS_INSUFFISANT,
     MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT,
+    MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS,
     PERSONNAGES,
     Personnage,
     TOUS_NIVEAUX,
+    TOUTES_TAILLES,
+    aleatoire_disponible_a_nb_joueurs,
     aleatoire_disponible_a_niveau,
     explication_disponibilite_niveaux,
+    explication_disponibilite_tailles,
     libelle_choix_accueil,
     libelle_niveaux,
     libelle_niveaux_aleatoire,
     libelle_personnage_partie,
+    libelle_tailles,
+    libelle_tailles_aleatoire,
     lister_personnages,
+    personnage_disponible_a_nb_joueurs,
     personnage_disponible_a_niveau,
+    personnages_disponibles_a_nb_joueurs,
     personnages_disponibles_a_niveau,
     tirer_personnage,
 )
@@ -214,6 +223,36 @@ class TestTirerPersonnage:
         cles = {tirer_personnage(random.Random(g)).cle for g in range(50)}
         assert cles == set(PERSONNAGES)
 
+    def test_tirage_restreint_au_nb_joueurs_ne_tire_jamais_opportuniste_a_trois(self):
+        """``nb_joueurs`` restreint pareillement le tirage (issue #449, lot
+        I) : Opportuniste et Chasseur de scrabbles n'étant disponibles qu'à
+        deux joueurs, un tirage pour une table de trois ne doit jamais les
+        renvoyer, même sur de nombreuses graines."""
+        for graine in range(50):
+            tire = tirer_personnage(random.Random(graine), None, 3)
+            assert tire.cle == "classique"
+
+    def test_tirage_restreint_au_nb_joueurs_peut_tirer_opportuniste_a_deux(self):
+        cles = {
+            tirer_personnage(random.Random(g), None, 2).cle for g in range(50)
+        }
+        assert cles == set(PERSONNAGES)
+
+    def test_tirage_sans_nb_joueurs_ignore_la_restriction(self):
+        """``nb_joueurs=None`` (défaut) reprend le comportement historique :
+        tout le registre, sans restriction de taille de table."""
+        cles = {tirer_personnage(random.Random(g)).cle for g in range(50)}
+        assert cles == set(PERSONNAGES)
+
+    def test_tirage_combine_niveau_et_nb_joueurs(self):
+        """Les deux restrictions se combinent (issue #449, lot I) : à
+        Débutant (seul Classique disponible par niveau) ET à trois joueurs
+        (seul Classique disponible par taille), le tirage combiné ne doit
+        jamais renvoyer autre chose que Classique."""
+        for graine in range(30):
+            tire = tirer_personnage(random.Random(graine), Niveau.DEBUTANT, 3)
+            assert tire.cle == "classique"
+
 
 class TestDisponibiliteNiveauxPersonnages:
     """Disponibilité des personnages selon le niveau (issue #447, lot G)."""
@@ -300,6 +339,126 @@ class TestLibelleEtExplicationNiveaux:
         )
 
 
+# --------------------------------------------------------------------------- #
+# Disponibilité selon le nombre de joueurs à table (issue #449, lot I)
+# --------------------------------------------------------------------------- #
+
+
+class TestDisponibiliteNbJoueursPersonnages:
+    """Disponibilité des personnages selon la taille de table (issue #449, lot I)."""
+
+    def test_classique_disponible_a_toutes_les_tailles(self):
+        for nb_joueurs in (2, 3, 4):
+            assert personnage_disponible_a_nb_joueurs("classique", nb_joueurs) is True
+
+    def test_personnage_sans_declaration_disponible_a_toutes_les_tailles(self):
+        """Point 1 : le champ est facultatif et vaut « toutes les tailles »
+        par défaut — un futur personnage sans déclaration explicite reste
+        disponible partout."""
+        assert PERSONNAGES["classique"].nb_joueurs_disponibles == TOUTES_TAILLES
+
+    def test_opportuniste_refuse_a_trois_et_quatre_joueurs(self):
+        for nb_joueurs in (3, 4):
+            assert (
+                personnage_disponible_a_nb_joueurs("opportuniste", nb_joueurs)
+                is False
+            )
+
+    def test_opportuniste_accepte_a_deux_joueurs(self):
+        assert personnage_disponible_a_nb_joueurs("opportuniste", 2) is True
+
+    def test_chasseur_refuse_a_trois_et_quatre_joueurs(self):
+        for nb_joueurs in (3, 4):
+            assert (
+                personnage_disponible_a_nb_joueurs("chasseur_de_scrabbles", nb_joueurs)
+                is False
+            )
+
+    def test_chasseur_accepte_a_deux_joueurs(self):
+        assert personnage_disponible_a_nb_joueurs("chasseur_de_scrabbles", 2) is True
+
+    def test_personnage_inconnu_indisponible_partout(self):
+        assert personnage_disponible_a_nb_joueurs("ninja", 2) is False
+
+    def test_aleatoire_disponible_a_deux_joueurs(self):
+        """Classique + Opportuniste + Chasseur de scrabbles : trois
+        personnages disponibles à deux joueurs."""
+        assert aleatoire_disponible_a_nb_joueurs(2) is True
+        assert personnage_disponible_a_nb_joueurs(CLE_ALEATOIRE, 2) is True
+
+    def test_aleatoire_indisponible_a_trois_ou_quatre_joueurs_un_seul_personnage(self):
+        """Aujourd'hui, seul Classique est disponible à trois ou quatre
+        joueurs : Aléatoire, qui demande au moins deux personnages, y est
+        donc indisponible (conséquence explicite de l'intention de l'issue)."""
+        for nb_joueurs in (3, 4):
+            assert personnages_disponibles_a_nb_joueurs(nb_joueurs) == [
+                PERSONNAGES["classique"]
+            ]
+            assert aleatoire_disponible_a_nb_joueurs(nb_joueurs) is False
+            assert personnage_disponible_a_nb_joueurs(CLE_ALEATOIRE, nb_joueurs) is False
+
+    def test_aleatoire_redevient_disponible_si_un_personnage_fictif_declare_trois_joueurs(self):
+        """Un personnage fictif ajouté au registre et déclaré pour trois
+        joueurs rend Aléatoire à nouveau disponible à cette taille, sans
+        aucune autre modification (même mécanisme que pour les niveaux)."""
+        fictif = Personnage(
+            cle="fictif_trois_joueurs",
+            prenom="Fictif",
+            description="Personnage de test.",
+            profil=PERSONNAGES["classique"].profil,
+            nb_joueurs_disponibles=frozenset({3}),
+        )
+        assert aleatoire_disponible_a_nb_joueurs(3) is False
+        PERSONNAGES["fictif_trois_joueurs"] = fictif
+        try:
+            assert aleatoire_disponible_a_nb_joueurs(3) is True
+            assert personnage_disponible_a_nb_joueurs(CLE_ALEATOIRE, 3) is True
+        finally:
+            del PERSONNAGES["fictif_trois_joueurs"]
+        assert aleatoire_disponible_a_nb_joueurs(3) is False
+
+
+class TestLibelleEtExplicationTailles:
+    """Textes affichés pour les tailles de table de disponibilité (issue
+    #449, lot I, points 2 et 5)."""
+
+    def test_libelle_classique_toutes_les_parties(self):
+        assert libelle_tailles(PERSONNAGES["classique"]) == "Toutes les parties"
+
+    def test_libelle_opportuniste(self):
+        assert libelle_tailles(PERSONNAGES["opportuniste"]) == "Parties à deux joueurs"
+
+    def test_libelle_chasseur(self):
+        assert (
+            libelle_tailles(PERSONNAGES["chasseur_de_scrabbles"])
+            == "Parties à deux joueurs"
+        )
+
+    def test_libelle_aleatoire_aujourdhui_comme_opportuniste(self):
+        assert libelle_tailles_aleatoire() == "Parties à deux joueurs"
+
+    def test_explication_classique_vide(self):
+        assert explication_disponibilite_tailles("classique") == ""
+
+    def test_explication_opportuniste(self):
+        assert (
+            explication_disponibilite_tailles("opportuniste")
+            == MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS
+        )
+
+    def test_explication_chasseur(self):
+        assert (
+            explication_disponibilite_tailles("chasseur_de_scrabbles")
+            == MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS
+        )
+
+    def test_explication_aleatoire(self):
+        assert (
+            explication_disponibilite_tailles(CLE_ALEATOIRE)
+            == MESSAGE_ALEATOIRE_NB_JOUEURS_INSUFFISANT
+        )
+
+
 class TestLibelleChoixAccueil:
     """Libellé entre parenthèses pour le sélecteur de l'accueil (issue #441).
 
@@ -382,9 +541,12 @@ class TestListerPersonnages:
         assert cles == [*PERSONNAGES.keys(), CLE_ALEATOIRE]
         for p in personnages:
             # "niveaux_label" ajouté par l'issue #447 (lot G, point 5) :
-            # texte des niveaux où le personnage est disponible.
+            # texte des niveaux où le personnage est disponible. "tailles_label"
+            # ajouté par l'issue #449 (lot I, point 5) : texte des tailles de
+            # table où le personnage est disponible.
             assert set(p.keys()) == {
                 "cle", "prenom", "description", "dans_la_partie", "niveaux_label",
+                "tailles_label",
             }
 
     def test_un_personnage_ajoute_au_registre_apparait_dans_la_liste(self, monkeypatch):

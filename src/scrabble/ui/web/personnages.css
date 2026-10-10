@@ -58,6 +58,15 @@
     color: var(--couleur-texte-attenue, #666);
 }
 
+/* Tailles de table où le personnage est disponible (issue #449, lot I,
+   point 5) : même présentation que les niveaux ci-dessus. */
+.personnage-entree-tailles {
+    margin: 4px 0 0;
+    font-size: 0.8rem;
+    font-style: italic;
+    color: var(--couleur-texte-attenue, #666);
+}
+
 .personnage-tag {
     flex: 0 0 auto;
     font-size: 0.75rem;

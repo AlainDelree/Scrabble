@@ -59,6 +59,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Explication de la restriction de niveaux du personnage choisi (issue
     // #447, lot G, point 2).
     const explicationNiveauxPersonnage = document.getElementById('explication-niveaux-personnage');
+    // Explication de la restriction de tailles de table (issue #449, lot I,
+    // point 2).
+    const explicationTaillesPersonnage = document.getElementById('explication-tailles-personnage');
 
     // Fenêtre « Les personnages » (issue #442, lot F), contrôleur factorisé
     // dans commun.js (même composant qu'à l'écran de jeu).
@@ -225,6 +228,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (etat.nb_humains > 0) {
             premierHumainAjoute = true;
         }
+
+        // Disponibilité du sélecteur de personnage selon la taille de table
+        // résultante (issue #449, lot I, point 2) : recalculée à chaque
+        // mise à jour de l'affichage, puisque la taille change à chaque
+        // ajout/retrait de joueur. Non attendue (fire-and-forget) : purement
+        // visuelle, elle ne doit pas retarder le reste du rendu.
+        appliquerDisponibilitePersonnageTable();
     }
 
     /**
@@ -504,6 +514,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             const result = await api.ajouter_ordinateur(niveau, personnage);
             if (result.succes) {
                 mettreAJourAffichage(result.etat);
+                // Remise à Classique d'un ordinateur déjà présent (issue
+                // #449, lot I, point 3) : la table vient de passer à trois
+                // joueurs ou plus, un message visible nomme le joueur
+                // concerné.
+                if (result.avertissements && result.avertissements.length) {
+                    alert(result.avertissements.join('\n'));
+                }
             } else {
                 alert(result.erreur);
             }
@@ -566,6 +583,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         explicationNiveauxPersonnage.textContent = resultat.explication || '';
         appliquerEtatBoutonsNiveau();
+    }
+
+    /**
+     * Désactive le sélecteur de personnage et affiche une explication
+     * courte dès que la table comporte déjà un ordinateur (issue #449, lot
+     * I, point 2) : ajouter un second ordinateur ferait passer la table à
+     * trois joueurs ou plus, où seul Classique est disponible dans le
+     * registre actuel. Forcé sur Classique le temps que le sélecteur reste
+     * désactivé. Appelée à chaque mise à jour de l'affichage (table pleine,
+     * ajout/retrait d'un joueur), pour refléter la taille de table courante.
+     */
+    async function appliquerDisponibilitePersonnageTable() {
+        let resultat;
+        try {
+            resultat = await api.obtenir_disponibilite_personnage_table();
+        } catch (err) {
+            return;
+        }
+        selectPersonnage.disabled = Boolean(resultat.restreint);
+        if (resultat.restreint && selectPersonnage.value !== 'classique') {
+            selectPersonnage.value = 'classique';
+            afficherDescriptionPersonnage();
+            await appliquerDisponibiliteNiveauxPersonnage();
+        }
+        explicationTaillesPersonnage.textContent = resultat.message || '';
     }
 
     selectPersonnage.addEventListener('change', async () => {

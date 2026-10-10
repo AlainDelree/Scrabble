@@ -247,6 +247,70 @@ def test_creer_partie_aleatoire_niveau_facile_peut_tirer_opportuniste():
 
 
 # --------------------------------------------------------------------------- #
+# Personnages IA : restriction par taille de table (issue #449, lot I)
+# --------------------------------------------------------------------------- #
+
+def test_creer_partie_aleatoire_restreint_a_trois_joueurs():
+    """À une table de trois joueurs (1 humain + 2 IA), seul Classique étant
+    disponible à cette taille, le tirage « Aléatoire » ne doit jamais
+    renvoyer Opportuniste ni Chasseur de scrabbles — même au niveau Champion
+    du monde, où les deux seraient autrement disponibles. ``creer_partie``
+    lui-même reste sans garde-fou (seule l'UI refuse la combinaison en
+    amont) : ce test porte sur le comportement du tirage, pas sur un refus."""
+    for graine in range(30):
+        partie = creer_partie(
+            ["Alice"], _trie(), nb_ia=2,
+            niveaux_ia=[Niveau.CHAMPION_DU_MONDE, Niveau.CHAMPION_DU_MONDE],
+            personnages_ia=["aleatoire", "aleatoire"],
+            generateur_aleatoire=random.Random(graine), graine=1,
+        )
+        for joueur in partie.joueurs[1:]:
+            assert joueur.personnage == "classique"
+
+
+def test_creer_partie_aleatoire_restreint_a_quatre_joueurs():
+    for graine in range(30):
+        partie = creer_partie(
+            ["Alice"], _trie(), nb_ia=3,
+            niveaux_ia=[Niveau.CHAMPION_DU_MONDE] * 3,
+            personnages_ia=["aleatoire"] * 3,
+            generateur_aleatoire=random.Random(graine), graine=1,
+        )
+        for joueur in partie.joueurs[1:]:
+            assert joueur.personnage == "classique"
+
+
+def test_creer_partie_aleatoire_peut_tirer_opportuniste_a_deux_joueurs():
+    """Non-régression : à une table de deux joueurs (le cas déjà couvert par
+    les tests existants ci-dessus), la restriction de taille n'exclut rien
+    de plus que la restriction de niveau."""
+    tires = set()
+    for graine in range(50):
+        partie = creer_partie(
+            ["Alice"], _trie(), nb_ia=1,
+            niveaux_ia=[Niveau.CHAMPION_DU_MONDE],
+            personnages_ia=["aleatoire"],
+            generateur_aleatoire=random.Random(graine), graine=1,
+        )
+        tires.add(partie.joueurs[1].personnage)
+    assert tires == {"classique", "opportuniste", "chasseur_de_scrabbles"}
+
+
+def test_creer_partie_personnage_explicite_ignore_la_taille_de_table():
+    """``creer_partie`` reste sans garde-fou de taille de table (issue #449,
+    lot I, point 7) : un personnage explicite passe tel quel même à une
+    table de trois joueurs — seule l'UI (``ApiAccueil.ajouter_ordinateur``)
+    et le contrôle au lancement (``ApiAccueil.lancer_partie``) filtrent ces
+    combinaisons."""
+    partie = creer_partie(
+        ["Alice"], _trie(), nb_ia=2,
+        personnages_ia=["opportuniste", "classique"],
+        graine=1,
+    )
+    assert partie.joueurs[1].personnage == "opportuniste"
+
+
+# --------------------------------------------------------------------------- #
 # Recommencer : nouvelle partie avec les mêmes joueurs (issue #142)
 # --------------------------------------------------------------------------- #
 

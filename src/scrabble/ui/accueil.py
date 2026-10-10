@@ -69,12 +69,17 @@ from scrabble.moteur.partie import MAX_JOUEURS, Partie, creer_partie
 from scrabble.moteur.personnages import (
     CLE_ALEATOIRE,
     DESCRIPTION_ALEATOIRE,
+    MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS,
     PERSONNAGES,
     explication_disponibilite_niveaux,
     libelle_choix_accueil,
     libelle_niveaux,
     libelle_niveaux_aleatoire,
+    libelle_tailles,
+    libelle_tailles_aleatoire,
+    personnage_disponible_a_nb_joueurs,
     personnage_disponible_a_niveau,
+    personnages_disponibles_a_nb_joueurs,
 )
 from scrabble.persistance.stockage import (
     CHEMIN_DEFAUT,
@@ -516,13 +521,16 @@ class ApiAccueil:
         registre : un personnage ajouté plus tard au module ``personnages``
         apparaît ici sans aucune autre modification de l'accueil.
 
-        Chaque entrée est ``{"cle", "prenom", "description", "niveaux_label"}``
-        — le JS affiche la description sous le sélecteur quand son option est
-        choisie. La description d'« Aléatoire » (:data:`~scrabble.moteur.
-        personnages.DESCRIPTION_ALEATOIRE`) est un texte de mystère qui ne
-        révèle rien de l'identité tirée. ``niveaux_label`` (issue #447, lot G,
-        point 5) est le texte des niveaux où le personnage est disponible
-        (« Tous les niveaux », ou « Facile à Champion du monde ») : même champ
+        Chaque entrée est ``{"cle", "prenom", "description", "niveaux_label",
+        "tailles_label"}`` — le JS affiche la description sous le sélecteur
+        quand son option est choisie. La description d'« Aléatoire »
+        (:data:`~scrabble.moteur.personnages.DESCRIPTION_ALEATOIRE`) est un
+        texte de mystère qui ne révèle rien de l'identité tirée.
+        ``niveaux_label`` (issue #447, lot G, point 5) est le texte des
+        niveaux où le personnage est disponible (« Tous les niveaux », ou
+        « Facile à Champion du monde ») et ``tailles_label`` (issue #449, lot
+        I, point 5) le texte des tailles de table où il est disponible
+        (« Toutes les parties », ou « Parties à deux joueurs ») : même champs
         et même présentation que la fenêtre « Les personnages » en cours de
         partie (:func:`~scrabble.moteur.personnages.lister_personnages`).
         """
@@ -532,6 +540,7 @@ class ApiAccueil:
                 "prenom": personnage.prenom,
                 "description": personnage.description,
                 "niveaux_label": libelle_niveaux(personnage),
+                "tailles_label": libelle_tailles(personnage),
             }
             for personnage in PERSONNAGES.values()
         ]
@@ -541,6 +550,7 @@ class ApiAccueil:
                 "prenom": "Aléatoire",
                 "description": DESCRIPTION_ALEATOIRE,
                 "niveaux_label": libelle_niveaux_aleatoire(),
+                "tailles_label": libelle_tailles_aleatoire(),
             }
         )
         return resultat
@@ -581,6 +591,36 @@ class ApiAccueil:
             )
         return {"niveaux": niveaux, "explication": explication}
 
+    def obtenir_disponibilite_personnage_table(self) -> dict[str, Any]:
+        """Disponibilité du sélecteur de personnage selon la taille de table
+        résultante (issue #449, lot I, point 2).
+
+        ``taille_resultante`` est le nombre total de joueurs qu'aurait la
+        table si un ordinateur était ajouté maintenant (``nb_total + 1``) —
+        c'est cette taille, pas la taille actuelle, qui détermine si un
+        personnage autre que Classique a un sens pour le PROCHAIN
+        ordinateur. Tant qu'aucun ordinateur n'est encore présent
+        (``taille_resultante == 2``), le choix reste possible comme
+        aujourd'hui ; dès que la table compte déjà un ordinateur
+        (``taille_resultante >= 3``), seul Classique reste disponible selon
+        le registre actuel (Opportuniste et Chasseur de scrabbles réservés à
+        deux joueurs).
+
+        Renvoie ``{"restreint": bool, "message": str}`` — ``restreint`` vrai
+        dès qu'au plus un personnage (Classique) est disponible à
+        ``taille_resultante``, ``message`` étant alors
+        :data:`~scrabble.moteur.personnages.
+        MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS`.
+        """
+        taille_resultante = self.config_partie.nb_total + 1
+        restreint = taille_resultante >= 2 and (
+            len(personnages_disponibles_a_nb_joueurs(taille_resultante)) <= 1
+        )
+        return {
+            "restreint": restreint,
+            "message": MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS if restreint else "",
+        }
+
     def ajouter_ordinateur(
         self, niveau_label: str, personnage_cle: str = PERSONNAGE_DEFAUT
     ) -> dict[str, Any]:
@@ -614,6 +654,21 @@ class ApiAccueil:
         dédié nommant le personnage et le niveau. Un appel qui ne renseigne
         pas ``personnage_cle`` (défaut « classique », toujours disponible
         partout) continue de fonctionner sans aucun changement.
+
+        Refuse de même une combinaison personnage/taille de table non
+        disponible pour le personnage demandé (issue #449, lot I, point 4 :
+        contrôle côté serveur, défense en profondeur — le sélecteur doit déjà
+        être désactivé à l'accueil, voir
+        :meth:`obtenir_disponibilite_personnage_table`), avec un message
+        dédié.
+
+        Si l'ajout fait passer la table à trois joueurs ou plus, tout
+        ordinateur déjà présent avec un personnage autre que Classique est
+        remis à Classique (issue #449, lot I, point 3) : ces personnages ne
+        sont plus disponibles à cette taille, et retirer ensuite un
+        ordinateur ne les rétablit pas automatiquement. Le résultat porte
+        alors un champ ``avertissements`` (liste de messages, un par joueur
+        concerné) que le JS doit afficher.
         """
         if not self.config_partie.peut_ajouter_ordinateur():
             return {
@@ -644,18 +699,52 @@ class ApiAccueil:
                     f"{_LIBELLES_NIVEAUX.get(niveau, niveau.name)}."
                 ),
             }
+        # ``taille_resultante`` (issue #449, lot I) : nombre total de joueurs
+        # qu'aurait la table après cet ajout. Avant le premier joueur humain
+        # (``< 2``, cas de tests unitaires qui ajoutent un ordinateur isolé,
+        # sans table réelle), aucune restriction ne s'applique encore — il
+        # n'y a tout simplement pas encore de « taille de table ».
+        taille_resultante = self.config_partie.nb_total + 1
+        if taille_resultante >= 2 and not personnage_disponible_a_nb_joueurs(
+            personnage_cle, taille_resultante
+        ):
+            nom_affiche = (
+                "Aléatoire"
+                if personnage_cle == CLE_ALEATOIRE
+                else PERSONNAGES[personnage_cle].prenom
+            )
+            return {
+                "succes": False,
+                "erreur": (
+                    f"{nom_affiche} n'est pas disponible pour une table de "
+                    f"{taille_resultante} joueurs. "
+                    f"{MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS}"
+                ),
+            }
         noms_pris = self.config_partie.noms_utilises()
         try:
             nom = tirer_prenoms(1, noms_pris)[0]
         except Exception as e:
             journal.erreur("Accueil : échec du tirage de prénom d'ordinateur.", e)
             return {"succes": False, "erreur": f"Impossible de tirer un prénom : {e}"}
+        avertissements = []
+        if taille_resultante >= 3:
+            for joueur in self.config_partie.joueurs:
+                if not joueur.humain and joueur.personnage != "classique":
+                    avertissements.append(
+                        f"Personnage de {joueur.nom} remis à Classique : "
+                        f"{MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS}"
+                    )
+                    joueur.personnage = "classique"
         self.config_partie.ajouter_ordinateur(nom, niveau, personnage_cle)
         journal.info(
             f"Accueil : ordinateur ajouté ({nom}, niveau {niveau.name}, "
             f"personnage {personnage_cle})."
         )
-        return {"succes": True, "etat": self.obtenir_etat()}
+        resultat = {"succes": True, "etat": self.obtenir_etat()}
+        if avertissements:
+            resultat["avertissements"] = avertissements
+        return resultat
 
     def retirer_joueur(self, index: int) -> dict[str, Any]:
         """Retire le joueur à l'index donné."""
@@ -807,6 +896,30 @@ class ApiAccueil:
                 "succes": False,
                 "erreur": "Il faut au moins un joueur humain pour lancer la partie.",
             }
+        # Dernière vérification avant lancement (issue #449, lot I, point 4,
+        # défense en profondeur) : un personnage affecté à un ordinateur ne
+        # doit jamais démarrer sur une taille de table qui ne le permet pas.
+        # Ne devrait se déclencher que si la configuration a été manipulée
+        # hors du chemin normal de l'accueil (``ajouter_ordinateur`` refuse
+        # déjà toute combinaison invalide dès l'ajout).
+        taille_table = self.config_partie.nb_total
+        for joueur in self.config_partie.joueurs:
+            if joueur.humain:
+                continue
+            if not personnage_disponible_a_nb_joueurs(joueur.personnage, taille_table):
+                if joueur.personnage == CLE_ALEATOIRE:
+                    nom_affiche = "Aléatoire"
+                elif joueur.personnage in PERSONNAGES:
+                    nom_affiche = PERSONNAGES[joueur.personnage].prenom
+                else:
+                    nom_affiche = joueur.personnage
+                return {
+                    "succes": False,
+                    "erreur": (
+                        f"{nom_affiche} ({joueur.nom}) n'est pas disponible pour "
+                        f"une table de {taille_table} joueurs."
+                    ),
+                }
         try:
             noms_humains = [
                 j.nom for j in self.config_partie.joueurs if j.humain

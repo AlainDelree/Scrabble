@@ -480,9 +480,29 @@ class TestApiAccueilPersonnages:
         assert cles == [*PERSONNAGES.keys(), CLE_ALEATOIRE]
         for p in personnages:
             # "niveaux_label" ajouté par l'issue #447 (lot G, point 5) :
-            # texte des niveaux où le personnage est disponible.
-            assert set(p.keys()) == {"cle", "prenom", "description", "niveaux_label"}
+            # texte des niveaux où le personnage est disponible. "tailles_label"
+            # ajouté par l'issue #449 (lot I, point 5) : texte des tailles de
+            # table où le personnage est disponible.
+            assert set(p.keys()) == {
+                "cle", "prenom", "description", "niveaux_label", "tailles_label",
+            }
         assert personnages[-1]["prenom"] == "Aléatoire"
+
+    def test_obtenir_personnages_tailles_label_correct(self):
+        """Issue #449 (lot I, point 5) : tailles de table affichées pour
+        chaque personnage, même texte que le registre moteur."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        personnages = {p["cle"]: p for p in api.obtenir_personnages()}
+
+        assert personnages["classique"]["tailles_label"] == "Toutes les parties"
+        assert personnages["opportuniste"]["tailles_label"] == "Parties à deux joueurs"
+        assert (
+            personnages["chasseur_de_scrabbles"]["tailles_label"]
+            == "Parties à deux joueurs"
+        )
+        assert personnages["aleatoire"]["tailles_label"] == "Parties à deux joueurs"
 
     def test_ajouter_ordinateur_defaut_est_classique(self):
         """Sans préciser de personnage, le comportement reste celui d'avant
@@ -701,6 +721,191 @@ class TestApiAccueilDisponibiliteNiveauxPersonnage:
         assert par_label["Débutant"]["disponible"] is False
         assert par_label["Débutant"]["message"] == MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT
         assert par_label["Facile"]["disponible"] is True
+
+
+class TestApiAccueilDisponibiliteNbJoueursPersonnage:
+    """Personnages réservés aux parties à deux joueurs (issue #449, lot I).
+
+    Niveau « Expert » utilisé partout ici (même raison que la classe
+    précédente : vocabulaire IA toujours disponible, indépendant des
+    fichiers de palier absents de ce worktree)."""
+
+    def test_obtenir_disponibilite_personnage_table_sans_ordinateur(self):
+        """Point 2 : tant que la table est composée de l'humain seul (aucun
+        ordinateur), le sélecteur reste disponible comme aujourd'hui."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        resultat = api.obtenir_disponibilite_personnage_table()
+
+        assert resultat["restreint"] is False
+        assert resultat["message"] == ""
+
+    def test_obtenir_disponibilite_personnage_table_avec_un_ordinateur_deja_present(self):
+        """Point 2 : dès qu'un ordinateur est déjà présent, ajouter le
+        suivant ferait passer la table à trois joueurs — le sélecteur doit
+        se signaler restreint."""
+        from scrabble.moteur.personnages import (
+            MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS,
+        )
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Expert")
+        resultat = api.obtenir_disponibilite_personnage_table()
+
+        assert resultat["restreint"] is True
+        assert resultat["message"] == MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS
+
+    def test_ajouter_ordinateur_accepte_opportuniste_a_deux_joueurs(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        result = api.ajouter_ordinateur("Expert", "opportuniste")
+
+        assert result["succes"] is True
+        assert api.config_partie.joueurs[1].personnage == "opportuniste"
+
+    def test_ajouter_ordinateur_refuse_opportuniste_a_trois_joueurs(self):
+        """Point 4 : l'ajout d'un second ordinateur avec Opportuniste
+        (indisponible à trois joueurs) est refusé."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Expert")
+        result = api.ajouter_ordinateur("Expert", "opportuniste")
+
+        assert result["succes"] is False
+        assert "Opportuniste" in result["erreur"]
+        assert "3 joueurs" in result["erreur"]
+        assert api.config_partie.nb_ordinateurs == 1
+
+    def test_ajouter_ordinateur_refuse_chasseur_a_quatre_joueurs(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Expert")
+        api.ajouter_ordinateur("Expert")
+        result = api.ajouter_ordinateur("Expert", "chasseur_de_scrabbles")
+
+        assert result["succes"] is False
+        assert "Chasseur de scrabbles" in result["erreur"]
+        assert "4 joueurs" in result["erreur"]
+        assert api.config_partie.nb_ordinateurs == 2
+
+    def test_ajouter_ordinateur_refuse_aleatoire_a_trois_joueurs(self):
+        from scrabble.moteur.personnages import CLE_ALEATOIRE
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Expert")
+        result = api.ajouter_ordinateur("Expert", CLE_ALEATOIRE)
+
+        assert result["succes"] is False
+        assert "Aléatoire" in result["erreur"]
+        assert api.config_partie.nb_ordinateurs == 1
+
+    def test_ajout_second_ordinateur_remet_le_premier_a_classique_avec_avertissement(self):
+        """Point 3 : le personnage du premier ordinateur redevient Classique
+        quand un second est ajouté, avec un message nommant ce joueur."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Expert", "opportuniste")
+        premier = api.config_partie.joueurs[1]
+        assert premier.personnage == "opportuniste"
+
+        result = api.ajouter_ordinateur("Expert")  # Classique par défaut
+
+        assert result["succes"] is True
+        assert premier.personnage == "classique"
+        assert "avertissements" in result
+        assert any(premier.nom in m for m in result["avertissements"])
+
+    def test_ajout_second_ordinateur_sans_personnage_prealable_ne_produit_pas_davertissement(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Expert")  # Classique d'emblée
+        result = api.ajouter_ordinateur("Expert")
+
+        assert result["succes"] is True
+        assert "avertissements" not in result
+
+    def test_retirer_un_ordinateur_ne_restaure_pas_le_personnage(self):
+        """Point 3, dernière phrase : retirer l'ordinateur qui a fait
+        grandir la table ne rétablit pas automatiquement le personnage
+        remis à Classique."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Expert", "opportuniste")
+        api.ajouter_ordinateur("Expert")  # fait grandir à 3, remise à Classique
+        assert api.config_partie.joueurs[1].personnage == "classique"
+
+        api.retirer_joueur(2)  # retire le second ordinateur
+
+        assert api.config_partie.nb_total == 2
+        assert api.config_partie.joueurs[1].personnage == "classique"
+
+    def test_lancer_partie_refuse_personnage_non_disponible_pour_la_taille(
+        self, monkeypatch
+    ):
+        """Point 4 : dernière vérification au lancement, défense en
+        profondeur même si la configuration a été manipulée hors du chemin
+        normal de l'accueil (``ajouter_ordinateur`` refuse déjà la
+        combinaison dès l'ajout)."""
+        from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda source="ods", **_: Trie.depuis_iterable(["MAISON", "TEST"]),
+        )
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie, **_: 1)
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Expert", "opportuniste")
+        api.ajouter_ordinateur("Expert")  # table à 3, remis à Classique normalement
+        # Configuration manipulée hors du chemin normal de l'accueil : on
+        # force malgré tout Opportuniste sur le premier ordinateur.
+        api.config_partie.joueurs[1].personnage = "opportuniste"
+
+        result = api.lancer_partie()
+
+        assert result["succes"] is False
+        assert "Opportuniste" in result["erreur"]
+        assert "3 joueurs" in result["erreur"]
+
+    def test_lancer_partie_accepte_une_table_a_deux_joueurs_avec_opportuniste(
+        self, monkeypatch
+    ):
+        from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda source="ods", **_: Trie.depuis_iterable(["MAISON", "TEST"]),
+        )
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie, **_: 1)
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Expert", "opportuniste")
+
+        result = api.lancer_partie()
+
+        assert result["succes"] is True
 
 
 class TestObtenirEtatPersonnageLibelle:

@@ -437,6 +437,40 @@ def test_reprise_combinaison_personnage_niveau_non_disponible_se_charge_normalem
     assert reprise.joueur_courant() is not None
 
 
+def test_reprise_combinaison_personnage_nb_joueurs_non_disponible_se_charge_normalement(
+    tmp_path,
+):
+    """Issue #449 (lot I, point 6) : une partie sauvegardée à trois joueurs
+    dont un adversaire porte Opportuniste (indisponible aujourd'hui à cette
+    taille de table) doit se charger et se jouer normalement — aucune
+    vérification de disponibilité n'a lieu au chargement, seulement à
+    l'ajout d'un ordinateur (``ui.accueil.ApiAccueil.ajouter_ordinateur``)."""
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie = Partie(
+        [
+            Joueur("Humain"),
+            Joueur(
+                "IA1",
+                humain=False,
+                niveau=Niveau.EXPERT,
+                personnage="opportuniste",
+            ),
+            Joueur("IA2", humain=False, niveau=Niveau.EXPERT, personnage="classique"),
+        ],
+        trie,
+        graine=1,
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+
+    reprise = reprendre_partie(id_partie, trie, chemin)
+
+    assert len(reprise.joueurs) == 3
+    assert reprise.joueurs[1].personnage == "opportuniste"
+    # La partie reste jouable : un coup IA peut être généré sans exception.
+    assert reprise.joueur_courant() is not None
+
+
 # --------------------------------------------------------------------------- #
 # Vocabulaire IA par niveau à la reprise (issue #369, lot C)
 # --------------------------------------------------------------------------- #

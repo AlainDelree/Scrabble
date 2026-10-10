@@ -261,15 +261,19 @@ def creer_partie(
     renseigne pas ce paramètre. Pour une entrée ``CLE_ALEATOIRE``, un
     personnage réel est tiré **une seule fois**, ici, uniquement parmi les
     personnages du registre disponibles au niveau de CETTE IA (issue #447,
-    lot G, :func:`scrabble.moteur.personnages.personnages_disponibles_a_niveau`),
-    Classique compris quand il y figure, via
-    :func:`scrabble.moteur.personnages.tirer_personnage` ; l'identité réelle
-    tirée est celle enregistrée dans :attr:`Joueur.personnage` — jamais le
-    libellé « Aléatoire » — avec :attr:`Joueur.personnage_aleatoire` à
-    ``True`` pour que l'UI sache la révéler en fin de partie. Cette fonction
-    moteur ne vérifie elle-même aucune disponibilité (ni de personnage, ni de
-    niveau) : le contrôle a lieu en amont, côté UI
-    (:meth:`~scrabble.ui.accueil.ApiAccueil.ajouter_ordinateur`) — ``creer_partie``
+    lot G, :func:`scrabble.moteur.personnages.personnages_disponibles_a_niveau`)
+    ET à la taille de CETTE table (issue #449, lot I,
+    :func:`scrabble.moteur.personnages.personnages_disponibles_a_nb_joueurs`,
+    ``total`` = nombre d'humains + nombre d'IA), Classique compris quand il y
+    figure, via :func:`scrabble.moteur.personnages.tirer_personnage` ;
+    l'identité réelle tirée est celle enregistrée dans
+    :attr:`Joueur.personnage` — jamais le libellé « Aléatoire » — avec
+    :attr:`Joueur.personnage_aleatoire` à ``True`` pour que l'UI sache la
+    révéler en fin de partie. Cette fonction moteur ne vérifie elle-même
+    aucune disponibilité (ni de personnage, ni de niveau, ni de taille de
+    table) : le contrôle a lieu en amont, côté UI
+    (:meth:`~scrabble.ui.accueil.ApiAccueil.ajouter_ordinateur`,
+    :meth:`~scrabble.ui.accueil.ApiAccueil.lancer_partie`) — ``creer_partie``
     reste utilisable avec n'importe quelle combinaison, y compris pour le
     script de mesure de force (``scripts/mesurer_force_niveaux.py``).
     ``generateur_aleatoire`` rend ce tirage déterministe en test ; à défaut
@@ -303,7 +307,7 @@ def creer_partie(
             cle = personnages_ia[indice]
             if cle == personnages.CLE_ALEATOIRE:
                 personnage = personnages.tirer_personnage(
-                    generateur_aleatoire, niveau
+                    generateur_aleatoire, niveau, total
                 ).cle
                 personnage_aleatoire = True
             else:

@@ -867,6 +867,21 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
     display: none;
 }
 
+/* Explication de la restriction de tailles de table (issue #449, lot I,
+   point 2) : vide (donc invisible) tant que la table ne compte pas encore
+   d'ordinateur ; même style que la restriction de niveaux ci-dessus. */
+.explication-tailles-personnage {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--couleur-secondaire, #5d4037);
+}
+
+.explication-tailles-personnage:empty {
+    display: none;
+}
+
 /* Accès discret à la fenêtre « Les personnages » (issue #442, lot F) : un
    lien plutôt qu'un bouton plein, pour rester en retrait du sélecteur. */
 .lien-personnages {

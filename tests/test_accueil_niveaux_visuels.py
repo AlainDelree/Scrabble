@@ -291,3 +291,54 @@ class TestNiveauxAffichesDansListePersonnages:
     def test_personnages_css_definit_le_style_dedie(self):
         css = _lire("personnages.css")
         assert ".personnage-entree-niveaux" in css
+
+
+class TestDisponibiliteNbJoueursPersonnageConsommeeParJS:
+    """Désactivation du sélecteur de personnage selon la taille de table
+    résultante (issue #449, lot I, point 2)."""
+
+    def test_accueil_js_appelle_obtenir_disponibilite_personnage_table(self):
+        js = _lire("accueil.js")
+        assert "api.obtenir_disponibilite_personnage_table()" in js
+
+    def test_appel_a_lieu_a_chaque_mise_a_jour_de_laffichage(self):
+        """Le contrôle doit être recalculé à chaque changement de taille de
+        table (ajout/retrait de joueur), pas seulement à l'ouverture."""
+        js = _lire("accueil.js")
+        assert "appliquerDisponibilitePersonnageTable()" in js
+
+    def test_selecteur_reellement_desactive(self):
+        """Contrairement au vocabulaire IA (reste cliquable), le sélecteur
+        doit être réellement désactivé (``disabled``) quand la table ne
+        permet plus que Classique."""
+        js = _lire("accueil.js")
+        assert "selectPersonnage.disabled = Boolean(resultat.restreint)" in js
+
+    def test_html_a_lemplacement_de_lexplication(self):
+        html = _lire("accueil.html")
+        assert 'id="explication-tailles-personnage"' in html
+
+    def test_css_definit_le_style_de_lexplication(self):
+        css = _lire("accueil.css")
+        assert ".explication-tailles-personnage" in css
+
+    def test_avertissements_de_remise_a_classique_sont_affiches(self):
+        """Point 3 : le JS doit afficher les avertissements renvoyés par
+        ``ajouter_ordinateur`` (remise à Classique d'un joueur déjà présent)."""
+        js = _lire("accueil.js")
+        assert "result.avertissements" in js
+
+
+class TestTaillesAffichesDansListePersonnages:
+    """Affichage des tailles de table dans « Les personnages » (issue #449,
+    lot I, point 5), même présentation à l'accueil et en jeu."""
+
+    def test_commun_js_affiche_tailles_label(self):
+        """``commun.js`` héberge le contrôleur partagé par les deux fenêtres
+        (accueil, jeu) : un seul endroit à vérifier pour les deux."""
+        js = _lire("commun.js")
+        assert "p.tailles_label" in js
+
+    def test_personnages_css_definit_le_style_dedie(self):
+        css = _lire("personnages.css")
+        assert ".personnage-entree-tailles" in css

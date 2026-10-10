@@ -431,6 +431,9 @@
                 const niveaux = p.niveaux_label
                     ? `<p class="personnage-entree-niveaux">Niveaux : ${escapeHtml(p.niveaux_label)}</p>`
                     : '';
+                const tailles = p.tailles_label
+                    ? `<p class="personnage-entree-tailles">${escapeHtml(p.tailles_label)}</p>`
+                    : '';
                 entree.innerHTML = `
                     <div class="personnage-entree-entete">
                         <span class="personnage-entree-nom">${escapeHtml(p.prenom)}</span>
@@ -438,6 +441,7 @@
                     </div>
                     <p class="personnage-entree-description">${escapeHtml(p.description)}</p>
                     ${niveaux}
+                    ${tailles}
                 `;
                 refs.liste.appendChild(entree);
             });
