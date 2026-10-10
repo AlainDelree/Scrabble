@@ -70,7 +70,11 @@ from scrabble.moteur.personnages import (
     CLE_ALEATOIRE,
     DESCRIPTION_ALEATOIRE,
     PERSONNAGES,
+    explication_disponibilite_niveaux,
     libelle_choix_accueil,
+    libelle_niveaux,
+    libelle_niveaux_aleatoire,
+    personnage_disponible_a_niveau,
 )
 from scrabble.persistance.stockage import (
     CHEMIN_DEFAUT,
@@ -512,17 +516,22 @@ class ApiAccueil:
         registre : un personnage ajouté plus tard au module ``personnages``
         apparaît ici sans aucune autre modification de l'accueil.
 
-        Chaque entrée est ``{"cle", "prenom", "description"}`` — le JS affiche
-        la description sous le sélecteur quand son option est choisie. La
-        description d'« Aléatoire » (:data:`~scrabble.moteur.personnages.
-        DESCRIPTION_ALEATOIRE`) est un texte de mystère qui ne révèle rien de
-        l'identité tirée.
+        Chaque entrée est ``{"cle", "prenom", "description", "niveaux_label"}``
+        — le JS affiche la description sous le sélecteur quand son option est
+        choisie. La description d'« Aléatoire » (:data:`~scrabble.moteur.
+        personnages.DESCRIPTION_ALEATOIRE`) est un texte de mystère qui ne
+        révèle rien de l'identité tirée. ``niveaux_label`` (issue #447, lot G,
+        point 5) est le texte des niveaux où le personnage est disponible
+        (« Tous les niveaux », ou « Facile à Champion du monde ») : même champ
+        et même présentation que la fenêtre « Les personnages » en cours de
+        partie (:func:`~scrabble.moteur.personnages.lister_personnages`).
         """
         resultat = [
             {
                 "cle": personnage.cle,
                 "prenom": personnage.prenom,
                 "description": personnage.description,
+                "niveaux_label": libelle_niveaux(personnage),
             }
             for personnage in PERSONNAGES.values()
         ]
@@ -531,9 +540,46 @@ class ApiAccueil:
                 "cle": CLE_ALEATOIRE,
                 "prenom": "Aléatoire",
                 "description": DESCRIPTION_ALEATOIRE,
+                "niveaux_label": libelle_niveaux_aleatoire(),
             }
         )
         return resultat
+
+    def obtenir_disponibilite_niveaux_personnage(
+        self, personnage_cle: str
+    ) -> dict[str, Any]:
+        """Disponibilité de chaque niveau pour ``personnage_cle`` (issue #447, lot G).
+
+        Distinct de :meth:`obtenir_disponibilite_niveaux` (qui porte sur la
+        disponibilité du **vocabulaire IA** d'un niveau, indépendante du
+        personnage) : ce contrôle-ci grise les niveaux où le personnage
+        choisi n'a pas de sens (Opportuniste à Débutant, Aléatoire à un niveau
+        où moins de deux personnages sont disponibles). Les deux contrôles se
+        combinent côté JS (un niveau peut être indisponible pour l'une ou
+        l'autre raison, voire les deux).
+
+        Renvoie ``{"niveaux": [{"label", "disponible", "message"}, ...],
+        "explication": str}`` — ``explication`` est le texte court à afficher
+        sous le sélecteur (:func:`~scrabble.moteur.personnages.
+        explication_disponibilite_niveaux`, p. ex. « Disponible à partir de
+        Facile »), vide quand le personnage est disponible à tous les
+        niveaux (Classique, ou tout personnage sans restriction déclarée).
+        Une clé de personnage inconnue renvoie tous les niveaux disponibles
+        (défense en profondeur : le contrôle réel a lieu à
+        :meth:`ajouter_ordinateur`).
+        """
+        explication = explication_disponibilite_niveaux(personnage_cle)
+        niveaux = []
+        for label, niveau in NIVEAUX_LABELS.items():
+            disponible = personnage_disponible_a_niveau(personnage_cle, niveau)
+            niveaux.append(
+                {
+                    "label": label,
+                    "disponible": disponible,
+                    "message": None if disponible else (explication or None),
+                }
+            )
+        return {"niveaux": niveaux, "explication": explication}
 
     def ajouter_ordinateur(
         self, niveau_label: str, personnage_cle: str = PERSONNAGE_DEFAUT
@@ -559,6 +605,15 @@ class ApiAccueil:
         point 5, défense en profondeur : le bouton correspondant doit déjà
         être désactivé à l'accueil, lot F) avec le message dédié
         (:func:`_disponibilite_niveau`).
+
+        Refuse aussi une combinaison personnage/niveau non disponible (issue
+        #447, lot G, point 3 : contrôle côté serveur, défense en profondeur —
+        les boutons de niveau concernés doivent déjà être désactivés à
+        l'accueil pour le personnage choisi, voir
+        :meth:`obtenir_disponibilite_niveaux_personnage`), avec un message
+        dédié nommant le personnage et le niveau. Un appel qui ne renseigne
+        pas ``personnage_cle`` (défaut « classique », toujours disponible
+        partout) continue de fonctionner sans aucun changement.
         """
         if not self.config_partie.peut_ajouter_ordinateur():
             return {
@@ -575,6 +630,19 @@ class ApiAccueil:
             return {
                 "succes": False,
                 "erreur": f"Personnage inconnu : {personnage_cle}",
+            }
+        if not personnage_disponible_a_niveau(personnage_cle, niveau):
+            nom_affiche = (
+                "Aléatoire"
+                if personnage_cle == CLE_ALEATOIRE
+                else PERSONNAGES[personnage_cle].prenom
+            )
+            return {
+                "succes": False,
+                "erreur": (
+                    f"{nom_affiche} n'est pas disponible au niveau "
+                    f"{_LIBELLES_NIVEAUX.get(niveau, niveau.name)}."
+                ),
             }
         noms_pris = self.config_partie.noms_utilises()
         try:

@@ -259,12 +259,19 @@ def creer_partie(
     ``None`` (défaut, IA sans entrée) laisse :attr:`Joueur.personnage` à sa
     chaîne vide historique — comportement inchangé pour tout appelant qui ne
     renseigne pas ce paramètre. Pour une entrée ``CLE_ALEATOIRE``, un
-    personnage réel est tiré **une seule fois**, ici, uniformément parmi
-    *tous* les personnages du registre (Classique compris) via
+    personnage réel est tiré **une seule fois**, ici, uniquement parmi les
+    personnages du registre disponibles au niveau de CETTE IA (issue #447,
+    lot G, :func:`scrabble.moteur.personnages.personnages_disponibles_a_niveau`),
+    Classique compris quand il y figure, via
     :func:`scrabble.moteur.personnages.tirer_personnage` ; l'identité réelle
     tirée est celle enregistrée dans :attr:`Joueur.personnage` — jamais le
     libellé « Aléatoire » — avec :attr:`Joueur.personnage_aleatoire` à
-    ``True`` pour que l'UI sache la révéler en fin de partie.
+    ``True`` pour que l'UI sache la révéler en fin de partie. Cette fonction
+    moteur ne vérifie elle-même aucune disponibilité (ni de personnage, ni de
+    niveau) : le contrôle a lieu en amont, côté UI
+    (:meth:`~scrabble.ui.accueil.ApiAccueil.ajouter_ordinateur`) — ``creer_partie``
+    reste utilisable avec n'importe quelle combinaison, y compris pour le
+    script de mesure de force (``scripts/mesurer_force_niveaux.py``).
     ``generateur_aleatoire`` rend ce tirage déterministe en test ; à défaut
     (``None``), il retombe sur le module :mod:`random` global.
 
@@ -295,7 +302,9 @@ def creer_partie(
         if personnages_ia is not None and indice < len(personnages_ia):
             cle = personnages_ia[indice]
             if cle == personnages.CLE_ALEATOIRE:
-                personnage = personnages.tirer_personnage(generateur_aleatoire).cle
+                personnage = personnages.tirer_personnage(
+                    generateur_aleatoire, niveau
+                ).cle
                 personnage_aleatoire = True
             else:
                 personnage = cle

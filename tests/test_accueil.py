@@ -479,7 +479,9 @@ class TestApiAccueilPersonnages:
         cles = [p["cle"] for p in personnages]
         assert cles == [*PERSONNAGES.keys(), CLE_ALEATOIRE]
         for p in personnages:
-            assert set(p.keys()) == {"cle", "prenom", "description"}
+            # "niveaux_label" ajouté par l'issue #447 (lot G, point 5) :
+            # texte des niveaux où le personnage est disponible.
+            assert set(p.keys()) == {"cle", "prenom", "description", "niveaux_label"}
         assert personnages[-1]["prenom"] == "Aléatoire"
 
     def test_ajouter_ordinateur_defaut_est_classique(self):
@@ -599,6 +601,106 @@ class TestApiAccueilPersonnages:
         joueur_ia = next(j for j in api._partie.joueurs if not j.humain)
         assert joueur_ia.personnage == "opportuniste"
         assert joueur_ia.personnage_aleatoire is False
+
+
+class TestApiAccueilDisponibiliteNiveauxPersonnage:
+    """Contrôle côté serveur de la combinaison personnage/niveau (issue #447,
+    lot G, point 3). ``paliers_disponibles`` est monkeypatché pour rendre le
+    vocabulaire de Débutant/Facile disponible dans ce worktree (même
+    technique qu'ailleurs dans ce fichier, p. ex. ``test_ajouter_ordinateur_
+    refuse_un_niveau_indisponible``) : seule la restriction de PERSONNAGE est
+    testée ici, pas celle du vocabulaire (déjà couverte ailleurs)."""
+
+    def test_ajouter_ordinateur_refuse_opportuniste_a_debutant(self, monkeypatch):
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.paliers_disponibles", lambda: {"debutant": True}
+        )
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Débutant", "opportuniste")
+
+        assert result["succes"] is False
+        assert "Opportuniste" in result["erreur"]
+        assert "Débutant" in result["erreur"]
+        assert api.config_partie.nb_ordinateurs == 0
+
+    def test_ajouter_ordinateur_accepte_opportuniste_de_facile_a_champion(self, monkeypatch):
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.paliers_disponibles", lambda: {"facile": True}
+        )
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Facile", "opportuniste")
+
+        assert result["succes"] is True
+        assert api.config_partie.joueurs[0].personnage == "opportuniste"
+
+        api2 = ApiAccueil()
+        result2 = api2.ajouter_ordinateur("Expert", "opportuniste")
+        assert result2["succes"] is True
+
+    def test_ajouter_ordinateur_refuse_aleatoire_a_debutant(self, monkeypatch):
+        from scrabble.moteur.personnages import CLE_ALEATOIRE
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.paliers_disponibles", lambda: {"debutant": True}
+        )
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Débutant", CLE_ALEATOIRE)
+
+        assert result["succes"] is False
+        assert "Aléatoire" in result["erreur"]
+        assert api.config_partie.nb_ordinateurs == 0
+
+    def test_ajouter_ordinateur_sans_personnage_continue_de_fonctionner(self):
+        """Un appel sans ``personnage_cle`` (défaut Classique, toujours
+        disponible) n'est pas affecté par le nouveau contrôle."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Expert")
+        assert result["succes"] is True
+
+    def test_obtenir_disponibilite_niveaux_personnage_opportuniste(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        resultat = api.obtenir_disponibilite_niveaux_personnage("opportuniste")
+        par_label = {n["label"]: n for n in resultat["niveaux"]}
+
+        assert par_label["Débutant"]["disponible"] is False
+        assert par_label["Débutant"]["message"] == "Disponible à partir de Facile"
+        assert par_label["Facile"]["disponible"] is True
+        assert par_label["Facile"]["message"] is None
+        assert resultat["explication"] == "Disponible à partir de Facile"
+
+    def test_obtenir_disponibilite_niveaux_personnage_classique_tout_disponible(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        resultat = api.obtenir_disponibilite_niveaux_personnage("classique")
+
+        assert all(n["disponible"] for n in resultat["niveaux"])
+        assert all(n["message"] is None for n in resultat["niveaux"])
+        assert resultat["explication"] == ""
+
+    def test_obtenir_disponibilite_niveaux_personnage_aleatoire_debutant_indisponible(self):
+        from scrabble.moteur.personnages import (
+            CLE_ALEATOIRE,
+            MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT,
+        )
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        resultat = api.obtenir_disponibilite_niveaux_personnage(CLE_ALEATOIRE)
+        par_label = {n["label"]: n for n in resultat["niveaux"]}
+
+        assert par_label["Débutant"]["disponible"] is False
+        assert par_label["Débutant"]["message"] == MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT
+        assert par_label["Facile"]["disponible"] is True
 
 
 class TestObtenirEtatPersonnageLibelle:

@@ -245,3 +245,49 @@ class TestDisponibiliteNiveauxConsommeeParJS:
     def test_css_definit_le_style_indisponible(self):
         css = _lire("accueil.css")
         assert ".niveau-indisponible" in css
+
+
+class TestDisponibilitePersonnageConsommeeParJS:
+    """Disponibilité des niveaux selon le PERSONNAGE choisi (issue #447, lot
+    G, point 2) : désactivation réelle des boutons + explication affichée
+    sous le sélecteur, mise à jour à chaque changement de personnage."""
+
+    def test_accueil_js_appelle_obtenir_disponibilite_niveaux_personnage(self):
+        js = _lire("accueil.js")
+        assert "api.obtenir_disponibilite_niveaux_personnage(" in js
+
+    def test_appel_a_lieu_au_chargement_et_au_changement_de_personnage(self):
+        js = _lire("accueil.js")
+        assert "await appliquerDisponibiliteNiveauxPersonnage()" in js
+        assert "selectPersonnage.addEventListener('change'" in js
+
+    def test_bouton_indisponible_pour_le_personnage_est_reellement_desactive(self):
+        """Contrairement au vocabulaire IA (reste cliquable), un niveau
+        indisponible pour le personnage choisi doit être réellement désactivé
+        (``disabled``), comme le demande l'issue (« désactivés et
+        visiblement grisés »)."""
+        js = _lire("accueil.js")
+        assert "btn.disabled = !dernierPeutAjouterOrdinateur || Boolean(messagePersonnage)" in js
+
+    def test_html_a_lemplacement_de_lexplication(self):
+        html = _lire("accueil.html")
+        assert 'id="explication-niveaux-personnage"' in html
+
+    def test_css_definit_le_style_indisponible_personnage(self):
+        css = _lire("accueil.css")
+        assert ".niveau-indisponible-personnage" in css
+
+
+class TestNiveauxAffichesDansListePersonnages:
+    """Affichage des niveaux de disponibilité dans « Les personnages » (issue
+    #447, lot G, point 5), même présentation à l'accueil et en jeu."""
+
+    def test_commun_js_affiche_niveaux_label(self):
+        """``commun.js`` héberge le contrôleur partagé par les deux fenêtres
+        (accueil, jeu) : un seul endroit à vérifier pour les deux."""
+        js = _lire("commun.js")
+        assert "p.niveaux_label" in js
+
+    def test_personnages_css_definit_le_style_dedie(self):
+        css = _lire("personnages.css")
+        assert ".personnage-entree-niveaux" in css

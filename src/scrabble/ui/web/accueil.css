@@ -852,6 +852,21 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
     color: var(--couleur-texte-attenue, #666);
 }
 
+/* Explication de la restriction de niveaux du personnage choisi (issue #447,
+   lot G, point 2) : vide (donc invisible, aucune hauteur réservée) pour un
+   personnage disponible à tous les niveaux. */
+.explication-niveaux-personnage {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--couleur-secondaire, #5d4037);
+}
+
+.explication-niveaux-personnage:empty {
+    display: none;
+}
+
 /* Accès discret à la fenêtre « Les personnages » (issue #442, lot F) : un
    lien plutôt qu'un bouton plein, pour rester en retrait du sélecteur. */
 .lien-personnages {
@@ -978,6 +993,17 @@ body.mode-belgicisme .zone-centrale > *:not(.bande-tricolore) {
    survol (``title``). Même affaiblissement visuel que ``:disabled`` pour
    signaler l'indisponibilité d'un coup d'œil. */
 .zone-boutons .btn-niveau.niveau-indisponible {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* Niveau indisponible pour le PERSONNAGE sélectionné (issue #447, lot G,
+   point 2 : Opportuniste à Débutant, Aléatoire sous le seuil de deux
+   personnages). Contrairement à ``.niveau-indisponible`` ci-dessus, ce
+   bouton est réellement désactivé (``:disabled``, voir accueil.js) : la
+   graduation visuelle est donc déjà couverte par la règle ``:disabled``
+   au-dessus — cette classe ne sert qu'à cibler le bouton depuis le JS. */
+.zone-boutons .btn-niveau.niveau-indisponible-personnage {
     opacity: 0.45;
     cursor: not-allowed;
 }

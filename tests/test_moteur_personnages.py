@@ -18,10 +18,19 @@ from scrabble.moteur.ia import Niveau, choisir_coup
 from scrabble.moteur.personnages import (
     CLE_ALEATOIRE,
     DESCRIPTION_ALEATOIRE,
+    MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT,
     PERSONNAGES,
+    Personnage,
+    TOUS_NIVEAUX,
+    aleatoire_disponible_a_niveau,
+    explication_disponibilite_niveaux,
     libelle_choix_accueil,
+    libelle_niveaux,
+    libelle_niveaux_aleatoire,
     libelle_personnage_partie,
     lister_personnages,
+    personnage_disponible_a_niveau,
+    personnages_disponibles_a_niveau,
     tirer_personnage,
 )
 from scrabble.moteur.plateau_partie import (
@@ -179,6 +188,112 @@ class TestTirerPersonnage:
         tire = tirer_personnage()
         assert tire.cle in PERSONNAGES
 
+    def test_tirage_restreint_au_niveau_ne_tire_jamais_opportuniste_a_debutant(self):
+        """``niveau`` restreint le tirage (issue #447, lot G, point 4) :
+        Opportuniste n'étant pas disponible à Débutant, un tirage à ce niveau
+        ne doit jamais le renvoyer, même sur de nombreuses graines."""
+        for graine in range(50):
+            tire = tirer_personnage(random.Random(graine), Niveau.DEBUTANT)
+            assert tire.cle == "classique"
+
+    def test_tirage_restreint_au_niveau_peut_tirer_opportuniste_a_facile(self):
+        cles = {
+            tirer_personnage(random.Random(g), Niveau.FACILE).cle
+            for g in range(50)
+        }
+        assert cles == {"classique", "opportuniste"}
+
+    def test_tirage_sans_niveau_ignore_la_restriction(self):
+        """``niveau=None`` (défaut) reprend le comportement historique : tout
+        le registre, sans restriction — non-régression explicite."""
+        cles = {tirer_personnage(random.Random(g)).cle for g in range(50)}
+        assert cles == set(PERSONNAGES)
+
+
+class TestDisponibiliteNiveauxPersonnages:
+    """Disponibilité des personnages selon le niveau (issue #447, lot G)."""
+
+    def test_classique_disponible_a_tous_les_niveaux(self):
+        for niveau in Niveau:
+            assert personnage_disponible_a_niveau("classique", niveau) is True
+
+    def test_personnage_sans_declaration_disponible_a_tous_les_niveaux(self):
+        """Point 1 : le champ est facultatif et vaut « tous les niveaux » par
+        défaut — un futur personnage sans déclaration explicite reste
+        disponible partout."""
+        assert PERSONNAGES["classique"].niveaux_disponibles == TOUS_NIVEAUX
+
+    def test_opportuniste_refuse_a_debutant(self):
+        assert personnage_disponible_a_niveau("opportuniste", Niveau.DEBUTANT) is False
+
+    def test_opportuniste_accepte_de_facile_a_champion(self):
+        for niveau in Niveau:
+            if niveau is Niveau.DEBUTANT:
+                continue
+            assert personnage_disponible_a_niveau("opportuniste", niveau) is True
+
+    def test_personnage_inconnu_indisponible_partout(self):
+        assert personnage_disponible_a_niveau("ninja", Niveau.EXPERT) is False
+
+    def test_aleatoire_indisponible_a_debutant_un_seul_personnage(self):
+        """Aujourd'hui, seul Classique est disponible à Débutant : Aléatoire,
+        qui demande au moins deux personnages, y est donc indisponible."""
+        assert personnages_disponibles_a_niveau(Niveau.DEBUTANT) == [PERSONNAGES["classique"]]
+        assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is False
+        assert personnage_disponible_a_niveau(CLE_ALEATOIRE, Niveau.DEBUTANT) is False
+
+    def test_aleatoire_disponible_des_que_deux_personnages_le_sont(self):
+        """Ajouter un personnage fictif disponible à Débutant rend Aléatoire
+        disponible à Débutant sans aucune autre modification (point 4)."""
+        fictif = Personnage(
+            cle="fictif_debutant",
+            prenom="Fictif",
+            description="Personnage de test.",
+            profil=PERSONNAGES["classique"].profil,
+            niveaux_disponibles=frozenset({Niveau.DEBUTANT}),
+        )
+        assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is False
+        PERSONNAGES["fictif_debutant"] = fictif
+        try:
+            assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is True
+            assert personnage_disponible_a_niveau(CLE_ALEATOIRE, Niveau.DEBUTANT) is True
+        finally:
+            del PERSONNAGES["fictif_debutant"]
+        assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is False
+
+    def test_aleatoire_disponible_a_facile(self):
+        """Classique + Opportuniste : deux personnages disponibles à Facile."""
+        assert aleatoire_disponible_a_niveau(Niveau.FACILE) is True
+
+
+class TestLibelleEtExplicationNiveaux:
+    """Textes affichés pour les niveaux de disponibilité (issue #447, lot G,
+    points 2 et 5)."""
+
+    def test_libelle_classique_tous_les_niveaux(self):
+        assert libelle_niveaux(PERSONNAGES["classique"]) == "Tous les niveaux"
+
+    def test_libelle_opportuniste(self):
+        assert libelle_niveaux(PERSONNAGES["opportuniste"]) == "Facile à Champion du monde"
+
+    def test_libelle_aleatoire_aujourdhui_comme_opportuniste(self):
+        assert libelle_niveaux_aleatoire() == "Facile à Champion du monde"
+
+    def test_explication_classique_vide(self):
+        assert explication_disponibilite_niveaux("classique") == ""
+
+    def test_explication_opportuniste(self):
+        assert (
+            explication_disponibilite_niveaux("opportuniste")
+            == "Disponible à partir de Facile"
+        )
+
+    def test_explication_aleatoire(self):
+        assert (
+            explication_disponibilite_niveaux(CLE_ALEATOIRE)
+            == MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT
+        )
+
 
 class TestLibelleChoixAccueil:
     """Libellé entre parenthèses pour le sélecteur de l'accueil (issue #441).
@@ -261,8 +376,10 @@ class TestListerPersonnages:
         cles = [p["cle"] for p in personnages]
         assert cles == [*PERSONNAGES.keys(), CLE_ALEATOIRE]
         for p in personnages:
+            # "niveaux_label" ajouté par l'issue #447 (lot G, point 5) :
+            # texte des niveaux où le personnage est disponible.
             assert set(p.keys()) == {
-                "cle", "prenom", "description", "dans_la_partie",
+                "cle", "prenom", "description", "dans_la_partie", "niveaux_label",
             }
 
     def test_un_personnage_ajoute_au_registre_apparait_dans_la_liste(self, monkeypatch):

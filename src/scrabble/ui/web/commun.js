@@ -408,10 +408,13 @@
      *
      * ``afficher(personnages)`` reçoit la liste construite côté Python
      * (``ApiAccueil.obtenir_personnages`` / ``ApiJeu.obtenir_personnages``) —
-     * chaque entrée ``{cle, prenom, description, dans_la_partie?}`` — et se
-     * contente de l'afficher telle quelle : la confidentialité d'un
-     * personnage tiré au hasard est garantie côté Python (jamais marqué
-     * ``dans_la_partie``), pas par ce rendu. Renvoie {afficher, fermer}.
+     * chaque entrée ``{cle, prenom, description, dans_la_partie?,
+     * niveaux_label}`` — et se contente de l'afficher telle quelle : la
+     * confidentialité d'un personnage tiré au hasard est garantie côté Python
+     * (jamais marqué ``dans_la_partie``), pas par ce rendu. ``niveaux_label``
+     * (issue #447, lot G, point 5) est affiché sous la description, même
+     * présentation qu'à l'accueil et en jeu puisque les deux fenêtres
+     * partagent ce même contrôleur. Renvoie {afficher, fermer}.
      */
     function creerModalePersonnages(refs) {
         function fermer() {
@@ -425,12 +428,16 @@
                 const tag = p.dans_la_partie
                     ? '<span class="personnage-tag">Dans cette partie</span>'
                     : '';
+                const niveaux = p.niveaux_label
+                    ? `<p class="personnage-entree-niveaux">Niveaux : ${escapeHtml(p.niveaux_label)}</p>`
+                    : '';
                 entree.innerHTML = `
                     <div class="personnage-entree-entete">
                         <span class="personnage-entree-nom">${escapeHtml(p.prenom)}</span>
                         ${tag}
                     </div>
                     <p class="personnage-entree-description">${escapeHtml(p.description)}</p>
+                    ${niveaux}
                 `;
                 refs.liste.appendChild(entree);
             });

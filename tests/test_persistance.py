@@ -404,6 +404,39 @@ def test_reprise_ancienne_sauvegarde_sans_cle_personnage_aleatoire(tmp_path):
     assert reprise.joueurs[1].personnage == "opportuniste"
 
 
+def test_reprise_combinaison_personnage_niveau_non_disponible_se_charge_normalement(
+    tmp_path,
+):
+    """Issue #447 (lot G, point 6) : une partie sauvegardée dont la
+    combinaison personnage/niveau ne serait plus disponible aujourd'hui
+    (Opportuniste à Débutant) doit se charger et se jouer normalement —
+    aucune vérification de disponibilité n'a lieu au chargement, seulement à
+    l'ajout d'un ordinateur (``ui.accueil.ApiAccueil.ajouter_ordinateur``)."""
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie = Partie(
+        [
+            Joueur("Humain"),
+            Joueur(
+                "IA",
+                humain=False,
+                niveau=Niveau.DEBUTANT,
+                personnage="opportuniste",
+            ),
+        ],
+        trie,
+        graine=1,
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+
+    reprise = reprendre_partie(id_partie, trie, chemin)
+
+    assert reprise.joueurs[1].niveau == Niveau.DEBUTANT
+    assert reprise.joueurs[1].personnage == "opportuniste"
+    # La partie reste jouable : un coup IA peut être généré sans exception.
+    assert reprise.joueur_courant() is not None
+
+
 # --------------------------------------------------------------------------- #
 # Vocabulaire IA par niveau à la reprise (issue #369, lot C)
 # --------------------------------------------------------------------------- #

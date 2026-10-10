@@ -56,6 +56,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Sélecteur de personnage (issue #440, lot D)
     const selectPersonnage = document.getElementById('select-personnage');
     const descriptionPersonnage = document.getElementById('description-personnage');
+    // Explication de la restriction de niveaux du personnage choisi (issue
+    // #447, lot G, point 2).
+    const explicationNiveauxPersonnage = document.getElementById('explication-niveaux-personnage');
 
     // Fenêtre « Les personnages » (issue #442, lot F), contrôleur factorisé
     // dans commun.js (même composant qu'à l'écran de jeu).
@@ -82,6 +85,44 @@ document.addEventListener('DOMContentLoaded', async () => {
     // plus bas) — le contrôle doit avoir lieu à l'AFFICHAGE, pas au
     // lancement (Béatrice ne doit pas cliquer, attendre, puis échouer).
     let niveauxIndisponibles = {};
+
+    // Disponibilité des niveaux pour le PERSONNAGE actuellement sélectionné
+    // (issue #447, lot G, point 2) : { [label]: message }, recalculé à chaque
+    // changement de sélection (voir appliquerDisponibiliteNiveauxPersonnage).
+    // Distinct de ``niveauxIndisponibles`` ci-dessus (vocabulaire IA, fixe
+    // pour toute la session) : ici un niveau grisé pour Opportuniste peut
+    // redevenir actif en choisissant Classique, sans round-trip Python
+    // supplémentaire pour le vocabulaire.
+    let niveauxIndisponiblesPersonnage = {};
+
+    // Dernier état « table pleine » connu (issue #299), mémorisé pour que le
+    // changement de personnage puisse réappliquer l'état des boutons de
+    // niveau sans attendre un nouvel ``obtenir_etat()``.
+    let dernierPeutAjouterOrdinateur = true;
+
+    /**
+     * Applique l'état (activé/grisé/désactivé) de tous les boutons de niveau,
+     * combinant trois signaux indépendants : la table pleine (``peutAjouter``),
+     * le vocabulaire IA indisponible (``niveauxIndisponibles``, cliquable à
+     * dessein, voir plus bas) et le personnage sélectionné indisponible à ce
+     * niveau (``niveauxIndisponiblesPersonnage``, issue #447 lot G — celui-ci
+     * désactive réellement le bouton, contrairement au vocabulaire).
+     */
+    function appliquerEtatBoutonsNiveau() {
+        document.querySelectorAll('.btn-niveau').forEach(btn => {
+            const label = btn.dataset.niveau;
+            const messagePersonnage = niveauxIndisponiblesPersonnage[label];
+            btn.disabled = !dernierPeutAjouterOrdinateur || Boolean(messagePersonnage);
+            btn.classList.toggle('niveau-indisponible-personnage', Boolean(messagePersonnage));
+            if (messagePersonnage) {
+                btn.title = messagePersonnage;
+            } else if (niveauxIndisponibles[label]) {
+                btn.title = niveauxIndisponibles[label];
+            } else {
+                btn.title = '';
+            }
+        });
+    }
 
     /**
      * Met à jour l'affichage en fonction de l'état reçu
@@ -155,9 +196,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         // ``disabled``. Les 5 boutons de niveau (issue #299) gardent, eux,
         // leur comportement historique (désactivés quand la table est pleine).
         btnAjouterHumain.hidden = !etat.peut_ajouter_humain;
-        document.querySelectorAll('.btn-niveau').forEach(btn => {
-            btn.disabled = !etat.peut_ajouter_ordinateur;
-        });
+        dernierPeutAjouterOrdinateur = etat.peut_ajouter_ordinateur;
+        appliquerEtatBoutonsNiveau();
         btnLancer.disabled = !etat.peut_lancer;
 
         // Messages de limite. La saturation du quota d'humains n'est plus un
@@ -491,6 +531,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             selectPersonnage.appendChild(option);
         });
         afficherDescriptionPersonnage();
+        await appliquerDisponibiliteNiveauxPersonnage();
     }
 
     /** Affiche la description du personnage actuellement sélectionné. */
@@ -500,7 +541,37 @@ document.addEventListener('DOMContentLoaded', async () => {
         descriptionPersonnage.textContent = choisi ? choisi.description : '';
     }
 
-    selectPersonnage.addEventListener('change', afficherDescriptionPersonnage);
+    /**
+     * Grise les boutons de niveau où le personnage ACTUELLEMENT sélectionné
+     * n'a pas de sens, et affiche la courte explication sous le sélecteur
+     * (issue #447, lot G, point 2 — p. ex. « Disponible à partir de Facile »
+     * pour Opportuniste, ou le message dédié d'Aléatoire). Tous les niveaux
+     * restent actifs pour Classique (aucune restriction déclarée). Appelée au
+     * chargement initial et à chaque changement de sélection, pour une mise à
+     * jour immédiate.
+     */
+    async function appliquerDisponibiliteNiveauxPersonnage() {
+        const cle = selectPersonnage.value || 'classique';
+        let resultat;
+        try {
+            resultat = await api.obtenir_disponibilite_niveaux_personnage(cle);
+        } catch (err) {
+            return;
+        }
+        niveauxIndisponiblesPersonnage = {};
+        (resultat.niveaux || []).forEach(({ label, disponible, message }) => {
+            if (!disponible) {
+                niveauxIndisponiblesPersonnage[label] = message;
+            }
+        });
+        explicationNiveauxPersonnage.textContent = resultat.explication || '';
+        appliquerEtatBoutonsNiveau();
+    }
+
+    selectPersonnage.addEventListener('change', async () => {
+        afficherDescriptionPersonnage();
+        await appliquerDisponibiliteNiveauxPersonnage();
+    });
 
     // Fenêtre « Les personnages » (issue #442, lot F) : réutilise la liste déjà
     // chargée par chargerPersonnages ci-dessus, pas de nouvel appel API. Sans

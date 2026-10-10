@@ -60,10 +60,10 @@ seulement sur validation explicite d'Alain.
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-from scrabble.moteur.ia import ProfilPersonnage
+from scrabble.moteur.ia import Niveau, ProfilPersonnage
 
 #: Renforcement du bonus premium d'Opportuniste (voir docstring du module) :
 #: valeur la plus haute déjà en production (20, EXPERT/CHAMPION_DU_MONDE) +
@@ -87,14 +87,36 @@ DESCRIPTION_ALEATOIRE = (
 )
 
 
+#: Tous les niveaux de difficulté — valeur par défaut de
+#: :attr:`Personnage.niveaux_disponibles` (issue #447, lot G) : un personnage
+#: qui ne déclare rien reste disponible partout, comme Classique.
+TOUS_NIVEAUX: frozenset[Niveau] = frozenset(Niveau)
+
+#: Niveaux où Opportuniste est disponible (issue #447, lot G) : de Facile à
+#: Champion du monde, **pas** Débutant. D'après les mesures de l'issue #437,
+#: à Débutant l'ordinateur joue tiré au hasard parmi 70 % des meilleurs coups
+#: et Opportuniste y utilise les cases bonus à peine plus souvent que
+#: Classique (20,5 % contre 20,1 %) : son caractère n'y est pas perceptible.
+NIVEAUX_OPPORTUNISTE: frozenset[Niveau] = TOUS_NIVEAUX - {Niveau.DEBUTANT}
+
+
 @dataclass(frozen=True)
 class Personnage:
-    """Un personnage : prénom, description de caractère (FR), profil stratégique."""
+    """Un personnage : prénom, description de caractère (FR), profil stratégique.
+
+    ``niveaux_disponibles`` (issue #447, lot G) : l'ensemble des niveaux où ce
+    personnage peut être choisi — facultatif, vaut :data:`TOUS_NIVEAUX` par
+    défaut (cas de Classique), pour qu'un futur personnage sans déclaration
+    explicite reste disponible partout.
+    """
 
     cle: str
     prenom: str
     description: str
     profil: ProfilPersonnage
+    niveaux_disponibles: frozenset[Niveau] = field(
+        default_factory=lambda: TOUS_NIVEAUX
+    )
 
 
 #: Registre unique des personnages (issue #439, lot B). Ajouter un
@@ -118,6 +140,7 @@ PERSONNAGES: dict[str, Personnage] = {
             bonus_premium=BONUS_PREMIUM_OPPORTUNISTE,
             poids_leave=0.0,
         ),
+        niveaux_disponibles=NIVEAUX_OPPORTUNISTE,
     ),
 }
 
@@ -131,18 +154,161 @@ def obtenir_personnage(cle: str) -> Personnage:
     return PERSONNAGES[cle]
 
 
-def tirer_personnage(generateur: random.Random | None = None) -> Personnage:
-    """Tire un personnage uniformément parmi **tous** ceux du registre.
+def tirer_personnage(
+    generateur: random.Random | None = None, niveau: Niveau | None = None
+) -> Personnage:
+    """Tire un personnage parmi ceux du registre disponibles à ``niveau``.
 
     Classique compris (issue #440, lot D, point 3) : le tirage « Aléatoire »
-    porte sur l'ensemble de :data:`PERSONNAGES`, sans favoriser ni exclure le
-    personnage neutre. ``generateur`` est injectable pour un tirage
-    déterministe en test ; à défaut, utilise le module :mod:`random` global
-    (``random.choice`` s'appelle de la même façon sur le module que sur une
-    instance de :class:`random.Random`).
+    ne favorise ni n'exclut le personnage neutre. ``generateur`` est
+    injectable pour un tirage déterministe en test ; à défaut, utilise le
+    module :mod:`random` global (``random.choice`` s'appelle de la même façon
+    sur le module que sur une instance de :class:`random.Random`).
+
+    ``niveau`` (issue #447, lot G) restreint le tirage aux personnages
+    disponibles à ce niveau (:func:`personnages_disponibles_a_niveau`) — à
+    appeler uniquement là où :func:`aleatoire_disponible_a_niveau` est vrai
+    (au moins deux personnages y figurent), ce que le contrôle côté serveur
+    garantit déjà avant tout tirage. ``None`` (défaut) conserve l'ancien
+    comportement : tirage sur tout le registre, sans restriction de niveau —
+    utilisé par les appelants qui ne connaissent pas encore de niveau
+    particulier.
     """
     rng = generateur if generateur is not None else random
-    return rng.choice(list(PERSONNAGES.values()))
+    reserve = (
+        list(PERSONNAGES.values())
+        if niveau is None
+        else personnages_disponibles_a_niveau(niveau)
+    )
+    return rng.choice(reserve)
+
+
+def personnages_disponibles_a_niveau(niveau: Niveau) -> list[Personnage]:
+    """Personnages réels du registre disponibles à ``niveau`` (issue #447, lot G).
+
+    Dans l'ordre d'insertion de :data:`PERSONNAGES` (Classique en tête).
+    N'inclut jamais l'entrée pseudo-personnage « Aléatoire » : voir
+    :func:`aleatoire_disponible_a_niveau` pour sa propre règle de
+    disponibilité, déduite de celle-ci.
+    """
+    return [p for p in PERSONNAGES.values() if niveau in p.niveaux_disponibles]
+
+
+def aleatoire_disponible_a_niveau(niveau: Niveau) -> bool:
+    """Vrai si « Aléatoire » a un sens à ``niveau`` (issue #447, lot G).
+
+    Règle déduite automatiquement des déclarations des personnages réels,
+    sans qu'Aléatoire ait lui-même à déclarer quoi que ce soit : il lui faut
+    au moins **deux** personnages disponibles à ce niveau (hors lui-même),
+    tirer au hasard parmi un seul personnage n'ayant aucun sens. Un futur
+    personnage ajouté au registre et compatible avec un niveau aujourd'hui à
+    un seul personnage disponible rend donc Aléatoire à nouveau disponible à
+    ce niveau, sans aucune autre modification.
+    """
+    return len(personnages_disponibles_a_niveau(niveau)) >= 2
+
+
+def personnage_disponible_a_niveau(personnage_cle: str, niveau: Niveau) -> bool:
+    """Vrai si ``personnage_cle`` (réel, ou :data:`CLE_ALEATOIRE`) peut être
+    choisi à ``niveau`` (issue #447, lot G).
+
+    Une clé inconnue du registre (et différente de :data:`CLE_ALEATOIRE`)
+    renvoie ``False`` plutôt que de lever : à l'appelant (contrôle côté
+    serveur) de distinguer « personnage inconnu » de « indisponible à ce
+    niveau » s'il le souhaite.
+    """
+    if personnage_cle == CLE_ALEATOIRE:
+        return aleatoire_disponible_a_niveau(niveau)
+    personnage = PERSONNAGES.get(personnage_cle)
+    return personnage is not None and niveau in personnage.niveaux_disponibles
+
+
+#: Libellés français des niveaux (issue #447, lot G), dans l'ordre de
+#: :class:`~scrabble.moteur.ia.Niveau` — réservés à l'affichage des niveaux de
+#: disponibilité d'un personnage (:func:`libelle_niveaux`,
+#: :func:`explication_disponibilite_niveaux`). Dupliqués à dessein de
+#: ``scrabble.ui.accueil._LIBELLES_NIVEAUX`` plutôt que partagés : ce module
+#: (``moteur``) ne doit pas dépendre de ``ui``, et l'inverse est déjà le cas.
+_LIBELLES_NIVEAU: dict[Niveau, str] = {
+    Niveau.DEBUTANT: "Débutant",
+    Niveau.FACILE: "Facile",
+    Niveau.INTERMEDIAIRE: "Intermédiaire",
+    Niveau.AVANCE: "Avancé",
+    Niveau.EXPERT: "Expert",
+    Niveau.CHAMPION_DU_MONDE: "Champion du monde",
+}
+
+#: Message affiché pour un niveau où « Aléatoire » est indisponible (issue
+#: #447, lot G, point 2) — le même quel que soit le niveau concerné, puisque
+#: la raison ne dépend jamais du niveau lui-même, seulement du nombre de
+#: personnages réels qui y sont disponibles.
+MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT = (
+    "Aléatoire demande au moins deux personnages disponibles à ce niveau."
+)
+
+
+def _libelle_niveaux(niveaux: frozenset[Niveau]) -> str:
+    """Texte des niveaux d'un ensemble, pour affichage (issue #447, lot G).
+
+    « Tous les niveaux » si ``niveaux`` couvre :data:`TOUS_NIVEAUX` ; sinon
+    « <premier> à <dernier> » (ou le niveau seul s'il n'y en a qu'un), dans
+    l'ordre de :class:`~scrabble.moteur.ia.Niveau` — suffisant pour les motifs
+    observés à ce jour (un intervalle contigu de niveaux).
+    """
+    if niveaux == TOUS_NIVEAUX:
+        return "Tous les niveaux"
+    ordonnes = [n for n in Niveau if n in niveaux]
+    labels = [_LIBELLES_NIVEAU[n] for n in ordonnes]
+    if len(labels) == 1:
+        return labels[0]
+    return f"{labels[0]} à {labels[-1]}"
+
+
+def libelle_niveaux(personnage: Personnage) -> str:
+    """Texte des niveaux où ``personnage`` est disponible (issue #447, lot G,
+    point 5) : « Tous les niveaux » ou « <premier> à <dernier> »."""
+    return _libelle_niveaux(personnage.niveaux_disponibles)
+
+
+def niveaux_disponibles_aleatoire() -> frozenset[Niveau]:
+    """Niveaux où « Aléatoire » est disponible (issue #447, lot G, point 5)."""
+    return frozenset(n for n in Niveau if aleatoire_disponible_a_niveau(n))
+
+
+def libelle_niveaux_aleatoire() -> str:
+    """Texte des niveaux où « Aléatoire » est disponible, même présentation
+    que :func:`libelle_niveaux` (issue #447, lot G, point 5)."""
+    return _libelle_niveaux(niveaux_disponibles_aleatoire())
+
+
+def explication_disponibilite_niveaux(personnage_cle: str) -> str:
+    """Courte explication de la restriction de niveaux de ``personnage_cle``
+    (issue #447, lot G, point 2), à afficher sous le sélecteur de personnage.
+
+    Chaîne vide quand le personnage est disponible à tous les niveaux (cas de
+    Classique, et de tout personnage sans déclaration) : rien à expliquer.
+    Pour Aléatoire, :data:`MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT` dès qu'au
+    moins un niveau lui est fermé. Pour un personnage réel indisponible sur un
+    préfixe de niveaux les plus faibles (motif observé à ce jour, Opportuniste
+    compris) : « Disponible à partir de <premier niveau disponible> ». Motif
+    différent (hypothétique) : repli sur :func:`libelle_niveaux`.
+    """
+    if personnage_cle == CLE_ALEATOIRE:
+        if niveaux_disponibles_aleatoire() == TOUS_NIVEAUX:
+            return ""
+        return MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT
+    personnage = PERSONNAGES.get(personnage_cle)
+    if personnage is None:
+        return ""
+    niveaux = personnage.niveaux_disponibles
+    if niveaux == TOUS_NIVEAUX:
+        return ""
+    ordre = list(Niveau)
+    manquants = [n for n in ordre if n not in niveaux]
+    presents = [n for n in ordre if n in niveaux]
+    if presents and ordre.index(presents[0]) == len(manquants):
+        return f"Disponible à partir de {_LIBELLES_NIVEAU[presents[0]]}"
+    return f"Disponible : {_libelle_niveaux(niveaux)}"
 
 
 def _prenom_affichable(cle: str) -> str:
@@ -214,7 +380,13 @@ def lister_personnages(
     :func:`~scrabble.ui.accueil.ApiAccueil.obtenir_personnages`, pour qu'un
     personnage ajouté plus tard au registre y apparaisse sans autre
     modification. Chaque entrée est ``{"cle", "prenom", "description",
-    "dans_la_partie"}``.
+    "dans_la_partie", "niveaux_label"}`` — ``niveaux_label`` (issue #447, lot
+    G, point 5) est le texte des niveaux où le personnage est disponible
+    (:func:`libelle_niveaux`/:func:`libelle_niveaux_aleatoire`), même
+    présentation à l'accueil et en jeu puisque les deux fenêtres consomment
+    cette même fonction (directement ici, ou via
+    :meth:`~scrabble.ui.accueil.ApiAccueil.obtenir_personnages` qui reprend la
+    même logique).
 
     ``cles_dans_partie`` (vide par défaut — cas de l'accueil, où il n'y a pas
     encore de partie) marque les personnages choisis À L'AVANCE par un
@@ -239,6 +411,7 @@ def lister_personnages(
             "prenom": personnage.prenom,
             "description": personnage.description,
             "dans_la_partie": personnage.cle in cles_dans_partie,
+            "niveaux_label": libelle_niveaux(personnage),
         }
         for personnage in PERSONNAGES.values()
     ]
@@ -248,6 +421,7 @@ def lister_personnages(
             "prenom": "Aléatoire",
             "description": DESCRIPTION_ALEATOIRE,
             "dans_la_partie": aleatoire_dans_partie,
+            "niveaux_label": libelle_niveaux_aleatoire(),
         }
     )
     return resultat

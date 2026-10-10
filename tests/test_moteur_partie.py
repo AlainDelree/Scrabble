@@ -206,6 +206,36 @@ def test_creer_partie_aleatoire_peut_tirer_classique():
     )
 
 
+def test_creer_partie_aleatoire_restreint_au_niveau_de_cette_ia():
+    """Issue #447 (lot G, point 4) : le tirage « Aléatoire » ne choisit que
+    parmi les personnages disponibles au NIVEAU de cette IA — à Débutant,
+    seul Classique étant disponible, le tirage ne doit jamais renvoyer
+    Opportuniste. ``creer_partie`` lui-même reste sans garde-fou (seule l'UI
+    refuse la combinaison en amont) : ce test porte sur le comportement du
+    tirage, pas sur un refus."""
+    for graine in range(50):
+        partie = creer_partie(
+            ["Alice"], _trie(), nb_ia=1,
+            niveaux_ia=[Niveau.DEBUTANT],
+            personnages_ia=["aleatoire"],
+            generateur_aleatoire=random.Random(graine), graine=1,
+        )
+        assert partie.joueurs[1].personnage == "classique"
+
+
+def test_creer_partie_aleatoire_niveau_facile_peut_tirer_opportuniste():
+    tires = set()
+    for graine in range(50):
+        partie = creer_partie(
+            ["Alice"], _trie(), nb_ia=1,
+            niveaux_ia=[Niveau.FACILE],
+            personnages_ia=["aleatoire"],
+            generateur_aleatoire=random.Random(graine), graine=1,
+        )
+        tires.add(partie.joueurs[1].personnage)
+    assert tires == {"classique", "opportuniste"}
+
+
 # --------------------------------------------------------------------------- #
 # Recommencer : nouvelle partie avec les mêmes joueurs (issue #142)
 # --------------------------------------------------------------------------- #

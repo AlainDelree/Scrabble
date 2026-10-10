@@ -48,6 +48,16 @@
     color: var(--couleur-texte, #2c2c2c);
 }
 
+/* Niveaux où le personnage est disponible (issue #447, lot G, point 5) :
+   retrait discret sous la description, même présentation à l'accueil et en
+   jeu (ce fichier CSS est commun aux deux fenêtres). */
+.personnage-entree-niveaux {
+    margin: 4px 0 0;
+    font-size: 0.8rem;
+    font-style: italic;
+    color: var(--couleur-texte-attenue, #666);
+}
+
 .personnage-tag {
     flex: 0 0 auto;
     font-size: 0.75rem;
