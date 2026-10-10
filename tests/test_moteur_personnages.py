@@ -710,19 +710,47 @@ class TestPersonnageChasseurDeScrabbles:
         assert chasseur.prenom == "Chasseur de scrabbles"
         assert chasseur.description != ""
 
+    def test_chasseur_profil_vocabulaire_long_actif_sans_surcharge_de_leave(self):
+        """Issue #450 (lot H bis) : le caractère du personnage vient
+        maintenant du vocabulaire (``vocabulaire_long``), pas d'un poids de
+        leave renforcé — ``poids_leave`` n'est plus surchargé (``None``, le
+        niveau du joueur s'applique tel quel), contrairement au lot H
+        (2.0)."""
+        chasseur = PERSONNAGES["chasseur_de_scrabbles"].profil
+        assert chasseur.vocabulaire_long is True
+        assert chasseur.poids_leave is None
+        assert chasseur.bonus_scrabble == 150
+
+    def test_autres_personnages_vocabulaire_long_neutre(self):
+        """``vocabulaire_long`` reste ``None`` pour tout personnage qui ne le
+        demande pas explicitement (Classique, Opportuniste) — champ
+        strictement additif, sans effet de bord sur les personnages
+        existants."""
+        assert PERSONNAGES["classique"].profil.vocabulaire_long is None
+        assert PERSONNAGES["opportuniste"].profil.vocabulaire_long is None
+
     def test_chasseur_apparait_dans_la_liste(self):
         cles = [p["cle"] for p in lister_personnages()]
         assert "chasseur_de_scrabbles" in cles
 
-    def test_chasseur_indisponible_a_debutant_facile_intermediaire(self):
-        for niveau in (Niveau.DEBUTANT, Niveau.FACILE, Niveau.INTERMEDIAIRE):
+    def test_chasseur_indisponible_a_debutant_facile_expert_champion(self):
+        """Issue #450 (lot H bis) : plage resserrée à Intermédiaire/Avancé —
+        le caractère du personnage vient du vocabulaire, qui n'est restreint
+        par rapport au lexique complet qu'à ces deux niveaux (voir
+        :data:`scrabble.moteur.personnages.NIVEAUX_CHASSEUR_SCRABBLES`)."""
+        for niveau in (
+            Niveau.DEBUTANT,
+            Niveau.FACILE,
+            Niveau.EXPERT,
+            Niveau.CHAMPION_DU_MONDE,
+        ):
             assert (
                 personnage_disponible_a_niveau("chasseur_de_scrabbles", niveau)
                 is False
             )
 
-    def test_chasseur_disponible_avance_expert_champion(self):
-        for niveau in (Niveau.AVANCE, Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE):
+    def test_chasseur_disponible_intermediaire_avance(self):
+        for niveau in (Niveau.INTERMEDIAIRE, Niveau.AVANCE):
             assert (
                 personnage_disponible_a_niveau("chasseur_de_scrabbles", niveau)
                 is True
@@ -731,11 +759,11 @@ class TestPersonnageChasseurDeScrabbles:
     def test_libelle_niveaux_chasseur(self):
         assert (
             libelle_niveaux(PERSONNAGES["chasseur_de_scrabbles"])
-            == "Avancé à Champion du monde"
+            == "Intermédiaire à Avancé"
         )
 
     def test_explication_disponibilite_chasseur(self):
         assert (
             explication_disponibilite_niveaux("chasseur_de_scrabbles")
-            == "Disponible à partir de Avancé"
+            == "Disponible : Intermédiaire à Avancé"
         )

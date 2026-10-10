@@ -627,6 +627,14 @@ class Partie:
         retrier les mêmes coups générés. Transmis à :meth:`jouer_coup` /
         :meth:`passer` pour être consigné dans l'historique.
 
+        Vocabulaire long (issue #450, lot H bis) : quand ``profil`` a
+        ``vocabulaire_long`` actif, ``self.dictionnaire`` (déjà, pour toute
+        partie, le Trie complet qui valide chaque coup posé) est transmis en
+        plus à :func:`~scrabble.moteur.ia.choisir_coup` et
+        :func:`~scrabble.moteur.ia.evaluer_coups` comme lexique complet —
+        aucun chargement supplémentaire, rien transmis pour les profils qui ne
+        le demandent pas.
+
         :raises ActionInvalide: si le joueur courant est humain, n'a pas de
             niveau défini, ou la partie est finie.
         """
@@ -641,10 +649,37 @@ class Partie:
                 f"Le joueur IA {joueur.nom!r} n'a pas de niveau défini."
             )
         dictionnaire_ia = self.dictionnaires_ia.get(joueur.niveau, self.dictionnaire)
+        # Lexique complet pour le style « vocabulaire long » (issue #450, lot H
+        # bis) : ``self.dictionnaire`` est déjà, pour TOUTE partie, le Trie
+        # complet qui valide chaque coup posé (voir la docstring de
+        # :class:`Partie`) — rien à charger de plus. On ne le transmet à l'IA
+        # que si ``profil.vocabulaire_long`` est actif, pour que les parties
+        # sans Chasseur de scrabbles (ou tout profil qui ne le demande pas)
+        # n'en subissent aucun coût supplémentaire.
+        dictionnaire_complet = (
+            self.dictionnaire
+            if profil is not None and profil.vocabulaire_long
+            else None
+        )
         chevalet_avant = tuple(joueur.chevalet)
+        # ``dictionnaire_complet`` n'est transmis explicitement que lorsqu'il
+        # est réellement nécessaire (profil non None ET vocabulaire_long
+        # actif) : certains tests substituent ``choisir_coup``/``evaluer_coups``
+        # par un faux dont la signature ne connaît pas encore ce paramètre
+        # (p. ex. ``test_jouer_tour_ia_avec_profil_le_transmet_a_choisir_coup``)
+        # — passer ``dictionnaire_complet=None`` sans condition leur serait
+        # un argument inattendu.
         if profil is None:
             coup = ia.choisir_coup(
                 self.plateau, joueur.chevalet, dictionnaire_ia, joueur.niveau
+            )
+        elif dictionnaire_complet is None:
+            coup = ia.choisir_coup(
+                self.plateau,
+                joueur.chevalet,
+                dictionnaire_ia,
+                joueur.niveau,
+                profil=profil,
             )
         else:
             coup = ia.choisir_coup(
@@ -653,6 +688,7 @@ class Partie:
                 dictionnaire_ia,
                 joueur.niveau,
                 profil=profil,
+                dictionnaire_complet=dictionnaire_complet,
             )
         # ``evaluer_coups`` exige un Trie complet (attribut ``racine`` du
         # protocole ``TrieProtocol``, voir ``generateur.py``) : certains tests
@@ -662,14 +698,25 @@ class Partie:
         # monkeypatché et n'appelle jamais ``generer_coups``. Le journal est
         # alors simplement absent plutôt qu'en erreur.
         if hasattr(dictionnaire_ia, "racine"):
-            evaluation = ia.evaluer_coups(
-                self.plateau,
-                list(chevalet_avant),
-                dictionnaire_ia,
-                joueur.niveau,
-                profil=profil,
-                coup_choisi=coup,
-            )
+            if dictionnaire_complet is None:
+                evaluation = ia.evaluer_coups(
+                    self.plateau,
+                    list(chevalet_avant),
+                    dictionnaire_ia,
+                    joueur.niveau,
+                    profil=profil,
+                    coup_choisi=coup,
+                )
+            else:
+                evaluation = ia.evaluer_coups(
+                    self.plateau,
+                    list(chevalet_avant),
+                    dictionnaire_ia,
+                    joueur.niveau,
+                    profil=profil,
+                    coup_choisi=coup,
+                    dictionnaire_complet=dictionnaire_complet,
+                )
         else:
             evaluation = ia.EvaluationCoupsIA()
         journal = JournalDecisionIA(

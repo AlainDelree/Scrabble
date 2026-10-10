@@ -190,13 +190,14 @@ def test_creer_partie_aleatoire_est_deterministe_avec_meme_generateur():
 def test_creer_partie_aleatoire_peut_tirer_classique():
     """Le tirage « Aléatoire » porte sur TOUT le registre, Classique compris.
 
-    Testé à CHAMPION_DU_MONDE (plutôt qu'au niveau par défaut INTERMEDIAIRE,
-    comme avant l'issue #448) : depuis l'ajout de Chasseur de scrabbles (lot
-    H, disponible seulement d'Avancé à Champion du monde), tout le registre
-    n'est plus disponible à tous les niveaux — changement structurel attendu
-    du mécanisme de disponibilité par niveau (lot G, issue #447), pas une
-    régression. CHAMPION_DU_MONDE reste le niveau où tous les personnages
-    déclarés à ce jour sont disponibles.
+    Testé à AVANCE (plutôt qu'à CHAMPION_DU_MONDE) : depuis l'issue #450 (lot
+    H bis), Chasseur de scrabbles n'est plus disponible à Champion du monde
+    (vocabulaire déjà complet à ce niveau — plage resserrée à
+    Intermédiaire/Avancé, voir ``NIVEAUX_CHASSEUR_SCRABBLES``). AVANCE reste
+    un niveau où tout le registre déclaré à ce jour (Classique, Opportuniste,
+    Chasseur de scrabbles) est disponible — changement structurel attendu du
+    mécanisme de disponibilité par niveau (lot G, issue #447), pas une
+    régression.
     """
     from scrabble.moteur.personnages import PERSONNAGES
 
@@ -204,7 +205,7 @@ def test_creer_partie_aleatoire_peut_tirer_classique():
     for graine in range(50):
         partie = creer_partie(
             ["Alice"], _trie(), nb_ia=1, personnages_ia=["aleatoire"],
-            niveaux_ia=[Niveau.CHAMPION_DU_MONDE],
+            niveaux_ia=[Niveau.AVANCE],
             generateur_aleatoire=random.Random(graine), graine=1,
         )
         tires.add(partie.joueurs[1].personnage)
@@ -283,12 +284,15 @@ def test_creer_partie_aleatoire_restreint_a_quatre_joueurs():
 def test_creer_partie_aleatoire_peut_tirer_opportuniste_a_deux_joueurs():
     """Non-régression : à une table de deux joueurs (le cas déjà couvert par
     les tests existants ci-dessus), la restriction de taille n'exclut rien
-    de plus que la restriction de niveau."""
+    de plus que la restriction de niveau. Niveau Avancé (plutôt que Champion
+    du monde) : depuis l'issue #450 (lot H bis), Chasseur de scrabbles n'est
+    plus disponible à Champion du monde (plage resserrée à
+    Intermédiaire/Avancé)."""
     tires = set()
     for graine in range(50):
         partie = creer_partie(
             ["Alice"], _trie(), nb_ia=1,
-            niveaux_ia=[Niveau.CHAMPION_DU_MONDE],
+            niveaux_ia=[Niveau.AVANCE],
             personnages_ia=["aleatoire"],
             generateur_aleatoire=random.Random(graine), graine=1,
         )
@@ -931,3 +935,60 @@ def test_recreer_partie_sans_restriction_reste_sur_dictionnaire():
 
     assert nouvelle.dictionnaire is nouveau_complet
     assert nouvelle.dictionnaires_ia == {}
+
+
+# --------------------------------------------------------------------------- #
+# Vocabulaire long (issue #450, lot H bis) : câblage au niveau de Partie
+# --------------------------------------------------------------------------- #
+
+
+def _partie_vocabulaire_long(niveau: Niveau = Niveau.AVANCE) -> tuple[Partie, Joueur]:
+    """Même scénario que ``test_moteur_ia.TestVocabulaireLong`` (un ``Z``
+    isolé en (8, 7) ; chevalet ``OXALINE`` permettant soit le coup court
+    ``ZA`` (vocabulaire du niveau), soit le coup long ``OXALINE`` + mot
+    croisé ``ZO`` (lexique complet seulement)), répété ici pour tester le
+    câblage ``Partie.jouer_tour_ia`` -> ``self.dictionnaire`` sans dépendre de
+    ``test_moteur_ia.py``."""
+    dico_niveau = _trie("ZA")
+    dico_complet = _trie("ZA", "OXALINE", "ZO")
+    joueur = Joueur("IA", humain=False, niveau=niveau)
+    partie = Partie(
+        [joueur], dico_complet, graine=1, dictionnaires_ia={niveau: dico_niveau}
+    )
+    partie.plateau.poser_coup(Coup(8, 7, Direction.HORIZONTALE, tuiles_depuis_chaine("Z")))
+    joueur.chevalet[:] = list("OXALINE")
+    return partie, joueur
+
+
+def test_jouer_tour_ia_chasseur_trouve_le_mot_long_du_lexique_complet():
+    """``Partie.dictionnaire`` (toujours le Trie complet, voir sa docstring)
+    est transmis à l'IA comme lexique complet quand ``profil.vocabulaire_long``
+    est actif — sans aucun chargement supplémentaire, juste ce câblage."""
+    from scrabble.moteur.ia import ProfilPersonnage
+
+    partie, _joueur = _partie_vocabulaire_long()
+    profil_chasseur = ProfilPersonnage(vocabulaire_long=True)
+
+    entree = partie.jouer_tour_ia(profil=profil_chasseur)
+
+    assert entree.action == ACTION_COUP
+    assert entree.coup is not None
+    assert "".join(t.lettre for t in entree.coup.tuiles) == "OXALINE"
+    assert entree.journal_ia is not None
+    assert entree.journal_ia.coup_choisi is not None
+    assert entree.journal_ia.coup_choisi.mot == "OXALINE"
+
+
+def test_jouer_tour_ia_classique_meme_scenario_ne_voit_pas_le_mot_long():
+    """Même plateau/chevalet/dictionnaires, mais un profil Classique (sans
+    ``vocabulaire_long``) : ``self.dictionnaire`` n'est jamais transmis comme
+    lexique complet, le mot de 7 lettres reste hors de portée."""
+    from scrabble.moteur.ia import ProfilPersonnage
+
+    partie, _joueur = _partie_vocabulaire_long()
+
+    entree = partie.jouer_tour_ia(profil=ProfilPersonnage())
+
+    assert entree.action == ACTION_COUP
+    assert entree.coup is not None
+    assert "".join(t.lettre for t in entree.coup.tuiles) != "OXALINE"

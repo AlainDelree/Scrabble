@@ -191,6 +191,34 @@ indicateurs de style (voir « Indicateurs de style » ci-dessus) ::
         --personnage-a opportuniste --personnage-b classique --vocab palier \\
         --parties 200 --csv style_opportuniste_vs_classique_intermediaire.csv
 
+Style de jeu Chasseur de scrabbles contre Classique (issue #450, lot H bis) —
+même commande qu'Opportuniste ci-dessus, à chacun des quatre niveaux où la
+mesure du lot H (issue #448) avait montré un style indiscernable
+(Intermédiaire, Avancé, Expert, Champion du monde) : le vocabulaire étendu
+(``vocabulaire_long``) ne devrait faire la différence qu'aux deux premiers
+(vocabulaire du niveau restreint) — Expert/Champion du monde jouent déjà sur
+le lexique complet, donc sans aucun avantage de style attendu ::
+
+    python scripts/mesurer_force_niveaux.py INTERMEDIAIRE INTERMEDIAIRE \\
+        --personnage-a chasseur_de_scrabbles --personnage-b classique \\
+        --vocab palier --parties 100 \\
+        --csv style_chasseur_vs_classique_intermediaire.csv
+
+    python scripts/mesurer_force_niveaux.py AVANCE AVANCE \\
+        --personnage-a chasseur_de_scrabbles --personnage-b classique \\
+        --vocab palier --parties 100 \\
+        --csv style_chasseur_vs_classique_avance.csv
+
+    python scripts/mesurer_force_niveaux.py EXPERT EXPERT \\
+        --personnage-a chasseur_de_scrabbles --personnage-b classique \\
+        --vocab palier --parties 100 \\
+        --csv style_chasseur_vs_classique_expert.csv
+
+    python scripts/mesurer_force_niveaux.py CHAMPION_DU_MONDE CHAMPION_DU_MONDE \\
+        --personnage-a chasseur_de_scrabbles --personnage-b classique \\
+        --vocab palier --parties 100 \\
+        --csv style_chasseur_vs_classique_champion.csv
+
 Sans argument, oppose FACILE à DEBUTANT sur 100 parties, vocabulaire ``complet``
 (comportement historique #362). Les niveaux valides sont les noms de
 :class:`~scrabble.moteur.ia.Niveau` : DEBUTANT, FACILE, INTERMEDIAIRE, AVANCE,
@@ -618,9 +646,12 @@ def jouer_une_partie(
     génération explicitement à :func:`~scrabble.moteur.ia.choisir_coup` plutôt
     que de s'en remettre au mapping ``{Niveau: Trie}`` de la partie, qui ne
     saurait distinguer deux camps de même niveau au vocabulaire différent. Le
-    Trie complet ``dictionnaire`` sert uniquement à la **validation** des coups.
-    Les surcharges stratégiques du camp sont appliquées, coup par coup, par
-    :func:`_strategie_surchargee`.
+    Trie complet ``dictionnaire`` sert à la **validation** des coups et, pour
+    un personnage ``vocabulaire_long`` (issue #450, lot H bis, Chasseur de
+    scrabbles), de lexique complet transmis à ``choisir_coup`` — même chemin
+    que le jeu réel (``Partie.jouer_tour_ia``), ignoré par tout profil qui ne
+    le demande pas. Les surcharges stratégiques du camp sont appliquées, coup
+    par coup, par :func:`_strategie_surchargee`.
     """
     graine_sac, graine_ordre, graine_ia_a, graine_ia_b = _deriver_graines(graine_partie)
 
@@ -662,6 +693,13 @@ def jouer_une_partie(
                 joueur.niveau,
                 rng_joueur,
                 profil=config_joueur.profil(),
+                # Lexique complet pour le style « vocabulaire long » (issue
+                # #450, lot H bis, Chasseur de scrabbles) : ``dictionnaire``
+                # est déjà le Trie complet chargé pour la validation — même
+                # chemin que le jeu réel (``Partie.jouer_tour_ia``). Ignoré
+                # par ``choisir_coup`` pour tout profil qui ne le demande
+                # pas, donc aucun effet sur les configs sans ce personnage.
+                dictionnaire_complet=dictionnaire,
             )
         if coup is None:
             partie.passer()

@@ -38,8 +38,10 @@ from scrabble.moteur.ia import (
     Niveau,
     _POIDS_LEAVE,
     ProfilPersonnage,
+    _generer_coups_candidats,
     _score_strategique,
     choisir_coup,
+    evaluer_coups,
     leave_value,
     resoudre_palier,
 )
@@ -645,6 +647,7 @@ class TestProfilPersonnageNeutre:
         assert profil.bonus_premium is None
         assert profil.poids_leave is None
         assert profil.bonus_scrabble is None
+        assert profil.vocabulaire_long is None
 
     @pytest.mark.parametrize("niveau", list(Niveau))
     def test_score_strategique_scrabble_sans_profil_inchange(self, niveau):
@@ -744,6 +747,248 @@ class TestProfilPersonnageSurcharge:
             cn, Niveau.AVANCE, profil=ProfilPersonnage(bonus_scrabble=150)
         )
         assert avec_profil == sans_profil
+
+
+# --------------------------------------------------------------------------- #
+# Vocabulaire long (issue #450, lot H bis)
+# --------------------------------------------------------------------------- #
+
+
+def _plateau_vocabulaire_long() -> PlateauPartie:
+    """Plateau fabriqué pour qu'un mot de 7 lettres ne soit jouable qu'avec
+    le lexique complet, en concurrence avec un coup court jouable avec le
+    seul vocabulaire du niveau.
+
+    Un ``Z`` isolé est posé en (8, 7). Le chevalet ``OXALINE`` permet alors :
+
+    * un coup COURT, ``ZA`` (``Z`` existant + ``A`` du chevalet), horizontal
+      ou vertical selon l'ancrage — présent dans le vocabulaire du niveau ;
+    * un coup LONG, ``OXALINE`` (les 7 lettres du chevalet), vertical à
+      partir de (8, 8) — mot principal de 7 lettres, absent du vocabulaire du
+      niveau, présent seulement dans le lexique complet. Le ``O`` posé en
+      (8, 8), adjacent à droite du ``Z`` existant, forme en plus le mot
+      croisé ``ZO`` (ligne 8, colonnes 7-8), lui aussi absent du vocabulaire
+      du niveau et présent seulement dans le lexique complet — de quoi
+      vérifier que le mot croisé d'un coup long est bien validé avec le
+      lexique complet, pas avec le vocabulaire du niveau.
+
+    Posant 7 lettres nouvelles, ``OXALINE`` reçoit en plus le bonus
+    « scrabble » intrinsèque du score (:data:`scrabble.moteur.score.BONUS_SCRABBLE`,
+    inconditionnel, indépendant de tout personnage) : son score brut domine
+    largement celui de ``ZA`` (un coup à une seule lettre nouvelle), ce qui
+    rend le choix du meilleur coup déterministe sur ce scénario.
+    """
+    plateau = PlateauPartie()
+    plateau.poser_coup(Coup(8, 7, Direction.HORIZONTALE, tuiles_depuis_chaine("Z")))
+    return plateau
+
+
+#: Chevalet du scénario ci-dessus : épelle le mot long ``OXALINE`` de haut en
+#: bas à partir de (8, 8), et fournit le ``A`` du coup court ``ZA``.
+_CHEVALET_VOCABULAIRE_LONG = list("OXALINE")
+
+#: Vocabulaire du niveau (restreint) pour le scénario ci-dessus : ne connaît
+#: que le coup court.
+_DICO_NIVEAU_VOCABULAIRE_LONG = ("ZA",)
+
+#: Lexique complet pour le scénario ci-dessus : coup court ET coup long (mot
+#: principal et mot croisé).
+_DICO_COMPLET_VOCABULAIRE_LONG = ("ZA", "OXALINE", "ZO")
+
+
+class TestVocabulaireLong:
+    """Champ ``vocabulaire_long`` de :class:`ProfilPersonnage` (issue #450,
+    lot H bis) : ensemble de coups candidats élargi au lexique complet pour
+    les coups de 7 lettres ou plus."""
+
+    def test_neutre_sans_profil(self):
+        """Sans profil, l'ensemble de coups candidats est inchangé, même si
+        un ``dictionnaire_complet`` est fourni (défense en profondeur : ce
+        n'est jamais l'appelant de :func:`choisir_coup` qui en décide, mais
+        le profil)."""
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        dico_complet = _trie(*_DICO_COMPLET_VOCABULAIRE_LONG)
+
+        for graine in range(10):
+            coup_sans_complet = choisir_coup(
+                plateau,
+                _CHEVALET_VOCABULAIRE_LONG,
+                dico_niveau,
+                Niveau.AVANCE,
+                random.Random(graine),
+            )
+            coup_avec_complet_ignore = choisir_coup(
+                plateau,
+                _CHEVALET_VOCABULAIRE_LONG,
+                dico_niveau,
+                Niveau.AVANCE,
+                random.Random(graine),
+                dictionnaire_complet=dico_complet,
+            )
+            assert coup_avec_complet_ignore == coup_sans_complet
+
+    def test_neutre_profil_vide(self):
+        """Un ``ProfilPersonnage()`` vide (``vocabulaire_long`` à ``None``)
+        n'élargit rien non plus, même avec ``dictionnaire_complet`` fourni —
+        condition de neutralité du profil vide (même principe que les lots A
+        et H)."""
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        dico_complet = _trie(*_DICO_COMPLET_VOCABULAIRE_LONG)
+
+        for graine in range(10):
+            coup_sans_profil = choisir_coup(
+                plateau,
+                _CHEVALET_VOCABULAIRE_LONG,
+                dico_niveau,
+                Niveau.AVANCE,
+                random.Random(graine),
+            )
+            coup_profil_vide = choisir_coup(
+                plateau,
+                _CHEVALET_VOCABULAIRE_LONG,
+                dico_niveau,
+                Niveau.AVANCE,
+                random.Random(graine),
+                profil=ProfilPersonnage(),
+                dictionnaire_complet=dico_complet,
+            )
+            assert coup_profil_vide == coup_sans_profil
+
+    def test_sans_dictionnaire_complet_le_mot_long_reste_hors_de_portee(self):
+        """``vocabulaire_long=True`` sans ``dictionnaire_complet`` fourni ne
+        peut rien élargir (rien à élargir avec) : comportement identique à
+        un profil qui ne le demande pas."""
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        profil = ProfilPersonnage(vocabulaire_long=True)
+
+        coup = choisir_coup(
+            plateau,
+            _CHEVALET_VOCABULAIRE_LONG,
+            dico_niveau,
+            Niveau.AVANCE,
+            random.Random(0),
+            profil=profil,
+        )
+        assert coup is not None
+        mot = "".join(t.lettre for t in coup.tuiles)
+        assert mot != "OXALINE"
+
+    def test_mot_long_trouve_et_joue_avec_vocabulaire_long(self):
+        """Avec ``vocabulaire_long=True`` ET ``dictionnaire_complet`` fourni,
+        le coup de 7 lettres (absent du vocabulaire du niveau, présent
+        seulement dans le lexique complet) est trouvé et choisi — mot
+        principal ET mot croisé validés avec le lexique complet."""
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        dico_complet = _trie(*_DICO_COMPLET_VOCABULAIRE_LONG)
+        profil = ProfilPersonnage(vocabulaire_long=True)
+
+        coup = choisir_coup(
+            plateau,
+            _CHEVALET_VOCABULAIRE_LONG,
+            dico_niveau,
+            Niveau.AVANCE,
+            random.Random(0),
+            profil=profil,
+            dictionnaire_complet=dico_complet,
+        )
+        assert coup is not None
+        mot = "".join(t.lettre for t in coup.tuiles)
+        assert mot == "OXALINE"
+        # Plusieurs placements valides existent pour "OXALINE" sur ce
+        # scénario (p. ex. vertical en (8, 8), croisant "ZO" avec le Z
+        # existant ; ou horizontal en (9, 7), connecté au Z par la case du
+        # dessus) : peu importe lequel l'emporte au score, les deux ne sont
+        # trouvables qu'avec le lexique complet (absents de ``dico_niveau``).
+
+    def test_mots_courts_restent_limites_au_vocabulaire_du_niveau(self):
+        """Un mot court présent UNIQUEMENT dans le lexique complet (absent du
+        vocabulaire du niveau) ne doit jamais apparaître parmi les coups
+        candidats, même avec ``vocabulaire_long`` actif : seuls les coups
+        d'au moins 7 lettres sont empruntés au lexique complet."""
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        # "ZO" (le mot croisé, 2 lettres) n'est ici présent QUE dans le lexique
+        # complet — s'il fuitait comme mot JOUABLE directement (pas seulement
+        # comme mot croisé d'un coup long), ce serait un coup court emprunté à
+        # tort au lexique complet.
+        dico_complet = _trie(*_DICO_COMPLET_VOCABULAIRE_LONG)
+        profil = ProfilPersonnage(vocabulaire_long=True)
+
+        coups = _generer_coups_candidats(
+            plateau, _CHEVALET_VOCABULAIRE_LONG, dico_niveau, profil, dico_complet
+        )
+        mots_courts = {
+            "".join(t.lettre for t in cn.coup.tuiles)
+            for cn in coups
+            if len(cn.coup.tuiles) < 7
+        }
+        assert mots_courts == {"ZA"}
+
+    def test_journal_decision_porte_sur_ensemble_elargi(self):
+        """Le journal de décision (:func:`evaluer_coups`) porte sur le même
+        ensemble de coups candidats élargi que :func:`choisir_coup` (issue
+        #450, point 4) : le mot long y figure, avec le bon rang."""
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        dico_complet = _trie(*_DICO_COMPLET_VOCABULAIRE_LONG)
+        profil = ProfilPersonnage(vocabulaire_long=True)
+
+        coup = choisir_coup(
+            plateau,
+            _CHEVALET_VOCABULAIRE_LONG,
+            dico_niveau,
+            Niveau.AVANCE,
+            random.Random(0),
+            profil=profil,
+            dictionnaire_complet=dico_complet,
+        )
+        evaluation = evaluer_coups(
+            plateau,
+            _CHEVALET_VOCABULAIRE_LONG,
+            dico_niveau,
+            Niveau.AVANCE,
+            profil=profil,
+            coup_choisi=coup,
+            dictionnaire_complet=dico_complet,
+        )
+        # Le nombre de coups possibles du journal doit être EXACTEMENT celui
+        # de l'ensemble de coups candidats élargi (celui réellement consulté
+        # par ``choisir_coup``), ni plus ni moins — pas une valeur arbitraire :
+        # plusieurs placements valides existent pour "OXALINE" comme pour
+        # "ZA" sur ce scénario (plusieurs ancrages/directions), peu importe
+        # le nombre exact.
+        candidats_elargis = _generer_coups_candidats(
+            plateau, _CHEVALET_VOCABULAIRE_LONG, dico_niveau, profil, dico_complet
+        )
+        assert evaluation.nb_coups_possibles == len(candidats_elargis)
+        assert evaluation.rang_choisi == 1
+        assert evaluation.coup_choisi is not None
+        assert evaluation.coup_choisi.mot == "OXALINE"
+        assert evaluation.meilleurs[0].mot == "OXALINE"
+
+        # Sans lexique complet (vocabulaire du niveau seul), le mot long
+        # n'apparaît même pas parmi les coups possibles du journal — un
+        # ensemble strictement plus PETIT que l'ensemble élargi (plusieurs
+        # variantes de "ZA" existent sur ce scénario, mais aucune "OXALINE").
+        evaluation_niveau_seul = evaluer_coups(
+            plateau,
+            _CHEVALET_VOCABULAIRE_LONG,
+            dico_niveau,
+            Niveau.AVANCE,
+            coup_choisi=coup,
+        )
+        candidats_niveau_seul = generer_coups(
+            plateau, _CHEVALET_VOCABULAIRE_LONG, dico_niveau
+        )
+        assert evaluation_niveau_seul.nb_coups_possibles == len(candidats_niveau_seul)
+        assert evaluation_niveau_seul.nb_coups_possibles < evaluation.nb_coups_possibles
+        assert all(
+            alt.mot != "OXALINE" for alt in evaluation_niveau_seul.meilleurs
+        )
 
 
 # --------------------------------------------------------------------------- #

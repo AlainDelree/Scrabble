@@ -207,6 +207,18 @@ _SEUIL_PENALITE_LONGUEUR = 2
 #: compte toujours 7 lettres en jeu normal (fin de sac exceptée).
 _SEUIL_BONUS_SCRABBLE = 7
 
+#: Longueur minimale du **mot principal** (toutes les lettres du mot formé
+#: dans la direction du coup, déjà posées comprises — ``len(coup.tuiles)``,
+#: PAS :attr:`~scrabble.moteur.generateur.CoupNote.nb_nouvelles`, qui ne
+#: compte que les lettres nouvellement posées) à partir de laquelle le style
+#: « vocabulaire long » (:attr:`ProfilPersonnage.vocabulaire_long`, issue
+#: #450, lot H bis) élargit les coups candidats au lexique complet — voir
+#: :func:`_generer_coups_candidats`. Distincte de :data:`_SEUIL_BONUS_SCRABBLE`
+#: (même valeur, mais un critère différent : celui-ci porte sur la longueur
+#: du mot posé, pas sur le nombre de lettres prises au chevalet) : les deux
+#: constantes pourront diverger si la mesure le justifie.
+_SEUIL_VOCABULAIRE_LONG = 7
+
 #: Valeur heuristique de chaque lettre pour le calcul du reliquat (leave
 #: value, issue #395). Reflète la difficulté de placement future : le
 #: joker et le S (formation de pluriels/hooks) valent le plus cher, les
@@ -308,12 +320,24 @@ class ProfilPersonnage:
     niveau), il n'a d'effet que si un personnage le renseigne explicitement.
     Ajouté au score stratégique uniquement pour les coups posant les 7
     lettres du chevalet (:data:`_SEUIL_BONUS_SCRABBLE`).
+
+    ``vocabulaire_long`` (issue #450, lot H bis) diffère des quatre champs
+    précédents : il n'agit pas sur le score stratégique mais sur l'ENSEMBLE
+    des coups candidats proposés au tri (voir :func:`_generer_coups_candidats`).
+    Neutre par défaut (``None``/``False`` : ensemble de coups inchangé, celui
+    du vocabulaire du niveau). Quand il vaut ``True`` **et** qu'un
+    ``dictionnaire_complet`` est fourni à :func:`choisir_coup`/
+    :func:`evaluer_coups`, l'ensemble de coups candidats est élargi aux coups
+    dont le mot principal compte au moins :data:`_SEUIL_VOCABULAIRE_LONG`
+    lettres, générés et validés avec ce dictionnaire complet plutôt qu'avec
+    le vocabulaire du niveau.
     """
 
     malus_longueur: int | None = None
     bonus_premium: int | None = None
     poids_leave: float | None = None
     bonus_scrabble: int | None = None
+    vocabulaire_long: bool | None = None
 
 
 def _score_strategique(
@@ -443,6 +467,60 @@ def _trier_par_score_strategique(
     ]
 
 
+def _mot_principal(coup: Coup) -> str:
+    """Le mot principal d'un coup : toutes ses tuiles, lettres déjà posées comprises."""
+    return "".join(tuile.lettre for tuile in coup.tuiles)
+
+
+def _generer_coups_candidats(
+    plateau: PlateauPartie,
+    chevalet: list[str],
+    dictionnaire: "TrieProtocol",
+    profil: ProfilPersonnage | None,
+    dictionnaire_complet: "TrieProtocol | None",
+) -> list[CoupNote]:
+    """Génère les coups candidats, élargis au lexique complet si le profil le demande.
+
+    Sans ``profil`` (ou ``profil.vocabulaire_long`` à ``None``/``False``, cas
+    par défaut) ou sans ``dictionnaire_complet``, renvoie exactement
+    ``generer_coups(plateau, chevalet, dictionnaire)`` — comportement
+    identique, bit à bit, à avant l'introduction du champ ``vocabulaire_long``
+    (issue #450, lot H bis) : condition de neutralité du profil vide.
+
+    Avec ``vocabulaire_long`` actif et un ``dictionnaire_complet`` fourni,
+    l'ensemble renvoyé est l'UNION, sans doublon, de ces coups habituels
+    (vocabulaire du niveau, via ``dictionnaire``) et des coups dont le **mot
+    principal** (:func:`_mot_principal`, ``len(coup.tuiles)``, PAS
+    ``nb_nouvelles``) compte au moins :data:`_SEUIL_VOCABULAIRE_LONG` lettres,
+    générés avec ``dictionnaire_complet``. Cette seconde génération élague ET
+    valide (mot principal et mots croisés) avec ``dictionnaire_complet`` —
+    :func:`~scrabble.moteur.generateur.generer_coups` appelle
+    :func:`~scrabble.moteur.validation.coup_valide` avec le même Trie que
+    celui reçu pour l'exploration, donc tous les mots formés par ces coups
+    longs (principal et transversaux) sont bien validés avec le lexique
+    complet, sans logique de validation supplémentaire à écrire. Le doublon
+    (même case de départ, direction et mot) entre les deux générations n'est
+    conservé qu'une fois.
+    """
+    coups = generer_coups(plateau, chevalet, dictionnaire)
+    if profil is None or not profil.vocabulaire_long or dictionnaire_complet is None:
+        return coups
+
+    vus = {
+        (cn.coup.ligne, cn.coup.colonne, cn.coup.direction.value, _mot_principal(cn.coup))
+        for cn in coups
+    }
+    for cn in generer_coups(plateau, chevalet, dictionnaire_complet):
+        if len(cn.coup.tuiles) < _SEUIL_VOCABULAIRE_LONG:
+            continue
+        cle = (cn.coup.ligne, cn.coup.colonne, cn.coup.direction.value, _mot_principal(cn.coup))
+        if cle in vus:
+            continue
+        vus.add(cle)
+        coups.append(cn)
+    return coups
+
+
 def choisir_coup(
     plateau: PlateauPartie,
     chevalet: list[str],
@@ -450,6 +528,7 @@ def choisir_coup(
     niveau: Niveau,
     alea: random.Random | None = None,
     profil: ProfilPersonnage | None = None,
+    dictionnaire_complet: "TrieProtocol | None" = None,
 ) -> Coup | None:
     """Choisit un coup selon le niveau IA, ou None pour passer.
 
@@ -462,18 +541,25 @@ def choisir_coup(
     Args:
         plateau: État courant du plateau de jeu.
         chevalet: Jetons disponibles pour le joueur IA.
-        dictionnaire: Trie du dictionnaire.
+        dictionnaire: Trie du dictionnaire (vocabulaire du niveau).
         niveau: Stratégie de sélection à appliquer.
         alea: Générateur aléatoire optionnel pour reproductibilité.
         profil: Surcharges optionnelles de personnage (issue #438, lot A),
             consultées en plus des réglages indexés par ``niveau``, jamais à
             leur place. ``None`` (défaut) reproduit exactement le
             comportement d'avant son introduction.
+        dictionnaire_complet: Trie du lexique complet (issue #450, lot H
+            bis), consulté en plus de ``dictionnaire`` uniquement si
+            ``profil.vocabulaire_long`` est actif (voir
+            :func:`_generer_coups_candidats`) — ignoré sinon, y compris si
+            fourni.
 
     Returns:
         Le coup choisi, ou None si aucun coup n'est jouable (le joueur passe).
     """
-    coups = generer_coups(plateau, chevalet, dictionnaire)
+    coups = _generer_coups_candidats(
+        plateau, chevalet, dictionnaire, profil, dictionnaire_complet
+    )
     if not coups:
         return None
 
@@ -549,6 +635,7 @@ def evaluer_coups(
     profil: ProfilPersonnage | None = None,
     coup_choisi: Coup | None = None,
     limite: int = 5,
+    dictionnaire_complet: "TrieProtocol | None" = None,
 ) -> EvaluationCoupsIA:
     """Évalue tous les coups possibles, pour le journal de décision (issue #445).
 
@@ -559,6 +646,13 @@ def evaluer_coups(
     et triés par score stratégique — sans que cet appel supplémentaire
     n'influence en rien la sélection réelle.
 
+    ``dictionnaire_complet`` (issue #450, lot H bis) reprend exactement la
+    même règle que dans :func:`choisir_coup` : les coups évalués et les
+    cinq alternatives du journal de décision portent sur le MÊME ensemble de
+    coups candidats élargi (:func:`_generer_coups_candidats`) que celui
+    réellement consulté par :func:`choisir_coup` pour ce tour, à condition de
+    lui passer le même ``profil`` et le même ``dictionnaire_complet``.
+
     Renvoie un :class:`EvaluationCoupsIA` avec, au plus, ``limite`` meilleurs
     coups (:attr:`~EvaluationCoupsIA.meilleurs`) et, si ``coup_choisi`` est
     fourni et figure parmi les coups générés, son rang (1 = meilleur,
@@ -567,7 +661,9 @@ def evaluer_coups(
     top ``limite``. ``coup_choisi=None`` (passe, ou aucun coup généré) laisse
     les deux à leur valeur par défaut.
     """
-    coups = generer_coups(plateau, chevalet, dictionnaire)
+    coups = _generer_coups_candidats(
+        plateau, chevalet, dictionnaire, profil, dictionnaire_complet
+    )
     resultat = EvaluationCoupsIA(nb_coups_possibles=len(coups))
     if not coups:
         return resultat

@@ -784,14 +784,23 @@ class TestApiAccueilDisponibiliteNbJoueursPersonnage:
         assert "3 joueurs" in result["erreur"]
         assert api.config_partie.nb_ordinateurs == 1
 
-    def test_ajouter_ordinateur_refuse_chasseur_a_quatre_joueurs(self):
+    def test_ajouter_ordinateur_refuse_chasseur_a_quatre_joueurs(self, monkeypatch):
+        """Niveau « Avancé » (et non « Expert ») : Chasseur de scrabbles n'y
+        est plus disponible depuis l'issue #450 (lot H bis, plage resserrée à
+        Intermédiaire/Avancé) — l'échec attendu ici porte sur la taille de
+        table, pas sur le niveau. ``paliers_disponibles`` monkeypatché (même
+        technique qu'ailleurs dans ce fichier) pour rendre le vocabulaire
+        d'Avancé disponible dans ce worktree."""
         from scrabble.ui.accueil import ApiAccueil
 
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.paliers_disponibles", lambda: {"avance": True}
+        )
         api = ApiAccueil()
         api.ajouter_humain("Alice")
         api.ajouter_ordinateur("Expert")
         api.ajouter_ordinateur("Expert")
-        result = api.ajouter_ordinateur("Expert", "chasseur_de_scrabbles")
+        result = api.ajouter_ordinateur("Avancé", "chasseur_de_scrabbles")
 
         assert result["succes"] is False
         assert "Chasseur de scrabbles" in result["erreur"]
