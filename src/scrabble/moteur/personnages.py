@@ -45,7 +45,7 @@ aucun nouveau calcul :
 
   Cette surcharge est **plate** (une constante, pas une table indexée par
   niveau) : par construction de ``ProfilPersonnage`` (issue #438, lot A),
-  Opportuniste applique le même ``bonus_premium=28`` quel que soit le niveau
+  Opportuniste applique le même ``bonus_premium=100`` quel que soit le niveau
   du joueur — le trait de caractère ne varie pas avec sa force. ``malus_longueur``
   n'est volontairement pas surchargé : seuls les deux réglages évoqués par
   l'intention du personnage (issue #439) sont touchés.
@@ -69,7 +69,7 @@ from scrabble.moteur.ia import ProfilPersonnage
 #: valeur la plus haute déjà en production (20, EXPERT/CHAMPION_DU_MONDE) +
 #: le plus grand palier observé entre deux niveaux adjacents (+8, AVANCE ->
 #: EXPERT).
-BONUS_PREMIUM_OPPORTUNISTE = 28
+BONUS_PREMIUM_OPPORTUNISTE = 100
 
 #: Clé pseudo-personnage exposée à l'UI (issue #440, lot D) : « Aléatoire »
 #: n'est **jamais** une entrée de :data:`PERSONNAGES` — elle désigne le choix
