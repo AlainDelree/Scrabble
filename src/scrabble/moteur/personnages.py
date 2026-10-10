@@ -39,7 +39,7 @@ aucun nouveau calcul :
   d'un niveau au suivant. Le plus grand de ces paliers est +8 (AVANCE →
   EXPERT). Opportuniste reprend la valeur la plus haute déjà calibrée (20) et
   lui applique ce même plus grand palier une fois de plus
-  (:data:`BONUS_PREMIUM_OPPORTUNISTE` = 20 + 8 = 28) : un biais nettement
+  (:data:`BONUS_PREMIUM_OPPORTUNISTE` = 100, choisi par mesure : 28 se voyait à peine, et au-delà de 100 plus rien ne change) : un biais nettement
   au-dessus de tout niveau existant, mais du même ordre de grandeur que
   l'échelle déjà validée plutôt qu'une valeur arbitraire.
 
