@@ -644,6 +644,17 @@ class TestProfilPersonnageNeutre:
         assert profil.malus_longueur is None
         assert profil.bonus_premium is None
         assert profil.poids_leave is None
+        assert profil.bonus_scrabble is None
+
+    @pytest.mark.parametrize("niveau", list(Niveau))
+    def test_score_strategique_scrabble_sans_profil_inchange(self, niveau):
+        """Un coup posant les 7 lettres du chevalet, sans profil, n'est pas
+        traité différemment des autres coups (issue #448, lot H) : seul un
+        personnage qui renseigne ``bonus_scrabble`` change ce calcul."""
+        cn = _coup_note("CADRESX", score=20, nb_nouvelles=7)
+        sans_profil = _score_strategique(cn, niveau)
+        avec_profil_vide = _score_strategique(cn, niveau, profil=ProfilPersonnage())
+        assert avec_profil_vide == sans_profil == cn.score
 
 
 class TestProfilPersonnageSurcharge:
@@ -710,6 +721,29 @@ class TestProfilPersonnageSurcharge:
             dict(_POIDS_LEAVE),
         )
         assert avant == apres
+
+    def test_bonus_scrabble_applique_si_sept_lettres_posees(self):
+        """``bonus_scrabble`` (issue #448, lot H) s'ajoute au score stratégique
+        d'un coup posant les 7 lettres du chevalet."""
+        cn = _coup_note("CADRESX", score=20, nb_nouvelles=7)
+        sans_profil = _score_strategique(cn, Niveau.AVANCE)
+        avec_profil = _score_strategique(
+            cn, Niveau.AVANCE, profil=ProfilPersonnage(bonus_scrabble=150)
+        )
+        assert avec_profil == sans_profil + 150
+
+    @pytest.mark.parametrize("nb_nouvelles", [1, 2, 3, 5, 6])
+    def test_bonus_scrabble_ignore_si_moins_de_sept_lettres(self, nb_nouvelles):
+        """Le bonus ne s'applique qu'aux coups posant EXACTEMENT 7 lettres —
+        un coup posant moins de lettres n'en bénéficie pas, quel que soit le
+        niveau (issue #448, lot H, point « le bonus s'applique uniquement aux
+        coups qui posent 7 lettres »)."""
+        cn = _coup_note("CADRE", score=20, nb_nouvelles=nb_nouvelles)
+        sans_profil = _score_strategique(cn, Niveau.AVANCE)
+        avec_profil = _score_strategique(
+            cn, Niveau.AVANCE, profil=ProfilPersonnage(bonus_scrabble=150)
+        )
+        assert avec_profil == sans_profil
 
 
 # --------------------------------------------------------------------------- #

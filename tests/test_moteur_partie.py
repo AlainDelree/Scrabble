@@ -188,13 +188,23 @@ def test_creer_partie_aleatoire_est_deterministe_avec_meme_generateur():
 
 
 def test_creer_partie_aleatoire_peut_tirer_classique():
-    """Le tirage « Aléatoire » porte sur TOUT le registre, Classique compris."""
+    """Le tirage « Aléatoire » porte sur TOUT le registre, Classique compris.
+
+    Testé à CHAMPION_DU_MONDE (plutôt qu'au niveau par défaut INTERMEDIAIRE,
+    comme avant l'issue #448) : depuis l'ajout de Chasseur de scrabbles (lot
+    H, disponible seulement d'Avancé à Champion du monde), tout le registre
+    n'est plus disponible à tous les niveaux — changement structurel attendu
+    du mécanisme de disponibilité par niveau (lot G, issue #447), pas une
+    régression. CHAMPION_DU_MONDE reste le niveau où tous les personnages
+    déclarés à ce jour sont disponibles.
+    """
     from scrabble.moteur.personnages import PERSONNAGES
 
     tires = set()
     for graine in range(50):
         partie = creer_partie(
             ["Alice"], _trie(), nb_ia=1, personnages_ia=["aleatoire"],
+            niveaux_ia=[Niveau.CHAMPION_DU_MONDE],
             generateur_aleatoire=random.Random(graine), graine=1,
         )
         tires.add(partie.joueurs[1].personnage)

@@ -55,6 +55,48 @@ victoire, écart de score) de ce calibrage face à Classique, au même niveau,
 et une éventuelle proposition d'ajustement si la mesure le justifie — la
 valeur ne doit pas être retouchée en boucle pour « faire passer » une mesure,
 seulement sur validation explicite d'Alain.
+
+Personnage Chasseur de scrabbles
+----------------------------------
+Guette les coups posant les 7 lettres du chevalet d'un coup (un
+« scrabble ») et garde ses meilleures lettres pour y arriver. D'après le
+rapport d'investigation (issue #437), ce style est « réalisable en
+partie » : le bonus direct sur la pose de 7 lettres relève de la même
+famille de calcul que le bonus premium (une constante ajoutée au score
+stratégique selon un critère sur le coup, voir
+:data:`scrabble.moteur.ia._SEUIL_BONUS_SCRABBLE`) ; l'anticipation fine du
+reliquat (deviner par avance qu'on approche d'un scrabble jouable) reste
+hors périmètre — on s'appuie uniquement sur deux réglages :
+
+* ``bonus_scrabble`` = :data:`BONUS_SEPT_LETTRES_CHASSEUR` = 150 : nouveau
+  champ de :class:`~scrabble.moteur.ia.ProfilPersonnage` (issue #448, lot H),
+  neutre (0) en l'absence de personnage, quel que soit le niveau. Valeur de
+  départ déduite par analogie avec :data:`BONUS_PREMIUM_OPPORTUNISTE` (100) :
+  l'événement déclencheur (poser les 7 lettres) est bien plus rare que
+  « toucher une case premium », donc le bonus doit être encore plus
+  déterminant pour l'emporter sur un coup concurrent mieux payé en score
+  brut — 150 reprend l'échelle d'Opportuniste en l'augmentant d'un facteur
+  comparable à celui qui sépare déjà ce dernier (x5) du bonus premium de
+  production (20 à EXPERT/CHAMPION_DU_MONDE).
+* ``poids_leave`` = :data:`POIDS_LEAVE_CHASSEUR_SCRABBLES` = 2.0 : poids du
+  leave renforcé pour préférer conserver les bonnes lettres (plutôt qu'un
+  reliquat quelconque) en vue d'un futur scrabble. Le plafond de production
+  (:data:`scrabble.moteur.ia._POIDS_LEAVE`) culmine à 1.0 (EXPERT,
+  CHAMPION_DU_MONDE) ; Chasseur de scrabbles double ce plafond, comme
+  Opportuniste multiplie le bonus premium de production par un facteur net
+  plutôt que de le dépasser d'un cran.
+
+  Ces deux surcharges sont **plates** (une constante chacune, pas une table
+  indexée par niveau), par construction de ``ProfilPersonnage`` — le trait
+  de caractère ne varie pas avec la force du joueur, seul le vocabulaire
+  disponible (câblé par niveau ailleurs) change les occasions réelles de
+  scrabble.
+
+Les valeurs ci-dessus sont des points de départ raisonnés (le dictionnaire
+réel n'est pas disponible dans ce worktree isolé pour les mesurer par
+parties jouées, voir le rapport de l'issue #448, lot H) — provisoires,
+destinées à être ajustées par Alain après mesure avec
+``scripts/mesurer_force_niveaux.py``, comme pour Opportuniste.
 """
 
 from __future__ import annotations
@@ -70,6 +112,16 @@ from scrabble.moteur.ia import Niveau, ProfilPersonnage
 #: le plus grand palier observé entre deux niveaux adjacents (+8, AVANCE ->
 #: EXPERT).
 BONUS_PREMIUM_OPPORTUNISTE = 100
+
+#: Bonus de pose de 7 lettres du personnage Chasseur de scrabbles (voir
+#: docstring du module, issue #448, lot H) : valeur de départ, à ajuster par
+#: mesure.
+BONUS_SEPT_LETTRES_CHASSEUR = 150
+
+#: Poids du leave renforcé du personnage Chasseur de scrabbles (voir
+#: docstring du module, issue #448, lot H) : valeur de départ, à ajuster par
+#: mesure.
+POIDS_LEAVE_CHASSEUR_SCRABBLES = 2.0
 
 #: Clé pseudo-personnage exposée à l'UI (issue #440, lot D) : « Aléatoire »
 #: n'est **jamais** une entrée de :data:`PERSONNAGES` — elle désigne le choix
@@ -98,6 +150,17 @@ TOUS_NIVEAUX: frozenset[Niveau] = frozenset(Niveau)
 #: et Opportuniste y utilise les cases bonus à peine plus souvent que
 #: Classique (20,5 % contre 20,1 %) : son caractère n'y est pas perceptible.
 NIVEAUX_OPPORTUNISTE: frozenset[Niveau] = TOUS_NIVEAUX - {Niveau.DEBUTANT}
+
+#: Niveaux où Chasseur de scrabbles est disponible (issue #448, lot H,
+#: provisoire) : d'Avancé à Champion du monde. D'après le rapport
+#: d'investigation (issue #437), les scrabbles sont rares aux niveaux plus
+#: bas (environ 0,01 par partie à Intermédiaire, 0,1 à 0,2 à Avancé) : son
+#: caractère y serait peu perceptible. Plage volontairement resserrée par
+#: rapport à Opportuniste (qui commence à Facile) — à élargir ou réduire par
+#: Alain après mesure réelle, **en un seul endroit** (cette constante).
+NIVEAUX_CHASSEUR_SCRABBLES: frozenset[Niveau] = frozenset(
+    {Niveau.AVANCE, Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE}
+)
 
 
 @dataclass(frozen=True)
@@ -141,6 +204,19 @@ PERSONNAGES: dict[str, Personnage] = {
             poids_leave=0.0,
         ),
         niveaux_disponibles=NIVEAUX_OPPORTUNISTE,
+    ),
+    "chasseur_de_scrabbles": Personnage(
+        cle="chasseur_de_scrabbles",
+        prenom="Chasseur de scrabbles",
+        description=(
+            "Guette les occasions de poser ses 7 lettres d'un coup et garde "
+            "ses meilleures lettres en réserve pour y arriver."
+        ),
+        profil=ProfilPersonnage(
+            bonus_scrabble=BONUS_SEPT_LETTRES_CHASSEUR,
+            poids_leave=POIDS_LEAVE_CHASSEUR_SCRABBLES,
+        ),
+        niveaux_disponibles=NIVEAUX_CHASSEUR_SCRABBLES,
     ),
 }
 

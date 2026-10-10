@@ -201,6 +201,12 @@ _CASES_BONUS_MOT = frozenset({TypeCase.MOT_DOUBLE, TypeCase.MOT_TRIPLE, TypeCase
 #: pénalité longueur s'applique.
 _SEUIL_PENALITE_LONGUEUR = 2
 
+#: Nombre de lettres nouvellement posées à partir duquel un coup pose les 7
+#: lettres du chevalet (« scrabble ») — déclenche le bonus optionnel
+#: :attr:`ProfilPersonnage.bonus_scrabble` (issue #448, lot H). Un chevalet
+#: compte toujours 7 lettres en jeu normal (fin de sac exceptée).
+_SEUIL_BONUS_SCRABBLE = 7
+
 #: Valeur heuristique de chaque lettre pour le calcul du reliquat (leave
 #: value, issue #395). Reflète la difficulté de placement future : le
 #: joker et le S (formation de pluriels/hooks) valent le plus cher, les
@@ -295,11 +301,19 @@ class ProfilPersonnage:
     indexée par niveau qu'il surcharge. Lots suivants : nouveaux champs pour
     les personnages dont le style demande un calcul inédit (bonus bingo,
     rareté, risque premium…).
+
+    ``bonus_scrabble`` (issue #448, lot H) diffère des trois champs
+    précédents : il n'existe aucun réglage de production indexé par niveau à
+    surcharger — neutre par défaut (``None``, traité comme 0 quel que soit le
+    niveau), il n'a d'effet que si un personnage le renseigne explicitement.
+    Ajouté au score stratégique uniquement pour les coups posant les 7
+    lettres du chevalet (:data:`_SEUIL_BONUS_SCRABBLE`).
     """
 
     malus_longueur: int | None = None
     bonus_premium: int | None = None
     poids_leave: float | None = None
+    bonus_scrabble: int | None = None
 
 
 def _score_strategique(
@@ -338,10 +352,18 @@ def _score_strategique(
     ``_BONUS_PREMIUM``/``_POIDS_LEAVE`` restant par ailleurs la seule source
     de vérité du calibrage. ``profil=None`` (ou tous ses champs ``None``,
     défaut) reproduit exactement le calcul d'avant son introduction.
+
+    Un quatrième ajustement, lui aussi optionnel et porté uniquement par
+    ``profil`` (:attr:`ProfilPersonnage.bonus_scrabble`, issue #448, lot H) :
+    ajoute une constante au score des coups posant les 7 lettres du chevalet
+    (:data:`_SEUIL_BONUS_SCRABBLE`). Sans réglage de production à surcharger
+    (contrairement aux trois précédents), il vaut 0 par défaut — neutre pour
+    tous les niveaux tant qu'aucun personnage ne le renseigne.
     """
     malus_longueur = _MALUS_LONGUEUR[niveau]
     bonus_premium = _BONUS_PREMIUM[niveau]
     poids_leave = _POIDS_LEAVE[niveau]
+    bonus_scrabble = 0
     if profil is not None:
         if profil.malus_longueur is not None:
             malus_longueur = profil.malus_longueur
@@ -349,6 +371,8 @@ def _score_strategique(
             bonus_premium = profil.bonus_premium
         if profil.poids_leave is not None:
             poids_leave = profil.poids_leave
+        if profil.bonus_scrabble is not None:
+            bonus_scrabble = profil.bonus_scrabble
 
     ajustement = 0
 
@@ -371,6 +395,9 @@ def _score_strategique(
 
     if poids_leave > 0.0:
         ajustement += round(poids_leave * leave_value(lettres_restantes))
+
+    if cn.nb_nouvelles == _SEUIL_BONUS_SCRABBLE:
+        ajustement += bonus_scrabble
 
     return cn.score + ajustement
 

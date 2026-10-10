@@ -6,6 +6,11 @@ des coups utilisant davantage de cases à multiplicateur que Classique sur un
 même plateau et un même chevalet. Vérifie aussi que Classique (profil vide)
 reproduit exactement le comportement sans profil, pour garantir que
 l'introduction du registre ne régresse pas le comportement par défaut.
+
+Couvre aussi Chasseur de scrabbles (issue #448, lot H) : bonus de pose de 7
+lettres et poids du leave renforcé — il doit choisir, en moyenne, davantage
+de coups posant les 7 lettres du chevalet (« scrabbles ») que Classique, sur
+un plateau et un chevalet fabriqués où un scrabble est possible.
 """
 
 from __future__ import annotations
@@ -433,3 +438,142 @@ class TestListerPersonnages:
         personnages = lister_personnages(frozenset({"opportuniste"}))
         aleatoire = next(p for p in personnages if p["cle"] == CLE_ALEATOIRE)
         assert aleatoire["dans_la_partie"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Chasseur de scrabbles (issue #448, lot H)
+# --------------------------------------------------------------------------- #
+
+
+def _plateau_chasseur() -> PlateauPartie:
+    """Plateau fabriqué pour qu'un scrabble (coup posant les 7 lettres du
+    chevalet) soit possible, en concurrence avec un coup plus court mais
+    mieux payé en score brut (voir le rapport de l'issue #448, lot H, pour le
+    détail du calcul des deux scores) :
+
+    * ``A`` posée en (7, 8) permet le mot vertical ``AOKWUXLN`` (7 lettres
+      nouvelles, colonne 8, lignes 8 à 14) : score brut modeste (les cases à
+      multiplicateur de lettre rencontrées reçoivent les lettres les moins
+      chères du chevalet), mais avec le bonus « scrabble » intrinsèque
+      (+50, :data:`scrabble.moteur.score.BONUS_SCRABBLE`).
+    * ``Z`` posée en (0, 10) permet le mot ``ZOKWX`` (4 lettres nouvelles,
+      ligne 0, colonnes 11 à 14) qui s'achève sur la case mot triple (0, 14) :
+      score brut plus élevé malgré 3 lettres de moins, sans bonus scrabble.
+
+    Sans personnage, le second coup (score brut plus haut) l'emporte pour
+    AVANCE/EXPERT/CHAMPION_DU_MONDE ; avec Chasseur de scrabbles
+    (``bonus_scrabble=150``), l'écart est renversé et le premier (le
+    scrabble) l'emporte.
+    """
+    plateau = PlateauPartie()
+    plateau.poser_coup(Coup(7, 7, Direction.HORIZONTALE, tuiles_depuis_chaine("DA")))
+    plateau.poser_coup(Coup(0, 10, Direction.HORIZONTALE, tuiles_depuis_chaine("Z")))
+    return plateau
+
+
+#: Chevalet du scénario ci-dessus : K/W/X (lettres chères) et quatre lettres
+#: à 1 point (O/U/L/N), de quoi fabriquer les deux coups concurrents.
+_CHEVALET_CHASSEUR = list("KWXOULN")
+
+#: Vocabulaire minimal couvrant exactement les deux coups du scénario
+#: (``_plateau_chasseur``) et les mots déjà posés.
+_MOTS_CHASSEUR = ("DA", "Z", "AOKWUXLN", "ZOKWX")
+
+
+def _proportion_scrabbles(niveau: Niveau, profil, n: int = 200) -> float:
+    """Proportion des coups choisis (sur ``n`` graines) qui posent les 7
+    lettres du chevalet, sur le scénario :func:`_plateau_chasseur`."""
+    plateau = _plateau_chasseur()
+    dico = Trie.depuis_iterable(_MOTS_CHASSEUR)
+    coups_ref = {
+        cn.coup: cn for cn in generer_coups(plateau, _CHEVALET_CHASSEUR, dico)
+    }
+
+    nb_scrabbles = 0
+    nb_joues = 0
+    for graine in range(n):
+        coup = choisir_coup(
+            plateau,
+            _CHEVALET_CHASSEUR,
+            dico,
+            niveau,
+            random.Random(graine),
+            profil=profil,
+        )
+        if coup is None:
+            continue
+        nb_joues += 1
+        if coups_ref[coup].nb_nouvelles == 7:
+            nb_scrabbles += 1
+    assert nb_joues > 0
+    return nb_scrabbles / nb_joues
+
+
+class TestPersonnageChasseurDeScrabbles:
+    """Chasseur de scrabbles doit choisir le scrabble plus souvent que
+    Classique, sur un plateau et un chevalet où un scrabble est possible
+    (issue #448, lot H, point « choix du coup »)."""
+
+    def test_chasseur_choisit_plus_souvent_le_scrabble_que_classique_avance(self):
+        profil_classique = PERSONNAGES["classique"].profil
+        profil_chasseur = PERSONNAGES["chasseur_de_scrabbles"].profil
+
+        proportion_classique = _proportion_scrabbles(Niveau.AVANCE, profil_classique)
+        proportion_chasseur = _proportion_scrabbles(Niveau.AVANCE, profil_chasseur)
+        assert proportion_chasseur > proportion_classique
+
+    def test_chasseur_choisit_plus_souvent_le_scrabble_que_classique_expert(self):
+        profil_classique = PERSONNAGES["classique"].profil
+        profil_chasseur = PERSONNAGES["chasseur_de_scrabbles"].profil
+
+        proportion_classique = _proportion_scrabbles(Niveau.EXPERT, profil_classique)
+        proportion_chasseur = _proportion_scrabbles(Niveau.EXPERT, profil_chasseur)
+        assert proportion_chasseur > proportion_classique
+
+    def test_chasseur_choisit_plus_souvent_le_scrabble_que_classique_champion(self):
+        profil_classique = PERSONNAGES["classique"].profil
+        profil_chasseur = PERSONNAGES["chasseur_de_scrabbles"].profil
+
+        proportion_classique = _proportion_scrabbles(
+            Niveau.CHAMPION_DU_MONDE, profil_classique
+        )
+        proportion_chasseur = _proportion_scrabbles(
+            Niveau.CHAMPION_DU_MONDE, profil_chasseur
+        )
+        assert proportion_chasseur > proportion_classique
+
+    def test_chasseur_dans_le_registre(self):
+        assert "chasseur_de_scrabbles" in PERSONNAGES
+        chasseur = PERSONNAGES["chasseur_de_scrabbles"]
+        assert chasseur.prenom == "Chasseur de scrabbles"
+        assert chasseur.description != ""
+
+    def test_chasseur_apparait_dans_la_liste(self):
+        cles = [p["cle"] for p in lister_personnages()]
+        assert "chasseur_de_scrabbles" in cles
+
+    def test_chasseur_indisponible_a_debutant_facile_intermediaire(self):
+        for niveau in (Niveau.DEBUTANT, Niveau.FACILE, Niveau.INTERMEDIAIRE):
+            assert (
+                personnage_disponible_a_niveau("chasseur_de_scrabbles", niveau)
+                is False
+            )
+
+    def test_chasseur_disponible_avance_expert_champion(self):
+        for niveau in (Niveau.AVANCE, Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE):
+            assert (
+                personnage_disponible_a_niveau("chasseur_de_scrabbles", niveau)
+                is True
+            )
+
+    def test_libelle_niveaux_chasseur(self):
+        assert (
+            libelle_niveaux(PERSONNAGES["chasseur_de_scrabbles"])
+            == "Avancé à Champion du monde"
+        )
+
+    def test_explication_disponibilite_chasseur(self):
+        assert (
+            explication_disponibilite_niveaux("chasseur_de_scrabbles")
+            == "Disponible à partir de Avancé"
+        )
