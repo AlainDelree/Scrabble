@@ -104,6 +104,30 @@ partie IA contre un **humain** (les deux camps mesurés ici sont l'un contre
 l'autre) ; le comportement à plus de 2 IA en table (seul le face-à-face à deux
 est mesuré).
 
+Indicateurs de style (issue #446)
+----------------------------------
+Mesurer la force relative de deux configurations (ci-dessus) ne dit rien de
+leur **style** de jeu : Opportuniste peut être aussi fort que Classique sans
+jouer pareil, mais une seule partie à la main ne permet pas de trancher (le
+style y est noyé dans le hasard du tirage). Ce script calcule donc, en plus du
+résumé de force (inchangé), des indicateurs de style par joueur sur l'ensemble
+des parties : part des coups touchant une case à multiplicateur ou un mot
+double/triple, lettres posées et points par coup, longueur du mot principal,
+scrabbles/jokers/passes par partie, points et tour de pose du joker, pénalité
+des lettres restantes en fin de partie — avec écart-type ou IC95 selon le cas
+(voir :class:`IndicateursPartieJoueur` pour la définition exacte de chacun).
+Affichés en tableau comparatif A vs B à la fin du résumé (sauf en mode
+``--comparer``, qui relit un CSV sans le détail par coup nécessaire), et
+exportés par partie et par joueur dans le CSV (``--csv``) pour être rejoués
+ultérieurement.
+
+Ces indicateurs sont calculés **après coup**, en relecture pure de
+``Partie.historique`` et des chevalets finaux (voir
+:func:`_calculer_indicateurs_joueur`) : ils ne touchent ni au moteur d'IA, ni
+aux réglages par niveau, ni aux personnages, ni au tirage aléatoire — les
+graines, les parties jouées et les résultats de force (victoire, score moyen)
+restent rigoureusement identiques à une mesure sans ces indicateurs.
+
 Pourquoi hors de la suite pytest
 ---------------------------------
 Une mesure statistiquement significative demande des dizaines à centaines de
@@ -155,6 +179,18 @@ contre Classique en INTERMEDIAIRE, vocabulaire du jeu réel ::
         --personnage-a opportuniste --personnage-b classique --vocab palier \\
         --parties 200
 
+Style de jeu Opportuniste contre Classique, à force égale (issue #446) — mêmes
+commandes que ci-dessus, deux niveaux, avec export CSV pour réanalyse des
+indicateurs de style (voir « Indicateurs de style » ci-dessus) ::
+
+    python scripts/mesurer_force_niveaux.py AVANCE AVANCE \\
+        --personnage-a opportuniste --personnage-b classique --vocab palier \\
+        --parties 200 --csv style_opportuniste_vs_classique_avance.csv
+
+    python scripts/mesurer_force_niveaux.py INTERMEDIAIRE INTERMEDIAIRE \\
+        --personnage-a opportuniste --personnage-b classique --vocab palier \\
+        --parties 200 --csv style_opportuniste_vs_classique_intermediaire.csv
+
 Sans argument, oppose FACILE à DEBUTANT sur 100 parties, vocabulaire ``complet``
 (comportement historique #362). Les niveaux valides sont les noms de
 :class:`~scrabble.moteur.ia.Niveau` : DEBUTANT, FACILE, INTERMEDIAIRE, AVANCE,
@@ -172,10 +208,11 @@ import argparse
 import csv
 import math
 import random
+import statistics
 import sys
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
 
@@ -193,8 +230,9 @@ from scrabble.dictionnaire.dictionnaire import (  # noqa: E402
 from scrabble.moteur import ia  # noqa: E402
 from scrabble.moteur.ia import Niveau, ProfilPersonnage, resoudre_palier  # noqa: E402
 from scrabble.moteur.ordre import determiner_ordre_jeu  # noqa: E402
-from scrabble.moteur.partie import Joueur, Partie  # noqa: E402
+from scrabble.moteur.partie import ACTION_COUP, ACTION_PASSE, Joueur, Partie  # noqa: E402
 from scrabble.moteur.personnages import PERSONNAGES  # noqa: E402
+from scrabble.regles.plateau import TypeCase  # noqa: E402
 
 #: Nombre de parties par défaut : modeste pour qu'un lancement sans argument
 #: ne parte pas pour 20 minutes (quelques minutes seulement).
@@ -289,6 +327,128 @@ class ConfigJoueur:
 
 
 @dataclass
+class IndicateursPartieJoueur:
+    """Indicateurs de style d'un joueur sur UNE partie (issue #446).
+
+    Calculés après coup depuis ``Partie.historique`` et le chevalet final —
+    aucune incidence sur le déroulement de la partie (voir
+    :func:`_calculer_indicateurs_joueur`). Deux familles de champs :
+
+    * des **compteurs cumulés sur la partie** (``coups_poses``,
+      ``coups_touchant_multiplicateur``, ``coups_touchant_mot_double_triple``,
+      ``scrabbles``, ``nb_jokers``, ``passes``) et le solde final
+      (``penalite_fin``) — un entier par partie, agrégé ensuite par
+      :func:`_stats_style` en moyenne ± IC95 sur les ``N`` parties ;
+    * des **listes par coup** (``lettres_posees``, ``points_par_coup``,
+      ``longueur_mot_principal``, ``points_coups_joker``,
+      ``tours_coups_joker``) — une valeur par coup concerné, mises à plat sur
+      toutes les parties avant d'en tirer moyenne ± IC95 (voir
+      :func:`_stats_style`).
+
+    Définitions exactes (point 1 de l'issue) :
+
+    * « touche une case à multiplicateur » : au moins une case **nouvellement
+      posée** du coup porte un bonus (:class:`~scrabble.regles.plateau.TypeCase`
+      différent de ``NORMALE``), toutes lettres/mots confondus — reflet direct
+      de :attr:`~scrabble.moteur.score.DetailMot.cases_bonus`, qui ne liste déjà
+      que les cases neuves.
+    * « touche un mot double ou triple » : pareil, restreint aux types
+      ``MOT_DOUBLE``, ``MOT_TRIPLE`` **et** ``CENTRE`` — la case centrale
+      comptant elle-même comme un mot double (voir
+      :mod:`scrabble.regles.plateau`), l'ignorer aurait sous-compté le tout
+      premier coup de chaque partie, qui la couvre toujours.
+    * « lettres posées » : ``len(positions_posees)`` de l'entrée d'historique,
+      c'est-à-dire le nombre de tuiles **neuves** de ce coup (cases déjà
+      occupées traversées exclues) — pas la longueur du mot formé.
+    * « mot principal » : le premier mot de ``detail.mots`` (toujours le mot
+      porté par la direction du coup, voir
+      :func:`~scrabble.moteur.plateau_partie.mots_formes`) ; repli sur
+      ``len(coup.tuiles)`` dans le cas limite où aucun mot n'est recensé.
+    * « joker joué » : une tuile **neuve** de ce coup dont
+      :attr:`~scrabble.moteur.plateau_partie.Tuile.joker` est vrai (la réutilisation
+      ultérieure du même joker, sur une case déjà occupée, ne recompte pas).
+    * « tour de sa pose » : rang (1-indexé) de l'action dans l'historique
+      **complet** de la partie, les deux joueurs confondus — même convention que
+      ``ResultatPartie.tours``/``MAX_TOURS`` ailleurs dans ce script.
+    * « pénalité lettres restantes » : :meth:`~scrabble.moteur.partie.Joueur.valeur_chevalet`
+      du joueur en fin de partie (le chevalet n'est pas vidé par
+      :meth:`Partie._terminer`, seul le score l'intègre déjà en soustraction).
+    """
+
+    coups_poses: int = 0
+    coups_touchant_multiplicateur: int = 0
+    coups_touchant_mot_double_triple: int = 0
+    lettres_posees: list[int] = field(default_factory=list)
+    points_par_coup: list[int] = field(default_factory=list)
+    longueur_mot_principal: list[int] = field(default_factory=list)
+    scrabbles: int = 0
+    nb_jokers: int = 0
+    points_coups_joker: list[int] = field(default_factory=list)
+    tours_coups_joker: list[int] = field(default_factory=list)
+    passes: int = 0
+    penalite_fin: int = 0
+
+
+#: Types de case comptant comme « mot double ou triple » pour les indicateurs
+#: de style — la case centrale y est incluse car elle compte comme un mot
+#: double (voir :mod:`scrabble.regles.plateau`).
+_TYPES_MOT_DOUBLE_TRIPLE = frozenset({TypeCase.MOT_DOUBLE, TypeCase.MOT_TRIPLE, TypeCase.CENTRE})
+
+
+def _calculer_indicateurs_joueur(
+    historique: list, prefixe_nom: str, penalite_fin: int
+) -> IndicateursPartieJoueur:
+    """Calcule les indicateurs de style d'un joueur depuis l'historique d'une partie.
+
+    ``historique`` est ``Partie.historique`` (liste d':class:`~scrabble.moteur.partie.EntreeHistorique`),
+    ``prefixe_nom`` distingue le camp (``"A:"`` ou ``"B:"`` dans ce script, voir
+    :func:`jouer_une_partie`) et ``penalite_fin`` la pénalité déjà calculée par
+    l'appelant (:meth:`~scrabble.moteur.partie.Joueur.valeur_chevalet` en fin de
+    partie). Ne lit **que** des données déjà produites par le moteur — aucun
+    appel à :func:`~scrabble.moteur.ia.choisir_coup` ni au générateur aléatoire,
+    donc aucune incidence sur le déroulement ou le résultat de la partie (point
+    3 de l'issue #446).
+    """
+    ind = IndicateursPartieJoueur(penalite_fin=penalite_fin)
+    for tour, entree in enumerate(historique, start=1):
+        if not entree.nom_joueur.startswith(prefixe_nom):
+            continue
+        if entree.action == ACTION_PASSE:
+            ind.passes += 1
+            continue
+        if entree.action != ACTION_COUP:
+            continue  # échange : hors périmètre des indicateurs de style demandés
+        detail = entree.detail
+        ind.coups_poses += 1
+        types_bonus = {
+            type_case for mot in detail.mots for _, _, type_case in mot.cases_bonus
+        }
+        if types_bonus:
+            ind.coups_touchant_multiplicateur += 1
+        if types_bonus & _TYPES_MOT_DOUBLE_TRIPLE:
+            ind.coups_touchant_mot_double_triple += 1
+        ind.lettres_posees.append(len(entree.positions_posees))
+        ind.points_par_coup.append(detail.total)
+        if detail.mots:
+            ind.longueur_mot_principal.append(len(detail.mots[0].texte))
+        else:
+            ind.longueur_mot_principal.append(len(entree.coup.tuiles))
+        if detail.bonus_scrabble > 0:
+            ind.scrabbles += 1
+        positions_neuves = set(entree.positions_posees)
+        nb_jokers_coup = sum(
+            1
+            for ligne, colonne, tuile in entree.coup.cases()
+            if (ligne, colonne) in positions_neuves and tuile.joker
+        )
+        if nb_jokers_coup:
+            ind.nb_jokers += nb_jokers_coup
+            ind.points_coups_joker.append(detail.total)
+            ind.tours_coups_joker.append(tour)
+    return ind
+
+
+@dataclass
 class ResultatPartie:
     """Issue d'une partie A contre B."""
 
@@ -297,6 +457,11 @@ class ResultatPartie:
     score_b: int
     commence: str  # "a" ou "b"
     tours: int
+    #: Indicateurs de style de chacun des deux camps sur cette partie (issue
+    #: #446) — n'influence jamais ``score_a``/``score_b``/``commence``/``tours``
+    #: ci-dessus, calculés exactement comme avant leur introduction.
+    indicateurs_a: IndicateursPartieJoueur = field(default_factory=IndicateursPartieJoueur)
+    indicateurs_b: IndicateursPartieJoueur = field(default_factory=IndicateursPartieJoueur)
 
 
 def _deriver_graines(graine_partie: int) -> tuple[int, int, int, int]:
@@ -504,12 +669,28 @@ def jouer_une_partie(
             partie.jouer_coup(coup)
         tours += 1
 
+    # Indicateurs de style (issue #446) : calculés APRÈS la fin de la partie,
+    # en relecture pure de ``partie.historique`` et des chevalets finaux — rien
+    # ici n'appelle ``ia.choisir_coup`` ni ne consomme le générateur aléatoire,
+    # donc aucune incidence sur ``score_a``/``score_b``/``commence``/``tours``
+    # ci-dessus (point 3 de l'issue). Les noms de joueurs ``f"A:{...}"`` /
+    # ``f"B:{...}"`` fixés plus haut servent de préfixe pour distinguer les
+    # deux camps dans l'historique, indépendamment de qui a commencé.
+    indicateurs_a = _calculer_indicateurs_joueur(
+        partie.historique, "A:", joueur_a.valeur_chevalet()
+    )
+    indicateurs_b = _calculer_indicateurs_joueur(
+        partie.historique, "B:", joueur_b.valeur_chevalet()
+    )
+
     return ResultatPartie(
         graine=graine_partie,
         score_a=joueur_a.score,
         score_b=joueur_b.score,
         commence=commence,
         tours=tours,
+        indicateurs_a=indicateurs_a,
+        indicateurs_b=indicateurs_b,
     )
 
 
@@ -523,6 +704,149 @@ def _ic_95(proportion: float, n: int) -> float:
     if n == 0:
         return 0.0
     return 1.96 * math.sqrt(proportion * (1 - proportion) / n)
+
+
+def _ic_95_moyenne(valeurs: list[float]) -> float:
+    """Demi-largeur de l'IC à 95 % d'une moyenne (approximation normale).
+
+    ``1.96 * écart-type-échantillon / sqrt(n)`` — pendant continu de
+    :func:`_ic_95` pour les indicateurs de style qui ne sont pas des
+    proportions (points par coup, longueur de mot, etc.). Renvoie ``0.0`` pour
+    moins de deux valeurs (écart-type indéfini).
+    """
+    if len(valeurs) < 2:
+        return 0.0
+    return 1.96 * statistics.stdev(valeurs) / math.sqrt(len(valeurs))
+
+
+#: Un indicateur de style est soit une proportion de coups (dénominateur =
+#: nombre de coups posés), soit une moyenne « par partie » (dénominateur = N
+#: parties), soit une moyenne « par occurrence » optionnelle (jokers — peut
+#: être absente si aucun joker n'a jamais été joué).
+_INDICATEURS_STYLE = (
+    ("part_bonus", "Coups touchant une case à multiplicateur", "proportion"),
+    ("part_mot_double_triple", "  dont mot double/triple (ou centre)", "proportion"),
+    ("lettres_par_coup", "Lettres posées par coup", "moyenne"),
+    ("part_1_2_lettres", "Coups de une ou deux lettres", "proportion"),
+    ("points_par_coup", "Points par coup", "moyenne"),
+    ("longueur_mot_principal", "Longueur du mot principal", "moyenne"),
+    ("scrabbles_par_partie", "Scrabbles (7 lettres) par partie", "moyenne"),
+    ("jokers_par_partie", "Jokers joués par partie", "moyenne"),
+    ("points_coup_joker", "  points du coup où un joker est posé", "moyenne_opt"),
+    ("tour_coup_joker", "  tour de pose du joker", "moyenne_opt"),
+    ("passes_par_partie", "Passes par partie", "moyenne"),
+    ("penalite_fin_partie", "Pénalité lettres restantes en fin de partie", "moyenne"),
+)
+
+
+def _stats_style(resultats: list[ResultatPartie], cote: str) -> dict[str, tuple[float, float, int]]:
+    """Agrège les indicateurs de style d'un camp sur l'ensemble des parties.
+
+    ``cote`` est ``"a"`` ou ``"b"``. Renvoie, par clé de
+    :data:`_INDICATEURS_STYLE`, un triplet ``(valeur, demi-largeur IC95, n)`` —
+    ``n`` étant la taille de l'échantillon utilisé (nombre de coups, de
+    parties, ou d'occurrences de joker selon l'indicateur), pour que l'affichage
+    puisse distinguer un ``0.0`` véritable d'un échantillon vide (jamais de
+    joker joué, notamment).
+    """
+    inds = [r.indicateurs_a if cote == "a" else r.indicateurs_b for r in resultats]
+
+    total_coups = sum(i.coups_poses for i in inds)
+    total_bonus = sum(i.coups_touchant_multiplicateur for i in inds)
+    total_mdt = sum(i.coups_touchant_mot_double_triple for i in inds)
+    lettres = [l for i in inds for l in i.lettres_posees]
+    points_coup = [p for i in inds for p in i.points_par_coup]
+    longueur_mot = [l for i in inds for l in i.longueur_mot_principal]
+    coups_1_2 = sum(1 for l in lettres if l <= 2)
+
+    scrabbles_partie = [i.scrabbles for i in inds]
+    jokers_partie = [i.nb_jokers for i in inds]
+    passes_partie = [i.passes for i in inds]
+    penalite_partie = [i.penalite_fin for i in inds]
+    points_joker = [p for i in inds for p in i.points_coups_joker]
+    tour_joker = [t for i in inds for t in i.tours_coups_joker]
+
+    def proportion(nombre: int, n: int) -> tuple[float, float, int]:
+        p = nombre / n if n else 0.0
+        return p, _ic_95(p, n), n
+
+    def moyenne(valeurs: list[float]) -> tuple[float, float, int]:
+        n = len(valeurs)
+        m = statistics.mean(valeurs) if n else 0.0
+        return m, _ic_95_moyenne(valeurs), n
+
+    return {
+        "part_bonus": proportion(total_bonus, total_coups),
+        "part_mot_double_triple": proportion(total_mdt, total_coups),
+        "lettres_par_coup": moyenne(lettres),
+        "part_1_2_lettres": proportion(coups_1_2, total_coups),
+        "points_par_coup": moyenne(points_coup),
+        "longueur_mot_principal": moyenne(longueur_mot),
+        "scrabbles_par_partie": moyenne(scrabbles_partie),
+        "jokers_par_partie": moyenne(jokers_partie),
+        "points_coup_joker": moyenne(points_joker),
+        "tour_coup_joker": moyenne(tour_joker),
+        "passes_par_partie": moyenne(passes_partie),
+        "penalite_fin_partie": moyenne(penalite_partie),
+    }
+
+
+def _formater_indicateur(valeur: float, ic: float, n: int, type_valeur: str) -> str:
+    """Formate une cellule du tableau de style : valeur ± IC95 (ou « n/a »)."""
+    if n == 0:
+        return "n/a"
+    if type_valeur == "proportion":
+        return f"{valeur:.1%} ± {ic:.1%}"
+    return f"{valeur:.2f} ± {ic:.2f}"
+
+
+def _formater_ecart(valeur_a: float, valeur_b: float, n_a: int, n_b: int, type_valeur: str) -> str:
+    """Formate l'écart A-B d'une cellule du tableau de style (« n/a » si l'un des deux camps n'a pas l'indicateur)."""
+    if n_a == 0 or n_b == 0:
+        return "n/a"
+    ecart = valeur_a - valeur_b
+    if type_valeur == "proportion":
+        return f"{ecart:+.1%}"
+    return f"{ecart:+.2f}"
+
+
+def _afficher_tableau_style(
+    label_a: str, label_b: str, resultats: list[ResultatPartie]
+) -> None:
+    """Affiche le tableau comparatif des indicateurs de style A vs B (issue #446).
+
+    Ajouté à la fin du résumé existant (:func:`_afficher_resume`), sans en
+    modifier l'affichage ni les chiffres de force déjà produits. Voir
+    :data:`_INDICATEURS_STYLE` pour la liste des indicateurs et
+    :class:`IndicateursPartieJoueur` pour leur définition exacte.
+    """
+    stats_a = _stats_style(resultats, "a")
+    stats_b = _stats_style(resultats, "b")
+
+    largeur_libelle = max(len(libelle) for _, libelle, _ in _INDICATEURS_STYLE)
+    largeur_a = max(len(label_a), 10)
+    largeur_b = max(len(label_b), 10)
+
+    print()
+    print("=" * 60)
+    print(f"STYLE DE JEU — {label_a} (A) vs {label_b} (B)")
+    print("=" * 60)
+    entete = (
+        f"{'Indicateur':<{largeur_libelle}}  {label_a:>{largeur_a}}  "
+        f"{label_b:>{largeur_b}}  {'Écart (A-B)':>14}"
+    )
+    print(entete)
+    for cle, libelle, type_valeur in _INDICATEURS_STYLE:
+        valeur_a, ic_a, n_a = stats_a[cle]
+        valeur_b, ic_b, n_b = stats_b[cle]
+        colonne_a = _formater_indicateur(valeur_a, ic_a, n_a, type_valeur)
+        colonne_b = _formater_indicateur(valeur_b, ic_b, n_b, type_valeur)
+        ecart = _formater_ecart(valeur_a, valeur_b, n_a, n_b, type_valeur)
+        print(
+            f"{libelle:<{largeur_libelle}}  {colonne_a:>{largeur_a}}  "
+            f"{colonne_b:>{largeur_b}}  {ecart:>14}"
+        )
+    print("=" * 60)
 
 
 def _formater_duree(secondes: float) -> str:
@@ -590,7 +914,70 @@ def executer_mesure(
         print(f"Détail exporté vers {fichier_csv}")
 
     _afficher_resume(label_a, label_b, resultats)
+    # Tableau de style (issue #446) : volontairement distinct de
+    # ``_afficher_resume`` (laissé inchangé), ajouté seulement sur le chemin
+    # d'une mesure jouée ici — pas sur ``--comparer``, qui relit un CSV sans
+    # les colonnes de détail par coup nécessaires à ces indicateurs.
+    _afficher_tableau_style(label_a, label_b, resultats)
     return resultats
+
+
+#: Suffixes (et ordre) des colonnes d'indicateurs de style par joueur dans le
+#: CSV (issue #446) — préfixées ``a_``/``b_`` par :func:`_ecrire_csv`. Valeurs
+#: par partie (pas de liste) : les comptages sont bruts, les moyennes (lettres,
+#: points, longueur de mot, jokers) sont la moyenne **de cette seule partie**
+#: pour ce joueur, vides (``""``) si l'indicateur ne s'applique à aucun coup de
+#: la partie (ex. aucun joker joué).
+_COLONNES_STYLE = (
+    "coups",
+    "part_bonus",
+    "part_mot_double_triple",
+    "lettres_moy",
+    "part_1_2_lettres",
+    "points_moy",
+    "longueur_mot_moy",
+    "scrabbles",
+    "jokers",
+    "points_coup_joker_moy",
+    "tour_joker_moy",
+    "passes",
+    "penalite_fin",
+)
+
+
+def _valeurs_style_csv(ind: IndicateursPartieJoueur) -> list:
+    """Valeurs CSV des indicateurs de style d'un joueur pour UNE partie.
+
+    Ordre et noms alignés sur :data:`_COLONNES_STYLE`. Une moyenne sur une
+    liste vide (ex. aucun joker joué cette partie) est exportée comme chaîne
+    vide, pas comme ``0`` — pour ne pas confondre « jamais » et « zéro point ».
+    """
+
+    def moyenne(valeurs: list[int]) -> str:
+        return f"{statistics.mean(valeurs):.3f}" if valeurs else ""
+
+    part_bonus = ind.coups_touchant_multiplicateur / ind.coups_poses if ind.coups_poses else ""
+    part_mdt = ind.coups_touchant_mot_double_triple / ind.coups_poses if ind.coups_poses else ""
+    part_1_2 = (
+        sum(1 for l in ind.lettres_posees if l <= 2) / len(ind.lettres_posees)
+        if ind.lettres_posees
+        else ""
+    )
+    return [
+        ind.coups_poses,
+        part_bonus,
+        part_mdt,
+        moyenne(ind.lettres_posees),
+        part_1_2,
+        moyenne(ind.points_par_coup),
+        moyenne(ind.longueur_mot_principal),
+        ind.scrabbles,
+        ind.nb_jokers,
+        moyenne(ind.points_coups_joker),
+        moyenne(ind.tours_coups_joker),
+        ind.passes,
+        ind.penalite_fin,
+    ]
 
 
 def _ecrire_csv(
@@ -601,6 +988,13 @@ def _ecrire_csv(
     **libellés de configuration** (``config_a.label()``) et non le seul nom de
     niveau : deux camps de même niveau mais de calibrage différent restent ainsi
     distinguables, y compris par :func:`_lire_csv` lors d'une comparaison.
+
+    Depuis l'issue #446, chaque ligne porte aussi, par joueur (préfixe ``a_``/
+    ``b_``, colonnes :data:`_COLONNES_STYLE`), les indicateurs de style de cette
+    partie — voir :func:`_valeurs_style_csv`. Ces colonnes s'ajoutent **après**
+    les six colonnes historiques : :func:`_lire_csv` continue de les lire par
+    position et ignore le reste, donc ``--comparer`` reste compatible avec les
+    CSV produits avant et après cet ajout.
     """
     with open(chemin, "w", newline="", encoding="utf-8") as fichier:
         ecrivain = csv.writer(fichier)
@@ -612,6 +1006,8 @@ def _ecrire_csv(
                 "vainqueur",
                 "a_commence",
                 "tours",
+                *(f"a_{suffixe}" for suffixe in _COLONNES_STYLE),
+                *(f"b_{suffixe}" for suffixe in _COLONNES_STYLE),
             ]
         )
         for r in resultats:
@@ -623,7 +1019,16 @@ def _ecrire_csv(
                 vainqueur = "nul"
             a_commence = label_a if r.commence == "a" else label_b
             ecrivain.writerow(
-                [r.graine, r.score_a, r.score_b, vainqueur, a_commence, r.tours]
+                [
+                    r.graine,
+                    r.score_a,
+                    r.score_b,
+                    vainqueur,
+                    a_commence,
+                    r.tours,
+                    *_valeurs_style_csv(r.indicateurs_a),
+                    *_valeurs_style_csv(r.indicateurs_b),
+                ]
             )
 
 
