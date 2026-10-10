@@ -130,6 +130,38 @@ class Joueur:
         return sum(valeur_lettre(jeton) for jeton in self.chevalet)
 
 
+@dataclass(frozen=True)
+class JournalDecisionIA:
+    """Journal de décision d'une action d'ordinateur, pour relecture a posteriori (issue #445).
+
+    Capturé uniquement pour juger après coup le style d'un joueur IA (voir
+    ``scripts/`` pour le script de relecture) : **jamais** affiché en jeu, ni
+    transmis à l'interface (``ui.jeu.etat_public``,
+    ``ui.jeu.serialiser_entree_historique`` n'y touchent pas — voir leurs
+    tests de confidentialité). N'influence en rien la sélection du coup : il
+    est construit en appelant :func:`~scrabble.moteur.ia.evaluer_coups` *en
+    plus* de :func:`~scrabble.moteur.ia.choisir_coup`, jamais à sa place.
+
+    ``chevalet_avant`` est le chevalet du joueur juste avant l'action (jokers
+    représentés par :data:`scrabble.regles.lettres.JOKER`, comme partout
+    ailleurs dans le moteur — donc déjà « reconnaissables »).
+
+    ``meilleurs`` donne les (au plus 5) meilleurs coups selon le score
+    stratégique ; ``coup_choisi`` est la fiche du coup réellement joué (même
+    s'il ne fait pas partie de ``meilleurs``) ; ``rang_choisi`` son rang parmi
+    ``nb_coups_possibles`` coups possibles (1 = meilleur). Pour une passe ou
+    un échange, ``coup_choisi`` et ``rang_choisi`` restent ``None`` ;
+    ``meilleurs``/``nb_coups_possibles`` reflètent les coups qui, malgré tout,
+    étaient disponibles (vides si aucun).
+    """
+
+    chevalet_avant: tuple[str, ...]
+    nb_coups_possibles: int
+    meilleurs: tuple[ia.AlternativeCoup, ...]
+    rang_choisi: int | None
+    coup_choisi: ia.AlternativeCoup | None
+
+
 @dataclass
 class EntreeHistorique:
     """Trace d'une action de tour, base d'un futur affichage/historique.
@@ -170,6 +202,7 @@ class EntreeHistorique:
     positions_posees: list[tuple[int, int]] = field(default_factory=list)
     lettres_piochees: list[str] = field(default_factory=list)
     score_cumule: int = 0
+    journal_ia: JournalDecisionIA | None = None
 
 
 def creer_partie(
@@ -437,13 +470,20 @@ class Partie:
 
     # -- Actions de tour ------------------------------------------------- #
 
-    def jouer_coup(self, coup: Coup) -> EntreeHistorique:
+    def jouer_coup(
+        self, coup: Coup, *, journal_ia: JournalDecisionIA | None = None
+    ) -> EntreeHistorique:
         """Fait poser ``coup`` par le joueur courant et passe au suivant.
 
         Valide le coup (:func:`valider_coup`), vérifie que les lettres nouvelles
         proviennent bien du chevalet, applique le coup, met à jour le score et
         le chevalet (retrait des lettres posées puis complément depuis le sac),
         consigne l'action et enchaîne (fin de partie ou joueur suivant).
+
+        ``journal_ia`` (issue #445) n'est renseigné que par
+        :meth:`jouer_tour_ia` ; un appelant humain (UI) ne le transmet jamais,
+        ``None`` par défaut reproduisant exactement le comportement d'avant
+        son introduction.
 
         :raises CoupInvalide: si le placement est illégal.
         :raises ActionInvalide: si la partie est terminée ou si les lettres du
@@ -471,6 +511,7 @@ class Partie:
             detail=detail,
             positions_posees=nouvelles,
             lettres_piochees=piochees,
+            journal_ia=journal_ia,
         )
         if self.sac.est_vide() and not joueur.chevalet:
             self._terminer(MOTIF_CHEVALET_VIDE)
@@ -478,19 +519,26 @@ class Partie:
             self._avancer()
         return entree
 
-    def passer(self) -> EntreeHistorique:
-        """Fait passer le joueur courant ; termine si tous passent d'affilée."""
+    def passer(
+        self, *, journal_ia: JournalDecisionIA | None = None
+    ) -> EntreeHistorique:
+        """Fait passer le joueur courant ; termine si tous passent d'affilée.
+
+        ``journal_ia`` : voir :meth:`jouer_coup`.
+        """
         self._assurer_en_cours()
         joueur = self.joueur_courant()
         self.passes_consecutives += 1
-        entree = self._enregistrer(joueur, ACTION_PASSE)
+        entree = self._enregistrer(joueur, ACTION_PASSE, journal_ia=journal_ia)
         if self.passes_consecutives >= len(self.joueurs):
             self._terminer(MOTIF_BLOCAGE)
         else:
             self._avancer()
         return entree
 
-    def echanger(self, jetons: list[str]) -> EntreeHistorique:
+    def echanger(
+        self, jetons: list[str], *, journal_ia: JournalDecisionIA | None = None
+    ) -> EntreeHistorique:
         """Échange ``jetons`` du chevalet courant contre de nouveaux du sac.
 
         L'échange n'est possible que si le sac contient au moins autant de
@@ -498,6 +546,8 @@ class Partie:
         les anciens dans le sac (on ne repioche pas ses propres lettres). Un
         échange n'est pas une passe : il remet à zéro le compteur de passes
         consécutives.
+
+        ``journal_ia`` : voir :meth:`jouer_coup`.
 
         :raises ActionInvalide: partie terminée, liste vide, lettres absentes du
             chevalet, ou sac trop pauvre.
@@ -526,6 +576,7 @@ class Partie:
             ACTION_ECHANGE,
             lettres_echangees=len(jetons),
             jetons_echanges=list(jetons),
+            journal_ia=journal_ia,
         )
         self._avancer()
         return entree
@@ -554,6 +605,15 @@ class Partie:
         renseigne ce paramètre encore (pas de personnage sélectionnable, voir
         :attr:`Joueur.personnage`).
 
+        Journal de décision (issue #445) : le chevalet du joueur juste avant
+        l'action et les meilleurs coups qu'il avait sont capturés via
+        :func:`~scrabble.moteur.ia.evaluer_coups`, appelé **après**
+        :func:`~scrabble.moteur.ia.choisir_coup` (jamais à sa place) — sans
+        incidence sur le coup choisi ni sur la consommation du générateur
+        aléatoire, puisque c'est une fonction pure, sans aléa, qui ne fait que
+        retrier les mêmes coups générés. Transmis à :meth:`jouer_coup` /
+        :meth:`passer` pour être consigné dans l'historique.
+
         :raises ActionInvalide: si le joueur courant est humain, n'a pas de
             niveau défini, ou la partie est finie.
         """
@@ -568,6 +628,7 @@ class Partie:
                 f"Le joueur IA {joueur.nom!r} n'a pas de niveau défini."
             )
         dictionnaire_ia = self.dictionnaires_ia.get(joueur.niveau, self.dictionnaire)
+        chevalet_avant = tuple(joueur.chevalet)
         if profil is None:
             coup = ia.choisir_coup(
                 self.plateau, joueur.chevalet, dictionnaire_ia, joueur.niveau
@@ -580,9 +641,34 @@ class Partie:
                 joueur.niveau,
                 profil=profil,
             )
+        # ``evaluer_coups`` exige un Trie complet (attribut ``racine`` du
+        # protocole ``TrieProtocol``, voir ``generateur.py``) : certains tests
+        # substituent au dictionnaire un double minimal n'exposant que
+        # ``contient`` (p. ex. ``tests._aides_test_jeu._DicoFactice``), prévu
+        # pour fonctionner tant que ``choisir_coup`` lui-même reste
+        # monkeypatché et n'appelle jamais ``generer_coups``. Le journal est
+        # alors simplement absent plutôt qu'en erreur.
+        if hasattr(dictionnaire_ia, "racine"):
+            evaluation = ia.evaluer_coups(
+                self.plateau,
+                list(chevalet_avant),
+                dictionnaire_ia,
+                joueur.niveau,
+                profil=profil,
+                coup_choisi=coup,
+            )
+        else:
+            evaluation = ia.EvaluationCoupsIA()
+        journal = JournalDecisionIA(
+            chevalet_avant=chevalet_avant,
+            nb_coups_possibles=evaluation.nb_coups_possibles,
+            meilleurs=evaluation.meilleurs,
+            rang_choisi=evaluation.rang_choisi,
+            coup_choisi=evaluation.coup_choisi,
+        )
         if coup is None:
-            return self.passer()
-        return self.jouer_coup(coup)
+            return self.passer(journal_ia=journal)
+        return self.jouer_coup(coup, journal_ia=journal)
 
     def jouer_tours_ia(self) -> list[EntreeHistorique]:
         """Enchaîne automatiquement les tours des IA jusqu'à un humain ou la fin.
@@ -637,6 +723,7 @@ class Partie:
         jetons_echanges: list[str] | None = None,
         positions_posees: list[tuple[int, int]] | None = None,
         lettres_piochees: list[str] | None = None,
+        journal_ia: JournalDecisionIA | None = None,
     ) -> EntreeHistorique:
         entree = EntreeHistorique(
             index_joueur=self.index_courant,
@@ -649,6 +736,7 @@ class Partie:
             positions_posees=list(positions_posees) if positions_posees else [],
             lettres_piochees=list(lettres_piochees) if lettres_piochees else [],
             score_cumule=joueur.score,
+            journal_ia=journal_ia,
         )
         self.historique.append(entree)
         return entree

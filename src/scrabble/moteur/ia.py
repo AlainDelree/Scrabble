@@ -375,6 +375,47 @@ def _score_strategique(
     return cn.score + ajustement
 
 
+def _trier_par_score_strategique(
+    coups: list[CoupNote],
+    niveau: Niveau,
+    chevalet: Sequence[str],
+    profil: ProfilPersonnage | None,
+) -> list[tuple[CoupNote, int]]:
+    """Trie ``coups`` par score stratégique décroissant (leave value incluse).
+
+    Fonction pure, sans aléa : factorise le tri en deux passes (sans puis avec
+    reliquat, issue #395) utilisé à la fois par la sélection réelle
+    (:func:`choisir_coup`) et par l'évaluation a posteriori du journal de
+    décision (:func:`evaluer_coups`, issue #445) — les deux appels restent
+    ainsi trivialement en phase, sans dupliquer la logique de tri.
+
+    Renvoie la liste triée de paires ``(coup, score_stratégique)``.
+    """
+    coups = sorted(
+        coups,
+        key=lambda cn: _score_strategique(cn, niveau, profil=profil),
+        reverse=True,
+    )
+
+    def _lettres_restantes(cn: CoupNote) -> list[str]:
+        restantes = list(chevalet)
+        for lettre in cn.lettres_du_chevalet:
+            restantes.remove(lettre)
+        return restantes
+
+    coups = sorted(
+        coups,
+        key=lambda cn: _score_strategique(
+            cn, niveau, _lettres_restantes(cn), profil=profil
+        ),
+        reverse=True,
+    )
+    return [
+        (cn, _score_strategique(cn, niveau, _lettres_restantes(cn), profil=profil))
+        for cn in coups
+    ]
+
+
 def choisir_coup(
     plateau: PlateauPartie,
     chevalet: list[str],
@@ -385,14 +426,11 @@ def choisir_coup(
 ) -> Coup | None:
     """Choisit un coup selon le niveau IA, ou None pour passer.
 
-    Le tri par score stratégique (:func:`_score_strategique`) est fait en
-    deux passes : une première passe sans reliquat, puis une seconde qui
-    calcule, pour chaque coup, les lettres restant au chevalet une fois ce
+    Le tri par score stratégique (:func:`_trier_par_score_strategique`) est
+    fait en deux passes : une première passe sans reliquat, puis une seconde
+    qui calcule, pour chaque coup, les lettres restant au chevalet une fois ce
     coup joué (chevalet moins :attr:`~scrabble.moteur.generateur.CoupNote.lettres_du_chevalet`)
     et relance le tri avec ce score enrichi de la leave value (issue #395).
-    Le reliquat dépendant de chaque coup individuellement, il ne peut pas
-    être calculé une fois pour toute la liste — d'où la lambda qui le
-    recalcule à la volée pour chaque comparaison.
 
     Args:
         plateau: État courant du plateau de jeu.
@@ -414,35 +452,117 @@ def choisir_coup(
 
     rng = alea if alea is not None else random.Random()
 
-    coups = sorted(
-        coups,
-        key=lambda cn: _score_strategique(cn, niveau, profil=profil),
-        reverse=True,
-    )
-
-    def _lettres_restantes(cn: CoupNote) -> list[str]:
-        restantes = list(chevalet)
-        for lettre in cn.lettres_du_chevalet:
-            restantes.remove(lettre)
-        return restantes
-
-    coups = sorted(
-        coups,
-        key=lambda cn: _score_strategique(
-            cn, niveau, _lettres_restantes(cn), profil=profil
-        ),
-        reverse=True,
-    )
+    coups_tries = [
+        cn for cn, _ in _trier_par_score_strategique(coups, niveau, chevalet, profil)
+    ]
 
     if niveau in (Niveau.AVANCE, Niveau.CHAMPION_DU_MONDE):
-        return _choisir_avance(coups, rng)
+        return _choisir_avance(coups_tries, rng)
     if niveau == Niveau.EXPERT:
-        return _choisir_top5(coups, rng)
+        return _choisir_top5(coups_tries, rng)
     if niveau == Niveau.INTERMEDIAIRE:
-        return _choisir_intermediaire(coups, rng)
+        return _choisir_intermediaire(coups_tries, rng)
     if niveau == Niveau.FACILE:
-        return _choisir_facile(coups, rng)
-    return _choisir_debutant(coups, rng)
+        return _choisir_facile(coups_tries, rng)
+    return _choisir_debutant(coups_tries, rng)
+
+
+@dataclass(frozen=True)
+class AlternativeCoup:
+    """Un coup alternatif pour le journal de décision IA (issue #445).
+
+    ``direction`` est la valeur de :class:`~scrabble.moteur.plateau_partie.Direction`
+    (``"H"``/``"V"``), pas l'enum lui-même, pour rester trivialement
+    sérialisable (JSON).
+    """
+
+    mot: str
+    ligne: int
+    colonne: int
+    direction: str
+    score_reel: int
+    score_strategique: int
+
+
+@dataclass(frozen=True)
+class EvaluationCoupsIA:
+    """Résultat PUR (sans aléa) de l'évaluation de tous les coups possibles.
+
+    Produit uniquement par :func:`evaluer_coups`, jamais par
+    :func:`choisir_coup` — sert uniquement à documenter, après coup, ce que
+    l'IA avait comme options (journal de décision, issue #445). Les deux
+    fonctions sont indépendantes : appeler ou non ``evaluer_coups`` n'a aucune
+    incidence sur ce que ``choisir_coup`` renvoie ni sur sa consommation du
+    générateur aléatoire.
+    """
+
+    nb_coups_possibles: int = 0
+    meilleurs: tuple[AlternativeCoup, ...] = ()
+    rang_choisi: int | None = None
+    coup_choisi: AlternativeCoup | None = None
+
+
+def _construire_alternative(cn: CoupNote, score_strategique: int) -> AlternativeCoup:
+    mot = "".join(tuile.lettre for tuile in cn.coup.tuiles)
+    return AlternativeCoup(
+        mot=mot,
+        ligne=cn.coup.ligne,
+        colonne=cn.coup.colonne,
+        direction=cn.coup.direction.value,
+        score_reel=cn.score,
+        score_strategique=score_strategique,
+    )
+
+
+def evaluer_coups(
+    plateau: PlateauPartie,
+    chevalet: list[str],
+    dictionnaire: "TrieProtocol",
+    niveau: Niveau,
+    profil: ProfilPersonnage | None = None,
+    coup_choisi: Coup | None = None,
+    limite: int = 5,
+) -> EvaluationCoupsIA:
+    """Évalue tous les coups possibles, pour le journal de décision (issue #445).
+
+    Fonction PURE et SANS ALÉA : ne choisit rien, ne consomme aucun générateur
+    aléatoire. Destinée à être appelée **en plus** de :func:`choisir_coup`
+    (jamais à sa place, jamais avant lui), avec le ``coup`` qu'il a réellement
+    renvoyé (``coup_choisi``), pour retrouver son rang parmi les coups générés
+    et triés par score stratégique — sans que cet appel supplémentaire
+    n'influence en rien la sélection réelle.
+
+    Renvoie un :class:`EvaluationCoupsIA` avec, au plus, ``limite`` meilleurs
+    coups (:attr:`~EvaluationCoupsIA.meilleurs`) et, si ``coup_choisi`` est
+    fourni et figure parmi les coups générés, son rang (1 = meilleur,
+    :attr:`~EvaluationCoupsIA.rang_choisi`) et sa fiche
+    (:attr:`~EvaluationCoupsIA.coup_choisi`) — même s'il ne fait pas partie du
+    top ``limite``. ``coup_choisi=None`` (passe, ou aucun coup généré) laisse
+    les deux à leur valeur par défaut.
+    """
+    coups = generer_coups(plateau, chevalet, dictionnaire)
+    resultat = EvaluationCoupsIA(nb_coups_possibles=len(coups))
+    if not coups:
+        return resultat
+
+    coups_scores = _trier_par_score_strategique(coups, niveau, chevalet, profil)
+    resultat = EvaluationCoupsIA(
+        nb_coups_possibles=len(coups_scores),
+        meilleurs=tuple(
+            _construire_alternative(cn, score) for cn, score in coups_scores[:limite]
+        ),
+    )
+    if coup_choisi is not None:
+        for indice, (cn, score) in enumerate(coups_scores):
+            if cn.coup == coup_choisi:
+                resultat = EvaluationCoupsIA(
+                    nb_coups_possibles=resultat.nb_coups_possibles,
+                    meilleurs=resultat.meilleurs,
+                    rang_choisi=indice + 1,
+                    coup_choisi=_construire_alternative(cn, score),
+                )
+                break
+    return resultat
 
 
 def _choisir_avance(coups: list[CoupNote], rng: random.Random) -> Coup:

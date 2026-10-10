@@ -54,12 +54,13 @@ from pathlib import Path
 from typing import Iterator
 
 from scrabble.config import RACINE_DONNEES_UTILISATEUR
-from scrabble.moteur.ia import Niveau
+from scrabble.moteur.ia import AlternativeCoup, Niveau
 from scrabble.moteur.partie import (
     ACTION_COUP,
     ACTION_ECHANGE,
     ACTION_PASSE,
     EntreeHistorique,
+    JournalDecisionIA,
     Joueur,
     Partie,
 )
@@ -194,6 +195,77 @@ def _detail_depuis_json(texte: str) -> DetailScore:
     )
 
 
+def _alternative_vers_dict(alt: AlternativeCoup) -> dict:
+    return {
+        "mot": alt.mot,
+        "ligne": alt.ligne,
+        "colonne": alt.colonne,
+        "direction": alt.direction,
+        "score_reel": alt.score_reel,
+        "score_strategique": alt.score_strategique,
+    }
+
+
+def _alternative_depuis_dict(donnees: dict) -> AlternativeCoup:
+    return AlternativeCoup(
+        mot=donnees["mot"],
+        ligne=donnees["ligne"],
+        colonne=donnees["colonne"],
+        direction=donnees["direction"],
+        score_reel=donnees["score_reel"],
+        score_strategique=donnees["score_strategique"],
+    )
+
+
+def _journal_ia_vers_json(journal: JournalDecisionIA | None) -> str | None:
+    """Sérialise le journal de décision IA (issue #445), ``None`` si absent.
+
+    Absent pour une action humaine, ou pour une ancienne partie enregistrée
+    avant cette fonctionnalité (voir la colonne ``journal_ia``, facultative,
+    de la table ``actions``).
+    """
+    if journal is None:
+        return None
+    return json.dumps(
+        {
+            "chevalet_avant": list(journal.chevalet_avant),
+            "nb_coups_possibles": journal.nb_coups_possibles,
+            "meilleurs": [_alternative_vers_dict(a) for a in journal.meilleurs],
+            "rang_choisi": journal.rang_choisi,
+            "coup_choisi": (
+                None
+                if journal.coup_choisi is None
+                else _alternative_vers_dict(journal.coup_choisi)
+            ),
+        },
+        ensure_ascii=False,
+    )
+
+
+def _journal_ia_depuis_json(texte: str | None) -> JournalDecisionIA | None:
+    """Reconstruit le journal de décision IA depuis sa forme JSON (issue #445).
+
+    ``None`` si ``texte`` est ``None`` — colonne absente (ancienne sauvegarde)
+    ou action humaine.
+    """
+    if texte is None:
+        return None
+    donnees = json.loads(texte)
+    return JournalDecisionIA(
+        chevalet_avant=tuple(donnees["chevalet_avant"]),
+        nb_coups_possibles=donnees["nb_coups_possibles"],
+        meilleurs=tuple(
+            _alternative_depuis_dict(a) for a in donnees["meilleurs"]
+        ),
+        rang_choisi=donnees["rang_choisi"],
+        coup_choisi=(
+            None
+            if donnees["coup_choisi"] is None
+            else _alternative_depuis_dict(donnees["coup_choisi"])
+        ),
+    )
+
+
 def _joueurs_vers_json(joueurs: list[Joueur]) -> str:
     return json.dumps(
         [
@@ -267,6 +339,7 @@ def _initialiser_schema(connexion: sqlite3.Connection) -> None:
             detail           TEXT,
             lettres_echangees INTEGER NOT NULL DEFAULT 0,
             score_cumule     INTEGER NOT NULL DEFAULT 0,
+            journal_ia       TEXT,
             FOREIGN KEY (id_partie) REFERENCES parties(id),
             UNIQUE (id_partie, indice)
         );
@@ -286,6 +359,16 @@ def _initialiser_schema(connexion: sqlite3.Connection) -> None:
             "ALTER TABLE parties ADD COLUMN "
             "mode_belgicisme INTEGER NOT NULL DEFAULT 0"
         )
+    # Migration (issue #445) : ajoute la colonne facultative ``journal_ia`` aux
+    # bases créées avant cette fonctionnalité. ``NULL`` pour toutes les actions
+    # déjà enregistrées (comportement voulu : ces anciennes parties n'ont
+    # jamais eu de journal, voir :func:`_journal_ia_depuis_json`), le ``CREATE
+    # TABLE`` ci-dessus couvrant déjà les bases toutes neuves.
+    colonnes_actions = [
+        row[1] for row in connexion.execute("PRAGMA table_info(actions)").fetchall()
+    ]
+    if "journal_ia" not in colonnes_actions:
+        connexion.execute("ALTER TABLE actions ADD COLUMN journal_ia TEXT")
     connexion.commit()
 
 
@@ -359,6 +442,7 @@ def enregistrer_action(
         if entree.jetons_echanges
         else None
     )
+    journal_json = _journal_ia_vers_json(entree.journal_ia)
     with _connexion(chemin) as connexion:
         (indice_suivant,) = connexion.execute(
             "SELECT COUNT(*) FROM actions WHERE id_partie = ?", (id_partie,)
@@ -366,8 +450,8 @@ def enregistrer_action(
         connexion.execute(
             "INSERT INTO actions "
             "(id_partie, indice, index_joueur, nom_joueur, type_action, coup, "
-            " jetons_echanges, detail, lettres_echangees, score_cumule) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " jetons_echanges, detail, lettres_echangees, score_cumule, journal_ia) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 id_partie,
                 indice_suivant,
@@ -379,6 +463,7 @@ def enregistrer_action(
                 detail_json,
                 entree.lettres_echangees,
                 entree.score_cumule,
+                journal_json,
             ),
         )
         connexion.execute(
@@ -633,3 +718,134 @@ def _reconstruire_joueurs(config: list[dict]) -> list[Joueur]:
             )
         )
     return joueurs
+
+
+# --------------------------------------------------------------------------- #
+# Lecture seule pour le script de relecture (issue #445)
+# --------------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class ActionJournalisee:
+    """Une ligne de la table ``actions``, telle que stockée (issue #445).
+
+    Destinée au script de relecture (``scripts/relire_journal_ia.py``) : pas
+    de rejeu de partie, lecture directe des colonnes. ``journal_ia`` vaut
+    ``None`` pour une action humaine, ou pour une partie enregistrée avant
+    cette fonctionnalité (voir :func:`_journal_ia_depuis_json`).
+    """
+
+    indice: int
+    index_joueur: int
+    nom_joueur: str
+    action: str
+    coup: Coup | None
+    detail: DetailScore | None
+    jetons_echanges: list[str]
+    journal_ia: JournalDecisionIA | None
+
+
+@dataclass(frozen=True)
+class ConfigurationPartie:
+    """En-tête d'une partie stockée : graine et configuration des joueurs.
+
+    ``joueurs`` reprend le format de :func:`_joueurs_depuis_json` (``nom``,
+    ``humain``, ``niveau``, ``personnage``, ``personnage_aleatoire``).
+    """
+
+    graine: int
+    joueurs: list[dict]
+
+
+def _connexion_lecture_seule(chemin: _TypeChemin) -> sqlite3.Connection:
+    """Ouvre ``chemin`` en lecture seule, sans jamais créer ni migrer le schéma.
+
+    Contrairement à :func:`_connexion` (utilisée par le jeu lui-même), cette
+    fonction ne doit **jamais** écrire sur disque : le script de relecture
+    (issue #445) n'a besoin d'aucune garantie d'écriture, et ouvrir en lecture
+    seule permet de consulter une base pendant qu'une partie y est encore
+    suivie par le jeu, sans risque de corruption ni de verrou concurrent.
+
+    :raises FileNotFoundError: si ``chemin`` n'existe pas.
+    """
+    chemin = Path(chemin)
+    if not chemin.exists():
+        raise FileNotFoundError(f"Base introuvable : {chemin}")
+    connexion = sqlite3.connect(f"file:{chemin.resolve().as_posix()}?mode=ro", uri=True)
+    connexion.row_factory = sqlite3.Row
+    return connexion
+
+
+def lire_configuration_partie(
+    id_partie: int, chemin: _TypeChemin = CHEMIN_DEFAUT
+) -> ConfigurationPartie:
+    """Lit, en lecture seule, la graine et la configuration des joueurs d'une partie.
+
+    :raises KeyError: si aucune partie ne porte cet identifiant.
+    """
+    connexion = _connexion_lecture_seule(chemin)
+    try:
+        ligne = connexion.execute(
+            "SELECT graine, joueurs FROM parties WHERE id = ?", (id_partie,)
+        ).fetchone()
+    finally:
+        connexion.close()
+    if ligne is None:
+        raise KeyError(f"Aucune partie d'identifiant {id_partie}.")
+    return ConfigurationPartie(
+        graine=ligne["graine"],
+        joueurs=_joueurs_depuis_json(ligne["joueurs"]),
+    )
+
+
+def lire_actions_journalisees(
+    id_partie: int, chemin: _TypeChemin = CHEMIN_DEFAUT
+) -> list[ActionJournalisee]:
+    """Lit, en lecture seule, toutes les actions d'une partie, journal inclus.
+
+    Aucun rejeu : chaque colonne stockée est simplement décodée, dans l'ordre
+    chronologique (``indice`` croissant). Destinée au script de relecture
+    (``scripts/relire_journal_ia.py``, issue #445).
+
+    Fonctionne aussi sur une base **jamais rouverte en écriture** depuis
+    l'ajout de la colonne ``journal_ia`` (issue #445) : contrairement à
+    :func:`_connexion` (toujours utilisée par le jeu, qui migre le schéma à
+    chaque ouverture), cette fonction ouvre en lecture seule et ne migre
+    jamais rien — elle vérifie donc elle-même si la colonne existe et s'en
+    passe sinon (``journal_ia`` vaudra ``None`` pour toutes les actions,
+    comme pour une vieille partie jamais journalisée).
+
+    :raises KeyError: si aucune partie ne porte cet identifiant.
+    """
+    connexion = _connexion_lecture_seule(chemin)
+    try:
+        if connexion.execute(
+            "SELECT 1 FROM parties WHERE id = ?", (id_partie,)
+        ).fetchone() is None:
+            raise KeyError(f"Aucune partie d'identifiant {id_partie}.")
+        colonnes = [
+            row[1] for row in connexion.execute("PRAGMA table_info(actions)").fetchall()
+        ]
+        colonne_journal = "journal_ia" if "journal_ia" in colonnes else "NULL AS journal_ia"
+        lignes = connexion.execute(
+            "SELECT indice, index_joueur, nom_joueur, type_action, coup, "
+            f"jetons_echanges, detail, {colonne_journal} FROM actions "
+            "WHERE id_partie = ? ORDER BY indice ASC",
+            (id_partie,),
+        ).fetchall()
+    finally:
+        connexion.close()
+    return [
+        ActionJournalisee(
+            indice=ligne["indice"],
+            index_joueur=ligne["index_joueur"],
+            nom_joueur=ligne["nom_joueur"],
+            action=ligne["type_action"],
+            coup=coup_depuis_json(ligne["coup"]) if ligne["coup"] else None,
+            detail=_detail_depuis_json(ligne["detail"]) if ligne["detail"] else None,
+            jetons_echanges=(
+                json.loads(ligne["jetons_echanges"]) if ligne["jetons_echanges"] else []
+            ),
+            journal_ia=_journal_ia_depuis_json(ligne["journal_ia"]),
+        )
+        for ligne in lignes
+    ]
