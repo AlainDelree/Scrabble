@@ -103,6 +103,19 @@ personnage (:attr:`ProfilPersonnage.mots_favoris`), avec une différence : ces
 coups sont ajoutés au pool de tirage même s'ils sont absents de la tranche
 elle-même (voir :func:`_tirer_dans_tranche`) — un mot favori peu rémunérateur
 pourrait sinon en être exclu d'office, en particulier à DEBUTANT.
+
+Bonus de mot favori sur le score stratégique (issue #454, lot K)
+------------------------------------------------------------------
+Le tirage pondéré ci-dessus n'a par construction aucun effet sur AVANCE et
+CHAMPION_DU_MONDE (meilleur coup, jamais de tirage dans une tranche) : un
+personnage à liste de mots favoris disponible à ces niveaux a donc besoin
+d'un levier différent pour que son style s'y voie.
+:attr:`ProfilPersonnage.bonus_favori` ajoute une constante au score
+stratégique (:func:`_score_strategique`) des coups dont le mot principal est
+un mot favori — agit à TOUS les niveaux, y compris AVANCE et
+CHAMPION_DU_MONDE, puisqu'il intervient avant le tri par score plutôt
+qu'après. Neutre par défaut (``None``, traité comme 0) et sans effet tant que
+``mots_favoris`` est vide.
 """
 
 from __future__ import annotations
@@ -457,6 +470,18 @@ class ProfilPersonnage:
     l'introduction de ce champ). Garde-fou (voir :func:`_generer_coups_candidats`) :
     si le filtre ne laisse plus aucun coup candidat, il est ignoré pour ce
     tour plutôt que de forcer une passe.
+
+    ``bonus_favori`` (issue #454, lot K) généralise ``bonus_scrabble`` au
+    même critère de LISTE que ``mots_favoris``/``poids_tirage_favori`` :
+    ajoute une constante au score stratégique (:func:`_score_strategique`)
+    des coups dont le **mot principal** figure dans ``mots_favoris``. Seul
+    champ de ce module qui agit sur le score à TOUS les niveaux, y compris
+    AVANCE et CHAMPION_DU_MONDE (meilleur coup) — nécessaire pour un
+    personnage comme Lettré, disponible à ces niveaux, puisque
+    ``poids_tirage_favori`` n'y a aucun effet (pas de tirage dans une
+    tranche). Neutre par défaut (``None``, traité comme 0 : aucun ajustement,
+    comportement identique à avant l'introduction de ce champ) et sans effet
+    tant que ``mots_favoris`` est vide, quelle que soit sa valeur.
     """
 
     malus_longueur: int | None = None
@@ -469,6 +494,7 @@ class ProfilPersonnage:
     mots_favoris: frozenset[str] | None = None
     poids_tirage_favori: float | None = None
     part_vocabulaire_court: float | None = None
+    bonus_favori: int | None = None
 
 
 def _score_strategique(
@@ -514,11 +540,19 @@ def _score_strategique(
     (:data:`_SEUIL_BONUS_SCRABBLE`). Sans réglage de production à surcharger
     (contrairement aux trois précédents), il vaut 0 par défaut — neutre pour
     tous les niveaux tant qu'aucun personnage ne le renseigne.
+
+    Un cinquième ajustement, du même type que le quatrième (porté uniquement
+    par ``profil``, issue #454, lot K) : :attr:`ProfilPersonnage.bonus_favori`
+    ajoute une constante au score des coups dont le mot principal figure dans
+    :attr:`ProfilPersonnage.mots_favoris`. Vaut 0 par défaut — neutre tant
+    qu'aucun personnage ne renseigne les deux champs à la fois.
     """
     malus_longueur = _MALUS_LONGUEUR[niveau]
     bonus_premium = _BONUS_PREMIUM[niveau]
     poids_leave = _POIDS_LEAVE[niveau]
     bonus_scrabble = 0
+    bonus_favori = 0
+    mots_favoris = None
     if profil is not None:
         if profil.malus_longueur is not None:
             malus_longueur = profil.malus_longueur
@@ -528,6 +562,9 @@ def _score_strategique(
             poids_leave = profil.poids_leave
         if profil.bonus_scrabble is not None:
             bonus_scrabble = profil.bonus_scrabble
+        if profil.bonus_favori is not None:
+            bonus_favori = profil.bonus_favori
+        mots_favoris = profil.mots_favoris
 
     ajustement = 0
 
@@ -553,6 +590,9 @@ def _score_strategique(
 
     if cn.nb_nouvelles == _SEUIL_BONUS_SCRABBLE:
         ajustement += bonus_scrabble
+
+    if bonus_favori and mots_favoris and _mot_principal(cn.coup) in mots_favoris:
+        ajustement += bonus_favori
 
     return cn.score + ajustement
 

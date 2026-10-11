@@ -245,6 +245,79 @@ seulement, même prudence que les autres personnages). Avec Titeuf, Débutant
 compte maintenant deux personnages réels (Classique + Titeuf) : la règle déjà
 en place (:func:`aleatoire_disponible_a_niveau`) rend Aléatoire de nouveau
 disponible à ce niveau, sans aucune autre modification.
+
+Personnage Lettré
+------------------
+Connaît des mots que presque personne n'utilise et les place avec fierté,
+même quand un mot plus simple rapporterait autant. Reprend EXACTEMENT le
+mécanisme de Titeuf (issue #452, lot J) avec sa propre liste — une LISTE de
+mots différente, choisie pour son caractère rare/littéraire plutôt que
+cour de récré, rien à généraliser dans le code puisque Titeuf l'avait déjà
+fait au bon niveau de généralité (liste quelconque, pas « liste de mots de
+cour de récré ») :
+
+* :attr:`~scrabble.moteur.ia.ProfilPersonnage.mots_favoris` chargée depuis
+  :data:`CHEMIN_MOTS_FAVORIS_LETTRE` (:func:`charger_mots_favoris`, même
+  fonction que Titeuf). Liste de départ (fournie par Alain, voir
+  ``data/personnages/lettre_mots_favoris.txt``) : des mots rares/littéraires
+  croisés depuis Lexique 3 (``Lexique383.tsv``) avec l'ODS8, sans filtrage
+  mécanique d'un critère de rareté — c'est la liste elle-même, choisie à la
+  main, qui définit ce qu'est un « mot rare » pour ce personnage. Un mot
+  absent du lexique complet installé n'est filtré par AUCUN code dédié,
+  exactement comme pour Titeuf.
+
+Différence essentielle avec Titeuf (issue #454, lot K) : le tirage pondéré
+de Titeuf (:attr:`~scrabble.moteur.ia.ProfilPersonnage.poids_tirage_favori`)
+n'a aucun effet sur AVANCE et CHAMPION_DU_MONDE, qui jouent toujours leur
+meilleur coup — un mot favori n'y serait donc joué que s'il l'est déjà par
+hasard, sans aucun style perceptible. Lettré a donc besoin d'un second
+levier, nouveau (issue #454, lot K), qui agit lui AVANT le tri par score
+plutôt qu'après, donc à tous les niveaux :
+
+* :attr:`~scrabble.moteur.ia.ProfilPersonnage.bonus_favori` =
+  :data:`BONUS_FAVORI_LETTRE` = 40 : ajoute cette constante au score
+  stratégique (:func:`scrabble.moteur.ia._score_strategique`) des coups dont
+  le mot principal est un mot favori — voir la docstring du module
+  ``scrabble.moteur.ia`` pour le détail du calcul. Neutre par défaut
+  (``None``, traité comme 0), sans effet sur aucun autre personnage ni sur
+  Titeuf (qui ne renseigne pas ce champ).
+
+  Calcul justifiant 40 (valeur demandée par l'issue #454, le dictionnaire
+  réel n'étant pas disponible dans ce worktree isolé pour la mesurer par
+  parties jouées comme Alain le fera avec
+  ``scripts/mesurer_force_niveaux.py``) : par analogie avec l'échelle déjà en
+  production de :data:`scrabble.moteur.ia._BONUS_PREMIUM` (3 à DEBUTANT,
+  jusqu'à 20 à EXPERT/CHAMPION_DU_MONDE) et de
+  :data:`scrabble.moteur.ia._MALUS_LONGUEUR` (jusqu'à -25) — les deux plus
+  gros écarts que le score stratégique absorbe déjà en production à ces
+  niveaux. 40, environ le double du plus haut bonus premium de production
+  (20), suffit à faire gagner un mot favori à score brut comparable ou
+  légèrement inférieur à celui d'un concurrent sans être pour autant
+  écrasant : un coup nettement meilleur (par exemple posant une case
+  MOT_TRIPLE, bonus 20, cumulé à un score brut supérieur de plus de 40
+  points) continue de l'emporter, pour que Lettré reste reconnaissable sans
+  cesser d'être un joueur de son niveau. À ajuster par Alain après mesure
+  réelle (part de coups sur mot favori et écart de score contre Classique au
+  même niveau), comme les autres valeurs de départ de ce module.
+
+Le tirage pondéré (``poids_tirage_favori``) n'est volontairement PAS
+renseigné pour Lettré : seul EXPERT, parmi ses niveaux de disponibilité,
+tire au hasard dans une tranche (top 5 %) — AVANCE et CHAMPION_DU_MONDE n'en
+tireraient aucun bénéfice — et ``bonus_favori`` suffit déjà, à ce niveau, à
+faire remonter un mot favori suffisamment bien noté dans cette tranche
+étroite ; à ajouter si une mesure réelle montre que ça ne suffit pas à
+EXPERT.
+
+Disponibilité (issue #454, lot K, provisoire) : :data:`NIVEAUX_LETTRE`
+(Avancé, Expert et Champion du monde — les niveaux qui jouent déjà sur un
+vocabulaire suffisamment riche pour que des mots rares y apparaissent
+naturellement, et où ``bonus_favori`` a un effet direct puisqu'ils trient
+par score) et :data:`NB_JOUEURS_LETTRE` (deux joueurs seulement, même
+prudence que les autres personnages). Alain ajustera ces niveaux après
+mesure. Avec Lettré, Avancé, Expert et Champion du monde comptent chacun
+trois personnages réels ou plus (au moins Classique + Chasseur de
+scrabbles/Opportuniste selon le niveau + Lettré) : Aléatoire y reste
+disponible, sans aucune autre modification (règle déjà en place).
 """
 
 from __future__ import annotations
@@ -300,6 +373,14 @@ POIDS_LEAVE_CHASSEUR_SCRABBLES: float | None = None
 #: de départ de l'issue #451, à Intermédiaire où le lot H bis ne se voyait
 #: pas).
 POIDS_TIRAGE_SCRABBLE_CHASSEUR: float | None = 5.0
+
+#: Bonus de mot favori du personnage Lettré (issue #454, lot K, champ
+#: :attr:`~scrabble.moteur.ia.ProfilPersonnage.bonus_favori`) : valeur de
+#: départ demandée par l'issue, voir la docstring du module pour le calcul
+#: complet la justifiant par analogie avec l'échelle de
+#: :data:`scrabble.moteur.ia._BONUS_PREMIUM` — à ajuster par Alain après
+#: mesure réelle avec ``scripts/mesurer_force_niveaux.py``.
+BONUS_FAVORI_LETTRE = 40
 
 #: Part des mots de 7 lettres et plus du lexique complet (hors vocabulaire
 #: du niveau) connue du personnage Chasseur de scrabbles, par niveau (issue
@@ -390,6 +471,30 @@ NIVEAUX_TITEUF: frozenset[Niveau] = frozenset({Niveau.DEBUTANT})
 #: joueurs seulement, même prudence que les autres personnages (voir
 #: :data:`NB_JOUEURS_OPPORTUNISTE`).
 NB_JOUEURS_TITEUF: frozenset[int] = frozenset({2})
+
+#: Chemin de la liste de mots favoris du Lettré (issue #454, lot K) : même
+#: principe que :data:`CHEMIN_MOTS_FAVORIS_TITEUF`, fichier distinct, fourni
+#: par Alain (voir la docstring du module).
+CHEMIN_MOTS_FAVORIS_LETTRE: Path = DOSSIER_PERSONNAGES / "lettre_mots_favoris.txt"
+
+#: Mots favoris du Lettré, chargés une fois au chargement de ce module
+#: (issue #454, lot K) — liste indépendante de :data:`MOTS_FAVORIS_TITEUF`,
+#: modifier l'un des deux fichiers n'affecte jamais l'autre personnage.
+MOTS_FAVORIS_LETTRE: frozenset[str] = charger_mots_favoris(CHEMIN_MOTS_FAVORIS_LETTRE)
+
+#: Prénom affiché du Lettré (issue #454, lot K).
+PRENOM_LETTRE = "Lettré"
+
+#: Niveaux où le Lettré est disponible (issue #454, lot K, provisoire) :
+#: Avancé, Expert et Champion du monde — voir la docstring du module pour la
+#: justification, à ajuster par Alain après mesure.
+NIVEAUX_LETTRE: frozenset[Niveau] = frozenset(
+    {Niveau.AVANCE, Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE}
+)
+
+#: Tailles de table où le Lettré est disponible (issue #454, lot K) : deux
+#: joueurs seulement, même prudence que les autres personnages.
+NB_JOUEURS_LETTRE: frozenset[int] = frozenset({2})
 
 #: Clé pseudo-personnage exposée à l'UI (issue #440, lot D) : « Aléatoire »
 #: n'est **jamais** une entrée de :data:`PERSONNAGES` — elle désigne le choix
@@ -608,6 +713,21 @@ PERSONNAGES: dict[str, Personnage] = {
         niveaux_disponibles=NIVEAUX_TITEUF,
         nb_joueurs_disponibles=NB_JOUEURS_TITEUF,
     ),
+    "lettre": Personnage(
+        cle="lettre",
+        prenom=PRENOM_LETTRE,
+        description=(
+            "Connaît des mots que presque personne n'utilise et les place "
+            "avec une fierté non dissimulée, même quand un mot plus simple "
+            "aurait rapporté autant."
+        ),
+        profil=ProfilPersonnage(
+            mots_favoris=MOTS_FAVORIS_LETTRE,
+            bonus_favori=BONUS_FAVORI_LETTRE,
+        ),
+        niveaux_disponibles=NIVEAUX_LETTRE,
+        nb_joueurs_disponibles=NB_JOUEURS_LETTRE,
+    ),
 }
 
 
@@ -724,8 +844,8 @@ def aleatoire_disponible_a_nb_joueurs(nb_joueurs: int) -> bool:
     aujourd'hui à un seul personnage disponible rend donc Aléatoire à nouveau
     disponible à cette taille, sans aucune autre modification. Aujourd'hui :
     disponible à deux joueurs (Classique + Opportuniste + Chasseur de
-    scrabbles + Titeuf), indisponible à trois ou quatre (seul Classique y
-    figure).
+    scrabbles + Titeuf + Lettré), indisponible à trois ou quatre (seul
+    Classique y figure).
     """
     return len(personnages_disponibles_a_nb_joueurs(nb_joueurs)) >= 2
 

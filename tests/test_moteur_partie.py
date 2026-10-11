@@ -300,7 +300,11 @@ def test_creer_partie_aleatoire_peut_tirer_opportuniste_a_deux_joueurs():
     de plus que la restriction de niveau. Niveau Avancé (plutôt que Champion
     du monde) : depuis l'issue #450 (lot H bis), Chasseur de scrabbles n'est
     plus disponible à Champion du monde (plage resserrée à
-    Intermédiaire/Avancé)."""
+    Intermédiaire/Avancé).
+
+    Depuis l'introduction du Lettré (issue #454, lot K, disponible à Avancé,
+    Expert et Champion du monde, deux joueurs), le tirage peut aussi le
+    renvoyer à ce niveau."""
     tires = set()
     for graine in range(50):
         partie = creer_partie(
@@ -310,7 +314,7 @@ def test_creer_partie_aleatoire_peut_tirer_opportuniste_a_deux_joueurs():
             generateur_aleatoire=random.Random(graine), graine=1,
         )
         tires.add(partie.joueurs[1].personnage)
-    assert tires == {"classique", "opportuniste", "chasseur_de_scrabbles"}
+    assert tires == {"classique", "opportuniste", "chasseur_de_scrabbles", "lettre"}
 
 
 def test_creer_partie_personnage_explicite_ignore_la_taille_de_table():

@@ -634,9 +634,9 @@ class Partie:
         :func:`~scrabble.moteur.ia.evaluer_coups` comme lexique complet —
         aucun chargement supplémentaire, rien transmis pour les profils qui ne
         le demandent pas. Même transmission (issue #452, lot J) quand
-        ``profil.mots_favoris`` est renseigné (personnage Titeuf) : les deux
-        champs déclenchent indépendamment le même envoi de
-        ``self.dictionnaire``.
+        ``profil.mots_favoris`` est renseigné (personnages Titeuf et Lettré,
+        issue #454, lot K) : les deux champs déclenchent indépendamment le
+        même envoi de ``self.dictionnaire``.
 
         :raises ActionInvalide: si le joueur courant est humain, n'a pas de
             niveau défini, ou la partie est finie.

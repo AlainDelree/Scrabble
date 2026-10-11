@@ -287,6 +287,28 @@ def test_reprise_personnage_aller_retour(tmp_path):
     assert reprise.joueurs[1].personnage == "Le Pirate"
 
 
+def test_reprise_partie_avec_lettre(tmp_path):
+    """Reprise d'une partie sauvegardée avec un Lettré (issue #454, lot K) :
+    même mécanique générique que :func:`test_reprise_personnage_aller_retour`
+    (``personnage`` est une simple chaîne), vérifiée explicitement avec la
+    clé réelle du registre pour ce nouveau personnage."""
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie = Partie(
+        [
+            Joueur("Humaine"),
+            Joueur("IA", humain=False, niveau=Niveau.AVANCE, personnage="lettre"),
+        ],
+        trie,
+        graine=1,
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+
+    reprise = reprendre_partie(id_partie, trie, chemin)
+    assert reprise.joueurs[1].personnage == "lettre"
+    assert reprise.joueurs[1].niveau == Niveau.AVANCE
+
+
 def test_reprise_ancienne_sauvegarde_sans_cle_personnage(tmp_path):
     """Une partie sauvegardée avant l'issue #438, sans clé ``personnage`` dans
     le JSON des joueurs, se recharge normalement avec un personnage vide.

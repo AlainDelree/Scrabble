@@ -183,6 +183,25 @@ def test_jouer_une_partie_titeuf_sans_coup_jouable_mot_favori_reste_a_zero():
     assert resultat.indicateurs_b.coups_mot_favori == 0
 
 
+def test_jouer_une_partie_lettre_sans_coup_jouable_mot_favori_reste_a_zero():
+    """Même non-régression que ci-dessus pour Lettré (issue #454, lot K) : la
+    colonne « coups dont le mot principal est un mot favori » lit bien la
+    liste PROPRE à ce personnage (pas celle de Titeuf), résolue depuis son
+    profil comme n'importe quel autre personnage à liste — voir
+    ``_calculer_indicateurs_joueur``."""
+    dictionnaire_vide = Trie.depuis_iterable([])
+    config_a = mfn.ConfigJoueur(niveau=mfn.Niveau.AVANCE, personnage="lettre")
+    config_b = mfn.ConfigJoueur(niveau=mfn.Niveau.AVANCE, personnage="classique")
+
+    resultat = mfn.jouer_une_partie(
+        config_a, config_b, graine_partie=7,
+        dictionnaire=dictionnaire_vide,
+        trie_a=dictionnaire_vide, trie_b=dictionnaire_vide,
+    )
+    assert resultat.indicateurs_a.coups_mot_favori == 0
+    assert resultat.indicateurs_b.coups_mot_favori == 0
+
+
 # --------------------------------------------------------------------------- #
 # Export CSV complet (point 2 et point 4)
 # --------------------------------------------------------------------------- #

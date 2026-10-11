@@ -752,6 +752,48 @@ class TestProfilPersonnageSurcharge:
         )
         assert avec_profil == sans_profil
 
+    @pytest.mark.parametrize("niveau", list(Niveau))
+    def test_bonus_favori_applique_a_tous_les_niveaux_si_mot_favori(self, niveau):
+        """``bonus_favori`` (issue #454, lot K) s'ajoute au score stratégique
+        d'un coup dont le mot principal est un mot favori, à TOUS les
+        niveaux — y compris AVANCE/CHAMPION_DU_MONDE (meilleur coup), là où
+        ``poids_tirage_favori`` (tirage pondéré) n'a aucun effet."""
+        cn = _coup_note("CADRE", score=20, nb_nouvelles=4)
+        sans_profil = _score_strategique(cn, niveau)
+        avec_profil = _score_strategique(
+            cn,
+            niveau,
+            profil=ProfilPersonnage(mots_favoris=frozenset({"CADRE"}), bonus_favori=40),
+        )
+        assert avec_profil == sans_profil + 40
+
+    def test_bonus_favori_ignore_si_mot_principal_absent_de_la_liste(self):
+        """Le bonus ne s'applique qu'au mot principal du coup, pas à tout
+        coup dès que ``mots_favoris``/``bonus_favori`` sont renseignés."""
+        cn = _coup_note("CADRE", score=20, nb_nouvelles=4)
+        sans_profil = _score_strategique(cn, Niveau.AVANCE)
+        avec_profil = _score_strategique(
+            cn,
+            Niveau.AVANCE,
+            profil=ProfilPersonnage(
+                mots_favoris=frozenset({"AUTREMOT"}), bonus_favori=40
+            ),
+        )
+        assert avec_profil == sans_profil
+
+    def test_bonus_favori_ignore_sans_mots_favoris(self):
+        """``bonus_favori`` seul, sans ``mots_favoris`` renseigné, reste sans
+        effet — rien à comparer le mot principal à."""
+        cn = _coup_note("CADRE", score=20, nb_nouvelles=4)
+        sans_profil = _score_strategique(cn, Niveau.AVANCE)
+        avec_profil = _score_strategique(
+            cn, Niveau.AVANCE, profil=ProfilPersonnage(bonus_favori=40)
+        )
+        assert avec_profil == sans_profil
+
+    def test_profil_par_defaut_bonus_favori_none(self):
+        assert ProfilPersonnage().bonus_favori is None
+
 
 # --------------------------------------------------------------------------- #
 # Vocabulaire long (issue #450, lot H bis)

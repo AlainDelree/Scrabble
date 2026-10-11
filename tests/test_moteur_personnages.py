@@ -16,6 +16,12 @@ Couvre aussi Titeuf (issue #452, lot J) : liste de mots favoris et tirage
 pondéré en sa faveur — il doit choisir, en moyenne, bien plus souvent un mot
 favori que Classique au même niveau, sur un plateau et un chevalet fabriqués
 où un mot favori est jouable.
+
+Couvre aussi Lettré (issue #454, lot K) : même mécanisme que Titeuf, liste de
+mots favoris indépendante, et un bonus de score (``bonus_favori``) qui, lui,
+agit aussi à AVANCE/EXPERT/CHAMPION_DU_MONDE (meilleur coup, le tirage pondéré
+de Titeuf y est sans effet) — il doit choisir un mot favori nettement plus
+souvent que Classique, y compris à AVANCE.
 """
 
 from __future__ import annotations
@@ -29,12 +35,17 @@ from scrabble.moteur.generateur import generer_coups
 from scrabble.moteur.ia import Niveau, choisir_coup
 from scrabble.moteur.personnages import (
     CLE_ALEATOIRE,
+    BONUS_FAVORI_LETTRE,
+    CHEMIN_MOTS_FAVORIS_LETTRE,
     CHEMIN_MOTS_FAVORIS_TITEUF,
     DESCRIPTION_ALEATOIRE,
     MESSAGE_ALEATOIRE_NB_JOUEURS_INSUFFISANT,
     MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS,
+    MOTS_FAVORIS_LETTRE,
     MOTS_FAVORIS_TITEUF,
+    NB_JOUEURS_LETTRE,
     NB_JOUEURS_TITEUF,
+    NIVEAUX_LETTRE,
     NIVEAUX_TITEUF,
     PART_VOCABULAIRE_COURT_CHASSEUR,
     PART_VOCABULAIRE_LONG_CHASSEUR,
@@ -1187,3 +1198,232 @@ class TestMotsFavorisTiteuf:
         assert "UNMOTABSENT" not in mots
         # Les coups courts du vocabulaire du niveau restent, eux, inchangés.
         assert "ZX" in mots
+
+
+# --------------------------------------------------------------------------- #
+# Lettré (issue #454, lot K)
+# --------------------------------------------------------------------------- #
+
+
+def _plateau_lettre() -> PlateauPartie:
+    """Plateau fabriqué pour que le mot favori ``AZOTURE`` (mot réel de la
+    liste du Lettré, 7 lettres) soit en concurrence avec un coup mieux payé
+    en score brut (``ZOTA``, synthétique, touchant la case mot triple
+    (7, 14)) — même principe que :func:`_plateau_chasseur` (issue #448, lot
+    H, deux ancres séparées), mais utilisé ici à AVANCE/EXPERT/CHAMPION_DU_MONDE
+    (toujours le meilleur coup), pour démontrer que c'est bien
+    ``bonus_favori`` qui renverse l'écart : le tirage pondéré de Titeuf n'a
+    par construction aucun effet à ces niveaux.
+
+    Deux ancres isolées :
+
+    * ``Z`` en (7, 11) : permet ``ZOTA`` horizontal (``Z`` réutilisé, 3
+      lettres nouvelles O/T/A) jusqu'en (7, 14), la case mot triple — score
+      brut 39, stratégique 61 à AVANCE (bonus premium + leave value de
+      production, sans aucun profil).
+    * ``A`` en (0, 0) : permet ``AZOTURE`` horizontal ou vertical (``A``
+      réutilisé, 6 lettres nouvelles Z/O/T/U/R/E), absent du vocabulaire du
+      niveau, présent seulement dans le lexique complet — score brut 17,
+      stratégique 17 à AVANCE SANS ``bonus_favori`` (perd nettement face à
+      ``ZOTA``), 57 AVEC (l'emporte).
+    """
+    plateau = PlateauPartie()
+    plateau.poser_coup(Coup(7, 11, Direction.HORIZONTALE, tuiles_depuis_chaine("Z")))
+    plateau.poser_coup(Coup(0, 0, Direction.HORIZONTALE, tuiles_depuis_chaine("A")))
+    return plateau
+
+
+#: Chevalet du scénario ci-dessus : O/T/A pour ``ZOTA`` (``Z`` déjà sur le
+#: plateau), Z/O/T/U/R/E pour ``AZOTURE`` (``A`` déjà sur le plateau) — sept
+#: lettres distinctes, aucune ne manque à l'un ou l'autre coup.
+_CHEVALET_LETTRE = list("OTAZURE")
+
+#: Vocabulaire du niveau (restreint) pour le scénario ci-dessus : ne connaît
+#: que le coup concurrent, sans rapport avec ``AZOTURE``.
+_DICO_NIVEAU_LETTRE = ("ZOTA",)
+
+#: Lexique complet pour le scénario ci-dessus : coup concurrent ET mot
+#: favori.
+_DICO_COMPLET_LETTRE = ("ZOTA", "AZOTURE")
+
+
+def _proportion_mot_favori_lettre(niveau: Niveau, profil, n: int = 30) -> float:
+    """Proportion des coups choisis (sur ``n`` graines) dont le mot principal
+    est ``AZOTURE``, sur le scénario :func:`_plateau_lettre`."""
+    plateau = _plateau_lettre()
+    dico_niveau = Trie.depuis_iterable(_DICO_NIVEAU_LETTRE)
+    dico_complet = Trie.depuis_iterable(_DICO_COMPLET_LETTRE)
+
+    nb_favori = 0
+    nb_joues = 0
+    for graine in range(n):
+        coup = choisir_coup(
+            plateau,
+            _CHEVALET_LETTRE,
+            dico_niveau,
+            niveau,
+            random.Random(graine),
+            profil=profil,
+            dictionnaire_complet=dico_complet,
+        )
+        if coup is None:
+            continue
+        nb_joues += 1
+        mot = "".join(t.lettre for t in coup.tuiles)
+        if mot == "AZOTURE":
+            nb_favori += 1
+    assert nb_joues > 0
+    return nb_favori / nb_joues
+
+
+class TestPersonnageLettre:
+    """Lettré doit choisir un mot favori nettement plus souvent que
+    Classique, y compris à AVANCE — niveau qui joue toujours son meilleur
+    coup, où le tirage pondéré de Titeuf n'aurait aucun effet (issue #454,
+    lot K)."""
+
+    def test_lettre_choisit_le_mot_favori_a_avance_bien_plus_souvent_que_classique(
+        self,
+    ):
+        profil_classique = PERSONNAGES["classique"].profil
+        profil_lettre = PERSONNAGES["lettre"].profil
+
+        proportion_classique = _proportion_mot_favori_lettre(
+            Niveau.AVANCE, profil_classique
+        )
+        proportion_lettre = _proportion_mot_favori_lettre(Niveau.AVANCE, profil_lettre)
+        assert proportion_lettre > proportion_classique
+
+    @pytest.mark.parametrize(
+        "niveau", [Niveau.AVANCE, Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE]
+    )
+    def test_lettre_joue_toujours_le_mot_favori_sur_ce_scenario(self, niveau):
+        """Démonstration précise (issue #454, lot K, point « choix du coup
+        même à un niveau qui joue toujours son meilleur coup ») : sur ce
+        scénario fabriqué, Classique ne connaît même pas ``AZOTURE`` (absent
+        de son vocabulaire) et Lettré le joue sur CHAQUE graine, aux trois
+        niveaux où il est disponible, puisque son score stratégique dépasse
+        celui du concurrent une fois le bonus de mot favori ajouté."""
+        profil_lettre = PERSONNAGES["lettre"].profil
+        assert _proportion_mot_favori_lettre(niveau, profil_lettre) == 1.0
+        assert (
+            _proportion_mot_favori_lettre(niveau, PERSONNAGES["classique"].profil)
+            == 0.0
+        )
+
+    def test_bonus_favori_necessaire_sur_ce_scenario(self):
+        """Sans ``bonus_favori`` (mais avec ``mots_favoris``, donc le mot
+        favori est bien candidat), le coup concurrent mieux payé en score
+        brut l'emporte quand même à AVANCE — preuve que c'est le bonus, pas
+        le seul élargissement des coups candidats, qui fait gagner le mot
+        favori sur ce scénario."""
+        from scrabble.moteur.ia import ProfilPersonnage
+
+        profil_sans_bonus = ProfilPersonnage(mots_favoris=frozenset({"AZOTURE"}))
+        assert _proportion_mot_favori_lettre(Niveau.AVANCE, profil_sans_bonus) == 0.0
+
+    def test_lettre_dans_le_registre(self):
+        assert "lettre" in PERSONNAGES
+        lettre = PERSONNAGES["lettre"]
+        assert lettre.prenom == "Lettré"
+        assert lettre.description != ""
+
+    def test_lettre_apparait_dans_la_liste(self):
+        cles = [p["cle"] for p in lister_personnages()]
+        assert "lettre" in cles
+
+    def test_lettre_profil_mots_favoris_et_bonus_favori(self):
+        lettre = PERSONNAGES["lettre"].profil
+        assert lettre.mots_favoris == MOTS_FAVORIS_LETTRE
+        assert lettre.bonus_favori == BONUS_FAVORI_LETTRE
+        assert BONUS_FAVORI_LETTRE == 40
+        # Lettré ne renseigne volontairement pas le tirage pondéré (voir la
+        # docstring du module) : le bonus de score suffit sur ses niveaux.
+        assert lettre.poids_tirage_favori is None
+
+    def test_autres_personnages_bonus_favori_neutre(self):
+        """``bonus_favori`` reste ``None`` pour tout personnage qui ne le
+        demande pas explicitement — champ strictement additif, sans effet de
+        bord sur les personnages existants, Titeuf compris (qui renseigne
+        ``mots_favoris``/``poids_tirage_favori`` mais pas ``bonus_favori``)."""
+        for cle in ("classique", "opportuniste", "chasseur_de_scrabbles", "titeuf"):
+            assert PERSONNAGES[cle].profil.bonus_favori is None
+
+    def test_mots_favoris_lettre_independants_de_titeuf(self):
+        """La liste du Lettré est indépendante de celle de Titeuf (issue
+        #454, lot K, point « liste indépendante ») : fichiers distincts,
+        contenus disjoints sur les mots emblématiques de chacun."""
+        assert CHEMIN_MOTS_FAVORIS_LETTRE != CHEMIN_MOTS_FAVORIS_TITEUF
+        assert MOTS_FAVORIS_LETTRE != MOTS_FAVORIS_TITEUF
+        assert "CACA" not in MOTS_FAVORIS_LETTRE
+        assert "PROUT" not in MOTS_FAVORIS_LETTRE
+        assert "AZOTURE" not in MOTS_FAVORIS_TITEUF
+
+    def test_lettre_disponible_a_avance_expert_champion_uniquement(self):
+        assert NIVEAUX_LETTRE == frozenset(
+            {Niveau.AVANCE, Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE}
+        )
+        for niveau in Niveau:
+            attendu = niveau in NIVEAUX_LETTRE
+            assert personnage_disponible_a_niveau("lettre", niveau) is attendu
+
+    def test_lettre_disponible_a_deux_joueurs_seulement(self):
+        assert NB_JOUEURS_LETTRE == frozenset({2})
+        assert personnage_disponible_a_nb_joueurs("lettre", 2) is True
+        for nb_joueurs in (3, 4):
+            assert personnage_disponible_a_nb_joueurs("lettre", nb_joueurs) is False
+
+    def test_libelle_niveaux_lettre(self):
+        assert libelle_niveaux(PERSONNAGES["lettre"]) == "Avancé à Champion du monde"
+
+    def test_libelle_tailles_lettre(self):
+        assert libelle_tailles(PERSONNAGES["lettre"]) == "Parties à deux joueurs"
+
+    def test_explication_disponibilite_tailles_lettre(self):
+        assert (
+            explication_disponibilite_tailles("lettre")
+            == MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS
+        )
+
+    def test_tirage_aleatoire_a_avance_peut_inclure_lettre(self):
+        """Le tirage « Aléatoire » à AVANCE doit, sur de nombreuses graines,
+        pouvoir renvoyer Lettré (en plus des personnages déjà disponibles à
+        ce niveau)."""
+        cles = {
+            tirer_personnage(random.Random(g), Niveau.AVANCE).cle for g in range(50)
+        }
+        assert "lettre" in cles
+
+
+class TestMotsFavorisLettre:
+    """Chargement de la liste de mots favoris du Lettré (issue #454, lot K,
+    points 1 et 9) : même fonction de chargement que Titeuf, fichier
+    distinct, fourni par Alain."""
+
+    def test_liste_de_depart_chargee_depuis_le_fichier_du_depot(self):
+        """La liste effectivement utilisée par Lettré vient bien du fichier
+        du dépôt (pas d'une valeur codée en dur ailleurs)."""
+        assert CHEMIN_MOTS_FAVORIS_LETTRE.exists()
+        assert MOTS_FAVORIS_LETTRE == charger_mots_favoris(CHEMIN_MOTS_FAVORIS_LETTRE)
+        assert len(MOTS_FAVORIS_LETTRE) > 0
+        assert "AZOTURE" in MOTS_FAVORIS_LETTRE
+
+    def test_mot_absent_du_lexique_ignore_sans_filtrage_dedie(self):
+        """Un mot de la liste absent du lexique complet installé n'est PAS
+        filtré au chargement — même garantie que pour Titeuf (voir
+        ``scrabble.moteur.ia._generer_coups_candidats``)."""
+        plateau = _plateau_lettre()
+        dico_niveau = Trie.depuis_iterable(_DICO_NIVEAU_LETTRE)
+        # Lexique complet sans "AZOTURE" : un mot de la liste absent du lexique.
+        dico_complet_sans_azoture = Trie.depuis_iterable(("ZOTA",))
+        from scrabble.moteur.ia import ProfilPersonnage, _generer_coups_candidats
+
+        profil = ProfilPersonnage(mots_favoris=frozenset({"AZOTURE", "UNMOTABSENT"}))
+        coups = _generer_coups_candidats(
+            plateau, _CHEVALET_LETTRE, dico_niveau, profil, dico_complet_sans_azoture
+        )
+        mots = {"".join(t.lettre for t in cn.coup.tuiles) for cn in coups}
+        assert "AZOTURE" not in mots
+        assert "UNMOTABSENT" not in mots
+        # Le coup concurrent du vocabulaire du niveau reste, lui, inchangé.
+        assert "ZOTA" in mots

@@ -234,6 +234,32 @@ nettement plus fort ou plus faible que Classique au même niveau ::
         --vocab palier --parties 100 \\
         --csv style_titeuf_vs_classique_debutant.csv
 
+Style de jeu Lettré contre Classique (issue #454, lot K) — Avancé, Expert et
+Champion du monde sont les trois niveaux où Lettré est disponible
+(provisoire, voir ``scrabble.moteur.personnages.NIVEAUX_LETTRE``) ;
+contrairement à Titeuf (Débutant, tirage pondéré), ces trois niveaux jouent
+toujours leur meilleur coup, donc c'est le bonus de score
+(``bonus_favori``), pas le tirage, qui doit faire la différence — le tableau
+de style affiche la même colonne « Coups dont le mot principal est un mot
+favori » que pour Titeuf (indicateur générique, lit la liste du personnage
+de CHAQUE joueur). 200 parties par niveau, comme demandé pour juger de la
+force et du style ::
+
+    python scripts/mesurer_force_niveaux.py AVANCE AVANCE \\
+        --personnage-a lettre --personnage-b classique \\
+        --vocab palier --parties 200 \\
+        --csv style_lettre_vs_classique_avance.csv
+
+    python scripts/mesurer_force_niveaux.py EXPERT EXPERT \\
+        --personnage-a lettre --personnage-b classique \\
+        --vocab palier --parties 200 \\
+        --csv style_lettre_vs_classique_expert.csv
+
+    python scripts/mesurer_force_niveaux.py CHAMPION_DU_MONDE CHAMPION_DU_MONDE \\
+        --personnage-a lettre --personnage-b classique \\
+        --vocab palier --parties 200 \\
+        --csv style_lettre_vs_classique_champion.csv
+
 Sans argument, oppose FACILE à DEBUTANT sur 100 parties, vocabulaire ``complet``
 (comportement historique #362). Les niveaux valides sont les noms de
 :class:`~scrabble.moteur.ia.Niveau` : DEBUTANT, FACILE, INTERMEDIAIRE, AVANCE,
