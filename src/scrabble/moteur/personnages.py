@@ -395,7 +395,7 @@ POIDS_TIRAGE_SCRABBLE_CHASSEUR: float | None = 5.0
 #: complet la justifiant par analogie avec l'échelle de
 #: :data:`scrabble.moteur.ia._BONUS_PREMIUM` — à ajuster par Alain après
 #: mesure réelle avec ``scripts/mesurer_force_niveaux.py``.
-BONUS_FAVORI_LETTRE = 40
+BONUS_FAVORI_LETTRE = 20
 
 #: Part des mots de 7 lettres et plus du lexique complet (hors vocabulaire
 #: du niveau) connue du personnage Chasseur de scrabbles, par niveau (issue
