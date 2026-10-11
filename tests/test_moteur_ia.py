@@ -40,6 +40,7 @@ from scrabble.moteur.ia import (
     _POIDS_LEAVE,
     ProfilPersonnage,
     _generer_coups_candidats,
+    _mot_connu_vocabulaire_court,
     _mot_connu_vocabulaire_long,
     _score_strategique,
     _tirer_dans_tranche,
@@ -1643,6 +1644,185 @@ class TestPartVocabulaireLong:
         additif."""
         assert ProfilPersonnage().part_vocabulaire_long is None
         assert ProfilPersonnage(vocabulaire_long=True).part_vocabulaire_long is None
+
+
+# --------------------------------------------------------------------------- #
+# Part de mots courts connus (issue #453, lot H quater)
+# --------------------------------------------------------------------------- #
+
+
+class TestMotConnuVocabulaireCourt:
+    """``_mot_connu_vocabulaire_court`` (issue #453) : même procédé
+    déterministe que :func:`_mot_connu_vocabulaire_long` (hachage SHA-256
+    stable du texte du mot), avec un décalage de hachage distinct."""
+
+    def test_deterministe_et_independant_de_lordre(self):
+        mots = [f"MOTCOURT{i:04d}" for i in range(500)]
+        resultats = [_mot_connu_vocabulaire_court(m, 0.5) for m in mots]
+        resultats_ordre_inverse = [
+            _mot_connu_vocabulaire_court(m, 0.5) for m in reversed(mots)
+        ]
+        assert resultats == [_mot_connu_vocabulaire_court(m, 0.5) for m in mots]
+        assert resultats == list(reversed(resultats_ordre_inverse))
+
+    def test_part_1_tous_connus(self):
+        mots = [f"MOTCOURT{i:04d}" for i in range(500)]
+        assert all(_mot_connu_vocabulaire_court(m, 1.0) for m in mots)
+
+    def test_part_0_aucun_connu(self):
+        mots = [f"MOTCOURT{i:04d}" for i in range(500)]
+        assert not any(_mot_connu_vocabulaire_court(m, 0.0) for m in mots)
+
+    @pytest.mark.parametrize("part", [0.1, 0.3, 0.5, 0.7, 0.9])
+    def test_proportion_proche_de_la_part_sur_liste_fabriquee(self, part):
+        mots = [f"MOTCOURT{i:04d}" for i in range(5000)]
+        connus = sum(_mot_connu_vocabulaire_court(m, part) for m in mots)
+        proportion = connus / len(mots)
+        assert abs(proportion - part) < 0.03
+
+    def test_independant_du_filtre_mots_longs(self):
+        """Pour un même mot, le résultat de ce filtre et celui de
+        ``_mot_connu_vocabulaire_long`` sont statistiquement indépendants
+        (décalage de hachage distinct, issue #453) : sur un grand nombre de
+        mots, le taux d'accord entre les deux doit rester proche de 50 %
+        (``p² + (1-p)²`` à ``p = 0.5``), pas proche de 100 % comme ce serait
+        le cas si les deux fonctions partageaient le même calcul."""
+        mots = [f"MOT{i:05d}" for i in range(2000)]
+        long_ = [_mot_connu_vocabulaire_long(m, 0.5) for m in mots]
+        court = [_mot_connu_vocabulaire_court(m, 0.5) for m in mots]
+        assert long_ != court
+        accord = sum(a == b for a, b in zip(long_, court)) / len(mots)
+        assert abs(accord - 0.5) < 0.05
+
+
+class TestPartVocabulaireCourt:
+    """``part_vocabulaire_court`` de :class:`ProfilPersonnage` (issue #453,
+    lot H quater) : restreint les coups candidats dont le mot principal
+    compte MOINS de :data:`~scrabble.moteur.ia._SEUIL_VOCABULAIRE_LONG`
+    lettres à une fraction « connue », garde-fou compris. Réutilise les
+    fixtures de :class:`TestPartVocabulaireLong` (un mot court ``ZA`` du
+    vocabulaire du niveau, un mot long ``OXALINE`` accessible via
+    ``vocabulaire_long``) : de quoi vérifier, dans le même scénario, que les
+    mots longs ne sont jamais concernés par ce filtre.
+    """
+
+    def test_part_1_identique_au_comportement_actuel(self):
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+
+        coups_sans_champ = _generer_coups_candidats(
+            plateau, _CHEVALET_VOCABULAIRE_LONG, dico_niveau, ProfilPersonnage(), None
+        )
+        coups_avec_part_1 = _generer_coups_candidats(
+            plateau,
+            _CHEVALET_VOCABULAIRE_LONG,
+            dico_niveau,
+            ProfilPersonnage(part_vocabulaire_court=1.0),
+            None,
+        )
+        mots_sans_champ = {
+            "".join(t.lettre for t in cn.coup.tuiles) for cn in coups_sans_champ
+        }
+        mots_avec_part_1 = {
+            "".join(t.lettre for t in cn.coup.tuiles) for cn in coups_avec_part_1
+        }
+        assert mots_avec_part_1 == mots_sans_champ
+        assert "ZA" in mots_avec_part_1
+
+    def test_part_0_ne_laisse_que_les_mots_longs(self):
+        """Avec le lexique complet accessible (``vocabulaire_long``), part à
+        0 % ne laisse que les mots de 7 lettres et plus — le garde-fou ne se
+        déclenche pas ici puisque ``OXALINE`` reste candidat."""
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        dico_complet = _trie(*_DICO_COMPLET_VOCABULAIRE_LONG)
+        profil = ProfilPersonnage(vocabulaire_long=True, part_vocabulaire_court=0.0)
+
+        coups = _generer_coups_candidats(
+            plateau, _CHEVALET_VOCABULAIRE_LONG, dico_niveau, profil, dico_complet
+        )
+        mots = {"".join(t.lettre for t in cn.coup.tuiles) for cn in coups}
+        assert "OXALINE" in mots
+        assert "ZA" not in mots
+
+    def test_garde_fou_si_aucun_coup_candidat_apres_filtre(self):
+        """Garde-fou (issue #453, point 2) : si le filtre ne laisse plus
+        aucun coup candidat (ici l'unique candidat, ``ZA``, est court et
+        aucun mot long n'est disponible pour compenser), il est ignoré pour
+        ce tour plutôt que de forcer une passe qui fausserait la mesure."""
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        profil = ProfilPersonnage(part_vocabulaire_court=0.0)
+
+        coups = _generer_coups_candidats(
+            plateau, _CHEVALET_VOCABULAIRE_LONG, dico_niveau, profil, None
+        )
+        mots = {"".join(t.lettre for t in cn.coup.tuiles) for cn in coups}
+        assert mots == {"ZA"}
+
+    def test_mots_longs_jamais_concernes(self):
+        """Ni les mots longs du vocabulaire du niveau, ni ceux ajoutés par
+        ``vocabulaire_long``, ne sont jamais filtrés — quelle que soit la
+        valeur de ``part_vocabulaire_court``."""
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        dico_complet = _trie(*_DICO_COMPLET_VOCABULAIRE_LONG)
+        for part in (0.0, 0.3, 1.0):
+            profil = ProfilPersonnage(vocabulaire_long=True, part_vocabulaire_court=part)
+            coups = _generer_coups_candidats(
+                plateau, _CHEVALET_VOCABULAIRE_LONG, dico_niveau, profil, dico_complet
+            )
+            mots = {"".join(t.lettre for t in cn.coup.tuiles) for cn in coups}
+            assert "OXALINE" in mots
+
+    def test_resultat_stable_entre_deux_appels(self):
+        """Même mot, même résultat d'un appel à l'autre : pas de dépendance à
+        la graine de la partie ni à l'ordre de génération."""
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        profil = ProfilPersonnage(part_vocabulaire_court=0.5)
+
+        mots_appels = []
+        for _ in range(5):
+            coups = _generer_coups_candidats(
+                plateau, _CHEVALET_VOCABULAIRE_LONG, dico_niveau, profil, None
+            )
+            mots_appels.append(
+                frozenset("".join(t.lettre for t in cn.coup.tuiles) for cn in coups)
+            )
+        assert len(set(mots_appels)) == 1
+
+    def test_autres_personnages_non_concernes(self):
+        """``part_vocabulaire_court`` reste ``None`` (neutre) pour tout
+        profil qui ne le demande pas explicitement — le champ est
+        strictement additif."""
+        assert ProfilPersonnage().part_vocabulaire_court is None
+        assert ProfilPersonnage(vocabulaire_long=True).part_vocabulaire_court is None
+
+    def test_neutre_rng_choisir_coup(self):
+        """Neutralité complète (issue #453, point 4) : un profil sans ce
+        champ, ou avec une part de 100 %, donne EXACTEMENT le même coup, à
+        graine égale, pour tous les niveaux — même consommation du
+        générateur aléatoire, puisque le calcul du filtre est purement
+        déterministe (aucun aléa)."""
+        plateau = PlateauPartie()
+        chevalet = list("CADRE")
+        dico = _trie("CADRE", "ACRE", "CAR", "DE", "RE", "A", "DA")
+        for niveau in Niveau:
+            for graine in range(5):
+                rng_sans = random.Random(graine)
+                rng_avec = random.Random(graine)
+                coup_sans = choisir_coup(plateau, chevalet, dico, niveau, rng_sans)
+                coup_avec = choisir_coup(
+                    plateau,
+                    chevalet,
+                    dico,
+                    niveau,
+                    rng_avec,
+                    profil=ProfilPersonnage(part_vocabulaire_court=1.0),
+                )
+                assert coup_avec == coup_sans
+                assert rng_sans.getstate() == rng_avec.getstate()
 
 
 # --------------------------------------------------------------------------- #

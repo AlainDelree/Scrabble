@@ -258,6 +258,25 @@ def _mot_connu_vocabulaire_long(mot: str, part_vocabulaire_long: float) -> bool:
     valeur = int.from_bytes(empreinte[:8], "big") / 2**64
     return valeur < part_vocabulaire_long
 
+
+def _mot_connu_vocabulaire_court(mot: str, part_vocabulaire_court: float) -> bool:
+    """Le mot ``mot`` fait-il partie de la fraction ``part_vocabulaire_court``
+    des mots courts connus (:attr:`ProfilPersonnage.part_vocabulaire_court`,
+    issue #453, lot H quater) ?
+
+    Même procédé que :func:`_mot_connu_vocabulaire_long` (hachage SHA-256
+    stable du texte du mot, déterministe et indépendant de la graine de la
+    partie), avec un **décalage distinct** (préfixe ``b"court:"`` ajouté avant
+    hachage) : pour un même mot, le résultat de cette fonction et celui de
+    :func:`_mot_connu_vocabulaire_long` sont statistiquement indépendants —
+    condition explicite de l'issue #453, nécessaire puisqu'un personnage
+    pourrait un jour vouloir combiner les deux critères sans qu'ils ne se
+    corrèlent artificiellement.
+    """
+    empreinte = hashlib.sha256(b"court:" + mot.encode("utf-8")).digest()
+    valeur = int.from_bytes(empreinte[:8], "big") / 2**64
+    return valeur < part_vocabulaire_court
+
 #: Valeur heuristique de chaque lettre pour le calcul du reliquat (leave
 #: value, issue #395). Reflète la difficulté de placement future : le
 #: joker et le S (formation de pluriels/hooks) valent le plus cher, les
@@ -421,6 +440,23 @@ class ProfilPersonnage:
     favori peu rémunérateur, plausible pour ce style de personnage, pourrait
     sinon en être exclu d'office. Neutre par défaut (``None`` : tirage
     inchangé, y compris la consommation du générateur aléatoire).
+
+    ``part_vocabulaire_court`` (issue #453, lot H quater) va dans le sens
+    inverse de ``part_vocabulaire_long`` : au lieu d'ÉLARGIR les coups
+    candidats, elle RESTREINT l'ensemble déjà constitué (vocabulaire du
+    niveau, plus l'éventuel élargissement ``vocabulaire_long``/``mots_favoris``
+    ci-dessus) aux coups dont le mot principal compte MOINS de
+    :data:`_SEUIL_VOCABULAIRE_LONG` lettres : ceux-là ne restent candidats
+    que si ce mot est « connu » selon :func:`_mot_connu_vocabulaire_court` —
+    même procédé déterministe que ``part_vocabulaire_long``, avec un décalage
+    de hachage distinct pour que les deux sélections soient indépendantes.
+    Les mots de :data:`_SEUIL_VOCABULAIRE_LONG` lettres ou plus ne sont
+    JAMAIS filtrés par ce champ, qu'ils viennent du vocabulaire du niveau ou
+    d'un élargissement ``vocabulaire_long``. Neutre par défaut (``None``,
+    traité comme 1.0 : aucun mot court filtré, comportement identique à avant
+    l'introduction de ce champ). Garde-fou (voir :func:`_generer_coups_candidats`) :
+    si le filtre ne laisse plus aucun coup candidat, il est ignoré pour ce
+    tour plutôt que de forcer une passe.
     """
 
     malus_longueur: int | None = None
@@ -432,6 +468,7 @@ class ProfilPersonnage:
     part_vocabulaire_long: float | None = None
     mots_favoris: frozenset[str] | None = None
     poids_tirage_favori: float | None = None
+    part_vocabulaire_court: float | None = None
 
 
 def _score_strategique(
@@ -573,13 +610,14 @@ def _generer_coups_candidats(
     profil: ProfilPersonnage | None,
     dictionnaire_complet: "TrieProtocol | None",
 ) -> list[CoupNote]:
-    """Génère les coups candidats, élargis au lexique complet si le profil le demande.
+    """Génère les coups candidats, élargis ou restreints selon le profil.
 
-    Sans ``profil`` (ou ``profil.vocabulaire_long`` à ``None``/``False``, cas
-    par défaut) ou sans ``dictionnaire_complet``, renvoie exactement
-    ``generer_coups(plateau, chevalet, dictionnaire)`` — comportement
-    identique, bit à bit, à avant l'introduction du champ ``vocabulaire_long``
-    (issue #450, lot H bis) : condition de neutralité du profil vide.
+    Sans ``profil`` (ou tous ses champs concernés à ``None``/``False``, cas
+    par défaut) ou sans ``dictionnaire_complet`` (pour les champs qui en ont
+    besoin), renvoie exactement ``generer_coups(plateau, chevalet, dictionnaire)``
+    — comportement identique, bit à bit, à avant l'introduction du champ
+    ``vocabulaire_long`` (issue #450, lot H bis) : condition de neutralité du
+    profil vide.
 
     Avec ``vocabulaire_long`` actif et un ``dictionnaire_complet`` fourni,
     l'ensemble renvoyé est l'UNION, sans doublon, de ces coups habituels
@@ -615,45 +653,74 @@ def _generer_coups_candidats(
     filtrage dédié). Les deux élargissements (``vocabulaire_long`` et
     ``mots_favoris``) sont indépendants et se combinent sans doublon (même
     ensemble ``vus`` que l'élargissement par longueur).
+
+    ``profil.part_vocabulaire_court`` (issue #453, lot H quater) agit en
+    dernier, APRÈS les deux élargissements ci-dessus, et dans le sens
+    inverse : elle RESTREINT l'ensemble des coups déjà réunis à une fraction
+    des mots dont le mot principal compte MOINS de
+    :data:`_SEUIL_VOCABULAIRE_LONG` lettres, selon
+    :func:`_mot_connu_vocabulaire_court` — les mots de
+    :data:`_SEUIL_VOCABULAIRE_LONG` lettres ou plus (vocabulaire du niveau ou
+    ajoutés par ``vocabulaire_long``) ne sont jamais concernés. N'a besoin ni
+    de ``vocabulaire_long``/``mots_favoris`` actifs ni de
+    ``dictionnaire_complet`` fourni : un profil qui ne renseigne QUE ce champ
+    filtre déjà l'ensemble issu du seul ``dictionnaire`` (vocabulaire du
+    niveau). Garde-fou : si le filtre ne laisse plus aucun coup candidat
+    (début de partie, chevalet difficile), il est ignoré pour ce tour — mieux
+    vaut un tour sans filtre qu'une passe forcée qui fausserait la mesure de
+    force du personnage. ``None`` (défaut) ou 1.0 ne filtre rien, comportement
+    identique à avant l'introduction de ce champ, y compris sans aucune
+    consommation du générateur aléatoire (calcul purement déterministe).
     """
     coups = generer_coups(plateau, chevalet, dictionnaire)
-    if profil is None or dictionnaire_complet is None:
-        return coups
-    if not profil.vocabulaire_long and not profil.mots_favoris:
+    if profil is None:
         return coups
 
-    def _cle(cn: CoupNote) -> tuple[int, int, str, str]:
-        return (
-            cn.coup.ligne,
-            cn.coup.colonne,
-            cn.coup.direction.value,
-            _mot_principal(cn.coup),
-        )
+    if dictionnaire_complet is not None and (profil.vocabulaire_long or profil.mots_favoris):
 
-    vus = {_cle(cn) for cn in coups}
+        def _cle(cn: CoupNote) -> tuple[int, int, str, str]:
+            return (
+                cn.coup.ligne,
+                cn.coup.colonne,
+                cn.coup.direction.value,
+                _mot_principal(cn.coup),
+            )
 
-    if profil.vocabulaire_long:
-        part_vocabulaire_long = profil.part_vocabulaire_long
-        for cn in generer_coups(plateau, chevalet, dictionnaire_complet):
-            if len(cn.coup.tuiles) < _SEUIL_VOCABULAIRE_LONG:
-                continue
-            cle = _cle(cn)
-            if cle in vus:
-                continue
-            if part_vocabulaire_long is not None and part_vocabulaire_long < 1.0:
-                if not _mot_connu_vocabulaire_long(_mot_principal(cn.coup), part_vocabulaire_long):
+        vus = {_cle(cn) for cn in coups}
+
+        if profil.vocabulaire_long:
+            part_vocabulaire_long = profil.part_vocabulaire_long
+            for cn in generer_coups(plateau, chevalet, dictionnaire_complet):
+                if len(cn.coup.tuiles) < _SEUIL_VOCABULAIRE_LONG:
                     continue
-            vus.add(cle)
-            coups.append(cn)
+                cle = _cle(cn)
+                if cle in vus:
+                    continue
+                if part_vocabulaire_long is not None and part_vocabulaire_long < 1.0:
+                    if not _mot_connu_vocabulaire_long(_mot_principal(cn.coup), part_vocabulaire_long):
+                        continue
+                vus.add(cle)
+                coups.append(cn)
 
-    if profil.mots_favoris:
-        trie_favoris = Trie.depuis_iterable(profil.mots_favoris)
-        for cn in generer_coups(plateau, chevalet, trie_favoris, dictionnaire_complet):
-            cle = _cle(cn)
-            if cle in vus:
-                continue
-            vus.add(cle)
-            coups.append(cn)
+        if profil.mots_favoris:
+            trie_favoris = Trie.depuis_iterable(profil.mots_favoris)
+            for cn in generer_coups(plateau, chevalet, trie_favoris, dictionnaire_complet):
+                cle = _cle(cn)
+                if cle in vus:
+                    continue
+                vus.add(cle)
+                coups.append(cn)
+
+    part_vocabulaire_court = profil.part_vocabulaire_court
+    if part_vocabulaire_court is not None and part_vocabulaire_court < 1.0:
+        coups_filtres = [
+            cn
+            for cn in coups
+            if len(cn.coup.tuiles) >= _SEUIL_VOCABULAIRE_LONG
+            or _mot_connu_vocabulaire_court(_mot_principal(cn.coup), part_vocabulaire_court)
+        ]
+        if coups_filtres:
+            coups = coups_filtres
 
     return coups
 
