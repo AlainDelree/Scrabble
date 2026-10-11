@@ -335,7 +335,7 @@ PART_VOCABULAIRE_LONG_CHASSEUR: dict[Niveau, float] = {
 #: de zéro contre Classique avec un surplus de scrabbles qui reste visible).
 PART_VOCABULAIRE_COURT_CHASSEUR: dict[Niveau, float] = {
     Niveau.INTERMEDIAIRE: 0.7,
-    Niveau.AVANCE: 0.7,
+    Niveau.AVANCE: 0.55,
 }
 
 #: Dossier des petites listes de personnalisation par personnage (issue
