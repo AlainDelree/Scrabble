@@ -661,7 +661,14 @@ class TestApiAccueilDisponibiliteNiveauxPersonnage:
         result2 = api2.ajouter_ordinateur("Expert", "opportuniste")
         assert result2["succes"] is True
 
-    def test_ajouter_ordinateur_refuse_aleatoire_a_debutant(self, monkeypatch):
+    def test_ajouter_ordinateur_accepte_aleatoire_a_debutant_grace_a_titeuf(
+        self, monkeypatch
+    ):
+        """Depuis l'introduction de Titeuf (issue #452, lot J), Débutant
+        compte deux personnages réels (Classique + Titeuf) : Aléatoire y est
+        donc de nouveau accepté — remplace
+        ``test_ajouter_ordinateur_refuse_aleatoire_a_debutant`` (issue #447,
+        lot G), devenu faux par construction."""
         from scrabble.moteur.personnages import CLE_ALEATOIRE
         from scrabble.ui.accueil import ApiAccueil
 
@@ -671,9 +678,8 @@ class TestApiAccueilDisponibiliteNiveauxPersonnage:
         api = ApiAccueil()
         result = api.ajouter_ordinateur("Débutant", CLE_ALEATOIRE)
 
-        assert result["succes"] is False
-        assert "Aléatoire" in result["erreur"]
-        assert api.config_partie.nb_ordinateurs == 0
+        assert result["succes"] is True
+        assert api.config_partie.nb_ordinateurs == 1
 
     def test_ajouter_ordinateur_sans_personnage_continue_de_fonctionner(self):
         """Un appel sans ``personnage_cle`` (défaut Classique, toujours
@@ -707,19 +713,23 @@ class TestApiAccueilDisponibiliteNiveauxPersonnage:
         assert all(n["message"] is None for n in resultat["niveaux"])
         assert resultat["explication"] == ""
 
-    def test_obtenir_disponibilite_niveaux_personnage_aleatoire_debutant_indisponible(self):
-        from scrabble.moteur.personnages import (
-            CLE_ALEATOIRE,
-            MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT,
-        )
+    def test_obtenir_disponibilite_niveaux_personnage_aleatoire_debutant_disponible_grace_a_titeuf(
+        self,
+    ):
+        """Depuis l'introduction de Titeuf (issue #452, lot J), Débutant
+        compte deux personnages réels : Aléatoire y est donc disponible —
+        remplace
+        ``test_obtenir_disponibilite_niveaux_personnage_aleatoire_debutant_indisponible``
+        (issue #447, lot G), devenu faux par construction."""
+        from scrabble.moteur.personnages import CLE_ALEATOIRE
         from scrabble.ui.accueil import ApiAccueil
 
         api = ApiAccueil()
         resultat = api.obtenir_disponibilite_niveaux_personnage(CLE_ALEATOIRE)
         par_label = {n["label"]: n for n in resultat["niveaux"]}
 
-        assert par_label["Débutant"]["disponible"] is False
-        assert par_label["Débutant"]["message"] == MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT
+        assert par_label["Débutant"]["disponible"] is True
+        assert par_label["Débutant"]["message"] is None
         assert par_label["Facile"]["disponible"] is True
 
 

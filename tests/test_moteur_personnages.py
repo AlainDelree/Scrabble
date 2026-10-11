@@ -11,6 +11,11 @@ Couvre aussi Chasseur de scrabbles (issue #448, lot H) : bonus de pose de 7
 lettres et poids du leave renforcé — il doit choisir, en moyenne, davantage
 de coups posant les 7 lettres du chevalet (« scrabbles ») que Classique, sur
 un plateau et un chevalet fabriqués où un scrabble est possible.
+
+Couvre aussi Titeuf (issue #452, lot J) : liste de mots favoris et tirage
+pondéré en sa faveur — il doit choisir, en moyenne, bien plus souvent un mot
+favori que Classique au même niveau, sur un plateau et un chevalet fabriqués
+où un mot favori est jouable.
 """
 
 from __future__ import annotations
@@ -24,18 +29,23 @@ from scrabble.moteur.generateur import generer_coups
 from scrabble.moteur.ia import Niveau, choisir_coup
 from scrabble.moteur.personnages import (
     CLE_ALEATOIRE,
+    CHEMIN_MOTS_FAVORIS_TITEUF,
     DESCRIPTION_ALEATOIRE,
     MESSAGE_ALEATOIRE_NB_JOUEURS_INSUFFISANT,
-    MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT,
     MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS,
+    MOTS_FAVORIS_TITEUF,
+    NB_JOUEURS_TITEUF,
+    NIVEAUX_TITEUF,
     PART_VOCABULAIRE_LONG_CHASSEUR,
     PERSONNAGES,
+    POIDS_TIRAGE_FAVORI_TITEUF,
     POIDS_TIRAGE_SCRABBLE_CHASSEUR,
     Personnage,
     TOUS_NIVEAUX,
     TOUTES_TAILLES,
     aleatoire_disponible_a_nb_joueurs,
     aleatoire_disponible_a_niveau,
+    charger_mots_favoris,
     explication_disponibilite_niveaux,
     explication_disponibilite_tailles,
     libelle_choix_accueil,
@@ -210,10 +220,14 @@ class TestTirerPersonnage:
     def test_tirage_restreint_au_niveau_ne_tire_jamais_opportuniste_a_debutant(self):
         """``niveau`` restreint le tirage (issue #447, lot G, point 4) :
         Opportuniste n'étant pas disponible à Débutant, un tirage à ce niveau
-        ne doit jamais le renvoyer, même sur de nombreuses graines."""
+        ne doit jamais le renvoyer, même sur de nombreuses graines.
+
+        Depuis l'introduction de Titeuf (issue #452, lot J, seul personnage
+        disponible à Débutant en plus de Classique), le tirage peut renvoyer
+        l'un ou l'autre — jamais Opportuniste ni Chasseur de scrabbles."""
         for graine in range(50):
             tire = tirer_personnage(random.Random(graine), Niveau.DEBUTANT)
-            assert tire.cle == "classique"
+            assert tire.cle in {"classique", "titeuf"}
 
     def test_tirage_restreint_au_niveau_peut_tirer_opportuniste_a_facile(self):
         cles = {
@@ -284,31 +298,47 @@ class TestDisponibiliteNiveauxPersonnages:
     def test_personnage_inconnu_indisponible_partout(self):
         assert personnage_disponible_a_niveau("ninja", Niveau.EXPERT) is False
 
-    def test_aleatoire_indisponible_a_debutant_un_seul_personnage(self):
-        """Aujourd'hui, seul Classique est disponible à Débutant : Aléatoire,
-        qui demande au moins deux personnages, y est donc indisponible."""
-        assert personnages_disponibles_a_niveau(Niveau.DEBUTANT) == [PERSONNAGES["classique"]]
-        assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is False
-        assert personnage_disponible_a_niveau(CLE_ALEATOIRE, Niveau.DEBUTANT) is False
+    def test_aleatoire_disponible_a_debutant_grace_a_titeuf(self):
+        """Depuis l'introduction de Titeuf (issue #452, lot J), Débutant
+        compte deux personnages réels (Classique + Titeuf) : Aléatoire, qui
+        demande au moins deux personnages, y est donc de nouveau disponible —
+        remplace ``test_aleatoire_indisponible_a_debutant_un_seul_personnage``
+        (issue #447, lot G), devenu faux par construction."""
+        assert personnages_disponibles_a_niveau(Niveau.DEBUTANT) == [
+            PERSONNAGES["classique"],
+            PERSONNAGES["titeuf"],
+        ]
+        assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is True
+        assert personnage_disponible_a_niveau(CLE_ALEATOIRE, Niveau.DEBUTANT) is True
 
     def test_aleatoire_disponible_des_que_deux_personnages_le_sont(self):
-        """Ajouter un personnage fictif disponible à Débutant rend Aléatoire
-        disponible à Débutant sans aucune autre modification (point 4)."""
-        fictif = Personnage(
-            cle="fictif_debutant",
-            prenom="Fictif",
-            description="Personnage de test.",
-            profil=PERSONNAGES["classique"].profil,
-            niveaux_disponibles=frozenset({Niveau.DEBUTANT}),
-        )
-        assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is False
-        PERSONNAGES["fictif_debutant"] = fictif
+        """Ajouter un personnage fictif disponible à un niveau qui n'en a
+        qu'un rend Aléatoire disponible à ce niveau sans aucune autre
+        modification (point 4).
+
+        Débutant compte désormais déjà deux personnages réels (Classique +
+        Titeuf, issue #452, lot J) : ce test retire temporairement Titeuf du
+        registre pour retrouver la situation à un seul personnage et
+        vérifier proprement le mécanisme, puis le restaure."""
+        titeuf = PERSONNAGES.pop("titeuf")
         try:
-            assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is True
-            assert personnage_disponible_a_niveau(CLE_ALEATOIRE, Niveau.DEBUTANT) is True
+            fictif = Personnage(
+                cle="fictif_debutant",
+                prenom="Fictif",
+                description="Personnage de test.",
+                profil=PERSONNAGES["classique"].profil,
+                niveaux_disponibles=frozenset({Niveau.DEBUTANT}),
+            )
+            assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is False
+            PERSONNAGES["fictif_debutant"] = fictif
+            try:
+                assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is True
+                assert personnage_disponible_a_niveau(CLE_ALEATOIRE, Niveau.DEBUTANT) is True
+            finally:
+                del PERSONNAGES["fictif_debutant"]
+            assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is False
         finally:
-            del PERSONNAGES["fictif_debutant"]
-        assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is False
+            PERSONNAGES["titeuf"] = titeuf
 
     def test_aleatoire_disponible_a_facile(self):
         """Classique + Opportuniste : deux personnages disponibles à Facile."""
@@ -325,8 +355,13 @@ class TestLibelleEtExplicationNiveaux:
     def test_libelle_opportuniste(self):
         assert libelle_niveaux(PERSONNAGES["opportuniste"]) == "Facile à Champion du monde"
 
-    def test_libelle_aleatoire_aujourdhui_comme_opportuniste(self):
-        assert libelle_niveaux_aleatoire() == "Facile à Champion du monde"
+    def test_libelle_aleatoire_tous_les_niveaux_grace_a_titeuf(self):
+        """Depuis l'introduction de Titeuf (issue #452, lot J), Débutant a
+        aussi deux personnages disponibles : Aléatoire couvre maintenant
+        TOUS les niveaux — remplace
+        ``test_libelle_aleatoire_aujourdhui_comme_opportuniste`` (issue #447,
+        lot G), devenu faux par construction."""
+        assert libelle_niveaux_aleatoire() == "Tous les niveaux"
 
     def test_explication_classique_vide(self):
         assert explication_disponibilite_niveaux("classique") == ""
@@ -337,11 +372,12 @@ class TestLibelleEtExplicationNiveaux:
             == "Disponible à partir de Facile"
         )
 
-    def test_explication_aleatoire(self):
-        assert (
-            explication_disponibilite_niveaux(CLE_ALEATOIRE)
-            == MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT
-        )
+    def test_explication_aleatoire_vide_grace_a_titeuf(self):
+        """Depuis l'introduction de Titeuf (issue #452, lot J), Aléatoire est
+        disponible à tous les niveaux : rien à expliquer — remplace
+        ``test_explication_aleatoire`` (issue #447, lot G), devenu faux par
+        construction."""
+        assert explication_disponibilite_niveaux(CLE_ALEATOIRE) == ""
 
 
 # --------------------------------------------------------------------------- #
@@ -880,3 +916,219 @@ class TestPartVocabulaireLongChasseur:
         profil_pour_niveau("chasseur_de_scrabbles", Niveau.AVANCE)
         assert PERSONNAGES["chasseur_de_scrabbles"].profil is avant
         assert avant.part_vocabulaire_long is None
+
+
+# --------------------------------------------------------------------------- #
+# Titeuf (issue #452, lot J)
+# --------------------------------------------------------------------------- #
+
+
+def _plateau_titeuf() -> PlateauPartie:
+    """Plateau fabriqué pour qu'un mot favori COURT (``CACA``, 4 lettres) ne
+    soit jouable qu'avec le lexique complet, en concurrence avec des coups
+    courts jouables avec le seul vocabulaire du niveau — même scénario que
+    :func:`scrabble.moteur.ia._plateau_mot_favori` dans ``test_moteur_ia.py``.
+
+    Un ``Z`` isolé est posé en (7, 6). Le chevalet ``CACAXYW`` permet :
+
+    * des coups COURTS (``ZX``, ``ZY``, ``ZW``) présents dans le vocabulaire
+      du niveau ;
+    * le mot favori ``CACA``, vertical à partir de (7, 7) — mot croisé
+      ``ZC`` compris —, absent du vocabulaire du niveau, présent seulement
+      dans le lexique complet.
+    """
+    plateau = PlateauPartie()
+    plateau.poser_coup(Coup(7, 6, Direction.HORIZONTALE, tuiles_depuis_chaine("Z")))
+    return plateau
+
+
+#: Chevalet du scénario ci-dessus.
+_CHEVALET_TITEUF = list("CACAXYW")
+
+#: Vocabulaire du niveau (restreint) pour le scénario ci-dessus : ne connaît
+#: que des coups courts sans rapport avec ``CACA``.
+_DICO_NIVEAU_TITEUF = ("ZX", "ZY", "ZW")
+
+#: Lexique complet pour le scénario ci-dessus : coups courts ET mot favori
+#: (mot principal et mot croisé).
+_DICO_COMPLET_TITEUF = ("ZX", "ZY", "ZW", "CACA", "ZC")
+
+
+def _proportion_mot_favori(niveau: Niveau, profil, n: int = 300) -> float:
+    """Proportion des coups choisis (sur ``n`` graines) dont le mot principal
+    est ``CACA``, sur le scénario :func:`_plateau_titeuf`."""
+    plateau = _plateau_titeuf()
+    dico_niveau = Trie.depuis_iterable(_DICO_NIVEAU_TITEUF)
+    dico_complet = Trie.depuis_iterable(_DICO_COMPLET_TITEUF)
+
+    nb_favori = 0
+    nb_joues = 0
+    for graine in range(n):
+        coup = choisir_coup(
+            plateau,
+            _CHEVALET_TITEUF,
+            dico_niveau,
+            niveau,
+            random.Random(graine),
+            profil=profil,
+            dictionnaire_complet=dico_complet,
+        )
+        if coup is None:
+            continue
+        nb_joues += 1
+        mot = "".join(t.lettre for t in coup.tuiles)
+        if mot == "CACA":
+            nb_favori += 1
+    assert nb_joues > 0
+    return nb_favori / nb_joues
+
+
+class TestPersonnageTiteuf:
+    """Titeuf doit choisir un mot favori plus souvent que Classique, sur un
+    plateau et un chevalet où un mot favori est jouable (issue #452, lot
+    J)."""
+
+    def test_titeuf_choisit_plus_souvent_un_mot_favori_que_classique(self):
+        profil_classique = PERSONNAGES["classique"].profil
+        profil_titeuf = PERSONNAGES["titeuf"].profil
+
+        proportion_classique = _proportion_mot_favori(Niveau.DEBUTANT, profil_classique)
+        proportion_titeuf = _proportion_mot_favori(Niveau.DEBUTANT, profil_titeuf)
+        assert proportion_titeuf > proportion_classique
+
+    def test_titeuf_joue_le_mot_favori_environ_la_moitie_des_cas_ou_plus(self):
+        """Objectif de comportement de l'issue #452 : quand au moins un mot
+        favori est jouable, Titeuf le joue dans environ la moitié des cas ou
+        plus — vérifié avec une marge (40 %) pour ne pas être trop fragile à
+        la variance d'un scénario de test miniature (le dictionnaire réel
+        n'est pas disponible dans ce worktree isolé, voir le rapport de
+        l'issue)."""
+        profil_titeuf = PERSONNAGES["titeuf"].profil
+        proportion = _proportion_mot_favori(Niveau.DEBUTANT, profil_titeuf, n=500)
+        assert proportion >= 0.40
+
+    def test_titeuf_dans_le_registre(self):
+        assert "titeuf" in PERSONNAGES
+        titeuf = PERSONNAGES["titeuf"]
+        assert titeuf.prenom == "Titeuf"
+        assert titeuf.description != ""
+
+    def test_titeuf_apparait_dans_la_liste(self):
+        cles = [p["cle"] for p in lister_personnages()]
+        assert "titeuf" in cles
+
+    def test_titeuf_profil_mots_favoris_et_poids_tirage(self):
+        titeuf = PERSONNAGES["titeuf"].profil
+        assert titeuf.mots_favoris == MOTS_FAVORIS_TITEUF
+        assert titeuf.poids_tirage_favori == POIDS_TIRAGE_FAVORI_TITEUF
+        assert POIDS_TIRAGE_FAVORI_TITEUF == 50.0
+
+    def test_autres_personnages_mots_favoris_neutre(self):
+        """``mots_favoris``/``poids_tirage_favori`` restent ``None`` pour
+        tout personnage qui ne les demande pas explicitement — champs
+        strictement additifs, sans effet de bord sur les personnages
+        existants."""
+        for cle in ("classique", "opportuniste", "chasseur_de_scrabbles"):
+            assert PERSONNAGES[cle].profil.mots_favoris is None
+            assert PERSONNAGES[cle].profil.poids_tirage_favori is None
+
+    def test_titeuf_disponible_uniquement_a_debutant(self):
+        assert NIVEAUX_TITEUF == frozenset({Niveau.DEBUTANT})
+        for niveau in Niveau:
+            attendu = niveau is Niveau.DEBUTANT
+            assert personnage_disponible_a_niveau("titeuf", niveau) is attendu
+
+    def test_titeuf_disponible_a_deux_joueurs_seulement(self):
+        assert NB_JOUEURS_TITEUF == frozenset({2})
+        assert personnage_disponible_a_nb_joueurs("titeuf", 2) is True
+        for nb_joueurs in (3, 4):
+            assert personnage_disponible_a_nb_joueurs("titeuf", nb_joueurs) is False
+
+    def test_libelle_niveaux_titeuf(self):
+        assert libelle_niveaux(PERSONNAGES["titeuf"]) == "Débutant"
+
+    def test_libelle_tailles_titeuf(self):
+        assert libelle_tailles(PERSONNAGES["titeuf"]) == "Parties à deux joueurs"
+
+    def test_explication_disponibilite_titeuf(self):
+        assert (
+            explication_disponibilite_niveaux("titeuf")
+            == "Disponible : Débutant"
+        )
+        assert (
+            explication_disponibilite_tailles("titeuf")
+            == MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS
+        )
+
+    def test_aleatoire_redevient_disponible_a_debutant_grace_a_titeuf(self):
+        """Point central de l'issue #452 : la règle déjà en place (lot G,
+        issue #447) rend Aléatoire de nouveau disponible à Débutant dès que
+        Titeuf y figure, sans aucune autre modification."""
+        assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is True
+        assert personnages_disponibles_a_niveau(Niveau.DEBUTANT) == [
+            PERSONNAGES["classique"],
+            PERSONNAGES["titeuf"],
+        ]
+
+    def test_tirage_aleatoire_a_debutant_inclut_titeuf(self):
+        """Le tirage « Aléatoire » à Débutant doit, sur de nombreuses
+        graines, couvrir les deux personnages désormais disponibles."""
+        cles = {
+            tirer_personnage(random.Random(g), Niveau.DEBUTANT).cle
+            for g in range(50)
+        }
+        assert cles == {"classique", "titeuf"}
+
+
+class TestMotsFavorisTiteuf:
+    """Chargement de la liste de mots favoris (issue #452, lot J, points 1
+    et 9) : fichier texte simple, modifiable sans toucher au code."""
+
+    def test_liste_de_depart_chargee_depuis_le_fichier_du_depot(self):
+        """La liste effectivement utilisée par Titeuf vient bien du fichier
+        du dépôt (pas d'une valeur codée en dur ailleurs)."""
+        assert CHEMIN_MOTS_FAVORIS_TITEUF.exists()
+        assert MOTS_FAVORIS_TITEUF == charger_mots_favoris(CHEMIN_MOTS_FAVORIS_TITEUF)
+        assert "CACA" in MOTS_FAVORIS_TITEUF
+        assert "PROUT" in MOTS_FAVORIS_TITEUF
+
+    def test_fichier_absent_renvoie_un_ensemble_vide_sans_erreur(self, tmp_path):
+        assert charger_mots_favoris(tmp_path / "n_existe_pas.txt") == frozenset()
+
+    def test_mots_normalises_majuscules_et_desaccentues(self, tmp_path):
+        chemin = tmp_path / "favoris.txt"
+        chemin.write_text("café\n  Pâté  \nCACA\n\n", encoding="utf-8")
+        assert charger_mots_favoris(chemin) == frozenset({"CAFE", "PATE", "CACA"})
+
+    def test_modification_du_fichier_prise_en_compte_sans_toucher_au_code(self, tmp_path):
+        """La fonction de chargement relit le fichier à chaque appel : une
+        liste modifiée est prise en compte sans toucher à une seule ligne de
+        code — seul le fichier change."""
+        chemin = tmp_path / "favoris.txt"
+        chemin.write_text("caca\n", encoding="utf-8")
+        assert charger_mots_favoris(chemin) == frozenset({"CACA"})
+
+        chemin.write_text("caca\nprout\n", encoding="utf-8")
+        assert charger_mots_favoris(chemin) == frozenset({"CACA", "PROUT"})
+
+    def test_mot_absent_du_lexique_ignore_sans_filtrage_dedie(self):
+        """Un mot de la liste absent du lexique complet installé n'est PAS
+        filtré au chargement — la liste de mots favoris et le lexique
+        complet sont deux préoccupations indépendantes (voir
+        ``scrabble.moteur.ia._generer_coups_candidats`` pour l'endroit où ce
+        mot est, lui, naturellement ignoré faute de coup validable)."""
+        plateau = _plateau_titeuf()
+        dico_niveau = Trie.depuis_iterable(_DICO_NIVEAU_TITEUF)
+        # Lexique complet sans "CACA" : un mot de la liste absent du lexique.
+        dico_complet_sans_caca = Trie.depuis_iterable(("ZX", "ZY", "ZW"))
+        from scrabble.moteur.ia import ProfilPersonnage, _generer_coups_candidats
+
+        profil = ProfilPersonnage(mots_favoris=frozenset({"CACA", "UNMOTABSENT"}))
+        coups = _generer_coups_candidats(
+            plateau, _CHEVALET_TITEUF, dico_niveau, profil, dico_complet_sans_caca
+        )
+        mots = {"".join(t.lettre for t in cn.coup.tuiles) for cn in coups}
+        assert "CACA" not in mots
+        assert "UNMOTABSENT" not in mots
+        # Les coups courts du vocabulaire du niveau restent, eux, inchangés.
+        assert "ZX" in mots

@@ -245,6 +245,7 @@ def generer_coups(
     plateau: PlateauPartie,
     chevalet: list[str],
     dictionnaire: TrieProtocol,
+    dictionnaire_validation: "TrieProtocol | None" = None,
 ) -> list[CoupNote]:
     """Génère tous les coups valides pour le chevalet sur le plateau.
 
@@ -255,13 +256,26 @@ def generer_coups(
     Args:
         plateau: État courant du plateau de jeu.
         chevalet: Liste des jetons disponibles (lettres A-Z ou ``*`` pour joker).
-        dictionnaire: Trie du dictionnaire (doit exposer ``.racine`` et ``.contient``).
+        dictionnaire: Trie du dictionnaire (doit exposer ``.racine`` et ``.contient``),
+            utilisé pour EXPLORER (élagage par préfixe) ET, par défaut, pour
+            VALIDER chaque candidat.
+        dictionnaire_validation: Trie distinct utilisé pour la VALIDATION
+            (mot principal et mots croisés) à la place de ``dictionnaire``
+            (issue #452, lot J). Permet d'explorer avec un petit Trie
+            restreint (ex. une liste de mots favoris d'un personnage) tout en
+            validant les mots croisés formés avec le lexique complet, plutôt
+            qu'avec ce même petit Trie (qui les rejetterait presque tous).
+            ``None`` (défaut) retombe sur ``dictionnaire`` — comportement
+            strictement identique à avant l'introduction de ce paramètre.
 
     Returns:
         Liste de :class:`CoupNote` triée par score total décroissant.
     """
     compteur, jokers_dispo = _lettres_disponibles(chevalet)
     ancrages = _ancrages(plateau)
+    dictionnaire_validation_effectif = (
+        dictionnaire_validation if dictionnaire_validation is not None else dictionnaire
+    )
 
     candidats: list[Coup] = []
     vus: set[tuple[int, int, str, str]] = set()  # (ligne, col, direction, mot)
@@ -282,7 +296,7 @@ def generer_coups(
     # Valider et scorer chaque candidat
     resultats: list[CoupNote] = []
     for coup in candidats:
-        if not coup_valide(plateau, coup, dictionnaire):
+        if not coup_valide(plateau, coup, dictionnaire_validation_effectif):
             continue
         # Appliquer le coup sur une copie pour calculer le score
         copie = plateau.copie()

@@ -633,7 +633,10 @@ class Partie:
         plus à :func:`~scrabble.moteur.ia.choisir_coup` et
         :func:`~scrabble.moteur.ia.evaluer_coups` comme lexique complet —
         aucun chargement supplémentaire, rien transmis pour les profils qui ne
-        le demandent pas.
+        le demandent pas. Même transmission (issue #452, lot J) quand
+        ``profil.mots_favoris`` est renseigné (personnage Titeuf) : les deux
+        champs déclenchent indépendamment le même envoi de
+        ``self.dictionnaire``.
 
         :raises ActionInvalide: si le joueur courant est humain, n'a pas de
             niveau défini, ou la partie est finie.
@@ -658,7 +661,7 @@ class Partie:
         # n'en subissent aucun coût supplémentaire.
         dictionnaire_complet = (
             self.dictionnaire
-            if profil is not None and profil.vocabulaire_long
+            if profil is not None and (profil.vocabulaire_long or profil.mots_favoris)
             else None
         )
         chevalet_avant = tuple(joueur.chevalet)

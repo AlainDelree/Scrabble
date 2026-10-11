@@ -995,6 +995,196 @@ class TestVocabulaireLong:
 
 
 # --------------------------------------------------------------------------- #
+# Mots favoris (issue #452, lot J)
+# --------------------------------------------------------------------------- #
+
+
+def _plateau_mot_favori() -> PlateauPartie:
+    """Plateau fabriqué pour qu'un mot favori COURT (4 lettres) ne soit
+    jouable qu'avec le lexique complet, en concurrence avec un coup court
+    jouable avec le seul vocabulaire du niveau.
+
+    Contrairement au scénario de ``vocabulaire_long``
+    (:func:`_plateau_vocabulaire_long`, mot de 7 lettres et plus), celui-ci
+    illustre que le mécanisme des mots favoris n'a AUCUNE contrainte de
+    longueur : ``CACA`` ne compte que 4 lettres.
+
+    Un ``Z`` isolé est posé en (7, 6). Le chevalet ``CACAXYW`` permet alors :
+
+    * un coup COURT, ``ZX`` (``Z`` existant + ``X`` du chevalet, horizontal à
+      partir de (7, 6)) — présent dans le vocabulaire du niveau ;
+    * le mot favori ``CACA``, vertical à partir de (7, 7) : le ``C`` posé en
+      (7, 7), adjacent à droite du ``Z`` existant, forme en plus le mot
+      croisé ``ZC`` (ligne 7, colonnes 6-7) — absent du vocabulaire du
+      niveau, présent seulement dans le lexique complet. De quoi vérifier
+      que le mot croisé d'un coup à mot favori est bien validé avec le
+      lexique complet, pas avec le petit Trie construit depuis la liste de
+      mots favoris (qui ne connaît que ``CACA`` lui-même).
+    """
+    plateau = PlateauPartie()
+    plateau.poser_coup(Coup(7, 6, Direction.HORIZONTALE, tuiles_depuis_chaine("Z")))
+    return plateau
+
+
+#: Chevalet du scénario ci-dessus : épelle le mot favori ``CACA`` (deux C,
+#: deux A) et fournit le ``X``/``Y``/``W`` des coups courts concurrents.
+_CHEVALET_MOT_FAVORI = list("CACAXYW")
+
+#: Vocabulaire du niveau (restreint) pour le scénario ci-dessus : ne connaît
+#: que des coups courts sans rapport avec ``CACA``.
+_DICO_NIVEAU_MOT_FAVORI = ("ZX", "ZY", "ZW")
+
+#: Lexique complet pour le scénario ci-dessus : coups courts ET mot favori
+#: (mot principal et mot croisé).
+_DICO_COMPLET_MOT_FAVORI = ("ZX", "ZY", "ZW", "CACA", "ZC")
+
+#: Liste de mots favoris de test — un seul mot, délibérément absent du
+#: vocabulaire du niveau.
+_MOTS_FAVORIS_TEST: frozenset[str] = frozenset({"CACA"})
+
+
+class TestMotsFavoris:
+    """Champ ``mots_favoris`` de :class:`ProfilPersonnage` (issue #452, lot
+    J) : ensemble de coups candidats élargi aux coups dont le mot principal
+    figure dans la liste — généralise ``vocabulaire_long`` à un critère de
+    LISTE plutôt que de longueur."""
+
+    def test_neutre_sans_profil(self):
+        """Sans profil, l'ensemble de coups candidats est inchangé, même si
+        un ``dictionnaire_complet`` est fourni."""
+        plateau = _plateau_mot_favori()
+        dico_niveau = _trie(*_DICO_NIVEAU_MOT_FAVORI)
+        dico_complet = _trie(*_DICO_COMPLET_MOT_FAVORI)
+
+        for graine in range(10):
+            coup_sans_complet = choisir_coup(
+                plateau, _CHEVALET_MOT_FAVORI, dico_niveau, Niveau.AVANCE,
+                random.Random(graine),
+            )
+            coup_avec_complet_ignore = choisir_coup(
+                plateau, _CHEVALET_MOT_FAVORI, dico_niveau, Niveau.AVANCE,
+                random.Random(graine), dictionnaire_complet=dico_complet,
+            )
+            assert coup_avec_complet_ignore == coup_sans_complet
+
+    def test_neutre_profil_vide(self):
+        """Un ``ProfilPersonnage()`` vide (``mots_favoris`` à ``None``)
+        n'élargit rien non plus, même avec ``dictionnaire_complet`` fourni."""
+        plateau = _plateau_mot_favori()
+        dico_niveau = _trie(*_DICO_NIVEAU_MOT_FAVORI)
+        dico_complet = _trie(*_DICO_COMPLET_MOT_FAVORI)
+
+        for graine in range(10):
+            coup_sans_profil = choisir_coup(
+                plateau, _CHEVALET_MOT_FAVORI, dico_niveau, Niveau.AVANCE,
+                random.Random(graine),
+            )
+            coup_profil_vide = choisir_coup(
+                plateau, _CHEVALET_MOT_FAVORI, dico_niveau, Niveau.AVANCE,
+                random.Random(graine), profil=ProfilPersonnage(),
+                dictionnaire_complet=dico_complet,
+            )
+            assert coup_profil_vide == coup_sans_profil
+
+    def test_sans_dictionnaire_complet_le_mot_favori_reste_hors_de_portee(self):
+        """``mots_favoris`` renseigné sans ``dictionnaire_complet`` fourni ne
+        peut rien élargir (rien à élargir avec)."""
+        plateau = _plateau_mot_favori()
+        dico_niveau = _trie(*_DICO_NIVEAU_MOT_FAVORI)
+        profil = ProfilPersonnage(mots_favoris=_MOTS_FAVORIS_TEST)
+
+        coups = _generer_coups_candidats(
+            plateau, _CHEVALET_MOT_FAVORI, dico_niveau, profil, None
+        )
+        mots = {"".join(t.lettre for t in cn.coup.tuiles) for cn in coups}
+        assert "CACA" not in mots
+
+    def test_mot_favori_trouve_avec_mots_favoris(self):
+        """Avec ``mots_favoris`` ET ``dictionnaire_complet`` fournis, le coup
+        à mot favori (absent du vocabulaire du niveau, présent seulement
+        dans le lexique complet) est trouvé — mot principal ET mot croisé
+        validés avec le lexique complet."""
+        plateau = _plateau_mot_favori()
+        dico_niveau = _trie(*_DICO_NIVEAU_MOT_FAVORI)
+        dico_complet = _trie(*_DICO_COMPLET_MOT_FAVORI)
+        profil = ProfilPersonnage(mots_favoris=_MOTS_FAVORIS_TEST)
+
+        coups = _generer_coups_candidats(
+            plateau, _CHEVALET_MOT_FAVORI, dico_niveau, profil, dico_complet
+        )
+        mots = {"".join(t.lettre for t in cn.coup.tuiles) for cn in coups}
+        assert "CACA" in mots
+        # Les coups courts du vocabulaire du niveau restent présents (union,
+        # pas remplacement).
+        assert "ZX" in mots
+
+    def test_mot_absent_du_lexique_complet_ignore_sans_erreur(self):
+        """Un mot de la liste absent du lexique complet installé ne produit
+        simplement aucun coup — ignoré sans erreur, sans filtrage dédié
+        (point 1 de l'issue #452)."""
+        plateau = _plateau_mot_favori()
+        dico_niveau = _trie(*_DICO_NIVEAU_MOT_FAVORI)
+        # "CACA" est absent de CE lexique complet fabriqué pour le test (seul
+        # "PROUT", un autre mot favori, y figure) : il ne doit jamais
+        # apparaître parmi les coups candidats.
+        dico_complet_sans_caca = _trie("ZX", "ZY", "ZW", "PROUT")
+        profil = ProfilPersonnage(mots_favoris=frozenset({"CACA", "PROUT"}))
+
+        coups = _generer_coups_candidats(
+            plateau, _CHEVALET_MOT_FAVORI, dico_niveau, profil, dico_complet_sans_caca
+        )
+        mots = {"".join(t.lettre for t in cn.coup.tuiles) for cn in coups}
+        assert "CACA" not in mots
+
+    def test_sans_doublon_avec_les_coups_habituels(self):
+        """Un mot favori qui serait AUSSI présent dans le vocabulaire du
+        niveau n'apparaît pas deux fois dans l'ensemble élargi."""
+        plateau = _plateau_mot_favori()
+        # "ZX" figure maintenant à la fois dans le vocabulaire du niveau ET
+        # dans la liste de mots favoris.
+        dico_niveau = _trie(*_DICO_NIVEAU_MOT_FAVORI)
+        dico_complet = _trie(*_DICO_COMPLET_MOT_FAVORI)
+        profil = ProfilPersonnage(mots_favoris=frozenset({"CACA", "ZX"}))
+
+        coups = _generer_coups_candidats(
+            plateau, _CHEVALET_MOT_FAVORI, dico_niveau, profil, dico_complet
+        )
+        cles = [
+            (cn.coup.ligne, cn.coup.colonne, cn.coup.direction.value,
+             "".join(t.lettre for t in cn.coup.tuiles))
+            for cn in coups
+        ]
+        assert len(cles) == len(set(cles))
+
+    def test_journal_decision_porte_sur_ensemble_elargi(self):
+        """Le journal de décision (:func:`evaluer_coups`) porte sur le même
+        ensemble de coups candidats élargi que :func:`choisir_coup`."""
+        plateau = _plateau_mot_favori()
+        dico_niveau = _trie(*_DICO_NIVEAU_MOT_FAVORI)
+        dico_complet = _trie(*_DICO_COMPLET_MOT_FAVORI)
+        profil = ProfilPersonnage(mots_favoris=_MOTS_FAVORIS_TEST)
+
+        candidats_elargis = _generer_coups_candidats(
+            plateau, _CHEVALET_MOT_FAVORI, dico_niveau, profil, dico_complet
+        )
+        # Un coup à mot favori quelconque (il peut en exister plusieurs
+        # placements) sert de ``coup_choisi`` imposé, pour vérifier qu'il est
+        # bien retrouvé dans l'évaluation, quel que soit son rang.
+        coup_favori = next(
+            cn.coup for cn in candidats_elargis
+            if "".join(t.lettre for t in cn.coup.tuiles) == "CACA"
+        )
+        evaluation = evaluer_coups(
+            plateau, _CHEVALET_MOT_FAVORI, dico_niveau, Niveau.AVANCE,
+            profil=profil, coup_choisi=coup_favori, dictionnaire_complet=dico_complet,
+        )
+        assert evaluation.nb_coups_possibles == len(candidats_elargis)
+        assert evaluation.coup_choisi is not None
+        assert evaluation.coup_choisi.mot == "CACA"
+        assert evaluation.rang_choisi is not None
+
+
+# --------------------------------------------------------------------------- #
 # Tirage pondéré en faveur des scrabbles (issue #451, lot H ter)
 # --------------------------------------------------------------------------- #
 
@@ -1147,6 +1337,187 @@ class TestTirageSPondereDansLaTranche:
             for graine in range(500)
         }
         assert scrabble_coup in resultats
+        assert len(resultats) > 1
+
+
+# --------------------------------------------------------------------------- #
+# Tirage pondéré en faveur des mots favoris (issue #452, lot J)
+# --------------------------------------------------------------------------- #
+
+
+class TestNeutraliteTirageFavori:
+    """``poids_tirage_favori`` absent (profil ``None`` ou vide) doit laisser
+    le tirage bit à bit identique, sur les six niveaux (généralise
+    ``TestNeutraliteTirage`` à ce nouveau champ)."""
+
+    @pytest.mark.parametrize("niveau", list(Niveau))
+    def test_neutralite_consommation_aleatoire(self, niveau):
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        dico = _trie("CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES")
+
+        rng_sans_profil = _RngEspion(42)
+        coup_sans_profil = choisir_coup(plateau, chevalet, dico, niveau, rng_sans_profil)
+
+        rng_profil_vide = _RngEspion(42)
+        coup_profil_vide = choisir_coup(
+            plateau, chevalet, dico, niveau, rng_profil_vide, profil=ProfilPersonnage()
+        )
+
+        rng_mots_favoris_sans_poids = _RngEspion(42)
+        coup_mots_favoris_sans_poids = choisir_coup(
+            plateau,
+            chevalet,
+            dico,
+            niveau,
+            rng_mots_favoris_sans_poids,
+            # ``mots_favoris`` renseigné SANS ``poids_tirage_favori`` ne doit
+            # rien changer au tirage : seul ``poids_tirage_favori`` pilote
+            # l'effet sur ``_tirer_dans_tranche``.
+            profil=ProfilPersonnage(mots_favoris=frozenset({"CADRE"})),
+        )
+
+        assert coup_profil_vide == coup_sans_profil
+        assert coup_mots_favoris_sans_poids == coup_sans_profil
+        assert rng_profil_vide.appels_choice == rng_sans_profil.appels_choice
+        assert rng_profil_vide.appels_choices == rng_sans_profil.appels_choices == 0
+        assert rng_profil_vide.getstate() == rng_sans_profil.getstate()
+        assert rng_mots_favoris_sans_poids.appels_choices == 0
+        assert rng_mots_favoris_sans_poids.getstate() == rng_sans_profil.getstate()
+
+    @pytest.mark.parametrize("niveau", [Niveau.AVANCE, Niveau.CHAMPION_DU_MONDE])
+    def test_sans_effet_sur_les_niveaux_meilleur_coup(self, niveau):
+        """AVANCE et CHAMPION_DU_MONDE jouent toujours leur meilleur coup :
+        jamais un tirage dans une tranche, donc ``poids_tirage_favori`` n'y
+        change jamais rien."""
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        dico = _trie("CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES")
+        for graine in range(20):
+            sans_poids = choisir_coup(plateau, chevalet, dico, niveau, random.Random(graine))
+            avec_poids = choisir_coup(
+                plateau,
+                chevalet,
+                dico,
+                niveau,
+                random.Random(graine),
+                profil=ProfilPersonnage(
+                    mots_favoris=frozenset({"CADRE"}), poids_tirage_favori=50.0
+                ),
+            )
+            assert avec_poids == sans_poids
+
+
+class TestTirageSPondereFavoriDansLaTranche:
+    """``_tirer_dans_tranche`` / ``poids_tirage_favori`` (issue #452, lot J) :
+    généralise le tirage pondéré du lot H ter à un critère de mot favori,
+    avec une différence clé — le coup à mot favori est ajouté au pool de
+    tirage même s'il est ABSENT de la tranche elle-même."""
+
+    def _tranche(self, taille: int, favori: str = "FAVORI") -> list[CoupNote]:
+        coup_favori = _coup_note(favori, score=10, nb_nouvelles=3)
+        autres = [
+            _coup_note(f"AUTRE{lettre}", score=10, nb_nouvelles=3)
+            for lettre in string.ascii_uppercase[: taille - 1]
+        ]
+        return [coup_favori] + autres
+
+    @pytest.mark.parametrize("taille", [10, 15, 20])
+    def test_frequence_proche_de_la_theorie_quand_le_favori_est_dans_la_tranche(
+        self, taille
+    ):
+        """Le coup favori fait déjà partie de la tranche : même formule que
+        le tirage pondéré des scrabbles (poids sur ``n`` coups)."""
+        poids = 50.0
+        tranche = self._tranche(taille)
+        favori_coup = tranche[0].coup
+        theorique = poids / (taille - 1 + poids)
+
+        profil = ProfilPersonnage(mots_favoris=frozenset({"FAVORI"}), poids_tirage_favori=poids)
+        nb_essais = 20_000
+        nb_favori = sum(
+            1
+            for graine in range(nb_essais)
+            if _tirer_dans_tranche(tranche, random.Random(graine), profil, tranche) == favori_coup
+        )
+        proportion = nb_favori / nb_essais
+        assert abs(proportion - theorique) < 0.02
+
+    def test_coup_favori_absent_de_la_tranche_reste_tirable(self):
+        """Différence essentielle avec ``poids_tirage_scrabble`` : un coup à
+        mot favori EXCLU de la tranche (mais présent dans ``coups_complets``)
+        doit malgré tout pouvoir être tiré."""
+        tranche = self._tranche(10)  # ne contient PAS le mot favori
+        favori = _coup_note("FAVORI", score=1, nb_nouvelles=2)
+        coups_complets = tranche + [favori]
+        profil = ProfilPersonnage(mots_favoris=frozenset({"FAVORI"}), poids_tirage_favori=50.0)
+
+        resultats = {
+            _tirer_dans_tranche(tranche, random.Random(graine), profil, coups_complets)
+            for graine in range(300)
+        }
+        assert favori.coup in resultats
+
+    def test_sans_coups_complets_le_favori_absent_de_la_tranche_nest_jamais_tire(self):
+        """``coups_complets=None`` (défaut) désactive l'ajout, quel que soit
+        ``poids_tirage_favori`` — utilisé par les appelants qui ne
+        connaissent pas encore l'ensemble complet."""
+        tranche = self._tranche(10)
+        profil = ProfilPersonnage(mots_favoris=frozenset({"FAVORI"}), poids_tirage_favori=50.0)
+
+        for graine in range(50):
+            coup = _tirer_dans_tranche(tranche, random.Random(graine), profil, None)
+            assert coup in [cn.coup for cn in tranche]
+
+    def test_composition_de_la_tranche_elle_meme_jamais_modifiee(self):
+        """``tranche`` reçu en paramètre n'est jamais muté — seul le pool de
+        tirage interne change."""
+        tranche = self._tranche(10)
+        avant = list(tranche)
+        favori = _coup_note("CRACOTTE", score=1, nb_nouvelles=2)
+        profil = ProfilPersonnage(mots_favoris=frozenset({"CRACOTTE"}), poids_tirage_favori=50.0)
+        for graine in range(20):
+            _tirer_dans_tranche(tranche, random.Random(graine), profil, tranche + [favori])
+        assert tranche == avant
+
+    def test_tirage_uniforme_sans_poids(self):
+        """``poids_tirage_favori=None`` (défaut) : tirage uniforme, exactement
+        ``rng.choice(tranche).coup``, même avec ``mots_favoris`` renseigné."""
+        tranche = self._tranche(10)
+        profil = ProfilPersonnage(mots_favoris=frozenset({"FAVORI"}))
+        rng1 = random.Random(7)
+        rng2 = random.Random(7)
+        assert _tirer_dans_tranche(tranche, rng1, profil, tranche) == rng2.choice(tranche).coup
+
+    def test_poids_sans_mots_favoris_reste_neutre(self):
+        """``poids_tirage_favori`` renseigné SANS ``mots_favoris`` ne qualifie
+        aucun coup : neutre, y compris sur la consommation du générateur
+        aléatoire (retombe sur ``rng.choice``, pas ``rng.choices`` à poids
+        uniformes qui consommerait le générateur différemment)."""
+        tranche = self._tranche(10)
+        profil = ProfilPersonnage(poids_tirage_favori=50.0)
+        rng1 = random.Random(7)
+        rng2 = random.Random(7)
+        assert _tirer_dans_tranche(tranche, rng1, profil, tranche) == rng2.choice(tranche).coup
+        assert rng1.getstate() == rng2.getstate()
+
+    def test_cumul_scrabble_et_favori_prend_le_plus_grand_poids(self):
+        """Un coup qui serait À LA FOIS un scrabble et un mot favori reçoit
+        le plus grand des deux poids (cas limite, pas de double-comptage)."""
+        coup_double = _coup_note("DOUBLE", score=10, nb_nouvelles=7)
+        autres = [_coup_note(f"AUTRE{l}", score=10, nb_nouvelles=3) for l in "ABCDEFGHI"]
+        tranche = [coup_double] + autres
+        profil = ProfilPersonnage(
+            poids_tirage_scrabble=5.0,
+            mots_favoris=frozenset({"DOUBLE"}),
+            poids_tirage_favori=50.0,
+        )
+        resultats = {
+            _tirer_dans_tranche(tranche, random.Random(graine), profil, tranche)
+            for graine in range(300)
+        }
+        assert coup_double.coup in resultats
+        # Toujours un tirage pondéré, pas un passage déterministe.
         assert len(resultats) > 1
 
 

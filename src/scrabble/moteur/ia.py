@@ -84,8 +84,9 @@ Reproductibilité
 Le paramètre ``alea`` (:class:`random.Random` optionnel) permet d'injecter
 un générateur aléatoire à graine fixée pour des tests reproductibles.
 
-Tirage pondéré dans la tranche (issue #451, lot H ter)
---------------------------------------------------------
+Tirage pondéré dans la tranche (issue #451, lot H ter ; généralisé issue
+#452, lot J)
+--------------------------------------------------------------------------
 Pour DEBUTANT, FACILE, INTERMEDIAIRE et EXPERT (les niveaux qui tirent au
 hasard dans une tranche de meilleurs coups), :attr:`ProfilPersonnage.poids_tirage_scrabble`
 permet à un personnage de donner plus de poids, dans ce tirage, aux coups
@@ -95,6 +96,13 @@ de la tranche qui posent les 7 lettres du chevalet — voir
 COMPOSITION de la tranche ne change jamais, et un profil qui ne renseigne
 pas ce champ consomme le générateur aléatoire de façon rigoureusement
 identique à avant son introduction.
+
+:attr:`ProfilPersonnage.poids_tirage_favori` (issue #452, lot J) reprend ce
+même mécanisme pour les coups dont le mot principal est un mot favori du
+personnage (:attr:`ProfilPersonnage.mots_favoris`), avec une différence : ces
+coups sont ajoutés au pool de tirage même s'ils sont absents de la tranche
+elle-même (voir :func:`_tirer_dans_tranche`) — un mot favori peu rémunérateur
+pourrait sinon en être exclu d'office, en particulier à DEBUTANT.
 """
 
 from __future__ import annotations
@@ -106,6 +114,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
+from scrabble.dictionnaire.dictionnaire import Trie
 from scrabble.moteur.generateur import CoupNote, generer_coups
 from scrabble.moteur.plateau_partie import Coup, PlateauPartie
 from scrabble.regles.lettres import JOKER
@@ -389,6 +398,29 @@ class ProfilPersonnage:
     texte, PAS le ``hash()`` intégré de Python, aléatoire d'un processus à
     l'autre) : indépendante de la graine de la partie et de l'ordre de
     génération des coups.
+
+    ``mots_favoris`` (issue #452, lot J) généralise ``vocabulaire_long`` à un
+    critère de LISTE plutôt que de longueur : l'ensemble des coups candidats
+    est élargi aux coups dont le **mot principal** figure dans cette liste
+    (mots déjà normalisés — majuscules, désaccentués —, voir
+    :func:`scrabble.moteur.personnages.charger_mots_favoris`), générés avec un
+    petit Trie construit depuis la liste (:func:`_generer_coups_candidats`)
+    et VALIDÉS (mot principal et mots croisés) avec ``dictionnaire_complet``,
+    exactement comme ``vocabulaire_long``. Un mot de la liste absent du
+    lexique complet ne produit simplement aucun coup validé — ignoré sans
+    erreur, sans filtrage dédié. Neutre par défaut (``None`` : ensemble de
+    coups inchangé).
+
+    ``poids_tirage_favori`` (issue #452, lot J) généralise
+    ``poids_tirage_scrabble`` à ce même critère de liste : dans le tirage
+    pondéré des niveaux qui tirent au hasard dans une tranche de meilleurs
+    coups (voir :func:`_tirer_dans_tranche`), les coups dont le mot principal
+    est un mot favori reçoivent ce poids — ajoutés au tirage même s'ils ne
+    font pas partie de la tranche (différence avec ``poids_tirage_scrabble``,
+    qui ne pondère qu'À L'INTÉRIEUR de la tranche déjà calculée) : un mot
+    favori peu rémunérateur, plausible pour ce style de personnage, pourrait
+    sinon en être exclu d'office. Neutre par défaut (``None`` : tirage
+    inchangé, y compris la consommation du générateur aléatoire).
     """
 
     malus_longueur: int | None = None
@@ -398,6 +430,8 @@ class ProfilPersonnage:
     vocabulaire_long: bool | None = None
     poids_tirage_scrabble: float | None = None
     part_vocabulaire_long: float | None = None
+    mots_favoris: frozenset[str] | None = None
+    poids_tirage_favori: float | None = None
 
 
 def _score_strategique(
@@ -569,27 +603,58 @@ def _generer_coups_candidats(
     génération ajoute réellement) reste accessible — voir
     :func:`_mot_connu_vocabulaire_long`. ``None`` (défaut) ou 1.0 laisse tous
     ces mots accessibles, comportement identique à celui du lot H bis.
+
+    ``profil.mots_favoris`` (issue #452, lot J) élargit pareillement les
+    coups candidats, selon un critère de LISTE plutôt que de longueur : un
+    petit Trie est construit depuis cette liste (:func:`Trie.depuis_iterable`)
+    et utilisé pour EXPLORER (seuls les mots de la liste peuvent être
+    trouvés), tandis que ``dictionnaire_complet`` sert à VALIDER (mot
+    principal ET mots croisés) — voir le second paramètre de
+    :func:`generer_coups`. Un mot de la liste absent du lexique complet ne
+    produit ainsi simplement aucun coup validé (ignoré sans erreur, sans
+    filtrage dédié). Les deux élargissements (``vocabulaire_long`` et
+    ``mots_favoris``) sont indépendants et se combinent sans doublon (même
+    ensemble ``vus`` que l'élargissement par longueur).
     """
     coups = generer_coups(plateau, chevalet, dictionnaire)
-    if profil is None or not profil.vocabulaire_long or dictionnaire_complet is None:
+    if profil is None or dictionnaire_complet is None:
+        return coups
+    if not profil.vocabulaire_long and not profil.mots_favoris:
         return coups
 
-    part_vocabulaire_long = profil.part_vocabulaire_long
-    vus = {
-        (cn.coup.ligne, cn.coup.colonne, cn.coup.direction.value, _mot_principal(cn.coup))
-        for cn in coups
-    }
-    for cn in generer_coups(plateau, chevalet, dictionnaire_complet):
-        if len(cn.coup.tuiles) < _SEUIL_VOCABULAIRE_LONG:
-            continue
-        cle = (cn.coup.ligne, cn.coup.colonne, cn.coup.direction.value, _mot_principal(cn.coup))
-        if cle in vus:
-            continue
-        if part_vocabulaire_long is not None and part_vocabulaire_long < 1.0:
-            if not _mot_connu_vocabulaire_long(_mot_principal(cn.coup), part_vocabulaire_long):
+    def _cle(cn: CoupNote) -> tuple[int, int, str, str]:
+        return (
+            cn.coup.ligne,
+            cn.coup.colonne,
+            cn.coup.direction.value,
+            _mot_principal(cn.coup),
+        )
+
+    vus = {_cle(cn) for cn in coups}
+
+    if profil.vocabulaire_long:
+        part_vocabulaire_long = profil.part_vocabulaire_long
+        for cn in generer_coups(plateau, chevalet, dictionnaire_complet):
+            if len(cn.coup.tuiles) < _SEUIL_VOCABULAIRE_LONG:
                 continue
-        vus.add(cle)
-        coups.append(cn)
+            cle = _cle(cn)
+            if cle in vus:
+                continue
+            if part_vocabulaire_long is not None and part_vocabulaire_long < 1.0:
+                if not _mot_connu_vocabulaire_long(_mot_principal(cn.coup), part_vocabulaire_long):
+                    continue
+            vus.add(cle)
+            coups.append(cn)
+
+    if profil.mots_favoris:
+        trie_favoris = Trie.depuis_iterable(profil.mots_favoris)
+        for cn in generer_coups(plateau, chevalet, trie_favoris, dictionnaire_complet):
+            cle = _cle(cn)
+            if cle in vus:
+                continue
+            vus.add(cle)
+            coups.append(cn)
+
     return coups
 
 
@@ -622,9 +687,9 @@ def choisir_coup(
             comportement d'avant son introduction.
         dictionnaire_complet: Trie du lexique complet (issue #450, lot H
             bis), consulté en plus de ``dictionnaire`` uniquement si
-            ``profil.vocabulaire_long`` est actif (voir
-            :func:`_generer_coups_candidats`) — ignoré sinon, y compris si
-            fourni.
+            ``profil.vocabulaire_long`` ou ``profil.mots_favoris`` (issue
+            #452, lot J) est actif (voir :func:`_generer_coups_candidats`) —
+            ignoré sinon, y compris si fourni.
 
     Returns:
         Le coup choisi, ou None si aucun coup n'est jouable (le joueur passe).
@@ -761,30 +826,70 @@ def evaluer_coups(
 
 
 def _tirer_dans_tranche(
-    tranche: list[CoupNote], rng: random.Random, profil: ProfilPersonnage | None
+    tranche: list[CoupNote],
+    rng: random.Random,
+    profil: ProfilPersonnage | None,
+    coups_complets: list[CoupNote] | None = None,
 ) -> Coup:
-    """Tire un coup dans ``tranche`` (issue #451, lot H ter).
+    """Tire un coup dans ``tranche`` (issue #451, lot H ter ; généralisé issue
+    #452, lot J).
 
-    Neutralité stricte : sans ``profil`` ou avec
-    ``profil.poids_tirage_scrabble`` à ``None`` (défaut), c'est exactement
-    ``rng.choice(tranche).coup`` — même appel, même consommation du
-    générateur aléatoire qu'avant l'introduction de ce champ, pour TOUS les
-    niveaux et TOUS les personnages. Seule une valeur renseignée (> 1)
-    déclenche un tirage pondéré (``rng.choices``, pondération par
-    :data:`_SEUIL_BONUS_SCRABBLE`) : les coups de la tranche posant les 7
-    lettres du chevalet reçoivent ce poids, les autres gardent le poids 1 —
-    la COMPOSITION de ``tranche`` (calculée en amont par l'appelant) ne
-    change pas, seules les probabilités de tirage à l'intérieur changent.
+    Neutralité stricte : sans ``profil``, ou avec ``profil.poids_tirage_scrabble``
+    ET ``profil.poids_tirage_favori`` tous deux à ``None`` (défaut), c'est
+    exactement ``rng.choice(tranche).coup`` — même appel, même consommation
+    du générateur aléatoire qu'avant l'introduction de ces champs, pour TOUS
+    les niveaux et TOUS les personnages.
+
+    ``poids_tirage_scrabble`` (issue #451) : une valeur renseignée (> 1)
+    pondère, À L'INTÉRIEUR de ``tranche`` seulement, les coups posant les 7
+    lettres du chevalet (:data:`_SEUIL_BONUS_SCRABBLE`) — la COMPOSITION de
+    ``tranche`` ne change pas, seules les probabilités de tirage à
+    l'intérieur changent.
+
+    ``poids_tirage_favori`` (issue #452, lot J) diffère : les coups dont le
+    mot principal figure dans ``profil.mots_favoris`` sont ajoutés au pool de
+    tirage même s'ils sont absents de ``tranche`` (recherchés dans
+    ``coups_complets``, l'ensemble COMPLET des coups candidats triés,
+    toujours un sur-ensemble de ``tranche`` — fourni par l'appelant). Un mot
+    favori qui n'aurait pas suffi à entrer dans la tranche des meilleurs
+    coups reste ainsi tirable, avec ce poids. Si un coup cumule les deux
+    critères (scrabble ET mot favori), le plus grand des deux poids
+    s'applique. ``coups_complets=None`` (défaut) désactive cet ajout, quel
+    que soit ``poids_tirage_favori`` — utilisé par les appelants qui ne
+    connaissent pas encore l'ensemble complet.
     """
     poids_tirage_scrabble = profil.poids_tirage_scrabble if profil is not None else None
-    if poids_tirage_scrabble is None:
+    poids_tirage_favori = profil.poids_tirage_favori if profil is not None else None
+    mots_favoris = profil.mots_favoris if profil is not None else None
+    # ``poids_tirage_favori`` sans ``mots_favoris`` (ou l'inverse) ne qualifie
+    # aucun coup : neutre, au même titre que l'absence des deux — condition
+    # nécessaire pour retomber sur ``rng.choice`` (pas ``rng.choices`` à poids
+    # uniformes, qui consommerait le générateur différemment) dans ce cas.
+    favori_actif = poids_tirage_favori is not None and bool(mots_favoris)
+
+    if poids_tirage_scrabble is None and not favori_actif:
         return rng.choice(tranche).coup
 
-    poids = [
-        poids_tirage_scrabble if cn.nb_nouvelles == _SEUIL_BONUS_SCRABBLE else 1.0
-        for cn in tranche
-    ]
-    return rng.choices(tranche, weights=poids, k=1)[0].coup
+    pool = tranche
+    if favori_actif and coups_complets is not None:
+        ids_tranche = {id(cn) for cn in tranche}
+        extras = [
+            cn
+            for cn in coups_complets
+            if id(cn) not in ids_tranche and _mot_principal(cn.coup) in mots_favoris
+        ]
+        if extras:
+            pool = tranche + extras
+
+    poids = []
+    for cn in pool:
+        p = 1.0
+        if poids_tirage_scrabble is not None and cn.nb_nouvelles == _SEUIL_BONUS_SCRABBLE:
+            p = poids_tirage_scrabble
+        if favori_actif and _mot_principal(cn.coup) in mots_favoris:
+            p = max(p, poids_tirage_favori)
+        poids.append(p)
+    return rng.choices(pool, weights=poids, k=1)[0].coup
 
 
 def _choisir_avance(coups: list[CoupNote], rng: random.Random) -> Coup:
@@ -818,7 +923,7 @@ def _choisir_top5(
     cette tranche — voir :func:`_tirer_dans_tranche`.
     """
     taille_haut = max(1, len(coups) * 5 // 100)
-    return _tirer_dans_tranche(coups[:taille_haut], rng, profil)
+    return _tirer_dans_tranche(coups[:taille_haut], rng, profil, coups)
 
 
 def _choisir_intermediaire(
@@ -833,7 +938,7 @@ def _choisir_intermediaire(
     des scrabbles dans cette tranche — voir :func:`_tirer_dans_tranche`.
     """
     taille_haut = max(1, len(coups) * 15 // 100)
-    return _tirer_dans_tranche(coups[:taille_haut], rng, profil)
+    return _tirer_dans_tranche(coups[:taille_haut], rng, profil, coups)
 
 
 def _choisir_facile(
@@ -848,7 +953,7 @@ def _choisir_facile(
     des scrabbles dans cette tranche — voir :func:`_tirer_dans_tranche`.
     """
     taille_tiers = max(1, len(coups) // 3)
-    return _tirer_dans_tranche(coups[:taille_tiers], rng, profil)
+    return _tirer_dans_tranche(coups[:taille_tiers], rng, profil, coups)
 
 
 def _choisir_debutant(
@@ -868,4 +973,4 @@ def _choisir_debutant(
     :func:`_tirer_dans_tranche`.
     """
     taille_haut = max(1, len(coups) * 70 // 100)
-    return _tirer_dans_tranche(coups[:taille_haut], rng, profil)
+    return _tirer_dans_tranche(coups[:taille_haut], rng, profil, coups)

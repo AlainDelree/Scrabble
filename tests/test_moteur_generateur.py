@@ -279,3 +279,63 @@ class TestIntegrationDictionnaire:
         }
         # Au moins quelques-uns de ces mots doivent être trouvés
         assert len(mots_trouves) >= 1
+
+
+class TestDictionnaireValidationDistinct:
+    """``dictionnaire_validation`` (issue #452, lot J) : explorer avec un Trie
+    distinct de celui utilisé pour valider mot principal et mots croisés."""
+
+    def test_neutre_sans_argument(self) -> None:
+        """Sans ``dictionnaire_validation``, comportement strictement
+        identique à avant l'introduction du paramètre (repli sur
+        ``dictionnaire`` pour la validation)."""
+        plateau = PlateauPartie()
+        chevalet = ["C", "A", "T"]
+        trie = _trie_mots(["CAT"])
+
+        assert generer_coups(plateau, chevalet, trie) == generer_coups(
+            plateau, chevalet, trie, None
+        )
+
+    def test_mot_absent_du_dictionnaire_de_validation_est_rejete(self) -> None:
+        """Un coup trouvé via le Trie d'exploration mais dont le mot
+        principal est absent du Trie de validation n'est jamais renvoyé —
+        condition nécessaire pour qu'un mot favori absent du lexique complet
+        soit ignoré sans erreur (issue #452, point 1)."""
+        plateau = PlateauPartie()
+        chevalet = ["C", "A", "T"]
+        trie_exploration = _trie_mots(["CAT"])
+        trie_validation_vide = _trie_mots([])
+
+        resultats = generer_coups(plateau, chevalet, trie_exploration, trie_validation_vide)
+        assert resultats == []
+
+    def test_mot_croise_valide_avec_le_dictionnaire_de_validation(self) -> None:
+        """Le mot croisé formé par un coup exploré via le petit Trie est
+        validé avec le Trie de validation (lexique complet), pas avec le
+        petit Trie d'exploration — condition nécessaire pour qu'un mot
+        favori sans rapport avec le mot croisé reste jouable."""
+        plateau = PlateauPartie()
+        plateau.poser_coup(
+            Coup(7, 6, Direction.HORIZONTALE, (Tuile("Z", joker=False),))
+        )
+        chevalet = ["C", "A"]
+        # Le petit Trie d'exploration ne connaît que "CA" (le mot principal) :
+        # il ne pourrait jamais valider le mot croisé "ZC" lui-même.
+        trie_exploration = _trie_mots(["CA"])
+        trie_validation = _trie_mots(["CA", "ZC"])
+
+        resultats = generer_coups(plateau, chevalet, trie_exploration, trie_validation)
+        mots = {"".join(t.lettre for t in r.coup.tuiles) for r in resultats}
+        assert "CA" in mots
+
+        # Sans "ZC" dans le dictionnaire de validation, le même coup (mot
+        # croisé invalide) est rejeté.
+        trie_validation_sans_croise = _trie_mots(["CA"])
+        resultats_invalides = generer_coups(
+            plateau, chevalet, trie_exploration, trie_validation_sans_croise
+        )
+        mots_invalides = {
+            "".join(t.lettre for t in r.coup.tuiles) for r in resultats_invalides
+        }
+        assert "CA" not in mots_invalides

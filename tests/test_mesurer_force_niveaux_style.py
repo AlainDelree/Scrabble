@@ -138,6 +138,52 @@ def test_calculer_indicateurs_sur_partie_fabriquee_a_la_main():
 
 
 # --------------------------------------------------------------------------- #
+# Part des coups à mot favori (issue #452, lot J)
+# --------------------------------------------------------------------------- #
+
+def test_calculer_indicateurs_mot_favori():
+    """``mots_favoris`` (issue #452, lot J) alimente ``coups_mot_favori``, et
+    vaut 0 quand il n'est pas fourni (cas d'un personnage sans liste)."""
+    partie = _construire_partie_fabriquee()
+
+    # Camp A a joué CHAT puis AS : seul CHAT est un mot favori ici.
+    ind_a_avec_favori = mfn._calculer_indicateurs_joueur(
+        partie.historique, "A:", penalite_fin=0, mots_favoris=frozenset({"CHAT"})
+    )
+    assert ind_a_avec_favori.coups_mot_favori == 1
+
+    # Sans mots_favoris (défaut), toujours 0 — même historique.
+    ind_a_sans_favori = mfn._calculer_indicateurs_joueur(
+        partie.historique, "A:", penalite_fin=0
+    )
+    assert ind_a_sans_favori.coups_mot_favori == 0
+
+    # Une liste qui ne contient aucun des mots joués reste à 0.
+    ind_a_favori_absent = mfn._calculer_indicateurs_joueur(
+        partie.historique, "A:", penalite_fin=0, mots_favoris=frozenset({"PROUT"})
+    )
+    assert ind_a_favori_absent.coups_mot_favori == 0
+
+
+def test_jouer_une_partie_titeuf_sans_coup_jouable_mot_favori_reste_a_zero():
+    """Pas de régression du déterminisme de force avec un personnage à liste
+    de mots favoris (Titeuf) : même scénario sans aucun coup jouable que
+    :func:`test_jouer_une_partie_integre_les_indicateurs_sans_changer_la_force`
+    ci-dessous — la résolution de ``mots_favoris`` ne perturbe rien."""
+    dictionnaire_vide = Trie.depuis_iterable([])
+    config_a = mfn.ConfigJoueur(niveau=mfn.Niveau.DEBUTANT, personnage="titeuf")
+    config_b = mfn.ConfigJoueur(niveau=mfn.Niveau.DEBUTANT, personnage="classique")
+
+    resultat = mfn.jouer_une_partie(
+        config_a, config_b, graine_partie=7,
+        dictionnaire=dictionnaire_vide,
+        trie_a=dictionnaire_vide, trie_b=dictionnaire_vide,
+    )
+    assert resultat.indicateurs_a.coups_mot_favori == 0
+    assert resultat.indicateurs_b.coups_mot_favori == 0
+
+
+# --------------------------------------------------------------------------- #
 # Export CSV complet (point 2 et point 4)
 # --------------------------------------------------------------------------- #
 
@@ -206,6 +252,14 @@ def test_ecrire_csv_exporte_les_indicateurs_de_style(tmp_path):
     assert ligne["b_tour_joker_moy"] == ""
     assert ligne["b_passes"] == "1"
     assert ligne["b_penalite_fin"] == "1"
+
+    # Colonne "part_mot_favori" (issue #452, lot J) : absente des deux
+    # ``IndicateursPartieJoueur`` fabriqués ci-dessus (``coups_mot_favori``
+    # par défaut à 0) — la part doit donc être 0, pas vide (contrairement à
+    # une moyenne jamais observée, un coup posé est toujours soit un mot
+    # favori, soit non).
+    assert float(ligne["a_part_mot_favori"]) == 0.0
+    assert float(ligne["b_part_mot_favori"]) == 0.0
 
 
 # --------------------------------------------------------------------------- #

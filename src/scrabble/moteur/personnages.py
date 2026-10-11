@@ -144,14 +144,72 @@ réel n'est pas disponible dans ce worktree isolé pour les mesurer par
 parties jouées, voir le rapport des issues #448, #450 et #451) — provisoires,
 destinées à être ajustées par Alain après mesure avec
 ``scripts/mesurer_force_niveaux.py``, comme pour Opportuniste.
+
+Personnage Titeuf
+------------------
+Face à sa mamy, ne trouve jamais que des mots de cour de récré — caca, prout
+et compagnie — même quand ça ne rapporte presque rien. Généralise à une
+LISTE de mots les deux mécanismes du Chasseur de scrabbles (issues #450/#451,
+lots H bis/H ter), qui, eux, portaient sur un critère de LONGUEUR :
+
+* :attr:`~scrabble.moteur.ia.ProfilPersonnage.mots_favoris` (issue #452, lot
+  J) : liste de mots, chargée depuis :data:`CHEMIN_MOTS_FAVORIS_TITEUF`
+  (:func:`charger_mots_favoris`) — un fichier texte simple, un mot par ligne,
+  modifiable sans toucher au code. Liste de départ (choix d'Alain à relire
+  avant le build) : des mots courts et humoristiques de cour de récré, sans
+  injure ni terme haineux — caca, pipi, prout, crotte, popo, fesses, zizi,
+  slip, beurk, sexe. Un mot absent du lexique complet installé n'est filtré
+  par AUCUN code dédié : la génération/validation
+  (:func:`scrabble.moteur.ia._generer_coups_candidats`) ne produit alors tout
+  simplement aucun coup valide pour lui.
+* :attr:`~scrabble.moteur.ia.ProfilPersonnage.poids_tirage_favori` =
+  :data:`POIDS_TIRAGE_FAVORI_TITEUF` = 50.0 : poids de tirage des coups dont
+  le mot principal est un mot favori (voir
+  :func:`scrabble.moteur.ia._tirer_dans_tranche`), AJOUTÉS au tirage même
+  s'ils sont exclus de la tranche des meilleurs coups — différence
+  essentielle avec ``poids_tirage_scrabble`` du Chasseur, nécessaire ici
+  puisque les mots de la liste (courts, peu de cases premium visées) sont
+  plausiblement souvent hors du haut du tri par score stratégique.
+
+  Calcul justifiant 50 : à DEBUTANT (seul niveau où Titeuf est disponible),
+  la tranche est le TOP 70 % des coups candidats — une tranche bien plus
+  large que celles du Chasseur (top 5/15 %), donc un nombre de coups ``n``
+  en jeu typiquement bien plus grand (le dictionnaire réel n'étant pas
+  disponible dans ce worktree isolé pour le mesurer, on l'estime par
+  analogie : si le nombre total de coups candidats est d'un ordre de
+  grandeur comparable à celui observé pour le Chasseur, le TOP 70 % couvre
+  alors de l'ordre de ``50`` coups, contre ``10`` à ``20`` pour un TOP 15 %).
+  Avec un poids ``w`` sur le seul coup à mot favori parmi ``n`` coups de
+  poids 1 chacun, la probabilité de le tirer est ``w / (n - 1 + w)`` : pour
+  retrouver l'objectif de comportement (joué dans environ la moitié des cas
+  ou plus, quand il est jouable), il faut ``w ≥ n - 1`` ; à ``n = 50``,
+  ``w = 50`` redonne très exactement 50 % — et, pour un ``n`` plus petit (cas
+  fréquent : la tranche à 70 % exclut seulement le pire tiers des coups, un
+  mot court raisonnable y figure souvent déjà), la même valeur donne une
+  probabilité supérieure à 50 % (ex. 71 % à ``n = 20``). Point de départ,
+  comme les réglages du Chasseur, à ajuster par Alain après mesure réelle
+  avec ``scripts/mesurer_force_niveaux.py`` (voir le rapport de l'issue
+  #452) — l'indicateur de style « coups dont le mot principal est un mot
+  favori » permet de vérifier si l'objectif de ~50 % est atteint.
+
+Disponibilité (issue #452, lot J) : :data:`NIVEAUX_TITEUF` (Débutant
+seulement — c'est le seul niveau sans aucun personnage disponible
+aujourd'hui, d'où ce lot) et :data:`NB_JOUEURS_TITEUF` (deux joueurs
+seulement, même prudence que les autres personnages). Avec Titeuf, Débutant
+compte maintenant deux personnages réels (Classique + Titeuf) : la règle déjà
+en place (:func:`aleatoire_disponible_a_niveau`) rend Aléatoire de nouveau
+disponible à ce niveau, sans aucune autre modification.
 """
 
 from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any
 
+from scrabble.config import RACINE_PROJET
+from scrabble.dictionnaire.dictionnaire import desaccentuer, lire_liste_mots
 from scrabble.moteur.ia import Niveau, ProfilPersonnage
 
 #: Renforcement du bonus premium d'Opportuniste (voir docstring du module) :
@@ -223,6 +281,59 @@ PART_VOCABULAIRE_LONG_CHASSEUR: dict[Niveau, float] = {
     Niveau.INTERMEDIAIRE: 1.0,
     Niveau.AVANCE: 0.5,
 }
+
+#: Dossier des petites listes de personnalisation par personnage (issue
+#: #452, lot J) — distinct de ``data/dictionnaire`` (dictionnaires tiers,
+#: gitignorés, déposés manuellement) : ces fichiers sont de petites listes
+#: éditoriales, versionnées avec le code.
+DOSSIER_PERSONNAGES = RACINE_PROJET / "data" / "personnages"
+
+#: Chemin de la liste de mots favoris de Titeuf (issue #452, lot J) : un mot
+#: par ligne, modifiable sans toucher au code (voir le docstring du module).
+CHEMIN_MOTS_FAVORIS_TITEUF: Path = DOSSIER_PERSONNAGES / "titeuf_mots_favoris.txt"
+
+
+def charger_mots_favoris(chemin: Path) -> frozenset[str]:
+    """Charge une liste « un mot par ligne » de mots favoris (issue #452, lot J).
+
+    Reprend :func:`~scrabble.dictionnaire.dictionnaire.lire_liste_mots` (même
+    tolérance : fichier absent -> ensemble vide, sans erreur — convient à une
+    liste facultative) puis désaccentue chaque mot
+    (:func:`~scrabble.dictionnaire.dictionnaire.desaccentuer`) pour rester
+    comparable aux lettres posées sur le plateau (toujours désaccentuées) et
+    aux entrées du Trie de validation (issue #281). Les mots absents du
+    lexique complet ne sont PAS filtrés ici : ils le sont naturellement lors
+    de la génération/validation des coups candidats
+    (:func:`scrabble.moteur.ia._generer_coups_candidats`), sans code dédié.
+    """
+    return frozenset(desaccentuer(mot) for mot in lire_liste_mots(chemin))
+
+
+#: Mots favoris de Titeuf, chargés une fois au chargement de ce module (issue
+#: #452, lot J) — modifier le fichier suppose de relancer l'application, pas
+#: de modifier le code (voir :data:`CHEMIN_MOTS_FAVORIS_TITEUF`).
+MOTS_FAVORIS_TITEUF: frozenset[str] = charger_mots_favoris(CHEMIN_MOTS_FAVORIS_TITEUF)
+
+#: Poids de tirage des coups à mot favori du personnage Titeuf (issue #452,
+#: lot J, champ :attr:`~scrabble.moteur.ia.ProfilPersonnage.poids_tirage_favori`) :
+#: valeur de départ, à ajuster par mesure — voir le docstring du module pour
+#: le calcul détaillé.
+POIDS_TIRAGE_FAVORI_TITEUF: float | None = 50.0
+
+#: Prénom affiché de Titeuf (issue #452, lot J) — un seul endroit à modifier
+#: pour en changer l'affichage.
+PRENOM_TITEUF = "Titeuf"
+
+#: Niveaux où Titeuf est disponible (issue #452, lot J) : Débutant
+#: uniquement — le seul niveau sans aucun personnage disponible avant ce lot
+#: (Opportuniste et Chasseur de scrabbles l'excluent tous les deux, voir
+#: :data:`NIVEAUX_OPPORTUNISTE`/:data:`NIVEAUX_CHASSEUR_SCRABBLES`).
+NIVEAUX_TITEUF: frozenset[Niveau] = frozenset({Niveau.DEBUTANT})
+
+#: Tailles de table où Titeuf est disponible (issue #452, lot J) : deux
+#: joueurs seulement, même prudence que les autres personnages (voir
+#: :data:`NB_JOUEURS_OPPORTUNISTE`).
+NB_JOUEURS_TITEUF: frozenset[int] = frozenset({2})
 
 #: Clé pseudo-personnage exposée à l'UI (issue #440, lot D) : « Aléatoire »
 #: n'est **jamais** une entrée de :data:`PERSONNAGES` — elle désigne le choix
@@ -409,6 +520,21 @@ PERSONNAGES: dict[str, Personnage] = {
         nb_joueurs_disponibles=NB_JOUEURS_CHASSEUR_SCRABBLES,
         part_vocabulaire_long_par_niveau=PART_VOCABULAIRE_LONG_CHASSEUR,
     ),
+    "titeuf": Personnage(
+        cle="titeuf",
+        prenom=PRENOM_TITEUF,
+        description=(
+            "Devant sa mamy, il ne trouve jamais que des mots de cour de "
+            "récré — un peu de pipi, beaucoup de caca — même quand ça ne "
+            "rapporte presque rien."
+        ),
+        profil=ProfilPersonnage(
+            mots_favoris=MOTS_FAVORIS_TITEUF,
+            poids_tirage_favori=POIDS_TIRAGE_FAVORI_TITEUF,
+        ),
+        niveaux_disponibles=NIVEAUX_TITEUF,
+        nb_joueurs_disponibles=NB_JOUEURS_TITEUF,
+    ),
 }
 
 
@@ -525,7 +651,8 @@ def aleatoire_disponible_a_nb_joueurs(nb_joueurs: int) -> bool:
     aujourd'hui à un seul personnage disponible rend donc Aléatoire à nouveau
     disponible à cette taille, sans aucune autre modification. Aujourd'hui :
     disponible à deux joueurs (Classique + Opportuniste + Chasseur de
-    scrabbles), indisponible à trois ou quatre (seul Classique y figure).
+    scrabbles + Titeuf), indisponible à trois ou quatre (seul Classique y
+    figure).
     """
     return len(personnages_disponibles_a_nb_joueurs(nb_joueurs)) >= 2
 
@@ -617,8 +744,8 @@ def explication_disponibilite_tailles(personnage_cle: str) -> str:
     de Classique, et de tout personnage sans déclaration) : rien à expliquer.
     Pour Aléatoire, :data:`MESSAGE_ALEATOIRE_NB_JOUEURS_INSUFFISANT` dès
     qu'au moins une taille lui est fermée. Pour un personnage réel restreint
-    à deux joueurs (motif observé à ce jour, Opportuniste et Chasseur de
-    scrabbles compris) : :data:`MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS`.
+    à deux joueurs (motif observé à ce jour, Opportuniste, Chasseur de
+    scrabbles et Titeuf compris) : :data:`MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS`.
     Motif différent (hypothétique) : repli sur :func:`libelle_tailles`.
     """
     if personnage_cle == CLE_ALEATOIRE:

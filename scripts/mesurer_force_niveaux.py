@@ -114,8 +114,11 @@ résumé de force (inchangé), des indicateurs de style par joueur sur l'ensembl
 des parties : part des coups touchant une case à multiplicateur ou un mot
 double/triple, lettres posées et points par coup, longueur du mot principal,
 scrabbles/jokers/passes par partie, points et tour de pose du joker, pénalité
-des lettres restantes en fin de partie — avec écart-type ou IC95 selon le cas
-(voir :class:`IndicateursPartieJoueur` pour la définition exacte de chacun).
+des lettres restantes en fin de partie, part des coups dont le mot principal
+est un mot favori (issue #452, lot J — vaut 0 pour un joueur dont le
+personnage n'a pas de liste de mots favoris) — avec écart-type ou IC95 selon
+le cas (voir :class:`IndicateursPartieJoueur` pour la définition exacte de
+chacun).
 Affichés en tableau comparatif A vs B à la fin du résumé (sauf en mode
 ``--comparer``, qui relit un CSV sans le détail par coup nécessaire), et
 exportés par partie et par joueur dans le CSV (``--csv``) pour être rejoués
@@ -218,6 +221,18 @@ le lexique complet, donc sans aucun avantage de style attendu ::
         --personnage-a chasseur_de_scrabbles --personnage-b classique \\
         --vocab palier --parties 100 \\
         --csv style_chasseur_vs_classique_champion.csv
+
+Style de jeu Titeuf contre Classique (issue #452, lot J) — Débutant est le
+seul niveau où Titeuf est disponible, vocabulaire du jeu réel (palier
+``debutant``) ; le tableau de style affiche « Coups dont le mot principal est
+un mot favori » pour vérifier l'objectif de comportement (joué dans environ
+la moitié des cas ou plus quand il est jouable), sans que Titeuf soit
+nettement plus fort ou plus faible que Classique au même niveau ::
+
+    python scripts/mesurer_force_niveaux.py DEBUTANT DEBUTANT \\
+        --personnage-a titeuf --personnage-b classique \\
+        --vocab palier --parties 100 \\
+        --csv style_titeuf_vs_classique_debutant.csv
 
 Sans argument, oppose FACILE à DEBUTANT sur 100 parties, vocabulaire ``complet``
 (comportement historique #362). Les niveaux valides sont les noms de
@@ -410,6 +425,11 @@ class IndicateursPartieJoueur:
     * « pénalité lettres restantes » : :meth:`~scrabble.moteur.partie.Joueur.valeur_chevalet`
       du joueur en fin de partie (le chevalet n'est pas vidé par
       :meth:`Partie._terminer`, seul le score l'intègre déjà en soustraction).
+    * « mot favori » (issue #452, lot J) : le mot principal (défini comme
+      ci-dessus) figure dans la liste de mots favoris du personnage de ce
+      joueur (:attr:`~scrabble.moteur.ia.ProfilPersonnage.mots_favoris`,
+      transmise à :func:`_calculer_indicateurs_joueur` par l'appelant) —
+      vide (donc toujours 0) pour un personnage sans liste.
     """
 
     coups_poses: int = 0
@@ -424,6 +444,7 @@ class IndicateursPartieJoueur:
     tours_coups_joker: list[int] = field(default_factory=list)
     passes: int = 0
     penalite_fin: int = 0
+    coups_mot_favori: int = 0
 
 
 #: Types de case comptant comme « mot double ou triple » pour les indicateurs
@@ -433,7 +454,10 @@ _TYPES_MOT_DOUBLE_TRIPLE = frozenset({TypeCase.MOT_DOUBLE, TypeCase.MOT_TRIPLE, 
 
 
 def _calculer_indicateurs_joueur(
-    historique: list, prefixe_nom: str, penalite_fin: int
+    historique: list,
+    prefixe_nom: str,
+    penalite_fin: int,
+    mots_favoris: frozenset[str] = frozenset(),
 ) -> IndicateursPartieJoueur:
     """Calcule les indicateurs de style d'un joueur depuis l'historique d'une partie.
 
@@ -445,6 +469,12 @@ def _calculer_indicateurs_joueur(
     appel à :func:`~scrabble.moteur.ia.choisir_coup` ni au générateur aléatoire,
     donc aucune incidence sur le déroulement ou le résultat de la partie (point
     3 de l'issue #446).
+
+    ``mots_favoris`` (issue #452, lot J) est la liste de mots favoris du
+    personnage de CE joueur (:attr:`~scrabble.moteur.ia.ProfilPersonnage.mots_favoris`),
+    résolue par l'appelant — vide par défaut (cas de tout personnage sans
+    liste, pour lequel :attr:`IndicateursPartieJoueur.coups_mot_favori` reste
+    donc toujours à 0, comme demandé par l'issue).
     """
     ind = IndicateursPartieJoueur(penalite_fin=penalite_fin)
     for tour, entree in enumerate(historique, start=1):
@@ -466,10 +496,12 @@ def _calculer_indicateurs_joueur(
             ind.coups_touchant_mot_double_triple += 1
         ind.lettres_posees.append(len(entree.positions_posees))
         ind.points_par_coup.append(detail.total)
-        if detail.mots:
-            ind.longueur_mot_principal.append(len(detail.mots[0].texte))
-        else:
-            ind.longueur_mot_principal.append(len(entree.coup.tuiles))
+        mot_principal = (
+            detail.mots[0].texte if detail.mots else "".join(t.lettre for t in entree.coup.tuiles)
+        )
+        ind.longueur_mot_principal.append(len(mot_principal))
+        if mots_favoris and mot_principal in mots_favoris:
+            ind.coups_mot_favori += 1
         if detail.bonus_scrabble > 0:
             ind.scrabbles += 1
         positions_neuves = set(entree.positions_posees)
@@ -723,11 +755,25 @@ def jouer_une_partie(
     # ci-dessus (point 3 de l'issue). Les noms de joueurs ``f"A:{...}"`` /
     # ``f"B:{...}"`` fixés plus haut servent de préfixe pour distinguer les
     # deux camps dans l'historique, indépendamment de qui a commencé.
+    # ``mots_favoris`` (issue #452, lot J) : résolu depuis le profil de
+    # CHAQUE camp — vide pour un personnage sans liste (Classique,
+    # Opportuniste, Chasseur de scrabbles), ce qui laisse
+    # ``coups_mot_favori`` à 0 pour eux, comme demandé par l'issue.
+    profil_a = config_a.profil()
+    profil_b = config_b.profil()
+    mots_favoris_a = profil_a.mots_favoris if profil_a is not None else None
+    mots_favoris_b = profil_b.mots_favoris if profil_b is not None else None
     indicateurs_a = _calculer_indicateurs_joueur(
-        partie.historique, "A:", joueur_a.valeur_chevalet()
+        partie.historique,
+        "A:",
+        joueur_a.valeur_chevalet(),
+        mots_favoris=mots_favoris_a or frozenset(),
     )
     indicateurs_b = _calculer_indicateurs_joueur(
-        partie.historique, "B:", joueur_b.valeur_chevalet()
+        partie.historique,
+        "B:",
+        joueur_b.valeur_chevalet(),
+        mots_favoris=mots_favoris_b or frozenset(),
     )
 
     return ResultatPartie(
@@ -777,6 +823,7 @@ _INDICATEURS_STYLE = (
     ("part_1_2_lettres", "Coups de une ou deux lettres", "proportion"),
     ("points_par_coup", "Points par coup", "moyenne"),
     ("longueur_mot_principal", "Longueur du mot principal", "moyenne"),
+    ("part_mot_favori", "Coups dont le mot principal est un mot favori", "proportion"),
     ("scrabbles_par_partie", "Scrabbles (7 lettres) par partie", "moyenne"),
     ("jokers_par_partie", "Jokers joués par partie", "moyenne"),
     ("points_coup_joker", "  points du coup où un joker est posé", "moyenne_opt"),
@@ -801,6 +848,7 @@ def _stats_style(resultats: list[ResultatPartie], cote: str) -> dict[str, tuple[
     total_coups = sum(i.coups_poses for i in inds)
     total_bonus = sum(i.coups_touchant_multiplicateur for i in inds)
     total_mdt = sum(i.coups_touchant_mot_double_triple for i in inds)
+    total_mot_favori = sum(i.coups_mot_favori for i in inds)
     lettres = [l for i in inds for l in i.lettres_posees]
     points_coup = [p for i in inds for p in i.points_par_coup]
     longueur_mot = [l for i in inds for l in i.longueur_mot_principal]
@@ -829,6 +877,7 @@ def _stats_style(resultats: list[ResultatPartie], cote: str) -> dict[str, tuple[
         "part_1_2_lettres": proportion(coups_1_2, total_coups),
         "points_par_coup": moyenne(points_coup),
         "longueur_mot_principal": moyenne(longueur_mot),
+        "part_mot_favori": proportion(total_mot_favori, total_coups),
         "scrabbles_par_partie": moyenne(scrabbles_partie),
         "jokers_par_partie": moyenne(jokers_partie),
         "points_coup_joker": moyenne(points_joker),
@@ -983,6 +1032,7 @@ _COLONNES_STYLE = (
     "part_1_2_lettres",
     "points_moy",
     "longueur_mot_moy",
+    "part_mot_favori",
     "scrabbles",
     "jokers",
     "points_coup_joker_moy",
@@ -1010,6 +1060,7 @@ def _valeurs_style_csv(ind: IndicateursPartieJoueur) -> list:
         if ind.lettres_posees
         else ""
     )
+    part_mot_favori = ind.coups_mot_favori / ind.coups_poses if ind.coups_poses else ""
     return [
         ind.coups_poses,
         part_bonus,
@@ -1018,6 +1069,7 @@ def _valeurs_style_csv(ind: IndicateursPartieJoueur) -> list:
         part_1_2,
         moyenne(ind.points_par_coup),
         moyenne(ind.longueur_mot_principal),
+        part_mot_favori,
         ind.scrabbles,
         ind.nb_jokers,
         moyenne(ind.points_coups_joker),

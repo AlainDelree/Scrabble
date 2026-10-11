@@ -188,19 +188,27 @@ def test_creer_partie_aleatoire_est_deterministe_avec_meme_generateur():
 
 
 def test_creer_partie_aleatoire_peut_tirer_classique():
-    """Le tirage « Aléatoire » porte sur TOUT le registre, Classique compris.
+    """Le tirage « Aléatoire », à un niveau donné, porte sur TOUT le sous-
+    ensemble du registre disponible à ce niveau, Classique compris.
 
     Testé à AVANCE (plutôt qu'à CHAMPION_DU_MONDE) : depuis l'issue #450 (lot
     H bis), Chasseur de scrabbles n'est plus disponible à Champion du monde
     (vocabulaire déjà complet à ce niveau — plage resserrée à
     Intermédiaire/Avancé, voir ``NIVEAUX_CHASSEUR_SCRABBLES``). AVANCE reste
-    un niveau où tout le registre déclaré à ce jour (Classique, Opportuniste,
-    Chasseur de scrabbles) est disponible — changement structurel attendu du
-    mécanisme de disponibilité par niveau (lot G, issue #447), pas une
-    régression.
-    """
-    from scrabble.moteur.personnages import PERSONNAGES
+    un niveau où Classique, Opportuniste et Chasseur de scrabbles sont tous
+    disponibles.
 
+    Compare à ``personnages_disponibles_a_niveau(AVANCE)`` plutôt qu'à
+    ``set(PERSONNAGES)`` (issue #452, lot J) : Titeuf, nouvellement inscrit au
+    registre, n'est disponible qu'à Débutant — il n'existe donc plus aucun
+    niveau où tout le registre global est simultanément disponible, sans que
+    cela change quoi que ce soit au comportement du tirage lui-même (chaque
+    personnage reste tiré exactement aux niveaux où il est déclaré
+    disponible).
+    """
+    from scrabble.moteur.personnages import personnages_disponibles_a_niveau
+
+    attendu = {p.cle for p in personnages_disponibles_a_niveau(Niveau.AVANCE)}
     tires = set()
     for graine in range(50):
         partie = creer_partie(
@@ -209,21 +217,26 @@ def test_creer_partie_aleatoire_peut_tirer_classique():
             generateur_aleatoire=random.Random(graine), graine=1,
         )
         tires.add(partie.joueurs[1].personnage)
-        if tires == set(PERSONNAGES):
+        if tires == attendu:
             return
     raise AssertionError(
-        f"Le tirage n'a jamais couvert tout le registre : obtenu {tires}, "
-        f"attendu {set(PERSONNAGES)}."
+        f"Le tirage n'a jamais couvert tout le sous-ensemble disponible à "
+        f"AVANCE : obtenu {tires}, attendu {attendu}."
     )
 
 
 def test_creer_partie_aleatoire_restreint_au_niveau_de_cette_ia():
     """Issue #447 (lot G, point 4) : le tirage « Aléatoire » ne choisit que
-    parmi les personnages disponibles au NIVEAU de cette IA — à Débutant,
-    seul Classique étant disponible, le tirage ne doit jamais renvoyer
-    Opportuniste. ``creer_partie`` lui-même reste sans garde-fou (seule l'UI
-    refuse la combinaison en amont) : ce test porte sur le comportement du
-    tirage, pas sur un refus."""
+    parmi les personnages disponibles au NIVEAU de cette IA — à Débutant, le
+    tirage ne doit jamais renvoyer Opportuniste ni Chasseur de scrabbles.
+    ``creer_partie`` lui-même reste sans garde-fou (seule l'UI refuse la
+    combinaison en amont) : ce test porte sur le comportement du tirage, pas
+    sur un refus.
+
+    Depuis l'introduction de Titeuf (issue #452, lot J, seul personnage
+    disponible à Débutant en plus de Classique), le tirage peut renvoyer
+    l'un ou l'autre — auparavant (issue #447, lot G), seul Classique était
+    disponible à ce niveau."""
     for graine in range(50):
         partie = creer_partie(
             ["Alice"], _trie(), nb_ia=1,
@@ -231,7 +244,7 @@ def test_creer_partie_aleatoire_restreint_au_niveau_de_cette_ia():
             personnages_ia=["aleatoire"],
             generateur_aleatoire=random.Random(graine), graine=1,
         )
-        assert partie.joueurs[1].personnage == "classique"
+        assert partie.joueurs[1].personnage in {"classique", "titeuf"}
 
 
 def test_creer_partie_aleatoire_niveau_facile_peut_tirer_opportuniste():
