@@ -15,6 +15,20 @@ depuis :attr:`~scrabble.moteur.partie.Joueur.personnage`) — uniquement par les
 tests et par le script de mesure de force
 (``scripts/mesurer_force_niveaux.py``).
 
+Règle absolue : le joueur humain a accès à tout le dictionnaire (issue #457)
+-----------------------------------------------------------------------------
+Aucun des réglages de ce module (vocabulaire par palier, ``vocabulaire_long``,
+``mots_favoris``) ne restreint ni n'élargit jamais ce que le joueur **humain**
+peut jouer. Un personnage ou un niveau ne modifie QUE la **génération** des
+coups candidats de l'ordinateur (:func:`scrabble.moteur.ia.choisir_coup`,
+via le Trie restreint transmis par :attr:`~scrabble.moteur.partie.
+Partie.dictionnaires_ia`) ; la **validation** d'un coup — humain comme IA —
+reste toujours sur :attr:`~scrabble.moteur.partie.Partie.dictionnaire`, le
+Trie complet de la partie (voir sa docstring). Si l'humain apprend un mot
+rare joué par un personnage (le Lettré, par exemple), il peut toujours le
+rejouer ensuite contre n'importe quel autre adversaire, à n'importe quel
+niveau. Voir aussi ``data/dictionnaire/README.md``.
+
 Personnage Classique
 ---------------------
 Absence de biais : :class:`~scrabble.moteur.ia.ProfilPersonnage` vide,

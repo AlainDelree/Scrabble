@@ -42,6 +42,28 @@ Déposez manuellement ici, à cet emplacement, sans les ajouter au suivi git :
   dérivées (jamais éditées à la main) : la commande ci-dessus les réécrit
   systématiquement, sans confirmation ni `--force`.
 
+## Le joueur humain a accès à tout le dictionnaire (issue #457)
+
+Règle absolue : **le joueur humain a accès à tous les mots du dictionnaire
+complet de la partie**, quel que soit le niveau ou le personnage de
+l'ordinateur adverse. Le dictionnaire de validation d'un coup humain (pose de
+mot, vérification de coup, boîte « Dictionnaire ») est toujours le Trie
+complet construit par `obtenir_trie(source, mode_belgicisme=...)` — jamais un
+sous-ensemble filtré par niveau ou personnage.
+
+Les fichiers de vocabulaire restreint ci-dessus (`mots_courants*.txt`) et les
+Tries qu'ils produisent via `obtenir_trie_ia` ne servent **qu'à la
+génération** des coups candidats de l'ordinateur
+(`scrabble.moteur.ia.choisir_coup`) : ils n'interviennent jamais dans
+`scrabble.moteur.validation.valider_coup`, qui reçoit toujours le Trie
+complet (`Partie.dictionnaire`, voir sa docstring et celle de
+`scrabble.moteur.personnages`). Si l'humain apprend un mot rare joué par un
+personnage (ex. le Lettré), il peut toujours le rejouer ensuite contre
+n'importe quel autre adversaire. Les belgicismes restent une option séparée,
+choisie par le joueur au lancement (`mode_belgicisme`) : cette règle ne les
+active ni ne les désactive, elle s'applique identiquement dans les deux
+états.
+
 ## Règle git
 
 Le fichier `.gitignore` à la racine ignore **tout** le contenu de
