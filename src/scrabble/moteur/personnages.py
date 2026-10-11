@@ -111,9 +111,37 @@ hors périmètre — on s'appuie sur trois réglages :
   indexée par niveau), par construction de ``ProfilPersonnage`` — le trait de
   caractère ne varie pas avec la force du joueur.
 
+Deux réglages supplémentaires (issue #451, lot H ter) répondent à deux
+constats distincts de la mesure du lot H bis : à Intermédiaire, le style ne
+se voit pas assez ; à Avancé, il rend le personnage trop fort.
+
+* ``poids_tirage_scrabble`` = :data:`POIDS_TIRAGE_SCRABBLE_CHASSEUR` = 5.0 :
+  nouveau champ de :class:`~scrabble.moteur.ia.ProfilPersonnage`, neutre
+  (``None``, tirage uniforme) en l'absence de personnage. S'applique
+  uniquement aux niveaux qui tirent au hasard dans une tranche de meilleurs
+  coups (DEBUTANT, FACILE, INTERMEDIAIRE, EXPERT — voir
+  :func:`scrabble.moteur.ia._tirer_dans_tranche`) : sans effet à Avancé, qui
+  joue toujours son meilleur coup. Répond au premier constat : à
+  Intermédiaire, le tirage uniforme dans la tranche des 15 % meilleurs coups
+  dilue l'effet d'un scrabble qui n'y figure qu'une fois sur 10 à 15 coups —
+  ce réglage lui donne plus de poids dans ce tirage, sans changer la
+  composition de la tranche. Reste **plat** comme les trois réglages
+  précédents : voir :data:`POIDS_TIRAGE_SCRABBLE_CHASSEUR` pour le calcul
+  justifiant la valeur 5.0.
+* ``part_vocabulaire_long`` : pas un champ plat pour ce personnage — table
+  :data:`PART_VOCABULAIRE_LONG_CHASSEUR` (niveau → part), transmise via
+  :attr:`Personnage.part_vocabulaire_long_par_niveau` et résolue par
+  :func:`profil_pour_niveau` (pas directement accessible depuis ``profil``
+  ci-dessus, qui reste la valeur plate sans résolution de niveau). Répond au
+  second constat : à Avancé, réduire la part de mots longs accessibles hors
+  du vocabulaire du niveau rapproche la force du personnage de celle de
+  Classique sans toucher au vocabulaire du niveau lui-même ni aux mots
+  courts. Voir :data:`PART_VOCABULAIRE_LONG_CHASSEUR` pour le détail des
+  deux valeurs de départ (100 % à Intermédiaire, 50 % à Avancé).
+
 Les valeurs ci-dessus sont des points de départ raisonnés (le dictionnaire
 réel n'est pas disponible dans ce worktree isolé pour les mesurer par
-parties jouées, voir le rapport des issues #448 et #450) — provisoires,
+parties jouées, voir le rapport des issues #448, #450 et #451) — provisoires,
 destinées à être ajustées par Alain après mesure avec
 ``scripts/mesurer_force_niveaux.py``, comme pour Opportuniste.
 """
@@ -121,7 +149,7 @@ destinées à être ajustées par Alain après mesure avec
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from scrabble.moteur.ia import Niveau, ProfilPersonnage
@@ -144,7 +172,57 @@ BONUS_SEPT_LETTRES_CHASSEUR = 150
 #: valeur légèrement supérieure à celle du niveau (p. ex. un petit flottant
 #: positif) remplacerait ``None`` si la mesure montre que Chasseur garde
 #: encore trop facilement un petit coup plutôt qu'un reliquat prometteur.
+#: Inchangé par le lot H ter (issue #451, voir ci-dessous).
 POIDS_LEAVE_CHASSEUR_SCRABBLES: float | None = None
+
+#: Poids de tirage des scrabbles du personnage Chasseur de scrabbles (issue
+#: #451, lot H ter, champ :attr:`~scrabble.moteur.ia.ProfilPersonnage.poids_tirage_scrabble`) :
+#: valeur de départ, à ajuster par mesure.
+#:
+#: Calcul justifiant 5 : aux niveaux qui tirent au hasard dans une tranche
+#: de meilleurs coups (seul cas où ce champ a un effet — voir
+#: :func:`scrabble.moteur.ia._tirer_dans_tranche`), la tranche compte, en
+#: pratique, de l'ordre de 10 à 20 coups. Sans ce champ (tirage uniforme), la
+#: probabilité de tirer un scrabble présent dans la tranche n'est que
+#: ``1/n`` (5 % à 10 %). Avec un poids ``w`` sur ce seul coup parmi les
+#: ``n`` de la tranche (chaque autre coup gardant le poids 1), cette
+#: probabilité devient ``w / (n - 1 + w)``. Pour ``w = 5`` :
+#: ``5 / (10 - 1 + 5) = 5/14 ≈ 36 %`` à ``n = 10``, et
+#: ``5 / (20 - 1 + 5) = 5/24 ≈ 21 %`` à ``n = 20`` — une hausse nette (de
+#: l'ordre d'un facteur 3 à 4) tout en laissant encore la majorité des tirages
+#: aux autres coups de la tranche : ni un tirage toujours gagnant pour le
+#: scrabble (qui romprait la règle « même tranche, probabilités seulement
+#: modifiées »), ni un effet trop dilué pour être visible en mesure (constat
+#: de départ de l'issue #451, à Intermédiaire où le lot H bis ne se voyait
+#: pas).
+POIDS_TIRAGE_SCRABBLE_CHASSEUR: float | None = 5.0
+
+#: Part des mots de 7 lettres et plus du lexique complet (hors vocabulaire
+#: du niveau) connue du personnage Chasseur de scrabbles, par niveau (issue
+#: #451, lot H ter, champ :attr:`~scrabble.moteur.ia.ProfilPersonnage.part_vocabulaire_long`) :
+#: table niveau → part, un niveau absent de la table (ou avec ``vocabulaire_long``
+#: inactif, voir :data:`NIVEAUX_CHASSEUR_SCRABBLES`) n'a aucun sens à régler
+#: ici. Valeurs de départ (à ajuster par Alain après mesure, voir le rapport
+#: de l'issue #451) :
+#:
+#: * INTERMEDIAIRE : 1.0 (100 %, inchangé par rapport au lot H bis) — à ce
+#:   niveau, le constat de départ de l'issue #451 est que le style du
+#:   personnage ne se voit pas assez (0,05 scrabble par partie contre 0,02
+#:   pour Classique, écart dans la marge d'erreur), pas qu'il est trop fort :
+#:   rien à retirer ici, le levier à ce niveau est le tirage pondéré
+#:   (:data:`POIDS_TIRAGE_SCRABBLE_CHASSEUR`), pas le vocabulaire.
+#: * AVANCE : 0.5 (50 %) — à ce niveau (qui joue toujours son meilleur coup,
+#:   donc insensible au tirage pondéré), le constat de départ est l'inverse :
+#:   Chasseur est trop fort (61 % de victoires, +20 points par partie environ
+#:   contre Classique), et ce malgré un ``poids_leave`` testé de 1.0 à 2.0 qui
+#:   ne corrigeait rien (la force venait du vocabulaire, pas du leave).
+#:   Réduire de moitié le vocabulaire long accessible est un premier point de
+#:   mesure médian entre « tout » (trop fort) et « rien » (retour à
+#:   Classique), à affiner par Alain après mesure réelle.
+PART_VOCABULAIRE_LONG_CHASSEUR: dict[Niveau, float] = {
+    Niveau.INTERMEDIAIRE: 1.0,
+    Niveau.AVANCE: 0.5,
+}
 
 #: Clé pseudo-personnage exposée à l'UI (issue #440, lot D) : « Aléatoire »
 #: n'est **jamais** une entrée de :data:`PERSONNAGES` — elle désigne le choix
@@ -236,6 +314,18 @@ class Personnage:
     Classique), indépendamment de ``niveaux_disponibles``. Les deux
     restrictions se combinent (ET logique) : un personnage doit être
     disponible à la fois au niveau et à la taille de table concernés.
+
+    ``part_vocabulaire_long_par_niveau`` (issue #451, lot H ter) : surcharge
+    optionnelle, par niveau, du champ
+    :attr:`~scrabble.moteur.ia.ProfilPersonnage.part_vocabulaire_long` de
+    ``profil`` — ``None`` par défaut (aucune surcharge, cas de Classique et
+    Opportuniste : ``profil.part_vocabulaire_long`` s'applique tel quel,
+    identique quel que soit le niveau). Un niveau absent de la table se
+    comporte comme si la table elle-même était absente. Résolu par
+    :func:`profil_pour_niveau`, jamais directement par :attr:`profil` (qui
+    reste la valeur « plate », sans résolution de niveau — voir les tests
+    qui y accèdent directement pour les niveaux sans surcharge, p. ex.
+    AVANCE n'y est câblé que dans la table, pas dans ``profil`` lui-même).
     """
 
     cle: str
@@ -248,6 +338,34 @@ class Personnage:
     nb_joueurs_disponibles: frozenset[int] = field(
         default_factory=lambda: TOUTES_TAILLES
     )
+    part_vocabulaire_long_par_niveau: dict[Niveau, float] | None = None
+
+
+def profil_pour_niveau(cle: str, niveau: Niveau | None) -> ProfilPersonnage:
+    """Résout le :class:`~scrabble.moteur.ia.ProfilPersonnage` de ``cle`` pour ``niveau``
+    (issue #451, lot H ter).
+
+    Reprend :attr:`Personnage.profil` tel quel, sauf si
+    :attr:`Personnage.part_vocabulaire_long_par_niveau` est renseigné ET
+    contient une entrée pour ``niveau`` : dans ce cas,
+    :attr:`~scrabble.moteur.ia.ProfilPersonnage.part_vocabulaire_long` est
+    remplacé par cette valeur, tous les autres champs du profil restant
+    inchangés. ``niveau=None`` (joueur humain, ou appelant qui ne connaît
+    encore aucun niveau) ne trouve jamais d'entrée et renvoie donc
+    ``profil`` sans modification — même résultat que :attr:`Personnage.profil`
+    lu directement, ce qui garde ce dernier valide pour tout appelant qui ne
+    se préoccupe pas de la résolution par niveau (cas de tous les
+    personnages déclarés avant ce lot).
+
+    :raises KeyError: si ``cle`` ne correspond à aucune entrée de
+        :data:`PERSONNAGES` (même condition que :func:`obtenir_personnage`).
+    """
+    personnage = PERSONNAGES[cle]
+    profil = personnage.profil
+    table = personnage.part_vocabulaire_long_par_niveau
+    if table is not None and niveau is not None and niveau in table:
+        profil = replace(profil, part_vocabulaire_long=table[niveau])
+    return profil
 
 
 #: Registre unique des personnages (issue #439, lot B). Ajouter un
@@ -285,9 +403,11 @@ PERSONNAGES: dict[str, Personnage] = {
             bonus_scrabble=BONUS_SEPT_LETTRES_CHASSEUR,
             poids_leave=POIDS_LEAVE_CHASSEUR_SCRABBLES,
             vocabulaire_long=True,
+            poids_tirage_scrabble=POIDS_TIRAGE_SCRABBLE_CHASSEUR,
         ),
         niveaux_disponibles=NIVEAUX_CHASSEUR_SCRABBLES,
         nb_joueurs_disponibles=NB_JOUEURS_CHASSEUR_SCRABBLES,
+        part_vocabulaire_long_par_niveau=PART_VOCABULAIRE_LONG_CHASSEUR,
     ),
 }
 

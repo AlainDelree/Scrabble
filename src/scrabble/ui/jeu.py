@@ -65,6 +65,7 @@ from scrabble.moteur.personnages import (
     libelle_personnage_partie,
     lister_personnages,
     obtenir_personnage,
+    profil_pour_niveau,
 )
 from scrabble.moteur.plateau_partie import (
     Coup,
@@ -1129,11 +1130,17 @@ def _profil_joueur_ia(joueur: Joueur) -> ProfilPersonnage | None:
     devenue inconnue (défense en profondeur ; le registre n'est jamais réduit
     en pratique) retombe aussi sur ``None`` plutôt que de faire planter un
     tour d'IA.
+
+    Résout via :func:`~scrabble.moteur.personnages.profil_pour_niveau`
+    (issue #451, lot H ter), pas via l'accès direct ``.profil``, pour que les
+    surcharges par niveau (p. ex. ``part_vocabulaire_long`` de Chasseur de
+    scrabbles) s'appliquent en jeu réel avec le niveau de ``joueur`` — sans
+    effet pour tout personnage qui n'en déclare pas (voir sa docstring).
     """
     if not joueur.personnage:
         return None
     try:
-        return obtenir_personnage(joueur.personnage).profil
+        return profil_pour_niveau(joueur.personnage, joueur.niveau)
     except KeyError:
         return None
 

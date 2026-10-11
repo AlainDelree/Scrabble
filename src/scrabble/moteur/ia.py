@@ -83,10 +83,23 @@ Reproductibilité
 ----------------
 Le paramètre ``alea`` (:class:`random.Random` optionnel) permet d'injecter
 un générateur aléatoire à graine fixée pour des tests reproductibles.
+
+Tirage pondéré dans la tranche (issue #451, lot H ter)
+--------------------------------------------------------
+Pour DEBUTANT, FACILE, INTERMEDIAIRE et EXPERT (les niveaux qui tirent au
+hasard dans une tranche de meilleurs coups), :attr:`ProfilPersonnage.poids_tirage_scrabble`
+permet à un personnage de donner plus de poids, dans ce tirage, aux coups
+de la tranche qui posent les 7 lettres du chevalet — voir
+:func:`_tirer_dans_tranche`. Sans effet sur AVANCE et CHAMPION_DU_MONDE
+(meilleur coup, jamais un tirage dans une tranche). Neutre par défaut : la
+COMPOSITION de la tranche ne change jamais, et un profil qui ne renseigne
+pas ce champ consomme le générateur aléatoire de façon rigoureusement
+identique à avant son introduction.
 """
 
 from __future__ import annotations
 
+import hashlib
 import random
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -219,6 +232,23 @@ _SEUIL_BONUS_SCRABBLE = 7
 #: constantes pourront diverger si la mesure le justifie.
 _SEUIL_VOCABULAIRE_LONG = 7
 
+
+def _mot_connu_vocabulaire_long(mot: str, part_vocabulaire_long: float) -> bool:
+    """Le mot ``mot`` fait-il partie de la fraction ``part_vocabulaire_long``
+    des mots longs connus (:attr:`ProfilPersonnage.part_vocabulaire_long`,
+    issue #451, lot H ter) ?
+
+    Déterministe et propre à ``mot`` : repose sur un hachage stable
+    (SHA-256) de son texte, PAS sur le ``hash()`` intégré de Python
+    (randomisé d'un processus à l'autre via ``PYTHONHASHSEED``, sauf à le
+    désactiver explicitement — un piège à éviter plutôt qu'à contourner). Un
+    même mot est donc toujours connu ou toujours inconnu, quelle que soit la
+    graine de la partie ou l'ordre dans lequel les coups sont générés.
+    """
+    empreinte = hashlib.sha256(mot.encode("utf-8")).digest()
+    valeur = int.from_bytes(empreinte[:8], "big") / 2**64
+    return valeur < part_vocabulaire_long
+
 #: Valeur heuristique de chaque lettre pour le calcul du reliquat (leave
 #: value, issue #395). Reflète la difficulté de placement future : le
 #: joker et le S (formation de pluriels/hooks) valent le plus cher, les
@@ -331,6 +361,34 @@ class ProfilPersonnage:
     dont le mot principal compte au moins :data:`_SEUIL_VOCABULAIRE_LONG`
     lettres, générés et validés avec ce dictionnaire complet plutôt qu'avec
     le vocabulaire du niveau.
+
+    ``poids_tirage_scrabble`` (issue #451, lot H ter) n'agit ni sur le score
+    stratégique ni sur l'ensemble des coups candidats, mais sur le TIRAGE
+    final fait par les niveaux qui choisissent au hasard dans une tranche de
+    meilleurs coups (DEBUTANT, FACILE, INTERMEDIAIRE, EXPERT — voir
+    :func:`_tirer_dans_tranche`). Neutre par défaut (``None`` : tirage
+    uniforme dans la tranche, comportement identique à avant l'introduction
+    de ce champ, y compris la consommation du générateur aléatoire). Quand il
+    est renseigné (valeur > 1), les coups de la tranche qui posent les 7
+    lettres du chevalet (:data:`_SEUIL_BONUS_SCRABBLE`) reçoivent ce poids
+    dans le tirage pondéré, les autres coups de la tranche gardant le poids
+    1 — la COMPOSITION de la tranche (laquelle est calculée en amont par
+    :func:`_trier_par_score_strategique`) ne change pas, seules les
+    probabilités de tirage à l'intérieur changent. Sans effet sur AVANCE et
+    CHAMPION_DU_MONDE (meilleur coup, jamais un tirage dans une tranche).
+
+    ``part_vocabulaire_long`` (issue #451, lot H ter) affine
+    ``vocabulaire_long`` : parmi les mots de 7 lettres et plus du lexique
+    complet qui élargissent les coups candidats (ceux-là seuls — jamais les
+    mots courts, ni les mots déjà dans le vocabulaire du niveau), seule cette
+    fraction reste accessible (voir :func:`_mot_connu_vocabulaire_long` et
+    :func:`_generer_coups_candidats`). Neutre par défaut (``None``, traité
+    comme 1.0 : tous les mots longs du lexique complet restent accessibles,
+    comportement identique à celui du lot H bis). La sélection des mots
+    connus est déterministe et propre à chaque mot (hachage stable de son
+    texte, PAS le ``hash()`` intégré de Python, aléatoire d'un processus à
+    l'autre) : indépendante de la graine de la partie et de l'ordre de
+    génération des coups.
     """
 
     malus_longueur: int | None = None
@@ -338,6 +396,8 @@ class ProfilPersonnage:
     poids_leave: float | None = None
     bonus_scrabble: int | None = None
     vocabulaire_long: bool | None = None
+    poids_tirage_scrabble: float | None = None
+    part_vocabulaire_long: float | None = None
 
 
 def _score_strategique(
@@ -501,11 +561,20 @@ def _generer_coups_candidats(
     complet, sans logique de validation supplémentaire à écrire. Le doublon
     (même case de départ, direction et mot) entre les deux générations n'est
     conservé qu'une fois.
+
+    ``profil.part_vocabulaire_long`` (issue #451, lot H ter) restreint cet
+    élargissement : quand il est renseigné et inférieur à 1.0, seule cette
+    fraction des mots longs **hors vocabulaire du niveau** (ceux qui ne
+    figurent pas déjà dans ``coups``, donc exactement ceux que cette seconde
+    génération ajoute réellement) reste accessible — voir
+    :func:`_mot_connu_vocabulaire_long`. ``None`` (défaut) ou 1.0 laisse tous
+    ces mots accessibles, comportement identique à celui du lot H bis.
     """
     coups = generer_coups(plateau, chevalet, dictionnaire)
     if profil is None or not profil.vocabulaire_long or dictionnaire_complet is None:
         return coups
 
+    part_vocabulaire_long = profil.part_vocabulaire_long
     vus = {
         (cn.coup.ligne, cn.coup.colonne, cn.coup.direction.value, _mot_principal(cn.coup))
         for cn in coups
@@ -516,6 +585,9 @@ def _generer_coups_candidats(
         cle = (cn.coup.ligne, cn.coup.colonne, cn.coup.direction.value, _mot_principal(cn.coup))
         if cle in vus:
             continue
+        if part_vocabulaire_long is not None and part_vocabulaire_long < 1.0:
+            if not _mot_connu_vocabulaire_long(_mot_principal(cn.coup), part_vocabulaire_long):
+                continue
         vus.add(cle)
         coups.append(cn)
     return coups
@@ -572,12 +644,12 @@ def choisir_coup(
     if niveau in (Niveau.AVANCE, Niveau.CHAMPION_DU_MONDE):
         return _choisir_avance(coups_tries, rng)
     if niveau == Niveau.EXPERT:
-        return _choisir_top5(coups_tries, rng)
+        return _choisir_top5(coups_tries, rng, profil)
     if niveau == Niveau.INTERMEDIAIRE:
-        return _choisir_intermediaire(coups_tries, rng)
+        return _choisir_intermediaire(coups_tries, rng, profil)
     if niveau == Niveau.FACILE:
-        return _choisir_facile(coups_tries, rng)
-    return _choisir_debutant(coups_tries, rng)
+        return _choisir_facile(coups_tries, rng, profil)
+    return _choisir_debutant(coups_tries, rng, profil)
 
 
 @dataclass(frozen=True)
@@ -688,6 +760,33 @@ def evaluer_coups(
     return resultat
 
 
+def _tirer_dans_tranche(
+    tranche: list[CoupNote], rng: random.Random, profil: ProfilPersonnage | None
+) -> Coup:
+    """Tire un coup dans ``tranche`` (issue #451, lot H ter).
+
+    Neutralité stricte : sans ``profil`` ou avec
+    ``profil.poids_tirage_scrabble`` à ``None`` (défaut), c'est exactement
+    ``rng.choice(tranche).coup`` — même appel, même consommation du
+    générateur aléatoire qu'avant l'introduction de ce champ, pour TOUS les
+    niveaux et TOUS les personnages. Seule une valeur renseignée (> 1)
+    déclenche un tirage pondéré (``rng.choices``, pondération par
+    :data:`_SEUIL_BONUS_SCRABBLE`) : les coups de la tranche posant les 7
+    lettres du chevalet reçoivent ce poids, les autres gardent le poids 1 —
+    la COMPOSITION de ``tranche`` (calculée en amont par l'appelant) ne
+    change pas, seules les probabilités de tirage à l'intérieur changent.
+    """
+    poids_tirage_scrabble = profil.poids_tirage_scrabble if profil is not None else None
+    if poids_tirage_scrabble is None:
+        return rng.choice(tranche).coup
+
+    poids = [
+        poids_tirage_scrabble if cn.nb_nouvelles == _SEUIL_BONUS_SCRABBLE else 1.0
+        for cn in tranche
+    ]
+    return rng.choices(tranche, weights=poids, k=1)[0].coup
+
+
 def _choisir_avance(coups: list[CoupNote], rng: random.Random) -> Coup:
     """AVANCE et CHAMPION_DU_MONDE : meilleur coup, aléatoire en cas d'égalité.
 
@@ -704,7 +803,9 @@ def _choisir_avance(coups: list[CoupNote], rng: random.Random) -> Coup:
     return rng.choice(meilleurs).coup
 
 
-def _choisir_top5(coups: list[CoupNote], rng: random.Random) -> Coup:
+def _choisir_top5(
+    coups: list[CoupNote], rng: random.Random, profil: ProfilPersonnage | None = None
+) -> Coup:
     """EXPERT : aléatoire parmi les 5 % meilleurs coups (top 5 %).
 
     Nouveau niveau (issue #401), intercalaire entre AVANCE (meilleur coup,
@@ -712,35 +813,47 @@ def _choisir_top5(coups: list[CoupNote], rng: random.Random) -> Coup:
     complet). Généré et joué sur le Trie complet ODS8 (pas de palier de
     vocabulaire restreint, voir :func:`resoudre_palier`). ``max(1, ...)``
     garantit un sous-ensemble non vide (repli sur le seul meilleur coup pour
-    les listes très courtes), comme les autres niveaux.
+    les listes très courtes), comme les autres niveaux. ``profil`` (issue
+    #451, lot H ter) permet un tirage pondéré en faveur des scrabbles dans
+    cette tranche — voir :func:`_tirer_dans_tranche`.
     """
     taille_haut = max(1, len(coups) * 5 // 100)
-    return rng.choice(coups[:taille_haut]).coup
+    return _tirer_dans_tranche(coups[:taille_haut], rng, profil)
 
 
-def _choisir_intermediaire(coups: list[CoupNote], rng: random.Random) -> Coup:
+def _choisir_intermediaire(
+    coups: list[CoupNote], rng: random.Random, profil: ProfilPersonnage | None = None
+) -> Coup:
     """INTERMEDIAIRE : aléatoire parmi les 15 % meilleurs coups (top 15 %).
 
     Reprend la stratégie de sélection de l'ancien AVANCE (issue #401).
     ``max(1, ...)`` garantit un sous-ensemble non vide (repli sur le seul
     meilleur coup pour les listes très courtes), comme les autres niveaux.
+    ``profil`` (issue #451, lot H ter) permet un tirage pondéré en faveur
+    des scrabbles dans cette tranche — voir :func:`_tirer_dans_tranche`.
     """
     taille_haut = max(1, len(coups) * 15 // 100)
-    return rng.choice(coups[:taille_haut]).coup
+    return _tirer_dans_tranche(coups[:taille_haut], rng, profil)
 
 
-def _choisir_facile(coups: list[CoupNote], rng: random.Random) -> Coup:
+def _choisir_facile(
+    coups: list[CoupNote], rng: random.Random, profil: ProfilPersonnage | None = None
+) -> Coup:
     """FACILE : aléatoire parmi le meilleur tiers des coups (top 33 %).
 
     Reprend la stratégie de sélection de l'ancien INTERMEDIAIRE (issue #401).
     ``max(1, ...)`` garantit un sous-ensemble non vide (repli sur le seul
     meilleur coup pour les listes très courtes), comme les autres niveaux.
+    ``profil`` (issue #451, lot H ter) permet un tirage pondéré en faveur
+    des scrabbles dans cette tranche — voir :func:`_tirer_dans_tranche`.
     """
     taille_tiers = max(1, len(coups) // 3)
-    return rng.choice(coups[:taille_tiers]).coup
+    return _tirer_dans_tranche(coups[:taille_tiers], rng, profil)
 
 
-def _choisir_debutant(coups: list[CoupNote], rng: random.Random) -> Coup:
+def _choisir_debutant(
+    coups: list[CoupNote], rng: random.Random, profil: ProfilPersonnage | None = None
+) -> Coup:
     """DEBUTANT : aléatoire parmi les 70 % meilleurs coups (top 70 %).
 
     Fusionne les anciens DEBUTANT (top 85 %) et FACILE (top 60 %) en un seul
@@ -750,7 +863,9 @@ def _choisir_debutant(coups: list[CoupNote], rng: random.Random) -> Coup:
     d'un tirage au hasard tout en garantissant qu'il reste le niveau le plus
     faible et strictement sous FACILE (top 33 %, sous-ensemble strictement
     meilleur). ``max(1, ...)`` garantit un sous-ensemble non vide, comme les
-    autres niveaux.
+    autres niveaux. ``profil`` (issue #451, lot H ter) permet un tirage
+    pondéré en faveur des scrabbles dans cette tranche — voir
+    :func:`_tirer_dans_tranche`.
     """
     taille_haut = max(1, len(coups) * 70 // 100)
-    return rng.choice(coups[:taille_haut]).coup
+    return _tirer_dans_tranche(coups[:taille_haut], rng, profil)

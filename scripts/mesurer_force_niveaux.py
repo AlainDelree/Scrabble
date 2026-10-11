@@ -259,7 +259,7 @@ from scrabble.moteur import ia  # noqa: E402
 from scrabble.moteur.ia import Niveau, ProfilPersonnage, resoudre_palier  # noqa: E402
 from scrabble.moteur.ordre import determiner_ordre_jeu  # noqa: E402
 from scrabble.moteur.partie import ACTION_COUP, ACTION_PASSE, Joueur, Partie  # noqa: E402
-from scrabble.moteur.personnages import PERSONNAGES  # noqa: E402
+from scrabble.moteur.personnages import PERSONNAGES, profil_pour_niveau  # noqa: E402
 from scrabble.regles.plateau import TypeCase  # noqa: E402
 
 #: Nombre de parties par défaut : modeste pour qu'un lancement sans argument
@@ -326,10 +326,19 @@ class ConfigJoueur:
 
         ``None`` si aucun personnage n'est renseigné (comportement standard du
         niveau, éventuellement patché par ``malus``/``bonus``/``poids_leave``).
+
+        Passe par :func:`~scrabble.moteur.personnages.profil_pour_niveau`
+        (issue #451, lot H ter), pas par l'accès direct ``PERSONNAGES[...].profil``,
+        pour que les surcharges par niveau d'un personnage (p. ex.
+        ``part_vocabulaire_long`` de Chasseur de scrabbles) s'appliquent à la
+        mesure avec :attr:`niveau` — c'est le même chemin que le jeu réel
+        (:func:`scrabble.ui.jeu._profil_joueur_ia`), condition nécessaire pour
+        que le tirage pondéré et la part de vocabulaire long réglés par
+        personnage s'appliquent identiquement ici et en partie.
         """
         if self.personnage is None:
             return None
-        return PERSONNAGES[self.personnage].profil
+        return profil_pour_niveau(self.personnage, self.niveau)
 
     def label(self) -> str:
         """Libellé lisible du camp, annotant les écarts à la config par défaut.

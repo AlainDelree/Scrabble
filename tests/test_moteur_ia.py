@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import random
 import statistics
+import string
 
 import pytest
 
@@ -39,7 +40,9 @@ from scrabble.moteur.ia import (
     _POIDS_LEAVE,
     ProfilPersonnage,
     _generer_coups_candidats,
+    _mot_connu_vocabulaire_long,
     _score_strategique,
+    _tirer_dans_tranche,
     choisir_coup,
     evaluer_coups,
     leave_value,
@@ -989,6 +992,286 @@ class TestVocabulaireLong:
         assert all(
             alt.mot != "OXALINE" for alt in evaluation_niveau_seul.meilleurs
         )
+
+
+# --------------------------------------------------------------------------- #
+# Tirage pondéré en faveur des scrabbles (issue #451, lot H ter)
+# --------------------------------------------------------------------------- #
+
+
+class _RngEspion(random.Random):
+    """``random.Random`` qui compte ses appels à ``choice``/``choices``.
+
+    Sert à vérifier la neutralité stricte du tirage pondéré : un profil qui
+    ne renseigne pas ``poids_tirage_scrabble`` doit consommer le générateur
+    EXACTEMENT comme avant l'introduction de ce champ (même nombre d'appels,
+    même méthode, même état final), pas seulement produire le même coup.
+    """
+
+    def __init__(self, x=None):
+        super().__init__(x)
+        self.appels_choice = 0
+        self.appels_choices = 0
+
+    def choice(self, seq):
+        self.appels_choice += 1
+        return super().choice(seq)
+
+    def choices(self, population, weights=None, *, cum_weights=None, k=1):
+        self.appels_choices += 1
+        return super().choices(population, weights=weights, cum_weights=cum_weights, k=k)
+
+
+class TestNeutraliteTirage:
+    """``poids_tirage_scrabble`` absent (profil ``None`` ou vide) doit laisser
+    le tirage bit à bit identique, sur les six niveaux (issue #451, point 3)."""
+
+    @pytest.mark.parametrize("niveau", list(Niveau))
+    def test_neutralite_consommation_aleatoire(self, niveau):
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        dico = _trie("CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES")
+
+        rng_sans_profil = _RngEspion(42)
+        coup_sans_profil = choisir_coup(plateau, chevalet, dico, niveau, rng_sans_profil)
+
+        rng_profil_vide = _RngEspion(42)
+        coup_profil_vide = choisir_coup(
+            plateau, chevalet, dico, niveau, rng_profil_vide, profil=ProfilPersonnage()
+        )
+
+        # Un profil qui renseigne d'autres champs (hors ``poids_tirage_scrabble``,
+        # tous ``None`` ici) ne doit pas non plus changer la consommation du
+        # générateur pour ce qui concerne CE champ précisément — seul le champ
+        # testé doit être neutre par défaut, pas le reste du profil (déjà
+        # couvert par ailleurs, issue #438, lot A).
+        rng_profil_autre_champ_renseigne = _RngEspion(42)
+        choisir_coup(
+            plateau,
+            chevalet,
+            dico,
+            niveau,
+            rng_profil_autre_champ_renseigne,
+            profil=ProfilPersonnage(bonus_scrabble=150),
+        )
+
+        assert coup_profil_vide == coup_sans_profil
+        assert rng_profil_vide.appels_choice == rng_sans_profil.appels_choice
+        assert rng_profil_vide.appels_choices == rng_sans_profil.appels_choices == 0
+        assert rng_profil_vide.getstate() == rng_sans_profil.getstate()
+        assert rng_profil_autre_champ_renseigne.appels_choices == 0
+
+    @pytest.mark.parametrize("niveau", [Niveau.AVANCE, Niveau.CHAMPION_DU_MONDE])
+    def test_sans_effet_sur_les_niveaux_meilleur_coup(self, niveau):
+        """AVANCE et CHAMPION_DU_MONDE jouent toujours leur meilleur coup :
+        jamais un tirage dans une tranche, donc ``poids_tirage_scrabble`` n'y
+        change jamais rien, quelle que soit sa valeur (issue #451, point 2)."""
+        plateau = PlateauPartie()
+        chevalet = list("CADRES")
+        dico = _trie("CADRE", "CADRES", "AS", "A", "SA", "DE", "RE", "DA", "ES")
+        for graine in range(20):
+            sans_poids = choisir_coup(plateau, chevalet, dico, niveau, random.Random(graine))
+            avec_poids = choisir_coup(
+                plateau,
+                chevalet,
+                dico,
+                niveau,
+                random.Random(graine),
+                profil=ProfilPersonnage(poids_tirage_scrabble=5.0),
+            )
+            assert avec_poids == sans_poids
+
+
+class TestTirageSPondereDansLaTranche:
+    """``_tirer_dans_tranche`` (issue #451, point 1) : tranche fabriquée où un
+    coup à 7 lettres coexiste avec d'autres coups, fréquence de tirage proche
+    de la théorie et nettement supérieure au tirage uniforme."""
+
+    def _tranche(self, taille: int) -> list[CoupNote]:
+        scrabble = _coup_note("SCRABBLE", score=50, nb_nouvelles=7)
+        autres = [
+            _coup_note(f"AUTRE{lettre}", score=10, nb_nouvelles=3)
+            for lettre in string.ascii_uppercase[: taille - 1]
+        ]
+        return [scrabble] + autres
+
+    @pytest.mark.parametrize("taille", [10, 15, 20])
+    def test_frequence_proche_de_la_theorie_et_superieure_au_tirage_uniforme(
+        self, taille
+    ):
+        poids = 5.0
+        tranche = self._tranche(taille)
+        scrabble_coup = tranche[0].coup
+        theorique = poids / (taille - 1 + poids)
+        uniforme = 1 / taille
+
+        profil = ProfilPersonnage(poids_tirage_scrabble=poids)
+        nb_essais = 20_000
+        nb_scrabble = sum(
+            1
+            for graine in range(nb_essais)
+            if _tirer_dans_tranche(tranche, random.Random(graine), profil) == scrabble_coup
+        )
+        proportion = nb_scrabble / nb_essais
+
+        assert abs(proportion - theorique) < 0.02
+        assert proportion > uniforme * 2
+
+    def test_composition_de_la_tranche_inchangee(self):
+        """Seules les probabilités changent — jamais la liste de coups
+        elle-même (issue #451, point 2 et point 7)."""
+        tranche = self._tranche(12)
+        profil = ProfilPersonnage(poids_tirage_scrabble=5.0)
+        for graine in range(50):
+            rng = random.Random(graine)
+            coup = _tirer_dans_tranche(tranche, rng, profil)
+            assert coup in [cn.coup for cn in tranche]
+
+    def test_tirage_uniforme_sans_poids(self):
+        """``poids_tirage_scrabble=None`` (défaut) : tirage uniforme, exactement
+        ``rng.choice(tranche).coup``."""
+        tranche = self._tranche(10)
+        rng1 = random.Random(7)
+        rng2 = random.Random(7)
+        assert _tirer_dans_tranche(tranche, rng1, None) == rng2.choice(tranche).coup
+
+    def test_poids_eleve_rend_le_scrabble_tres_frequent_sans_etre_certain(self):
+        """Un poids plus élevé que la constante de production reste un tirage
+        PONDÉRÉ, pas un passage au meilleur coup déterministe : les autres
+        coups de la tranche restent, en tout petit nombre de cas, tirés."""
+        tranche = self._tranche(15)
+        scrabble_coup = tranche[0].coup
+        profil = ProfilPersonnage(poids_tirage_scrabble=50.0)
+        resultats = {
+            _tirer_dans_tranche(tranche, random.Random(graine), profil)
+            for graine in range(500)
+        }
+        assert scrabble_coup in resultats
+        assert len(resultats) > 1
+
+
+# --------------------------------------------------------------------------- #
+# Part de mots longs connus (issue #451, lot H ter)
+# --------------------------------------------------------------------------- #
+
+
+class TestMotConnuVocabulaireLong:
+    """``_mot_connu_vocabulaire_long`` (issue #451, point 8) : sélection
+    déterministe, propre à chaque mot, de la fraction connue."""
+
+    def test_deterministe_et_independant_de_lordre(self):
+        mots = [f"MOTLONG{i:04d}" for i in range(500)]
+        resultats = [_mot_connu_vocabulaire_long(m, 0.5) for m in mots]
+        resultats_ordre_inverse = [
+            _mot_connu_vocabulaire_long(m, 0.5) for m in reversed(mots)
+        ]
+        assert resultats == [_mot_connu_vocabulaire_long(m, 0.5) for m in mots]
+        assert resultats == list(reversed(resultats_ordre_inverse))
+
+    def test_part_1_tous_connus(self):
+        mots = [f"MOTLONG{i:04d}" for i in range(500)]
+        assert all(_mot_connu_vocabulaire_long(m, 1.0) for m in mots)
+
+    def test_part_0_aucun_connu(self):
+        mots = [f"MOTLONG{i:04d}" for i in range(500)]
+        assert not any(_mot_connu_vocabulaire_long(m, 0.0) for m in mots)
+
+    @pytest.mark.parametrize("part", [0.1, 0.3, 0.5, 0.7, 0.9])
+    def test_proportion_proche_de_la_part_sur_liste_fabriquee(self, part):
+        mots = [f"MOTLONG{i:04d}" for i in range(5000)]
+        connus = sum(_mot_connu_vocabulaire_long(m, part) for m in mots)
+        proportion = connus / len(mots)
+        assert abs(proportion - part) < 0.03
+
+
+class TestPartVocabulaireLong:
+    """``part_vocabulaire_long`` de :class:`ProfilPersonnage` (issue #451,
+    lot H ter) : restreint ``vocabulaire_long`` aux seuls mots longs
+    « connus », hors vocabulaire du niveau."""
+
+    def test_part_1_identique_au_comportement_du_lot_h_bis(self):
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        dico_complet = _trie(*_DICO_COMPLET_VOCABULAIRE_LONG)
+
+        coups_sans_part = _generer_coups_candidats(
+            plateau,
+            _CHEVALET_VOCABULAIRE_LONG,
+            dico_niveau,
+            ProfilPersonnage(vocabulaire_long=True),
+            dico_complet,
+        )
+        coups_avec_part_1 = _generer_coups_candidats(
+            plateau,
+            _CHEVALET_VOCABULAIRE_LONG,
+            dico_niveau,
+            ProfilPersonnage(vocabulaire_long=True, part_vocabulaire_long=1.0),
+            dico_complet,
+        )
+        mots_sans_part = {
+            "".join(t.lettre for t in cn.coup.tuiles) for cn in coups_sans_part
+        }
+        mots_avec_part_1 = {
+            "".join(t.lettre for t in cn.coup.tuiles) for cn in coups_avec_part_1
+        }
+        assert mots_avec_part_1 == mots_sans_part
+        assert "OXALINE" in mots_avec_part_1
+
+    def test_part_0_aucun_mot_long_hors_vocabulaire(self):
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        dico_complet = _trie(*_DICO_COMPLET_VOCABULAIRE_LONG)
+        profil = ProfilPersonnage(vocabulaire_long=True, part_vocabulaire_long=0.0)
+
+        coups = _generer_coups_candidats(
+            plateau, _CHEVALET_VOCABULAIRE_LONG, dico_niveau, profil, dico_complet
+        )
+        mots = {"".join(t.lettre for t in cn.coup.tuiles) for cn in coups}
+        assert "OXALINE" not in mots
+        # Le coup court du vocabulaire du niveau reste accessible : seuls
+        # les mots longs HORS vocabulaire du niveau sont concernés.
+        assert "ZA" in mots
+
+    def test_mots_courts_et_vocabulaire_du_niveau_non_concernes(self):
+        """``part_vocabulaire_long`` ne filtre jamais les mots courts ni ceux
+        déjà dans le vocabulaire du niveau — quelle que soit sa valeur
+        (issue #451, point 10)."""
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        dico_complet = _trie(*_DICO_COMPLET_VOCABULAIRE_LONG)
+        for part in (0.0, 0.3, 1.0):
+            profil = ProfilPersonnage(vocabulaire_long=True, part_vocabulaire_long=part)
+            coups = _generer_coups_candidats(
+                plateau, _CHEVALET_VOCABULAIRE_LONG, dico_niveau, profil, dico_complet
+            )
+            mots = {"".join(t.lettre for t in cn.coup.tuiles) for cn in coups}
+            assert "ZA" in mots
+
+    def test_resultat_stable_entre_deux_appels(self):
+        """Même mot, même résultat d'un appel à l'autre : pas de dépendance à
+        la graine de la partie ni à l'ordre de génération (issue #451, point
+        8)."""
+        plateau = _plateau_vocabulaire_long()
+        dico_niveau = _trie(*_DICO_NIVEAU_VOCABULAIRE_LONG)
+        dico_complet = _trie(*_DICO_COMPLET_VOCABULAIRE_LONG)
+        profil = ProfilPersonnage(vocabulaire_long=True, part_vocabulaire_long=0.5)
+
+        mots_appels = []
+        for _ in range(5):
+            coups = _generer_coups_candidats(
+                plateau, _CHEVALET_VOCABULAIRE_LONG, dico_niveau, profil, dico_complet
+            )
+            mots_appels.append(
+                frozenset("".join(t.lettre for t in cn.coup.tuiles) for cn in coups)
+            )
+        assert len(set(mots_appels)) == 1
+
+    def test_autres_personnages_non_concernes(self):
+        """``part_vocabulaire_long`` reste ``None`` (neutre) pour tout profil
+        qui ne le demande pas explicitement — le champ est strictement
+        additif."""
+        assert ProfilPersonnage().part_vocabulaire_long is None
+        assert ProfilPersonnage(vocabulaire_long=True).part_vocabulaire_long is None
 
 
 # --------------------------------------------------------------------------- #

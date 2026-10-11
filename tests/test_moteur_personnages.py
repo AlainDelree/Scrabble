@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import random
 
+import pytest
+
 from scrabble.dictionnaire.dictionnaire import Trie
 from scrabble.moteur.generateur import generer_coups
 from scrabble.moteur.ia import Niveau, choisir_coup
@@ -26,7 +28,9 @@ from scrabble.moteur.personnages import (
     MESSAGE_ALEATOIRE_NB_JOUEURS_INSUFFISANT,
     MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT,
     MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS,
+    PART_VOCABULAIRE_LONG_CHASSEUR,
     PERSONNAGES,
+    POIDS_TIRAGE_SCRABBLE_CHASSEUR,
     Personnage,
     TOUS_NIVEAUX,
     TOUTES_TAILLES,
@@ -45,6 +49,7 @@ from scrabble.moteur.personnages import (
     personnage_disponible_a_niveau,
     personnages_disponibles_a_nb_joueurs,
     personnages_disponibles_a_niveau,
+    profil_pour_niveau,
     tirer_personnage,
 )
 from scrabble.moteur.plateau_partie import (
@@ -767,3 +772,111 @@ class TestPersonnageChasseurDeScrabbles:
             explication_disponibilite_niveaux("chasseur_de_scrabbles")
             == "Disponible : Intermédiaire à Avancé"
         )
+
+
+# --------------------------------------------------------------------------- #
+# Poids de tirage des scrabbles (issue #451, lot H ter, point 4)
+# --------------------------------------------------------------------------- #
+
+
+class TestPoidsTirageScrabbleChasseur:
+    """``poids_tirage_scrabble`` de Chasseur de scrabbles : champ plat (une
+    constante, pas une table par niveau), neutre pour les autres
+    personnages."""
+
+    def test_chasseur_poids_tirage_scrabble(self):
+        chasseur = PERSONNAGES["chasseur_de_scrabbles"].profil
+        assert chasseur.poids_tirage_scrabble == POIDS_TIRAGE_SCRABBLE_CHASSEUR
+        assert POIDS_TIRAGE_SCRABBLE_CHASSEUR == 5.0
+
+    def test_autres_personnages_poids_tirage_scrabble_neutre(self):
+        assert PERSONNAGES["classique"].profil.poids_tirage_scrabble is None
+        assert PERSONNAGES["opportuniste"].profil.poids_tirage_scrabble is None
+
+    def test_chasseur_choisit_plus_souvent_le_scrabble_que_classique_intermediaire(
+        self,
+    ):
+        """Constat de départ de l'issue #451 : à Intermédiaire, le tirage
+        uniforme dans la tranche des 15 % meilleurs coups diluait l'effet du
+        vocabulaire long (lot H bis) — le poids de tirage doit rendre le
+        style de nouveau visible à ce niveau précis."""
+        profil_classique = PERSONNAGES["classique"].profil
+        profil_chasseur = PERSONNAGES["chasseur_de_scrabbles"].profil
+
+        proportion_classique = _proportion_scrabbles(
+            Niveau.INTERMEDIAIRE, profil_classique
+        )
+        proportion_chasseur = _proportion_scrabbles(
+            Niveau.INTERMEDIAIRE, profil_chasseur
+        )
+        assert proportion_chasseur > proportion_classique
+
+
+# --------------------------------------------------------------------------- #
+# Part de mots longs connus par niveau (issue #451, lot H ter, points 8 et 9)
+# --------------------------------------------------------------------------- #
+
+
+class TestPartVocabulaireLongChasseur:
+    """Table :data:`PART_VOCABULAIRE_LONG_CHASSEUR` et sa résolution par
+    :func:`profil_pour_niveau` — jamais directement visible sur
+    ``PERSONNAGES["chasseur_de_scrabbles"].profil`` (qui reste la valeur
+    plate, sans résolution de niveau)."""
+
+    def test_valeurs_de_depart(self):
+        assert PART_VOCABULAIRE_LONG_CHASSEUR == {
+            Niveau.INTERMEDIAIRE: 1.0,
+            Niveau.AVANCE: 0.5,
+        }
+
+    def test_profil_plat_ne_porte_pas_la_surcharge_par_niveau(self):
+        """``.profil`` (accès direct) ne résout rien par niveau : c'est
+        :func:`profil_pour_niveau` qui porte cette résolution — condition
+        nécessaire pour que les tests existants qui accèdent à ``.profil``
+        directement (AVANCE/EXPERT/CHAMPION_DU_MONDE, lot H bis) restent
+        valides sans modification."""
+        assert PERSONNAGES["chasseur_de_scrabbles"].profil.part_vocabulaire_long is None
+
+    def test_profil_pour_niveau_intermediaire(self):
+        profil = profil_pour_niveau("chasseur_de_scrabbles", Niveau.INTERMEDIAIRE)
+        assert profil.part_vocabulaire_long == 1.0
+        # Les autres champs restent ceux du profil de base, inchangés.
+        assert profil.bonus_scrabble == PERSONNAGES["chasseur_de_scrabbles"].profil.bonus_scrabble
+        assert profil.vocabulaire_long is True
+
+    def test_profil_pour_niveau_avance(self):
+        profil = profil_pour_niveau("chasseur_de_scrabbles", Niveau.AVANCE)
+        assert profil.part_vocabulaire_long == 0.5
+        assert profil.vocabulaire_long is True
+
+    def test_profil_pour_niveau_sans_entree_dans_la_table(self):
+        """Un niveau absent de la table (ici DEBUTANT, où Chasseur n'est de
+        toute façon pas disponible) laisse le profil inchangé — même
+        résultat que l'accès direct à ``.profil``."""
+        profil = profil_pour_niveau("chasseur_de_scrabbles", Niveau.DEBUTANT)
+        assert profil == PERSONNAGES["chasseur_de_scrabbles"].profil
+
+    def test_profil_pour_niveau_none_laisse_le_profil_inchange(self):
+        """``niveau=None`` (joueur humain, ou appelant qui ne connaît encore
+        aucun niveau) ne trouve jamais d'entrée dans la table."""
+        profil = profil_pour_niveau("chasseur_de_scrabbles", None)
+        assert profil == PERSONNAGES["chasseur_de_scrabbles"].profil
+
+    def test_profil_pour_niveau_personnage_sans_table_inchange(self):
+        """Classique et Opportuniste n'ont pas de table de surcharge : même
+        résultat que l'accès direct à ``.profil``, quel que soit le niveau."""
+        for cle in ("classique", "opportuniste"):
+            for niveau in Niveau:
+                assert profil_pour_niveau(cle, niveau) == PERSONNAGES[cle].profil
+
+    def test_profil_pour_niveau_cle_inconnue_leve_keyerror(self):
+        with pytest.raises(KeyError):
+            profil_pour_niveau("ne_existe_pas", Niveau.AVANCE)
+
+    def test_resolution_ne_mute_pas_le_profil_de_base(self):
+        """La résolution par niveau ne doit jamais muter le ``ProfilPersonnage``
+        de base du registre — seulement en dériver une copie."""
+        avant = PERSONNAGES["chasseur_de_scrabbles"].profil
+        profil_pour_niveau("chasseur_de_scrabbles", Niveau.AVANCE)
+        assert PERSONNAGES["chasseur_de_scrabbles"].profil is avant
+        assert avant.part_vocabulaire_long is None
