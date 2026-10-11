@@ -132,17 +132,63 @@ se voit pas assez ; à Avancé, il rend le personnage trop fort.
   :data:`PART_VOCABULAIRE_LONG_CHASSEUR` (niveau → part), transmise via
   :attr:`Personnage.part_vocabulaire_long_par_niveau` et résolue par
   :func:`profil_pour_niveau` (pas directement accessible depuis ``profil``
-  ci-dessus, qui reste la valeur plate sans résolution de niveau). Répond au
+  ci-dessus, qui reste la valeur plate sans résolution de niveau). Répondait au
   second constat : à Avancé, réduire la part de mots longs accessibles hors
-  du vocabulaire du niveau rapproche la force du personnage de celle de
+  du vocabulaire du niveau rapprochait la force du personnage de celle de
   Classique sans toucher au vocabulaire du niveau lui-même ni aux mots
-  courts. Voir :data:`PART_VOCABULAIRE_LONG_CHASSEUR` pour le détail des
-  deux valeurs de départ (100 % à Intermédiaire, 50 % à Avancé).
+  courts — remis à 100 % aux deux niveaux par le lot H quater ci-dessous, qui
+  reprend ce levier autrement.
+
+Les mesures du lot H ter (100 parties, bruitées de plusieurs points) ont
+confirmé que le style se voit enfin (0,14 scrabble par partie à Intermédiaire
+contre 0,01 pour Classique, 0,4 contre 0,11 à Avancé) mais à un prix trop
+élevé : environ +12 points par partie à Intermédiaire, +20 à Avancé contre
+Classique au même niveau — la règle « un personnage ne change pas la force du
+niveau » n'est plus respectée. Un scrabble rapportant beaucoup de points (de
+l'ordre de 80 en moyenne), le surplus de scrabbles explique une large part de
+ce surplus de force ; les mesures du curseur ``part_vocabulaire_long`` à des
+valeurs intermédiaires (30 à 70 % à Intermédiaire, 20 à 50 % à Avancé)
+montrent qu'aux parts basses, le surplus de scrabbles devient à peine visible
+alors qu'un excédent de force de 6 à 9 points subsiste — réduire SEULEMENT le
+vocabulaire long ne suffit pas à retrouver la neutralité de force, et dilue le
+style en même temps qu'il la réduit.
+
+Un réglage supplémentaire (issue #453, lot H quater) prend le problème à
+l'envers : garder la connaissance des longs mots intacte (100 % aux deux
+niveaux, pour que le style reste entier) et faire payer la force du
+personnage par une MOINS BONNE connaissance des mots courts — pour qu'il
+devienne un spécialiste des scrabbles qui joue moins bien le reste, un
+personnage plus marqué et plus cohérent que la réduction symétrique du lot H
+ter.
+
+* ``part_vocabulaire_court`` = :data:`PART_VOCABULAIRE_COURT_CHASSEUR`
+  (niveau → part, transmise comme ``part_vocabulaire_long`` via
+  :attr:`Personnage.part_vocabulaire_court_par_niveau` et résolue par
+  :func:`profil_pour_niveau`) : les coups dont le mot principal compte moins
+  de 7 lettres (:data:`~scrabble.moteur.ia._SEUIL_VOCABULAIRE_LONG`) ne
+  restent candidats que si ce mot fait partie de la fraction « connue »
+  (:func:`scrabble.moteur.ia._mot_connu_vocabulaire_court`, même procédé
+  déterministe que les mots longs, décalage de hachage distinct pour une
+  sélection indépendante). Les mots de 7 lettres et plus — du vocabulaire du
+  niveau ou ajoutés par ``vocabulaire_long`` — ne sont jamais concernés.
+  Garde-fou : si le filtre ne laisse plus aucun coup candidat (début de
+  partie, chevalet difficile), il est ignoré pour ce tour plutôt que de
+  forcer une passe qui fausserait la mesure (voir
+  :func:`scrabble.moteur.ia._generer_coups_candidats`).
+
+  Valeur de départ, aux deux niveaux : 70 % — point médian raisonné entre
+  « tout » (comportement actuel, trop fort) et une restriction sévère qui
+  risquerait de ne plus trouver assez de coups courts pour varier le jeu,
+  dans le même esprit que le point médian 50 % choisi au lot H ter pour
+  ``part_vocabulaire_long`` à Avancé ; à ajuster par Alain après mesure avec
+  ``scripts/mesurer_force_niveaux.py`` — objectif : écart de points proche de
+  zéro contre Classique au même niveau, avec un surplus de scrabbles qui
+  reste visible.
 
 Les valeurs ci-dessus sont des points de départ raisonnés (le dictionnaire
 réel n'est pas disponible dans ce worktree isolé pour les mesurer par
-parties jouées, voir le rapport des issues #448, #450 et #451) — provisoires,
-destinées à être ajustées par Alain après mesure avec
+parties jouées, voir le rapport des issues #448, #450, #451 et #453) —
+provisoires, destinées à être ajustées par Alain après mesure avec
 ``scripts/mesurer_force_niveaux.py``, comme pour Opportuniste.
 
 Personnage Titeuf
@@ -260,26 +306,36 @@ POIDS_TIRAGE_SCRABBLE_CHASSEUR: float | None = 5.0
 #: #451, lot H ter, champ :attr:`~scrabble.moteur.ia.ProfilPersonnage.part_vocabulaire_long`) :
 #: table niveau → part, un niveau absent de la table (ou avec ``vocabulaire_long``
 #: inactif, voir :data:`NIVEAUX_CHASSEUR_SCRABBLES`) n'a aucun sens à régler
-#: ici. Valeurs de départ (à ajuster par Alain après mesure, voir le rapport
-#: de l'issue #451) :
+#: ici.
 #:
-#: * INTERMEDIAIRE : 1.0 (100 %, inchangé par rapport au lot H bis) — à ce
-#:   niveau, le constat de départ de l'issue #451 est que le style du
-#:   personnage ne se voit pas assez (0,05 scrabble par partie contre 0,02
-#:   pour Classique, écart dans la marge d'erreur), pas qu'il est trop fort :
-#:   rien à retirer ici, le levier à ce niveau est le tirage pondéré
-#:   (:data:`POIDS_TIRAGE_SCRABBLE_CHASSEUR`), pas le vocabulaire.
-#: * AVANCE : 0.5 (50 %) — à ce niveau (qui joue toujours son meilleur coup,
-#:   donc insensible au tirage pondéré), le constat de départ est l'inverse :
-#:   Chasseur est trop fort (61 % de victoires, +20 points par partie environ
-#:   contre Classique), et ce malgré un ``poids_leave`` testé de 1.0 à 2.0 qui
-#:   ne corrigeait rien (la force venait du vocabulaire, pas du leave).
-#:   Réduire de moitié le vocabulaire long accessible est un premier point de
-#:   mesure médian entre « tout » (trop fort) et « rien » (retour à
-#:   Classique), à affiner par Alain après mesure réelle.
+#: Remise à 1.0 (100 %) aux deux niveaux par le lot H quater (issue #453) :
+#: le lot H ter avait réduit AVANCE à 0.5 pour contrer l'excès de force du
+#: personnage, mais les mesures à parts intermédiaires ont montré que ce
+#: levier dilue le style (le surplus de scrabbles devient à peine visible
+#: aux parts basses) sans forcément retrouver la neutralité de force — voir
+#: la docstring du module. Le lot H quater reprend ce problème avec
+#: :data:`PART_VOCABULAIRE_COURT_CHASSEUR` à la place : la connaissance des
+#: longs mots reste donc entière, c'est la connaissance des mots COURTS qui
+#: ajuste la force.
 PART_VOCABULAIRE_LONG_CHASSEUR: dict[Niveau, float] = {
     Niveau.INTERMEDIAIRE: 1.0,
-    Niveau.AVANCE: 0.5,
+    Niveau.AVANCE: 1.0,
+}
+
+#: Part des mots de MOINS de 7 lettres du vocabulaire du niveau connue du
+#: personnage Chasseur de scrabbles, par niveau (issue #453, lot H quater,
+#: champ :attr:`~scrabble.moteur.ia.ProfilPersonnage.part_vocabulaire_court`) :
+#: table niveau → part, résolue comme :data:`PART_VOCABULAIRE_LONG_CHASSEUR`
+#: par :func:`profil_pour_niveau` via :attr:`Personnage.part_vocabulaire_court_par_niveau`.
+#:
+#: Valeur de départ, aux deux niveaux : 0.7 (70 %) — voir la docstring du
+#: module pour le raisonnement complet (point médian entre comportement
+#: actuel et restriction sévère, à ajuster par mesure réelle avec
+#: ``scripts/mesurer_force_niveaux.py``, objectif : écart de points proche
+#: de zéro contre Classique avec un surplus de scrabbles qui reste visible).
+PART_VOCABULAIRE_COURT_CHASSEUR: dict[Niveau, float] = {
+    Niveau.INTERMEDIAIRE: 0.7,
+    Niveau.AVANCE: 0.7,
 }
 
 #: Dossier des petites listes de personnalisation par personnage (issue
@@ -437,6 +493,14 @@ class Personnage:
     reste la valeur « plate », sans résolution de niveau — voir les tests
     qui y accèdent directement pour les niveaux sans surcharge, p. ex.
     AVANCE n'y est câblé que dans la table, pas dans ``profil`` lui-même).
+
+    ``part_vocabulaire_court_par_niveau`` (issue #453, lot H quater) : même
+    principe de surcharge, pour le champ
+    :attr:`~scrabble.moteur.ia.ProfilPersonnage.part_vocabulaire_court` —
+    table indépendante de ``part_vocabulaire_long_par_niveau``, les deux
+    pouvant être renseignées simultanément (cas de Chasseur de scrabbles)
+    sans interférence : chacune ne touche que le champ de ``profil`` qui lui
+    correspond.
     """
 
     cle: str
@@ -450,18 +514,23 @@ class Personnage:
         default_factory=lambda: TOUTES_TAILLES
     )
     part_vocabulaire_long_par_niveau: dict[Niveau, float] | None = None
+    part_vocabulaire_court_par_niveau: dict[Niveau, float] | None = None
 
 
 def profil_pour_niveau(cle: str, niveau: Niveau | None) -> ProfilPersonnage:
     """Résout le :class:`~scrabble.moteur.ia.ProfilPersonnage` de ``cle`` pour ``niveau``
-    (issue #451, lot H ter).
+    (issue #451, lot H ter ; étendu issue #453, lot H quater).
 
     Reprend :attr:`Personnage.profil` tel quel, sauf si
-    :attr:`Personnage.part_vocabulaire_long_par_niveau` est renseigné ET
-    contient une entrée pour ``niveau`` : dans ce cas,
-    :attr:`~scrabble.moteur.ia.ProfilPersonnage.part_vocabulaire_long` est
-    remplacé par cette valeur, tous les autres champs du profil restant
-    inchangés. ``niveau=None`` (joueur humain, ou appelant qui ne connaît
+    :attr:`Personnage.part_vocabulaire_long_par_niveau` et/ou
+    :attr:`Personnage.part_vocabulaire_court_par_niveau` sont renseignés ET
+    contiennent une entrée pour ``niveau`` : dans ce cas, le champ
+    :attr:`~scrabble.moteur.ia.ProfilPersonnage.part_vocabulaire_long` et/ou
+    :attr:`~scrabble.moteur.ia.ProfilPersonnage.part_vocabulaire_court`
+    correspondant est remplacé par cette valeur, tous les autres champs du
+    profil restant inchangés — les deux surcharges sont indépendantes,
+    chacune ne s'applique que si SA table contient une entrée pour
+    ``niveau``. ``niveau=None`` (joueur humain, ou appelant qui ne connaît
     encore aucun niveau) ne trouve jamais d'entrée et renvoie donc
     ``profil`` sans modification — même résultat que :attr:`Personnage.profil`
     lu directement, ce qui garde ce dernier valide pour tout appelant qui ne
@@ -473,9 +542,12 @@ def profil_pour_niveau(cle: str, niveau: Niveau | None) -> ProfilPersonnage:
     """
     personnage = PERSONNAGES[cle]
     profil = personnage.profil
-    table = personnage.part_vocabulaire_long_par_niveau
-    if table is not None and niveau is not None and niveau in table:
-        profil = replace(profil, part_vocabulaire_long=table[niveau])
+    table_long = personnage.part_vocabulaire_long_par_niveau
+    if table_long is not None and niveau is not None and niveau in table_long:
+        profil = replace(profil, part_vocabulaire_long=table_long[niveau])
+    table_court = personnage.part_vocabulaire_court_par_niveau
+    if table_court is not None and niveau is not None and niveau in table_court:
+        profil = replace(profil, part_vocabulaire_court=table_court[niveau])
     return profil
 
 
@@ -519,6 +591,7 @@ PERSONNAGES: dict[str, Personnage] = {
         niveaux_disponibles=NIVEAUX_CHASSEUR_SCRABBLES,
         nb_joueurs_disponibles=NB_JOUEURS_CHASSEUR_SCRABBLES,
         part_vocabulaire_long_par_niveau=PART_VOCABULAIRE_LONG_CHASSEUR,
+        part_vocabulaire_court_par_niveau=PART_VOCABULAIRE_COURT_CHASSEUR,
     ),
     "titeuf": Personnage(
         cle="titeuf",

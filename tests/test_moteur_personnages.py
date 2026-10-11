@@ -36,6 +36,7 @@ from scrabble.moteur.personnages import (
     MOTS_FAVORIS_TITEUF,
     NB_JOUEURS_TITEUF,
     NIVEAUX_TITEUF,
+    PART_VOCABULAIRE_COURT_CHASSEUR,
     PART_VOCABULAIRE_LONG_CHASSEUR,
     PERSONNAGES,
     POIDS_TIRAGE_FAVORI_TITEUF,
@@ -860,9 +861,12 @@ class TestPartVocabulaireLongChasseur:
     plate, sans résolution de niveau)."""
 
     def test_valeurs_de_depart(self):
+        """Remis à 100 % aux deux niveaux par le lot H quater (issue #453) :
+        AVANCE valait 0.5 au lot H ter — voir :data:`PART_VOCABULAIRE_COURT_CHASSEUR`
+        pour le nouveau levier qui reprend ce rôle."""
         assert PART_VOCABULAIRE_LONG_CHASSEUR == {
             Niveau.INTERMEDIAIRE: 1.0,
-            Niveau.AVANCE: 0.5,
+            Niveau.AVANCE: 1.0,
         }
 
     def test_profil_plat_ne_porte_pas_la_surcharge_par_niveau(self):
@@ -882,7 +886,7 @@ class TestPartVocabulaireLongChasseur:
 
     def test_profil_pour_niveau_avance(self):
         profil = profil_pour_niveau("chasseur_de_scrabbles", Niveau.AVANCE)
-        assert profil.part_vocabulaire_long == 0.5
+        assert profil.part_vocabulaire_long == 1.0
         assert profil.vocabulaire_long is True
 
     def test_profil_pour_niveau_sans_entree_dans_la_table(self):
@@ -916,6 +920,57 @@ class TestPartVocabulaireLongChasseur:
         profil_pour_niveau("chasseur_de_scrabbles", Niveau.AVANCE)
         assert PERSONNAGES["chasseur_de_scrabbles"].profil is avant
         assert avant.part_vocabulaire_long is None
+
+
+# --------------------------------------------------------------------------- #
+# Part de mots courts connus par niveau (issue #453, lot H quater)
+# --------------------------------------------------------------------------- #
+
+
+class TestPartVocabulaireCourtChasseur:
+    """Table :data:`PART_VOCABULAIRE_COURT_CHASSEUR` et sa résolution par
+    :func:`profil_pour_niveau` — même principe que
+    :data:`PART_VOCABULAIRE_LONG_CHASSEUR` (lot H ter), table indépendante."""
+
+    def test_valeurs_de_depart(self):
+        assert PART_VOCABULAIRE_COURT_CHASSEUR == {
+            Niveau.INTERMEDIAIRE: 0.7,
+            Niveau.AVANCE: 0.7,
+        }
+
+    def test_profil_plat_ne_porte_pas_la_surcharge_par_niveau(self):
+        assert PERSONNAGES["chasseur_de_scrabbles"].profil.part_vocabulaire_court is None
+
+    def test_profil_pour_niveau_intermediaire(self):
+        profil = profil_pour_niveau("chasseur_de_scrabbles", Niveau.INTERMEDIAIRE)
+        assert profil.part_vocabulaire_court == 0.7
+        # La surcharge des mots longs, indépendante, reste appliquée aussi.
+        assert profil.part_vocabulaire_long == 1.0
+        assert profil.vocabulaire_long is True
+
+    def test_profil_pour_niveau_avance(self):
+        profil = profil_pour_niveau("chasseur_de_scrabbles", Niveau.AVANCE)
+        assert profil.part_vocabulaire_court == 0.7
+        assert profil.part_vocabulaire_long == 1.0
+
+    def test_profil_pour_niveau_sans_entree_dans_la_table(self):
+        profil = profil_pour_niveau("chasseur_de_scrabbles", Niveau.DEBUTANT)
+        assert profil == PERSONNAGES["chasseur_de_scrabbles"].profil
+
+    def test_profil_pour_niveau_personnage_sans_table_inchange(self):
+        """Classique, Opportuniste et Titeuf n'ont pas de table de surcharge
+        pour ce champ : même résultat que l'accès direct à ``.profil``, quel
+        que soit le niveau — aucun effet sur les autres personnages."""
+        for cle in ("classique", "opportuniste", "titeuf"):
+            for niveau in Niveau:
+                assert profil_pour_niveau(cle, niveau) == PERSONNAGES[cle].profil
+                assert profil_pour_niveau(cle, niveau).part_vocabulaire_court is None
+
+    def test_resolution_ne_mute_pas_le_profil_de_base(self):
+        avant = PERSONNAGES["chasseur_de_scrabbles"].profil
+        profil_pour_niveau("chasseur_de_scrabbles", Niveau.AVANCE)
+        assert PERSONNAGES["chasseur_de_scrabbles"].profil is avant
+        assert avant.part_vocabulaire_court is None
 
 
 # --------------------------------------------------------------------------- #
