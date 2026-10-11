@@ -318,6 +318,21 @@ mesure. Avec Lettré, Avancé, Expert et Champion du monde comptent chacun
 trois personnages réels ou plus (au moins Classique + Chasseur de
 scrabbles/Opportuniste selon le niveau + Lettré) : Aléatoire y reste
 disponible, sans aucune autre modification (règle déjà en place).
+
+Liste complémentaire locale, hors dépôt (issue #455)
+------------------------------------------------------
+En plus de ``data/personnages/lettre_mots_favoris.txt`` (suivi par git),
+:data:`MOTS_FAVORIS_LETTRE` est l'union avec un second fichier facultatif,
+:data:`CHEMIN_MOTS_FAVORIS_LETTRE_MERAL`
+(``data/personnages/lettre_mots_meral.txt``), JAMAIS suivi par git (voir
+``.gitignore``) : Alain peut y ajouter des mots tirés d'une source qu'il ne
+veut pas publier dans le dépôt. Absent — cas de tout autre poste de travail,
+de la CI et de tout worktree isolé — le comportement est exactement celui
+d'avant ce lot. Le chargement réutilise :func:`charger_mots_favoris_avec_complement`,
+qui réutilise elle-même :func:`charger_mots_favoris` deux fois (même règles
+de normalisation pour les deux fichiers) plutôt que d'introduire un nouveau
+mécanisme de lecture — Titeuf ou un futur personnage à liste pourrait s'en
+servir de la même façon, sans qu'il n'en profite aujourd'hui.
 """
 
 from __future__ import annotations
@@ -446,6 +461,23 @@ def charger_mots_favoris(chemin: Path) -> frozenset[str]:
     return frozenset(desaccentuer(mot) for mot in lire_liste_mots(chemin))
 
 
+def charger_mots_favoris_avec_complement(
+    chemin: Path, chemin_complement: Path
+) -> frozenset[str]:
+    """Union de :func:`charger_mots_favoris` sur ``chemin`` et sur
+    ``chemin_complement`` (issue #455).
+
+    ``chemin_complement`` est facultatif au même titre que ``chemin`` :
+    absent ou vide, le résultat est identique à ``charger_mots_favoris(chemin)``
+    seul. Généralise le chargement d'une liste de personnage à un second
+    fichier complémentaire SANS créer de mécanisme nouveau — pour que Titeuf
+    ou un futur personnage à liste puisse en bénéficier plus tard sans
+    modification de cette fonction ; aujourd'hui, seul le Lettré l'appelle
+    (voir :data:`CHEMIN_MOTS_FAVORIS_LETTRE_MERAL`).
+    """
+    return charger_mots_favoris(chemin) | charger_mots_favoris(chemin_complement)
+
+
 #: Mots favoris de Titeuf, chargés une fois au chargement de ce module (issue
 #: #452, lot J) — modifier le fichier suppose de relancer l'application, pas
 #: de modifier le code (voir :data:`CHEMIN_MOTS_FAVORIS_TITEUF`).
@@ -477,10 +509,22 @@ NB_JOUEURS_TITEUF: frozenset[int] = frozenset({2})
 #: par Alain (voir la docstring du module).
 CHEMIN_MOTS_FAVORIS_LETTRE: Path = DOSSIER_PERSONNAGES / "lettre_mots_favoris.txt"
 
+#: Chemin de la liste complémentaire, locale et facultative, de mots favoris
+#: du Lettré (issue #455) : mots qu'Alain veut ajouter sans les publier dans
+#: le dépôt (source dont il ne souhaite pas que la liste soit visible sur
+#: git) — jamais suivie par git (voir ``.gitignore``), absente par défaut sur
+#: toute autre machine, y compris en CI et dans les worktrees isolés. Fichier
+#: absent ou vide : aucune différence avec le comportement d'avant ce lot.
+CHEMIN_MOTS_FAVORIS_LETTRE_MERAL: Path = DOSSIER_PERSONNAGES / "lettre_mots_meral.txt"
+
 #: Mots favoris du Lettré, chargés une fois au chargement de ce module
-#: (issue #454, lot K) — liste indépendante de :data:`MOTS_FAVORIS_TITEUF`,
-#: modifier l'un des deux fichiers n'affecte jamais l'autre personnage.
-MOTS_FAVORIS_LETTRE: frozenset[str] = charger_mots_favoris(CHEMIN_MOTS_FAVORIS_LETTRE)
+#: (issue #454, lot K ; étendu issue #455 à l'union avec le fichier
+#: complémentaire local ci-dessus) — liste indépendante de
+#: :data:`MOTS_FAVORIS_TITEUF`, modifier l'un des deux fichiers n'affecte
+#: jamais l'autre personnage.
+MOTS_FAVORIS_LETTRE: frozenset[str] = charger_mots_favoris_avec_complement(
+    CHEMIN_MOTS_FAVORIS_LETTRE, CHEMIN_MOTS_FAVORIS_LETTRE_MERAL
+)
 
 #: Prénom affiché du Lettré (issue #454, lot K).
 PRENOM_LETTRE = "Lettré"

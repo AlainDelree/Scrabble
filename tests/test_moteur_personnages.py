@@ -37,6 +37,7 @@ from scrabble.moteur.personnages import (
     CLE_ALEATOIRE,
     BONUS_FAVORI_LETTRE,
     CHEMIN_MOTS_FAVORIS_LETTRE,
+    CHEMIN_MOTS_FAVORIS_LETTRE_MERAL,
     CHEMIN_MOTS_FAVORIS_TITEUF,
     DESCRIPTION_ALEATOIRE,
     MESSAGE_ALEATOIRE_NB_JOUEURS_INSUFFISANT,
@@ -58,6 +59,7 @@ from scrabble.moteur.personnages import (
     aleatoire_disponible_a_nb_joueurs,
     aleatoire_disponible_a_niveau,
     charger_mots_favoris,
+    charger_mots_favoris_avec_complement,
     explication_disponibilite_niveaux,
     explication_disponibilite_tailles,
     libelle_choix_accueil,
@@ -1427,3 +1429,91 @@ class TestMotsFavorisLettre:
         assert "UNMOTABSENT" not in mots
         # Le coup concurrent du vocabulaire du niveau reste, lui, inchangé.
         assert "ZOTA" in mots
+
+
+class TestMotsFavorisLettreComplement:
+    """Fichier complémentaire local et facultatif de mots favoris du Lettré,
+    jamais suivi par git (issue #455) : union sans doublon avec la liste
+    habituelle, via la fonction de chargement existante
+    (:func:`charger_mots_favoris`). Le fichier complémentaire n'existe pas
+    dans ce worktree isolé — voir :data:`CHEMIN_MOTS_FAVORIS_LETTRE_MERAL` —
+    donc :data:`MOTS_FAVORIS_LETTRE` reste identique à celle d'avant ce lot
+    (couvert par ``TestMotsFavorisLettre`` ci-dessus, inchangé)."""
+
+    def test_fichier_absent_resultat_identique_a_charger_mots_favoris_seul(
+        self, tmp_path
+    ):
+        chemin_absent = tmp_path / "lettre_mots_meral_absent.txt"
+        resultat = charger_mots_favoris_avec_complement(
+            CHEMIN_MOTS_FAVORIS_LETTRE, chemin_absent
+        )
+        assert resultat == charger_mots_favoris(CHEMIN_MOTS_FAVORIS_LETTRE)
+        assert resultat == MOTS_FAVORIS_LETTRE
+
+    def test_fichier_present_ses_mots_sont_pris_en_compte(self, tmp_path):
+        chemin_complement = tmp_path / "lettre_mots_meral.txt"
+        chemin_complement.write_text("zignougne\n", encoding="utf-8")
+        resultat = charger_mots_favoris_avec_complement(
+            CHEMIN_MOTS_FAVORIS_LETTRE, chemin_complement
+        )
+        assert "ZIGNOUGNE" in resultat
+
+    def test_union_sans_doublon(self, tmp_path):
+        chemin_complement = tmp_path / "lettre_mots_meral.txt"
+        # "azoture" figure déjà dans le fichier habituel du dépôt.
+        chemin_complement.write_text("azoture\nnouveaumot\n", encoding="utf-8")
+        resultat = charger_mots_favoris_avec_complement(
+            CHEMIN_MOTS_FAVORIS_LETTRE, chemin_complement
+        )
+        assert resultat == MOTS_FAVORIS_LETTRE | {"NOUVEAUMOT"}
+        assert len(resultat) == len(MOTS_FAVORIS_LETTRE) + 1
+
+    def test_mot_du_complement_absent_du_lexique_ignore_sans_filtrage_dedie(
+        self, tmp_path
+    ):
+        """Même garantie que pour le fichier habituel : un mot du fichier
+        complémentaire absent du lexique complet installé n'est filtré par
+        aucun code dédié au chargement, seulement par la génération/
+        validation des coups candidats."""
+        from scrabble.moteur.ia import ProfilPersonnage, _generer_coups_candidats
+
+        chemin_complement = tmp_path / "lettre_mots_meral.txt"
+        chemin_complement.write_text("unmotabsent\n", encoding="utf-8")
+        mots_favoris = charger_mots_favoris_avec_complement(
+            CHEMIN_MOTS_FAVORIS_LETTRE, chemin_complement
+        )
+        assert "UNMOTABSENT" in mots_favoris
+
+        plateau = _plateau_lettre()
+        dico_niveau = Trie.depuis_iterable(_DICO_NIVEAU_LETTRE)
+        # Lexique complet sans "UNMOTABSENT".
+        dico_complet = Trie.depuis_iterable(_DICO_COMPLET_LETTRE)
+        profil = ProfilPersonnage(mots_favoris=mots_favoris)
+        coups = _generer_coups_candidats(
+            plateau, _CHEVALET_LETTRE, dico_niveau, profil, dico_complet
+        )
+        mots = {"".join(t.lettre for t in cn.coup.tuiles) for cn in coups}
+        assert "UNMOTABSENT" not in mots
+
+    def test_lettre_joue_un_mot_du_fichier_complementaire(self, tmp_path):
+        """Scénario fabriqué (issue #455, point « chemin substitué dans le
+        test ») : un mot présent SEULEMENT dans le fichier complémentaire
+        (liste habituelle vide) est joué par le Lettré, comme le serait un
+        mot de la liste habituelle — même scénario que
+        ``TestPersonnageLettre.test_lettre_joue_toujours_le_mot_favori_sur_ce_scenario``."""
+        chemin_principal_vide = tmp_path / "lettre_mots_favoris_vide.txt"
+        chemin_complement = tmp_path / "lettre_mots_meral.txt"
+        chemin_complement.write_text("azoture\n", encoding="utf-8")
+
+        mots_favoris = charger_mots_favoris_avec_complement(
+            chemin_principal_vide, chemin_complement
+        )
+        assert mots_favoris == frozenset({"AZOTURE"})
+
+        from scrabble.moteur.ia import ProfilPersonnage
+
+        profil = ProfilPersonnage(
+            mots_favoris=mots_favoris, bonus_favori=BONUS_FAVORI_LETTRE
+        )
+        for niveau in (Niveau.AVANCE, Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE):
+            assert _proportion_mot_favori_lettre(niveau, profil) == 1.0

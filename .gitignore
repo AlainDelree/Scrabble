@@ -51,3 +51,10 @@ avance_vs_champion.csv
 .pytest_cache/
 tmp_diag_wiktionnaire/
 avance_vs_champion.log
+
+# Liste complémentaire locale et facultative de mots favoris du Lettré
+# (issue #455) : mots ajoutés par Alain depuis une source qu'il ne veut pas
+# publier dans le dépôt — jamais commitée, contrairement à
+# data/personnages/lettre_mots_favoris.txt. Absente par défaut, sans effet
+# sur le jeu (voir scrabble.moteur.personnages).
+data/personnages/lettre_mots_meral.txt
