@@ -333,6 +333,41 @@ trois personnages réels ou plus (au moins Classique + Chasseur de
 scrabbles/Opportuniste selon le niveau + Lettré) : Aléatoire y reste
 disponible, sans aucune autre modification (règle déjà en place).
 
+Désactivation de Chasseur de scrabbles et Lettré (issue #459)
+----------------------------------------------------------------
+Mesures du 12 octobre 2026 (``scripts/mesurer_force_niveaux.py``, partie
+réellement jouées) : l'effet des deux personnages est trop discret pour être
+remarqué en jeu — environ 0,45 scrabble supplémentaire par partie à Avancé et
+0,2 à Intermédiaire pour Chasseur de scrabbles ; environ deux mots de sa
+liste par partie pour Lettré. Alain abandonne les deux, mais rien n'est
+supprimé : code, constantes de réglage (``BONUS_SEPT_LETTRES_CHASSEUR``,
+``PART_VOCABULAIRE_COURT_CHASSEUR``, ``BONUS_FAVORI_LETTRE``, etc.), listes de
+mots (``lettre_mots_favoris.txt``) et tests de comportement restent en place
+pour une réactivation éventuelle si une meilleure idée de calibrage apparaît.
+
+Le registre porte désormais un indicateur :attr:`Personnage.actif` (vrai par
+défaut) : les deux entrées ``"chasseur_de_scrabbles"`` et ``"lettre"`` le
+déclarent à ``False`` ci-dessous. Un personnage inactif reste une entrée
+normale de :data:`PERSONNAGES` — :func:`obtenir_personnage`,
+:func:`profil_pour_niveau`, une partie sauvegardée qui le mentionne
+(:func:`~scrabble.moteur.partie.creer_partie` ne vérifie elle-même aucune
+disponibilité) et le script de mesure continuent de le résoudre normalement.
+Seules les fonctions qui PROPOSENT un personnage au joueur ou au tirage
+``aleatoire`` l'excluent : :func:`tirer_personnage`,
+:func:`personnages_disponibles_a_niveau`,
+:func:`personnages_disponibles_a_nb_joueurs`, :func:`lister_personnages`
+(fenêtre « Les personnages ») et :meth:`~scrabble.ui.accueil.ApiAccueil.
+obtenir_personnages` (sélecteur de l'accueil) — donc aussi
+:func:`aleatoire_disponible_a_niveau`/:func:`aleatoire_disponible_a_nb_joueurs`,
+qui ne comptent plus que les personnages actifs. L'ajout d'un ordinateur sur
+un personnage inactif est refusé côté serveur
+(:meth:`~scrabble.ui.accueil.ApiAccueil.ajouter_ordinateur`) avec un message
+dédié, avant même le contrôle de niveau/taille de table.
+
+Réactivation : repasser ``actif=True`` sur l'entrée du registre (ci-dessous)
+suffit à tout remettre en place, sans aucune autre modification — c'est
+exactement l'inverse de cette désactivation.
+
 Liste complémentaire locale, hors dépôt (issue #455)
 ------------------------------------------------------
 En plus de ``data/personnages/lettre_mots_favoris.txt`` (suivi par git),
@@ -664,6 +699,18 @@ class Personnage:
     pouvant être renseignées simultanément (cas de Chasseur de scrabbles)
     sans interférence : chacune ne touche que le champ de ``profil`` qui lui
     correspond.
+
+    ``actif`` (issue #459) : facultatif, vrai par défaut — un personnage qui
+    ne déclare rien reste proposé partout, comme avant ce champ. Un
+    personnage inactif (``actif=False``, cas de Chasseur de scrabbles et de
+    Lettré depuis cette issue) n'est plus proposé par
+    :func:`tirer_personnage`, :func:`personnages_disponibles_a_niveau`,
+    :func:`personnages_disponibles_a_nb_joueurs` ni :func:`lister_personnages`
+    — mais reste une entrée normale de :data:`PERSONNAGES`, résolue comme
+    n'importe quel autre personnage par :func:`obtenir_personnage` et
+    :func:`profil_pour_niveau` (une partie sauvegardée qui le mentionne
+    continue de se jouer sans changement). Voir la docstring du module pour
+    la procédure de réactivation.
     """
 
     cle: str
@@ -678,6 +725,7 @@ class Personnage:
     )
     part_vocabulaire_long_par_niveau: dict[Niveau, float] | None = None
     part_vocabulaire_court_par_niveau: dict[Niveau, float] | None = None
+    actif: bool = True
 
 
 def profil_pour_niveau(cle: str, niveau: Niveau | None) -> ProfilPersonnage:
@@ -755,6 +803,11 @@ PERSONNAGES: dict[str, Personnage] = {
         nb_joueurs_disponibles=NB_JOUEURS_CHASSEUR_SCRABBLES,
         part_vocabulaire_long_par_niveau=PART_VOCABULAIRE_LONG_CHASSEUR,
         part_vocabulaire_court_par_niveau=PART_VOCABULAIRE_COURT_CHASSEUR,
+        # Désactivé (issue #459) : effet trop discret pour être remarqué en
+        # jeu (~0,45 scrabble/partie à Avancé, ~0,2 à Intermédiaire, mesures
+        # du 12 octobre 2026). Code et réglages conservés tels quels pour une
+        # réactivation éventuelle — repasser à True suffit.
+        actif=False,
     ),
     "titeuf": Personnage(
         cle="titeuf",
@@ -785,6 +838,11 @@ PERSONNAGES: dict[str, Personnage] = {
         ),
         niveaux_disponibles=NIVEAUX_LETTRE,
         nb_joueurs_disponibles=NB_JOUEURS_LETTRE,
+        # Désactivé (issue #459) : effet trop discret pour être remarqué en
+        # jeu (~deux mots de sa liste par partie, mesures du 12 octobre
+        # 2026). Code et réglages conservés tels quels pour une réactivation
+        # éventuelle — repasser à True suffit.
+        actif=False,
     ),
 }
 
@@ -792,10 +850,31 @@ PERSONNAGES: dict[str, Personnage] = {
 def obtenir_personnage(cle: str) -> Personnage:
     """Renvoie le personnage enregistré sous ``cle``.
 
+    Fonctionne à l'identique pour un personnage inactif (issue #459, voir
+    :attr:`Personnage.actif`) : seules les fonctions qui PROPOSENT un
+    personnage au joueur ou au tirage ``aleatoire`` l'excluent, jamais
+    l'accès direct par clé — une partie sauvegardée qui le mentionne
+    continue de se résoudre normalement.
+
     :raises KeyError: si ``cle`` ne correspond à aucune entrée de
         :data:`PERSONNAGES`.
     """
     return PERSONNAGES[cle]
+
+
+def personnage_actif(personnage_cle: str) -> bool:
+    """Vrai si ``personnage_cle`` (réel, ou :data:`CLE_ALEATOIRE`) désigne un
+    personnage proposable (issue #459).
+
+    « Aléatoire » est toujours actif lui-même : il ne tire de toute façon
+    jamais qu'un personnage réel actif (voir :func:`tirer_personnage`). Une
+    clé inconnue du registre (et différente de :data:`CLE_ALEATOIRE`) renvoie
+    ``False``, comme les autres fonctions de disponibilité de ce module.
+    """
+    if personnage_cle == CLE_ALEATOIRE:
+        return True
+    personnage = PERSONNAGES.get(personnage_cle)
+    return personnage is not None and personnage.actif
 
 
 def tirer_personnage(
@@ -828,9 +907,13 @@ def tirer_personnage(
     tirage sur tout le registre, sans la restriction correspondante — utilisé
     par les appelants qui ne connaissent pas encore de niveau ou de taille de
     table particuliers.
+
+    Un personnage inactif (:attr:`Personnage.actif` à ``False`` — Chasseur de
+    scrabbles et Lettré depuis l'issue #459) n'est jamais tiré, quels que
+    soient ``niveau`` et ``nb_joueurs`` — y compris les deux ``None``.
     """
     rng = generateur if generateur is not None else random
-    reserve = list(PERSONNAGES.values())
+    reserve = [p for p in PERSONNAGES.values() if p.actif]
     if niveau is not None:
         reserve = [p for p in reserve if niveau in p.niveaux_disponibles]
     if nb_joueurs is not None:
@@ -844,9 +927,14 @@ def personnages_disponibles_a_niveau(niveau: Niveau) -> list[Personnage]:
     Dans l'ordre d'insertion de :data:`PERSONNAGES` (Classique en tête).
     N'inclut jamais l'entrée pseudo-personnage « Aléatoire » : voir
     :func:`aleatoire_disponible_a_niveau` pour sa propre règle de
-    disponibilité, déduite de celle-ci.
+    disponibilité, déduite de celle-ci. N'inclut jamais non plus un
+    personnage inactif (:attr:`Personnage.actif` à ``False``, issue #459).
     """
-    return [p for p in PERSONNAGES.values() if niveau in p.niveaux_disponibles]
+    return [
+        p
+        for p in PERSONNAGES.values()
+        if p.actif and niveau in p.niveaux_disponibles
+    ]
 
 
 def aleatoire_disponible_a_niveau(niveau: Niveau) -> bool:
@@ -886,9 +974,14 @@ def personnages_disponibles_a_nb_joueurs(nb_joueurs: int) -> list[Personnage]:
     :func:`aleatoire_disponible_a_nb_joueurs` pour sa propre règle de
     disponibilité, déduite de celle-ci. Indépendant de
     :func:`personnages_disponibles_a_niveau` (deux dimensions distinctes qui
-    se combinent chez l'appelant).
+    se combinent chez l'appelant). N'inclut jamais non plus un personnage
+    inactif (:attr:`Personnage.actif` à ``False``, issue #459).
     """
-    return [p for p in PERSONNAGES.values() if nb_joueurs in p.nb_joueurs_disponibles]
+    return [
+        p
+        for p in PERSONNAGES.values()
+        if p.actif and nb_joueurs in p.nb_joueurs_disponibles
+    ]
 
 
 def aleatoire_disponible_a_nb_joueurs(nb_joueurs: int) -> bool:
@@ -900,10 +993,12 @@ def aleatoire_disponible_a_nb_joueurs(nb_joueurs: int) -> bool:
     lui-même), tirer au hasard parmi un seul personnage n'ayant aucun sens.
     Un futur personnage ajouté au registre et compatible avec une taille
     aujourd'hui à un seul personnage disponible rend donc Aléatoire à nouveau
-    disponible à cette taille, sans aucune autre modification. Aujourd'hui :
-    disponible à deux joueurs (Classique + Opportuniste + Chasseur de
-    scrabbles + Titeuf + Lettré), indisponible à trois ou quatre (seul
-    Classique y figure).
+    disponible à cette taille, sans aucune autre modification. Seuls les
+    personnages actifs comptent (issue #459 — Chasseur de scrabbles et
+    Lettré, inactifs, n'y sont plus comptés bien que tous deux réservés à
+    deux joueurs). Aujourd'hui : disponible à deux joueurs (Classique +
+    Opportuniste + Titeuf), indisponible à trois ou quatre (seul Classique y
+    figure).
     """
     return len(personnages_disponibles_a_nb_joueurs(nb_joueurs)) >= 2
 
@@ -1165,12 +1260,13 @@ def lister_personnages(
 ) -> list[dict[str, Any]]:
     """Liste présentable pour la fenêtre « Les personnages » (issue #442, lot F).
 
-    Une entrée par personnage de :data:`PERSONNAGES` (dans l'ordre
-    d'insertion, donc Classique en tête), puis « Aléatoire » toujours en
-    dernier — construite dynamiquement depuis le registre comme
-    :func:`~scrabble.ui.accueil.ApiAccueil.obtenir_personnages`, pour qu'un
-    personnage ajouté plus tard au registre y apparaisse sans autre
-    modification. Chaque entrée est ``{"cle", "prenom", "description",
+    Une entrée par personnage ACTIF de :data:`PERSONNAGES` (dans l'ordre
+    d'insertion, donc Classique en tête — un personnage inactif,
+    :attr:`Personnage.actif` à ``False``, en est exclu, issue #459), puis
+    « Aléatoire » toujours en dernier — construite dynamiquement depuis le
+    registre comme :func:`~scrabble.ui.accueil.ApiAccueil.obtenir_personnages`,
+    pour qu'un personnage ajouté plus tard au registre y apparaisse sans
+    autre modification. Chaque entrée est ``{"cle", "prenom", "description",
     "dans_la_partie", "niveaux_label", "tailles_label"}`` — ``niveaux_label``
     (issue #447, lot G, point 5) est le texte des niveaux où le personnage
     est disponible (:func:`libelle_niveaux`/:func:`libelle_niveaux_aleatoire`)
@@ -1208,6 +1304,7 @@ def lister_personnages(
             "tailles_label": libelle_tailles(personnage),
         }
         for personnage in PERSONNAGES.values()
+        if personnage.actif
     ]
     resultat.append(
         {

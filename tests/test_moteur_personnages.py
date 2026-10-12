@@ -267,9 +267,11 @@ class TestTirerPersonnage:
 
     def test_tirage_sans_niveau_ignore_la_restriction(self):
         """``niveau=None`` (défaut) reprend le comportement historique : tout
-        le registre, sans restriction — non-régression explicite."""
+        le registre ACTIF, sans restriction de niveau — non-régression
+        explicite. Chasseur de scrabbles et Lettré, inactifs (issue #459),
+        ne sont jamais tirés, même sans aucune restriction."""
         cles = {tirer_personnage(random.Random(g)).cle for g in range(50)}
-        assert cles == set(PERSONNAGES)
+        assert cles == {cle for cle, p in PERSONNAGES.items() if p.actif}
 
     def test_tirage_restreint_au_nb_joueurs_ne_tire_jamais_opportuniste_a_trois(self):
         """``nb_joueurs`` restreint pareillement le tirage (issue #449, lot
@@ -281,16 +283,20 @@ class TestTirerPersonnage:
             assert tire.cle == "classique"
 
     def test_tirage_restreint_au_nb_joueurs_peut_tirer_opportuniste_a_deux(self):
+        """Chasseur de scrabbles et Lettré, inactifs (issue #459), ne sont
+        jamais tirés même si tous deux restaient structurellement réservés à
+        deux joueurs — seuls les personnages ACTIFS disponibles à deux
+        joueurs doivent apparaître."""
         cles = {
             tirer_personnage(random.Random(g), None, 2).cle for g in range(50)
         }
-        assert cles == set(PERSONNAGES)
+        assert cles == {cle for cle, p in PERSONNAGES.items() if p.actif}
 
     def test_tirage_sans_nb_joueurs_ignore_la_restriction(self):
         """``nb_joueurs=None`` (défaut) reprend le comportement historique :
-        tout le registre, sans restriction de taille de table."""
+        tout le registre ACTIF, sans restriction de taille de table."""
         cles = {tirer_personnage(random.Random(g)).cle for g in range(50)}
-        assert cles == set(PERSONNAGES)
+        assert cles == {cle for cle, p in PERSONNAGES.items() if p.actif}
 
     def test_tirage_combine_niveau_et_nb_joueurs(self):
         """Les deux restrictions se combinent (issue #449, lot I) : à
@@ -606,9 +612,13 @@ class TestListerPersonnages:
     """Fenêtre « Les personnages » (issue #442, lot F) : liste construite depuis le registre."""
 
     def test_contient_le_registre_puis_aleatoire_en_dernier(self):
+        """Seuls les personnages ACTIFS du registre apparaissent (issue
+        #459) : Chasseur de scrabbles et Lettré, inactifs, en sont exclus."""
         personnages = lister_personnages()
         cles = [p["cle"] for p in personnages]
-        assert cles == [*PERSONNAGES.keys(), CLE_ALEATOIRE]
+        assert cles == [
+            *(cle for cle, p in PERSONNAGES.items() if p.actif), CLE_ALEATOIRE
+        ]
         for p in personnages:
             # "niveaux_label" ajouté par l'issue #447 (lot G, point 5) :
             # texte des niveaux où le personnage est disponible. "tailles_label"
@@ -799,7 +809,25 @@ class TestPersonnageChasseurDeScrabbles:
         assert PERSONNAGES["classique"].profil.vocabulaire_long is None
         assert PERSONNAGES["opportuniste"].profil.vocabulaire_long is None
 
-    def test_chasseur_apparait_dans_la_liste(self):
+    def test_chasseur_absent_de_la_liste_car_inactif(self):
+        """Désactivé (issue #459) : n'apparaît plus dans la fenêtre « Les
+        personnages », mais reste bien dans le registre lui-même."""
+        assert "chasseur_de_scrabbles" in PERSONNAGES
+        assert PERSONNAGES["chasseur_de_scrabbles"].actif is False
+        cles = [p["cle"] for p in lister_personnages()]
+        assert "chasseur_de_scrabbles" not in cles
+
+    def test_chasseur_reapparait_dans_la_liste_si_reactive(self, monkeypatch):
+        """Réactiver l'indicateur (dans ce test seul, sans toucher au code)
+        remet le personnage dans la liste affichée — procédure de
+        réactivation documentée par le module."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES,
+            "chasseur_de_scrabbles",
+            replace(PERSONNAGES["chasseur_de_scrabbles"], actif=True),
+        )
         cles = [p["cle"] for p in lister_personnages()]
         assert "chasseur_de_scrabbles" in cles
 
@@ -1399,7 +1427,23 @@ class TestPersonnageLettre:
         assert lettre.prenom == "Lettré"
         assert lettre.description != ""
 
-    def test_lettre_apparait_dans_la_liste(self):
+    def test_lettre_absent_de_la_liste_car_inactif(self):
+        """Désactivé (issue #459) : n'apparaît plus dans la fenêtre « Les
+        personnages », mais reste bien dans le registre lui-même."""
+        assert "lettre" in PERSONNAGES
+        assert PERSONNAGES["lettre"].actif is False
+        cles = [p["cle"] for p in lister_personnages()]
+        assert "lettre" not in cles
+
+    def test_lettre_reapparait_dans_la_liste_si_reactive(self, monkeypatch):
+        """Réactiver l'indicateur (dans ce test seul, sans toucher au code)
+        remet le personnage dans la liste affichée — procédure de
+        réactivation documentée par le module."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "lettre", replace(PERSONNAGES["lettre"], actif=True)
+        )
         cles = [p["cle"] for p in lister_personnages()]
         assert "lettre" in cles
 
@@ -1458,10 +1502,26 @@ class TestPersonnageLettre:
             == MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS
         )
 
-    def test_tirage_aleatoire_a_avance_peut_inclure_lettre(self):
-        """Le tirage « Aléatoire » à AVANCE doit, sur de nombreuses graines,
-        pouvoir renvoyer Lettré (en plus des personnages déjà disponibles à
-        ce niveau)."""
+    def test_tirage_aleatoire_a_avance_nest_jamais_lettre_car_inactif(self):
+        """Désactivé (issue #459) : le tirage « Aléatoire » à AVANCE ne doit
+        plus jamais renvoyer Lettré, même sur de nombreuses graines — remplace
+        ``test_tirage_aleatoire_a_avance_peut_inclure_lettre``, devenu faux
+        par construction."""
+        cles = {
+            tirer_personnage(random.Random(g), Niveau.AVANCE).cle for g in range(50)
+        }
+        assert "lettre" not in cles
+
+    def test_tirage_aleatoire_a_avance_inclut_de_nouveau_lettre_si_reactive(
+        self, monkeypatch
+    ):
+        """Réactiver l'indicateur (dans ce test seul, sans toucher au code)
+        remet le personnage dans le tirage « Aléatoire »."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "lettre", replace(PERSONNAGES["lettre"], actif=True)
+        )
         cles = {
             tirer_personnage(random.Random(g), Niveau.AVANCE).cle for g in range(50)
         }

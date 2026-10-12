@@ -40,7 +40,7 @@ import pytest
 from scrabble.dictionnaire.dictionnaire import Trie
 from scrabble.moteur.ia import Niveau, choisir_coup, resoudre_palier
 from scrabble.moteur.partie import creer_partie
-from scrabble.moteur.personnages import PERSONNAGES, personnages_disponibles_a_niveau
+from scrabble.moteur.personnages import PERSONNAGES
 from scrabble.moteur.plateau_partie import (
     CENTRE,
     Coup,
@@ -126,13 +126,22 @@ def _dictionnaires_ia_pour_niveau(
 
 
 def _combinaisons_niveau_personnage() -> list[tuple[Niveau, str]]:
-    """Toutes les combinaisons niveau × personnage réellement disponibles,
-    dérivées du registre (pas d'une liste codée en dur) pour couvrir
-    automatiquement un futur personnage ajouté à ``PERSONNAGES``."""
+    """Toutes les combinaisons niveau × personnage structurellement
+    possibles, dérivées du registre (pas d'une liste codée en dur) pour
+    couvrir automatiquement un futur personnage ajouté à ``PERSONNAGES``.
+
+    Itère directement sur :data:`PERSONNAGES`, PAS sur
+    :func:`personnages_disponibles_a_niveau` (qui exclut désormais les
+    personnages inactifs, issue #459, Chasseur de scrabbles et Lettré) :
+    cette garde porte sur la validation humaine d'une partie en cours, dont
+    le comportement ne doit JAMAIS dépendre de l'activité d'un personnage —
+    exactement le cas d'une partie sauvegardée avant leur désactivation, qui
+    doit continuer de se charger et de se jouer sans aucun changement."""
     return [
         (niveau, personnage.cle)
         for niveau in Niveau
-        for personnage in personnages_disponibles_a_niveau(niveau)
+        for personnage in PERSONNAGES.values()
+        if niveau in personnage.niveaux_disponibles
     ]
 
 

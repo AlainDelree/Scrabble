@@ -470,6 +470,8 @@ class TestApiAccueilPersonnages:
     """
 
     def test_obtenir_personnages_contient_le_registre_puis_aleatoire_en_dernier(self):
+        """Seuls les personnages ACTIFS du registre apparaissent (issue
+        #459) : Chasseur de scrabbles et Lettré, inactifs, en sont exclus."""
         from scrabble.moteur.personnages import CLE_ALEATOIRE, PERSONNAGES
         from scrabble.ui.accueil import ApiAccueil
 
@@ -477,7 +479,9 @@ class TestApiAccueilPersonnages:
         personnages = api.obtenir_personnages()
 
         cles = [p["cle"] for p in personnages]
-        assert cles == [*PERSONNAGES.keys(), CLE_ALEATOIRE]
+        assert cles == [
+            *(cle for cle, p in PERSONNAGES.items() if p.actif), CLE_ALEATOIRE
+        ]
         for p in personnages:
             # "niveaux_label" ajouté par l'issue #447 (lot G, point 5) :
             # texte des niveaux où le personnage est disponible. "tailles_label"
@@ -498,10 +502,8 @@ class TestApiAccueilPersonnages:
 
         assert personnages["classique"]["tailles_label"] == "Toutes les parties"
         assert personnages["opportuniste"]["tailles_label"] == "Parties à deux joueurs"
-        assert (
-            personnages["chasseur_de_scrabbles"]["tailles_label"]
-            == "Parties à deux joueurs"
-        )
+        # Chasseur de scrabbles, inactif (issue #459), n'apparaît plus dans
+        # cette liste — voir ``TestApiAccueilPersonnagesInactifs``.
         assert personnages["aleatoire"]["tailles_label"] == "Parties à deux joueurs"
 
     def test_ajouter_ordinateur_defaut_est_classique(self):
@@ -621,6 +623,67 @@ class TestApiAccueilPersonnages:
         joueur_ia = next(j for j in api._partie.joueurs if not j.humain)
         assert joueur_ia.personnage == "opportuniste"
         assert joueur_ia.personnage_aleatoire is False
+
+
+class TestApiAccueilPersonnagesInactifs:
+    """Chasseur de scrabbles et Lettré, désactivés (issue #459) : absents du
+    sélecteur, refus clair à l'ajout, sans effet sur le reste du registre."""
+
+    def test_personnages_inactifs_absents_du_selecteur(self):
+        from scrabble.moteur.personnages import PERSONNAGES
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        cles = {p["cle"] for p in api.obtenir_personnages()}
+        assert "chasseur_de_scrabbles" not in cles
+        assert "lettre" not in cles
+        # Toujours présents dans le registre moteur lui-même (rien n'est
+        # supprimé) : seule leur proposition à l'UI est désactivée.
+        assert PERSONNAGES["chasseur_de_scrabbles"].actif is False
+        assert PERSONNAGES["lettre"].actif is False
+
+    def test_ajouter_ordinateur_refuse_chasseur_inactif(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Expert", "chasseur_de_scrabbles")
+
+        assert result["succes"] is False
+        assert "Chasseur de scrabbles" in result["erreur"]
+        assert api.config_partie.nb_ordinateurs == 0
+
+    def test_ajouter_ordinateur_refuse_lettre_inactif(self):
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Expert", "lettre")
+
+        assert result["succes"] is False
+        assert "Lettré" in result["erreur"]
+        assert api.config_partie.nb_ordinateurs == 0
+
+    def test_ajouter_ordinateur_reactive_fonctionne_de_nouveau(self, monkeypatch):
+        """Réactiver l'indicateur (dans ce test seul, sans toucher au code)
+        suffit à permettre de nouveau l'ajout — procédure de réactivation
+        documentée par le module ``personnages``."""
+        from dataclasses import replace
+
+        from scrabble.moteur.personnages import PERSONNAGES
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.paliers_disponibles", lambda: {"avance": True}
+        )
+        monkeypatch.setitem(
+            PERSONNAGES,
+            "chasseur_de_scrabbles",
+            replace(PERSONNAGES["chasseur_de_scrabbles"], actif=True),
+        )
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Avancé", "chasseur_de_scrabbles")
+
+        assert result["succes"] is True
+        assert api.config_partie.joueurs[0].personnage == "chasseur_de_scrabbles"
 
 
 class TestApiAccueilDisponibiliteNiveauxPersonnage:
@@ -800,11 +863,24 @@ class TestApiAccueilDisponibiliteNbJoueursPersonnage:
         Intermédiaire/Avancé) — l'échec attendu ici porte sur la taille de
         table, pas sur le niveau. ``paliers_disponibles`` monkeypatché (même
         technique qu'ailleurs dans ce fichier) pour rendre le vocabulaire
-        d'Avancé disponible dans ce worktree."""
+        d'Avancé disponible dans ce worktree.
+
+        Chasseur de scrabbles est inactif depuis l'issue #459 (voir
+        ``TestApiAccueilPersonnagesInactifs``) : réactivé ici, le temps de ce
+        seul test, pour continuer à couvrir le contrôle de taille de table
+        lui-même, indépendant de l'activité du personnage."""
+        from dataclasses import replace
+
+        from scrabble.moteur.personnages import PERSONNAGES
         from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
             "scrabble.ui.accueil.paliers_disponibles", lambda: {"avance": True}
+        )
+        monkeypatch.setitem(
+            PERSONNAGES,
+            "chasseur_de_scrabbles",
+            replace(PERSONNAGES["chasseur_de_scrabbles"], actif=True),
         )
         api = ApiAccueil()
         api.ajouter_humain("Alice")

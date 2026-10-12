@@ -77,6 +77,7 @@ from scrabble.moteur.personnages import (
     libelle_niveaux_aleatoire,
     libelle_tailles,
     libelle_tailles_aleatoire,
+    personnage_actif,
     personnage_disponible_a_nb_joueurs,
     personnage_disponible_a_niveau,
     personnages_disponibles_a_nb_joueurs,
@@ -515,11 +516,12 @@ class ApiAccueil:
     def obtenir_personnages(self) -> list[dict[str, Any]]:
         """Options du sélecteur de personnage (issue #440, lot D).
 
-        Un choix par entrée de :data:`~scrabble.moteur.personnages.PERSONNAGES`
-        (dans l'ordre d'insertion du registre, donc Classique en tête), puis
-        « Aléatoire » toujours en dernier. Construite dynamiquement depuis le
-        registre : un personnage ajouté plus tard au module ``personnages``
-        apparaît ici sans aucune autre modification de l'accueil.
+        Un choix par entrée ACTIVE de :data:`~scrabble.moteur.personnages.PERSONNAGES`
+        (dans l'ordre d'insertion du registre, donc Classique en tête — un
+        personnage inactif en est exclu, issue #459), puis « Aléatoire »
+        toujours en dernier. Construite dynamiquement depuis le registre :
+        un personnage ajouté plus tard au module ``personnages`` apparaît ici
+        sans aucune autre modification de l'accueil.
 
         Chaque entrée est ``{"cle", "prenom", "description", "niveaux_label",
         "tailles_label"}`` — le JS affiche la description sous le sélecteur
@@ -543,6 +545,7 @@ class ApiAccueil:
                 "tailles_label": libelle_tailles(personnage),
             }
             for personnage in PERSONNAGES.values()
+            if personnage.actif
         ]
         resultat.append(
             {
@@ -662,6 +665,14 @@ class ApiAccueil:
         :meth:`obtenir_disponibilite_personnage_table`), avec un message
         dédié.
 
+        Refuse aussi un personnage inactif (issue #459, voir
+        :attr:`~scrabble.moteur.personnages.Personnage.actif`) avec un
+        message dédié — contrôle qui précède celui de niveau/taille de table
+        ci-dessus, défense en profondeur : le sélecteur ne doit déjà plus le
+        proposer du tout (:meth:`obtenir_personnages`). N'affecte jamais
+        « Aléatoire » (toujours actif lui-même, voir
+        :func:`~scrabble.moteur.personnages.personnage_actif`).
+
         Si l'ajout fait passer la table à trois joueurs ou plus, tout
         ordinateur déjà présent avec un personnage autre que Classique est
         remis à Classique (issue #449, lot I, point 3) : ces personnages ne
@@ -685,6 +696,11 @@ class ApiAccueil:
             return {
                 "succes": False,
                 "erreur": f"Personnage inconnu : {personnage_cle}",
+            }
+        if not personnage_actif(personnage_cle):
+            return {
+                "succes": False,
+                "erreur": f"{PERSONNAGES[personnage_cle].prenom} n'est pas disponible actuellement.",
             }
         if not personnage_disponible_a_niveau(personnage_cle, niveau):
             nom_affiche = (

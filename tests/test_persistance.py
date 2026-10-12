@@ -309,6 +309,41 @@ def test_reprise_partie_avec_lettre(tmp_path):
     assert reprise.joueurs[1].niveau == Niveau.AVANCE
 
 
+@pytest.mark.parametrize("personnage_cle", ["chasseur_de_scrabbles", "lettre"])
+def test_reprise_partie_avec_personnage_desactive_se_joue_normalement(
+    tmp_path, personnage_cle
+):
+    """Issue #459 : Chasseur de scrabbles et Lettré sont désactivés
+    (``Personnage.actif`` à ``False``), mais une partie sauvegardée avant
+    leur désactivation se charge et se joue normalement, sans erreur ni
+    changement de comportement — ``reprendre_partie`` ne vérifie aucune
+    disponibilité, et le profil résolu par
+    :func:`~scrabble.moteur.personnages.profil_pour_niveau` reste le profil
+    complet du personnage, actif ou non."""
+    from scrabble.moteur.personnages import PERSONNAGES, profil_pour_niveau
+
+    assert PERSONNAGES[personnage_cle].actif is False
+
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie, _graine, mot = _partie_ouvrable(
+        trie, nb_ia=1, niveaux_ia=[Niveau.AVANCE],
+        personnages_ia=[personnage_cle],
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+    entree = partie.jouer_coup(_coup_ouverture(mot))
+    enregistrer_action(id_partie, entree, chemin)
+
+    reprise = reprendre_partie(id_partie, trie, chemin)
+
+    assert reprise.joueurs[1].personnage == personnage_cle
+    profil = profil_pour_niveau(personnage_cle, reprise.joueurs[1].niveau)
+    # La partie reste jouable : l'IA produit une entrée d'historique (coup
+    # ou passe) sans exception, avec le profil complet du personnage.
+    entree_ia = reprise.jouer_tour_ia(profil)
+    assert entree_ia is not None
+
+
 def test_reprise_ancienne_sauvegarde_sans_cle_personnage(tmp_path):
     """Une partie sauvegardée avant l'issue #438, sans clé ``personnage`` dans
     le JSON des joueurs, se recharge normalement avec un personnage vide.

@@ -130,6 +130,20 @@ class TestProfilJoueurIa:
         )
         assert _profil_joueur_ia(joueur) == PERSONNAGES["opportuniste"].profil
 
+    def test_personnage_inactif_renvoie_quand_meme_son_profil_complet(self):
+        """Une partie sauvegardée avant la désactivation (issue #459) d'un
+        Chasseur de scrabbles ou d'un Lettré continue de se jouer sans aucun
+        changement de comportement : ``actif`` ne filtre que les fonctions
+        qui PROPOSENT un personnage, jamais sa résolution par clé."""
+        from scrabble.moteur.personnages import profil_pour_niveau
+
+        for cle in ("chasseur_de_scrabbles", "lettre"):
+            assert PERSONNAGES[cle].actif is False
+            joueur = Joueur(
+                nom="Thomas", humain=False, niveau=Niveau.AVANCE, personnage=cle
+            )
+            assert _profil_joueur_ia(joueur) == profil_pour_niveau(cle, Niveau.AVANCE)
+
 
 class TestJouerToursIaUiTransmetLePersonnage:
     """``jouer_tours_ia_ui`` transmet le profil résolu à ``choisir_coup``."""
@@ -278,11 +292,15 @@ class TestApiJeuObtenirPersonnages:
 
     def test_sans_partie_chargee_renvoie_la_liste_sans_marquage(self):
         """``ApiJeu()`` vide (pas encore de ``charger_partie``) doit tout de
-        même renvoyer la liste complète, simplement sans aucun marquage."""
+        même renvoyer la liste des personnages ACTIFS, simplement sans aucun
+        marquage — Chasseur de scrabbles et Lettré, inactifs (issue #459),
+        en sont exclus."""
         api = ApiJeu()
         personnages = api.obtenir_personnages()
         cles = [p["cle"] for p in personnages]
-        assert cles == [*PERSONNAGES.keys(), CLE_ALEATOIRE]
+        assert cles == [
+            *(cle for cle, p in PERSONNAGES.items() if p.actif), CLE_ALEATOIRE
+        ]
         assert all(not p["dans_la_partie"] for p in personnages)
 
     def test_personnage_choisi_explicitement_est_marque_dans_la_partie(self):

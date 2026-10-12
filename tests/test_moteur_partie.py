@@ -302,9 +302,10 @@ def test_creer_partie_aleatoire_peut_tirer_opportuniste_a_deux_joueurs():
     plus disponible à Champion du monde (plage resserrée à
     Intermédiaire/Avancé).
 
-    Depuis l'introduction du Lettré (issue #454, lot K, disponible à Avancé,
-    Expert et Champion du monde, deux joueurs), le tirage peut aussi le
-    renvoyer à ce niveau."""
+    Chasseur de scrabbles et Lettré sont désactivés depuis l'issue #459
+    (effet trop discret en jeu, mesures du 12 octobre 2026) : le code et les
+    réglages des deux restent en place, mais ``tirer_personnage`` ne les
+    propose plus — seuls Classique et Opportuniste restent tirables ici."""
     tires = set()
     for graine in range(50):
         partie = creer_partie(
@@ -314,7 +315,7 @@ def test_creer_partie_aleatoire_peut_tirer_opportuniste_a_deux_joueurs():
             generateur_aleatoire=random.Random(graine), graine=1,
         )
         tires.add(partie.joueurs[1].personnage)
-    assert tires == {"classique", "opportuniste", "chasseur_de_scrabbles", "lettre"}
+    assert tires == {"classique", "opportuniste"}
 
 
 def test_creer_partie_personnage_explicite_ignore_la_taille_de_table():
