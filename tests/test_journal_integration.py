@@ -26,6 +26,7 @@ from scrabble.ui import accueil as mod_accueil
 from scrabble.ui import jeu as mod_jeu
 from scrabble.ui.accueil import ApiAccueil
 from scrabble.ui.jeu import ApiJeu
+from tests._aides_test_environnement import palier_vocabulaire_indisponible
 
 
 class _EspionJournal:
@@ -99,6 +100,15 @@ class TestJournalAccueil:
         api.ajouter_humain("Alice")
         assert espion.a_info_contenant("Alice")
 
+    @pytest.mark.skipif(
+        palier_vocabulaire_indisponible("facile"),
+        reason=(
+            "vocabulaire IA du palier 'facile' indisponible (fichier absent de "
+            "data/dictionnaire/, non répliqué dans un dossier de travail isolé) "
+            ": ajouter_ordinateur('Facile') échoue silencieusement, donc aucun "
+            "message n'est journalisé (issue #464)"
+        ),
+    )
     def test_ajout_ordinateur_journalise(self, espion):
         api = ApiAccueil()
         api.ajouter_ordinateur("Facile")
@@ -112,6 +122,16 @@ class TestJournalAccueil:
         assert len(espion.infos) > avant
         assert espion.a_info_contenant("retiré")
 
+    @pytest.mark.skipif(
+        palier_vocabulaire_indisponible("intermediaire"),
+        reason=(
+            "vocabulaire IA du palier 'intermediaire' indisponible (fichier "
+            "absent de data/dictionnaire/, non répliqué dans un dossier de "
+            "travail isolé) : ajouter_ordinateur('Intermédiaire') échoue "
+            "silencieusement, donc la table ne compte jamais 2 joueurs ici "
+            "(issue #464)"
+        ),
+    )
     def test_lancer_partie_journalise_avec_nb_joueurs(self, espion, monkeypatch):
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",

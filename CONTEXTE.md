@@ -80,6 +80,39 @@ restantes : voir `TACHES.md` (confirmations modales, tri des « derniers
 coups », sélection auto du joueur humain, onglet dictionnaire des réglages,
 avatars) et `TODO.md` (restriction de vocabulaire par niveau d'IA).
 
+## Tests
+~1 400 tests, 2 à 3,5 minutes en séquentiel (`pytest.ini` : `pythonpath = src`,
+`testpaths = tests`). Par défaut, lancer **sans** les tests lents :
+
+```
+pytest -m "not lent"
+```
+
+Neuf tests (9 à 44 s, surtout `tests/test_moteur_ia.py::TestProgressionTrieIaRestreint`,
+simulations de parties complètes) portent le marqueur `lent` (déclaré dans
+`pytest.ini`). Ils restent dans la suite complète — seule l'exclusion via
+`-m "not lent"` est ajoutée. Relancer la suite **complète** (avec les tests
+lents) uniquement si le travail modifie le moteur d'IA, les réglages de
+niveau ou la progression des niveaux, et dans tous les cas une seule fois en
+fin de travail :
+
+```
+pytest
+```
+
+Si `pytest-xdist` est installé (ne pas l'installer sinon), paralléliser avec
+`-n auto` sur l'une ou l'autre commande.
+
+Dans un dossier de travail isolé (clone secondaire sans les données
+manuellement déposées dans `data/dictionnaire/`, ni config.json persistant du
+poste), cinq tests sont ignorés proprement (`SKIPPED`, raison explicite dans
+le rapport pytest) — vocabulaire IA par palier ou `config.json` du poste
+absents, sans rapport avec le code modifié. Ils s'exécutent normalement sur
+un poste complet qui possède ces données. **Ne pas relancer la suite sur le
+code d'origine pour comparer** : ces skips suffisent à distinguer un échec
+préexistant d'un échec introduit, sauf échec inattendu et lié aux fichiers
+modifiés.
+
 ## Maintenance de ce fichier
 Si la tâche que tu exécutes modifie l'architecture, les dépendances, les
 conventions de code, ou l'état d'avancement majeur de ce projet, mets à
