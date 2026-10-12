@@ -19,6 +19,24 @@ from scrabble.ui.accueil import (
 from scrabble.ui.noms_ordinateur import PRENOMS_ORDINATEUR
 
 
+@pytest.fixture
+def opportuniste_actif(monkeypatch):
+    """Réactive Opportuniste (inactif par défaut depuis l'issue #461,
+    décision de ne proposer aucun personnage dans la première version
+    diffusée), le temps d'un test, pour continuer à couvrir un mécanisme
+    générique (niveau, taille de table...) indépendant de l'activité du
+    personnage lui-même — procédure de réactivation documentée par le
+    module ``personnages``, simulée via ``monkeypatch`` sans toucher au
+    code."""
+    from dataclasses import replace
+
+    from scrabble.moteur.personnages import PERSONNAGES
+
+    monkeypatch.setitem(
+        PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+    )
+
+
 class TestJoueurConfig:
     """Tests de la dataclass JoueurConfig."""
 
@@ -467,11 +485,24 @@ class TestApiAccueilPersonnages:
     pour ne pas dépendre des fichiers de vocabulaire par palier, absents de ce
     worktree (voir ``_disponibilite_niveau`` : EXPERT/CHAMPION_DU_MONDE ne
     dépendent d'aucun fichier).
+
+    Opportuniste, inactif depuis l'issue #461 (décision de ne proposer aucun
+    personnage dans la première version diffusée), est réactivé par la
+    fixture ``opportuniste_actif`` dans les tests qui couvrent un mécanisme
+    générique du sélecteur (tirage de prénom, résolution d'Aléatoire...),
+    indépendant de l'activité du personnage lui-même — procédure de
+    réactivation documentée par le module ``personnages``, simulée via
+    ``monkeypatch`` sans toucher au code. Les tests qui portent sur
+    l'activité elle-même vivent dans ``TestApiAccueilPersonnagesInactifs``.
     """
 
-    def test_obtenir_personnages_contient_le_registre_puis_aleatoire_en_dernier(self):
+    def test_obtenir_personnages_contient_le_registre_puis_aleatoire_en_dernier(
+        self, opportuniste_actif
+    ):
         """Seuls les personnages ACTIFS du registre apparaissent (issue
-        #459) : Chasseur de scrabbles et Lettré, inactifs, en sont exclus."""
+        #459) : Chasseur de scrabbles et Lettré, inactifs, en sont exclus —
+        Opportuniste réactivé ci-dessus pour que la liste ne soit pas vide
+        (interface masquée avec un seul personnage actif, issue #461)."""
         from scrabble.moteur.personnages import CLE_ALEATOIRE, PERSONNAGES
         from scrabble.ui.accueil import ApiAccueil
 
@@ -492,9 +523,23 @@ class TestApiAccueilPersonnages:
             }
         assert personnages[-1]["prenom"] == "Aléatoire"
 
-    def test_obtenir_personnages_tailles_label_correct(self):
+    def test_obtenir_personnages_vide_par_defaut(self):
+        """Opportuniste et Titeuf inactifs (issue #461) : Classique seul est
+        actif, l'interface est donc masquée — plus aucun personnage proposé,
+        même Classique, même Aléatoire. Remplace
+        ``test_obtenir_personnages_tailles_label_correct``, devenu faux par
+        construction."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        assert api.obtenir_personnages() == []
+
+    def test_obtenir_personnages_tailles_label_correct_si_interface_visible(
+        self, opportuniste_actif
+    ):
         """Issue #449 (lot I, point 5) : tailles de table affichées pour
-        chaque personnage, même texte que le registre moteur."""
+        chaque personnage, même texte que le registre moteur — dès que
+        l'interface est visible (Opportuniste réactivé)."""
         from scrabble.ui.accueil import ApiAccueil
 
         api = ApiAccueil()
@@ -517,7 +562,9 @@ class TestApiAccueilPersonnages:
         assert result["succes"] is True
         assert api.config_partie.joueurs[0].personnage == "classique"
 
-    def test_ajouter_ordinateur_personnage_explicite_porte_un_prenom_tire_au_hasard(self):
+    def test_ajouter_ordinateur_personnage_explicite_porte_un_prenom_tire_au_hasard(
+        self, opportuniste_actif
+    ):
         """Depuis l'issue #441, le prénom reste le tirage habituel des
         prénoms d'ordinateur, indépendant du personnage choisi — fini le
         prénom = personnage du lot D (#440)."""
@@ -541,7 +588,9 @@ class TestApiAccueilPersonnages:
         assert result["succes"] is False
         assert api.config_partie.nb_ordinateurs == 0
 
-    def test_ajouter_deux_ordinateurs_meme_personnage_prenoms_distincts(self):
+    def test_ajouter_deux_ordinateurs_meme_personnage_prenoms_distincts(
+        self, opportuniste_actif
+    ):
         """Deux ordinateurs choisissant le même personnage gardent des
         prénoms distincts (issue #441) : le tirage habituel exclut déjà les
         prénoms pris à la table — plus de suffixe numérique (ancien
@@ -560,9 +609,12 @@ class TestApiAccueilPersonnages:
         personnages = [j.personnage for j in api.config_partie.joueurs]
         assert personnages == ["opportuniste", "opportuniste"]
 
-    def test_ajouter_ordinateur_aleatoire_porte_un_prenom_banal(self):
+    def test_ajouter_ordinateur_aleatoire_porte_un_prenom_banal(self, opportuniste_actif):
         """« Aléatoire » ne doit rien trahir : prénom du tirage courant, pas
-        « Aléatoire » ni le prénom d'un personnage précis (issue #440, point 2)."""
+        « Aléatoire » ni le prénom d'un personnage précis (issue #440, point
+        2). Opportuniste réactivé ci-dessus : Aléatoire a besoin d'au moins
+        deux personnages actifs à Expert pour y être lui-même disponible
+        (issue #447)."""
         from scrabble.moteur.personnages import CLE_ALEATOIRE, PERSONNAGES
         from scrabble.ui.accueil import ApiAccueil
         from scrabble.ui.noms_ordinateur import PRENOMS_ORDINATEUR
@@ -578,10 +630,13 @@ class TestApiAccueilPersonnages:
         # résolution réelle n'a lieu qu'au lancement de la partie.
         assert joueur.personnage == CLE_ALEATOIRE
 
-    def test_lancer_partie_resout_aleatoire_en_identite_reelle(self, monkeypatch):
+    def test_lancer_partie_resout_aleatoire_en_identite_reelle(
+        self, monkeypatch, opportuniste_actif
+    ):
         """Au lancement, « Aléatoire » devient une clé réelle, jamais le
         libellé lui-même, et le joueur est marqué pour révélation en fin de
-        partie (issue #440, points 3 et 4)."""
+        partie (issue #440, points 3 et 4). Opportuniste réactivé ci-dessus,
+        même raison que ``test_ajouter_ordinateur_aleatoire_porte_un_prenom_banal``."""
         from scrabble.dictionnaire.dictionnaire import Trie
         from scrabble.moteur.personnages import CLE_ALEATOIRE, PERSONNAGES
         from scrabble.ui.accueil import ApiAccueil
@@ -604,7 +659,9 @@ class TestApiAccueilPersonnages:
         assert joueur_ia.personnage != CLE_ALEATOIRE
         assert joueur_ia.personnage_aleatoire is True
 
-    def test_lancer_partie_personnage_explicite_non_marque_aleatoire(self, monkeypatch):
+    def test_lancer_partie_personnage_explicite_non_marque_aleatoire(
+        self, monkeypatch, opportuniste_actif
+    ):
         from scrabble.dictionnaire.dictionnaire import Trie
         from scrabble.ui.accueil import ApiAccueil
 
@@ -626,8 +683,14 @@ class TestApiAccueilPersonnages:
 
 
 class TestApiAccueilPersonnagesInactifs:
-    """Chasseur de scrabbles et Lettré, désactivés (issue #459) : absents du
-    sélecteur, refus clair à l'ajout, sans effet sur le reste du registre."""
+    """Chasseur de scrabbles, Lettré (issue #459), Opportuniste et Titeuf
+    (issue #461) : tous désactivés, absents du sélecteur, refus clair à
+    l'ajout, sans effet sur le reste du registre. Depuis l'issue #461,
+    Classique est le seul personnage actif du registre : l'interface liée
+    aux personnages est donc aussi entièrement masquée (voir
+    ``TestInterfacePersonnagesVisible`` dans ``test_moteur_personnages.py``)
+    — ``obtenir_personnages()`` renvoie la liste vide par défaut, ce que
+    ``test_personnages_inactifs_absents_du_selecteur`` vérifie trivialement."""
 
     def test_personnages_inactifs_absents_du_selecteur(self):
         from scrabble.moteur.personnages import PERSONNAGES
@@ -637,10 +700,14 @@ class TestApiAccueilPersonnagesInactifs:
         cles = {p["cle"] for p in api.obtenir_personnages()}
         assert "chasseur_de_scrabbles" not in cles
         assert "lettre" not in cles
+        assert "opportuniste" not in cles
+        assert "titeuf" not in cles
         # Toujours présents dans le registre moteur lui-même (rien n'est
         # supprimé) : seule leur proposition à l'UI est désactivée.
         assert PERSONNAGES["chasseur_de_scrabbles"].actif is False
         assert PERSONNAGES["lettre"].actif is False
+        assert PERSONNAGES["opportuniste"].actif is False
+        assert PERSONNAGES["titeuf"].actif is False
 
     def test_ajouter_ordinateur_refuse_chasseur_inactif(self):
         from scrabble.ui.accueil import ApiAccueil
@@ -660,6 +727,34 @@ class TestApiAccueilPersonnagesInactifs:
 
         assert result["succes"] is False
         assert "Lettré" in result["erreur"]
+        assert api.config_partie.nb_ordinateurs == 0
+
+    def test_ajouter_ordinateur_refuse_opportuniste_inactif(self):
+        """Opportuniste désactivé (issue #461) : même refus que Chasseur de
+        scrabbles/Lettré (issue #459)."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Expert", "opportuniste")
+
+        assert result["succes"] is False
+        assert "Opportuniste" in result["erreur"]
+        assert api.config_partie.nb_ordinateurs == 0
+
+    def test_ajouter_ordinateur_refuse_titeuf_inactif(self):
+        """Titeuf désactivé (issue #461) : même refus que Chasseur de
+        scrabbles/Lettré (issue #459). Niveau « Expert » (et non « Débutant »,
+        seul niveau où Titeuf est par ailleurs disponible) pour ne pas
+        dépendre des fichiers de vocabulaire par palier, absents de ce
+        worktree — le contrôle d'activité, testé ici, précède déjà celui de
+        niveau (voir ``ApiAccueil.ajouter_ordinateur``)."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        result = api.ajouter_ordinateur("Expert", "titeuf")
+
+        assert result["succes"] is False
+        assert "Titeuf" in result["erreur"]
         assert api.config_partie.nb_ordinateurs == 0
 
     def test_ajouter_ordinateur_reactive_fonctionne_de_nouveau(self, monkeypatch):
@@ -694,7 +789,9 @@ class TestApiAccueilDisponibiliteNiveauxPersonnage:
     refuse_un_niveau_indisponible``) : seule la restriction de PERSONNAGE est
     testée ici, pas celle du vocabulaire (déjà couverte ailleurs)."""
 
-    def test_ajouter_ordinateur_refuse_opportuniste_a_debutant(self, monkeypatch):
+    def test_ajouter_ordinateur_refuse_opportuniste_a_debutant(
+        self, monkeypatch, opportuniste_actif
+    ):
         from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
@@ -708,7 +805,9 @@ class TestApiAccueilDisponibiliteNiveauxPersonnage:
         assert "Débutant" in result["erreur"]
         assert api.config_partie.nb_ordinateurs == 0
 
-    def test_ajouter_ordinateur_accepte_opportuniste_de_facile_a_champion(self, monkeypatch):
+    def test_ajouter_ordinateur_accepte_opportuniste_de_facile_a_champion(
+        self, monkeypatch, opportuniste_actif
+    ):
         from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
@@ -731,12 +830,21 @@ class TestApiAccueilDisponibiliteNiveauxPersonnage:
         compte deux personnages réels (Classique + Titeuf) : Aléatoire y est
         donc de nouveau accepté — remplace
         ``test_ajouter_ordinateur_refuse_aleatoire_a_debutant`` (issue #447,
-        lot G), devenu faux par construction."""
-        from scrabble.moteur.personnages import CLE_ALEATOIRE
+        lot G), devenu faux par construction. Titeuf, inactif depuis l'issue
+        #461, est réactivé ici (procédure documentée par le module
+        ``personnages``, simulée via ``monkeypatch`` sans toucher au code)
+        pour continuer à couvrir cette règle de niveau, indépendante de son
+        activité."""
+        from dataclasses import replace
+
+        from scrabble.moteur.personnages import CLE_ALEATOIRE, PERSONNAGES
         from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
             "scrabble.ui.accueil.paliers_disponibles", lambda: {"debutant": True}
+        )
+        monkeypatch.setitem(
+            PERSONNAGES, "titeuf", replace(PERSONNAGES["titeuf"], actif=True)
         )
         api = ApiAccueil()
         result = api.ajouter_ordinateur("Débutant", CLE_ALEATOIRE)
@@ -777,15 +885,27 @@ class TestApiAccueilDisponibiliteNiveauxPersonnage:
         assert resultat["explication"] == ""
 
     def test_obtenir_disponibilite_niveaux_personnage_aleatoire_debutant_disponible_grace_a_titeuf(
-        self,
+        self, monkeypatch, opportuniste_actif
     ):
         """Depuis l'introduction de Titeuf (issue #452, lot J), Débutant
         compte deux personnages réels : Aléatoire y est donc disponible —
         remplace
         ``test_obtenir_disponibilite_niveaux_personnage_aleatoire_debutant_indisponible``
-        (issue #447, lot G), devenu faux par construction."""
-        from scrabble.moteur.personnages import CLE_ALEATOIRE
+        (issue #447, lot G), devenu faux par construction. Titeuf ET
+        Opportuniste, tous deux inactifs depuis l'issue #461, sont réactivés
+        ici (procédure documentée par le module ``personnages``, simulée via
+        ``monkeypatch`` sans toucher au code) : Opportuniste est nécessaire
+        pour que Facile compte lui aussi au moins deux personnages, sans quoi
+        Aléatoire y serait indisponible et l'assertion sur Facile, ci-dessous,
+        deviendrait fausse."""
+        from dataclasses import replace
+
+        from scrabble.moteur.personnages import CLE_ALEATOIRE, PERSONNAGES
         from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setitem(
+            PERSONNAGES, "titeuf", replace(PERSONNAGES["titeuf"], actif=True)
+        )
 
         api = ApiAccueil()
         resultat = api.obtenir_disponibilite_niveaux_personnage(CLE_ALEATOIRE)
@@ -803,9 +923,15 @@ class TestApiAccueilDisponibiliteNbJoueursPersonnage:
     précédente : vocabulaire IA toujours disponible, indépendant des
     fichiers de palier absents de ce worktree)."""
 
-    def test_obtenir_disponibilite_personnage_table_sans_ordinateur(self):
+    def test_obtenir_disponibilite_personnage_table_sans_ordinateur(
+        self, opportuniste_actif
+    ):
         """Point 2 : tant que la table est composée de l'humain seul (aucun
-        ordinateur), le sélecteur reste disponible comme aujourd'hui."""
+        ordinateur), le sélecteur reste disponible comme aujourd'hui —
+        Opportuniste réactivé ci-dessus (inactif par défaut depuis l'issue
+        #461) pour que ce test continue de couvrir la règle de taille de
+        table elle-même, et non le cas (devenu systématique) où aucun
+        personnage autre que Classique n'est actif."""
         from scrabble.ui.accueil import ApiAccueil
 
         api = ApiAccueil()
@@ -832,7 +958,9 @@ class TestApiAccueilDisponibiliteNbJoueursPersonnage:
         assert resultat["restreint"] is True
         assert resultat["message"] == MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS
 
-    def test_ajouter_ordinateur_accepte_opportuniste_a_deux_joueurs(self):
+    def test_ajouter_ordinateur_accepte_opportuniste_a_deux_joueurs(
+        self, opportuniste_actif
+    ):
         from scrabble.ui.accueil import ApiAccueil
 
         api = ApiAccueil()
@@ -842,7 +970,9 @@ class TestApiAccueilDisponibiliteNbJoueursPersonnage:
         assert result["succes"] is True
         assert api.config_partie.joueurs[1].personnage == "opportuniste"
 
-    def test_ajouter_ordinateur_refuse_opportuniste_a_trois_joueurs(self):
+    def test_ajouter_ordinateur_refuse_opportuniste_a_trois_joueurs(
+        self, opportuniste_actif
+    ):
         """Point 4 : l'ajout d'un second ordinateur avec Opportuniste
         (indisponible à trois joueurs) est refusé."""
         from scrabble.ui.accueil import ApiAccueil
@@ -906,7 +1036,9 @@ class TestApiAccueilDisponibiliteNbJoueursPersonnage:
         assert "Aléatoire" in result["erreur"]
         assert api.config_partie.nb_ordinateurs == 1
 
-    def test_ajout_second_ordinateur_remet_le_premier_a_classique_avec_avertissement(self):
+    def test_ajout_second_ordinateur_remet_le_premier_a_classique_avec_avertissement(
+        self, opportuniste_actif
+    ):
         """Point 3 : le personnage du premier ordinateur redevient Classique
         quand un second est ajouté, avec un message nommant ce joueur."""
         from scrabble.ui.accueil import ApiAccueil
@@ -935,7 +1067,9 @@ class TestApiAccueilDisponibiliteNbJoueursPersonnage:
         assert result["succes"] is True
         assert "avertissements" not in result
 
-    def test_retirer_un_ordinateur_ne_restaure_pas_le_personnage(self):
+    def test_retirer_un_ordinateur_ne_restaure_pas_le_personnage(
+        self, opportuniste_actif
+    ):
         """Point 3, dernière phrase : retirer l'ordinateur qui a fait
         grandir la table ne rétablit pas automatiquement le personnage
         remis à Classique."""
@@ -953,7 +1087,7 @@ class TestApiAccueilDisponibiliteNbJoueursPersonnage:
         assert api.config_partie.joueurs[1].personnage == "classique"
 
     def test_lancer_partie_refuse_personnage_non_disponible_pour_la_taille(
-        self, monkeypatch
+        self, monkeypatch, opportuniste_actif
     ):
         """Point 4 : dernière vérification au lancement, défense en
         profondeur même si la configuration a été manipulée hors du chemin
@@ -983,7 +1117,7 @@ class TestApiAccueilDisponibiliteNbJoueursPersonnage:
         assert "3 joueurs" in result["erreur"]
 
     def test_lancer_partie_accepte_une_table_a_deux_joueurs_avec_opportuniste(
-        self, monkeypatch
+        self, monkeypatch, opportuniste_actif
     ):
         from scrabble.dictionnaire.dictionnaire import Trie
         from scrabble.ui.accueil import ApiAccueil
@@ -996,7 +1130,8 @@ class TestApiAccueilDisponibiliteNbJoueursPersonnage:
 
         api = ApiAccueil()
         api.ajouter_humain("Alice")
-        api.ajouter_ordinateur("Expert", "opportuniste")
+        result_ajout = api.ajouter_ordinateur("Expert", "opportuniste")
+        assert result_ajout["succes"] is True
 
         result = api.lancer_partie()
 
@@ -1016,21 +1151,27 @@ class TestObtenirEtatPersonnageLibelle:
         etat = api.obtenir_etat()
         assert etat["joueurs"][0]["personnage_libelle"] == ""
 
-    def test_personnage_explicite_porte_son_prenom(self):
+    def test_personnage_explicite_porte_son_prenom_si_interface_visible(
+        self, opportuniste_actif
+    ):
         from scrabble.ui.accueil import ApiAccueil
 
         api = ApiAccueil()
-        api.ajouter_ordinateur("Expert", "opportuniste")
+        result = api.ajouter_ordinateur("Expert", "opportuniste")
+        assert result["succes"] is True
 
         etat = api.obtenir_etat()
         assert etat["joueurs"][0]["personnage_libelle"] == "Opportuniste"
 
-    def test_personnage_aleatoire_affiche_aleatoire(self):
+    def test_personnage_aleatoire_affiche_aleatoire_si_interface_visible(
+        self, opportuniste_actif
+    ):
         from scrabble.moteur.personnages import CLE_ALEATOIRE
         from scrabble.ui.accueil import ApiAccueil
 
         api = ApiAccueil()
-        api.ajouter_ordinateur("Expert", CLE_ALEATOIRE)
+        result = api.ajouter_ordinateur("Expert", CLE_ALEATOIRE)
+        assert result["succes"] is True
 
         etat = api.obtenir_etat()
         assert etat["joueurs"][0]["personnage_libelle"] == "Aléatoire"

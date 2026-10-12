@@ -247,7 +247,38 @@ def test_creer_partie_aleatoire_restreint_au_niveau_de_cette_ia():
         assert partie.joueurs[1].personnage in {"classique", "titeuf"}
 
 
-def test_creer_partie_aleatoire_niveau_facile_peut_tirer_opportuniste():
+def test_creer_partie_aleatoire_niveau_facile_opportuniste_inactif():
+    """Opportuniste, inactif depuis l'issue #461 (décision de ne proposer
+    aucun personnage dans la première version diffusée) : le tirage
+    « Aléatoire » à Facile ne renvoie plus que Classique — remplace
+    ``test_creer_partie_aleatoire_niveau_facile_peut_tirer_opportuniste``,
+    devenu faux par construction."""
+    tires = set()
+    for graine in range(50):
+        partie = creer_partie(
+            ["Alice"], _trie(), nb_ia=1,
+            niveaux_ia=[Niveau.FACILE],
+            personnages_ia=["aleatoire"],
+            generateur_aleatoire=random.Random(graine), graine=1,
+        )
+        tires.add(partie.joueurs[1].personnage)
+    assert tires == {"classique"}
+
+
+def test_creer_partie_aleatoire_niveau_facile_peut_tirer_opportuniste_si_reactive(
+    monkeypatch,
+):
+    """Réactiver Opportuniste (``actif=True``, procédure documentée par le
+    module ``personnages``, simulée ici via ``monkeypatch`` sans toucher au
+    code) suffit à le rendre de nouveau tirable à Facile, sans aucune autre
+    modification."""
+    from dataclasses import replace
+
+    from scrabble.moteur.personnages import PERSONNAGES
+
+    monkeypatch.setitem(
+        PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+    )
     tires = set()
     for graine in range(50):
         partie = creer_partie(
@@ -294,18 +325,41 @@ def test_creer_partie_aleatoire_restreint_a_quatre_joueurs():
             assert joueur.personnage == "classique"
 
 
-def test_creer_partie_aleatoire_peut_tirer_opportuniste_a_deux_joueurs():
-    """Non-régression : à une table de deux joueurs (le cas déjà couvert par
-    les tests existants ci-dessus), la restriction de taille n'exclut rien
-    de plus que la restriction de niveau. Niveau Avancé (plutôt que Champion
-    du monde) : depuis l'issue #450 (lot H bis), Chasseur de scrabbles n'est
-    plus disponible à Champion du monde (plage resserrée à
-    Intermédiaire/Avancé).
+def test_creer_partie_aleatoire_a_deux_joueurs_classique_seul_opportuniste_inactif():
+    """Opportuniste, Chasseur de scrabbles et Lettré sont tous désactivés
+    (issues #459 et #461, effet trop discret en jeu / décision de ne
+    proposer aucun personnage dans la première version diffusée) : seul
+    Classique reste tirable, même à une table de deux joueurs (niveau Avancé,
+    où tous auraient autrement été disponibles) — remplace
+    ``test_creer_partie_aleatoire_peut_tirer_opportuniste_a_deux_joueurs``,
+    devenu faux par construction."""
+    tires = set()
+    for graine in range(50):
+        partie = creer_partie(
+            ["Alice"], _trie(), nb_ia=1,
+            niveaux_ia=[Niveau.AVANCE],
+            personnages_ia=["aleatoire"],
+            generateur_aleatoire=random.Random(graine), graine=1,
+        )
+        tires.add(partie.joueurs[1].personnage)
+    assert tires == {"classique"}
 
-    Chasseur de scrabbles et Lettré sont désactivés depuis l'issue #459
-    (effet trop discret en jeu, mesures du 12 octobre 2026) : le code et les
-    réglages des deux restent en place, mais ``tirer_personnage`` ne les
-    propose plus — seuls Classique et Opportuniste restent tirables ici."""
+
+def test_creer_partie_aleatoire_peut_tirer_opportuniste_a_deux_joueurs_si_reactive(
+    monkeypatch,
+):
+    """Non-régression : à une table de deux joueurs, la restriction de
+    taille n'exclut rien de plus que la restriction de niveau — vérifié ici
+    avec Opportuniste réactivé (``actif=True``, procédure documentée par le
+    module ``personnages``, simulée via ``monkeypatch`` sans toucher au
+    code), puisqu'il est inactif par défaut depuis l'issue #461."""
+    from dataclasses import replace
+
+    from scrabble.moteur.personnages import PERSONNAGES
+
+    monkeypatch.setitem(
+        PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+    )
     tires = set()
     for graine in range(50):
         partie = creer_partie(
