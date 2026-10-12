@@ -22,6 +22,13 @@ mots favoris indépendante, et un bonus de score (``bonus_favori``) qui, lui,
 agit aussi à AVANCE/EXPERT/CHAMPION_DU_MONDE (meilleur coup, le tirage pondéré
 de Titeuf y est sans effet) — il doit choisir un mot favori nettement plus
 souvent que Classique, y compris à AVANCE.
+
+Discipline de test (issue #458) : les constantes de réglage par personnage
+(``BONUS_FAVORI_LETTRE``, ``PART_VOCABULAIRE_COURT_CHASSEUR``, etc.) sont
+ajustées par Alain au vu de mesures réelles (``scripts/mesurer_force_niveaux.py``)
+et continueront de changer — aucun test ne doit figer leur valeur courante ni
+un chiffre qui en dépend ; les scénarios fabriqués doivent au contraire
+calculer leurs écarts de score à partir de la constante elle-même.
 """
 
 from __future__ import annotations
@@ -31,8 +38,16 @@ import random
 import pytest
 
 from scrabble.dictionnaire.dictionnaire import Trie
-from scrabble.moteur.generateur import generer_coups
-from scrabble.moteur.ia import Niveau, choisir_coup
+from scrabble.moteur.generateur import CoupNote, generer_coups
+from scrabble.moteur.ia import (
+    Niveau,
+    _choisir_avance,
+    _choisir_top5,
+    _score_strategique,
+    _trier_par_score_strategique,
+    choisir_coup,
+)
+from scrabble.moteur.score import DetailMot, DetailScore
 from scrabble.moteur.personnages import (
     CLE_ALEATOIRE,
     BONUS_FAVORI_LETTRE,
@@ -946,24 +961,31 @@ class TestPartVocabulaireCourtChasseur:
     :data:`PART_VOCABULAIRE_LONG_CHASSEUR` (lot H ter), table indépendante."""
 
     def test_valeurs_de_depart(self):
-        assert PART_VOCABULAIRE_COURT_CHASSEUR == {
-            Niveau.INTERMEDIAIRE: 0.7,
-            Niveau.AVANCE: 0.7,
+        """Les chiffres exacts de ce réglage sont ajustés par mesure (issue
+        #458, voir le docstring du module) : seuls les niveaux couverts et le
+        domaine de valeur (une part, donc dans ]0, 1]) sont garantis ici, pas
+        un chiffre figé — AVANCE a déjà été mesuré à une valeur différente
+        d'INTERMEDIAIRE, donc on ne doit pas non plus figer leur égalité."""
+        assert set(PART_VOCABULAIRE_COURT_CHASSEUR) == {
+            Niveau.INTERMEDIAIRE,
+            Niveau.AVANCE,
         }
+        for part in PART_VOCABULAIRE_COURT_CHASSEUR.values():
+            assert 0.0 < part <= 1.0
 
     def test_profil_plat_ne_porte_pas_la_surcharge_par_niveau(self):
         assert PERSONNAGES["chasseur_de_scrabbles"].profil.part_vocabulaire_court is None
 
     def test_profil_pour_niveau_intermediaire(self):
         profil = profil_pour_niveau("chasseur_de_scrabbles", Niveau.INTERMEDIAIRE)
-        assert profil.part_vocabulaire_court == 0.7
+        assert profil.part_vocabulaire_court == PART_VOCABULAIRE_COURT_CHASSEUR[Niveau.INTERMEDIAIRE]
         # La surcharge des mots longs, indépendante, reste appliquée aussi.
         assert profil.part_vocabulaire_long == 1.0
         assert profil.vocabulaire_long is True
 
     def test_profil_pour_niveau_avance(self):
         profil = profil_pour_niveau("chasseur_de_scrabbles", Niveau.AVANCE)
-        assert profil.part_vocabulaire_court == 0.7
+        assert profil.part_vocabulaire_court == PART_VOCABULAIRE_COURT_CHASSEUR[Niveau.AVANCE]
         assert profil.part_vocabulaire_long == 1.0
 
     def test_profil_pour_niveau_sans_entree_dans_la_table(self):
@@ -1278,6 +1300,49 @@ def _proportion_mot_favori_lettre(niveau: Niveau, profil, n: int = 30) -> float:
     return nb_favori / nb_joues
 
 
+def _coup_note_lettre_fabrique(mot: str, score: int) -> CoupNote:
+    """``CoupNote`` fabriqué (même principe que ``_coup_note`` dans
+    ``test_moteur_ia.py``) : aucune case bonus touchée, quatre lettres
+    nouvelles (sous le seuil de malus de longueur) et aucun reliquat — les
+    trois ajustements de :func:`_score_strategique` qui dépendent du niveau
+    (``_MALUS_LONGUEUR``, ``_BONUS_PREMIUM``, ``_POIDS_LEAVE``) restent ainsi
+    tous neutres, à n'importe quel niveau. Seul ``bonus_favori`` peut encore
+    écarter les deux scores — condition nécessaire pour que le scénario ci-
+    dessous reste valide quelle que soit la valeur de
+    :data:`BONUS_FAVORI_LETTRE` (issue #458)."""
+    coup = Coup(CENTRE[0], CENTRE[1], Direction.HORIZONTALE, tuiles_depuis_chaine(mot))
+    detail = DetailScore(
+        mots=[DetailMot(texte=mot, score=score, cases_bonus=[])],
+        bonus_scrabble=0,
+        total=score,
+    )
+    return CoupNote(coup, detail, 4, ())
+
+
+def _choisit_le_favori_sur_scenario_construit(niveau: Niveau, profil) -> bool:
+    """Scénario fabriqué CONSTRUIT à partir de ``profil.bonus_favori`` (et non
+    d'un chiffre écrit en dur, issue #458) : le coup concurrent ``ZOTA``
+    l'emporte de ``profil.bonus_favori - 1`` points avant bonus, donc
+    ``AZOTURE`` l'emporte de peu (1 point) une fois le bonus ajouté — reste
+    vrai quelle que soit la valeur, actuelle ou future, de
+    :data:`BONUS_FAVORI_LETTRE`. Rejoue, à partir des coups triés, exactement
+    la même répartition AVANCE/CHAMPION_DU_MONDE (meilleur coup) vs EXPERT
+    (top 5 %) que :func:`choisir_coup`."""
+    favori = _coup_note_lettre_fabrique("AZOTURE", score=10)
+    concurrent = _coup_note_lettre_fabrique("ZOTA", score=10 + profil.bonus_favori - 1)
+    coups_tries = [
+        cn
+        for cn, _ in _trier_par_score_strategique(
+            [concurrent, favori], niveau, (), profil
+        )
+    ]
+    if niveau == Niveau.EXPERT:
+        coup = _choisir_top5(coups_tries, random.Random(0), profil)
+    else:
+        coup = _choisir_avance(coups_tries, random.Random(0))
+    return "".join(t.lettre for t in coup.tuiles) == "AZOTURE"
+
+
 class TestPersonnageLettre:
     """Lettré doit choisir un mot favori nettement plus souvent que
     Classique, y compris à AVANCE — niveau qui joue toujours son meilleur
@@ -1301,13 +1366,17 @@ class TestPersonnageLettre:
     )
     def test_lettre_joue_toujours_le_mot_favori_sur_ce_scenario(self, niveau):
         """Démonstration précise (issue #454, lot K, point « choix du coup
-        même à un niveau qui joue toujours son meilleur coup ») : sur ce
-        scénario fabriqué, Classique ne connaît même pas ``AZOTURE`` (absent
-        de son vocabulaire) et Lettré le joue sur CHAQUE graine, aux trois
-        niveaux où il est disponible, puisque son score stratégique dépasse
-        celui du concurrent une fois le bonus de mot favori ajouté."""
+        même à un niveau qui joue toujours son meilleur coup ») : sur un
+        scénario fabriqué CONSTRUIT à partir de ``bonus_favori`` (issue #458,
+        voir :func:`_choisit_le_favori_sur_scenario_construit` — ni le
+        résultat ni l'écart ne sont des chiffres en dur), Lettré choisit
+        ``AZOTURE`` aux trois niveaux où il est disponible, puisque son score
+        stratégique dépasse celui du concurrent une fois le bonus de mot
+        favori ajouté. Classique, lui, ne connaît même pas ``AZOTURE``
+        (absent de son vocabulaire) sur le scénario réel du plateau
+        fabriqué : il ne le joue jamais."""
         profil_lettre = PERSONNAGES["lettre"].profil
-        assert _proportion_mot_favori_lettre(niveau, profil_lettre) == 1.0
+        assert _choisit_le_favori_sur_scenario_construit(niveau, profil_lettre)
         assert (
             _proportion_mot_favori_lettre(niveau, PERSONNAGES["classique"].profil)
             == 0.0
@@ -1335,10 +1404,12 @@ class TestPersonnageLettre:
         assert "lettre" in cles
 
     def test_lettre_profil_mots_favoris_et_bonus_favori(self):
+        """Le bonus de mot favori est une constante ajustée par mesure
+        (issue #458) : seul le CÂBLAGE du profil sur la constante est
+        vérifié ici, jamais sa valeur courante."""
         lettre = PERSONNAGES["lettre"].profil
         assert lettre.mots_favoris == MOTS_FAVORIS_LETTRE
         assert lettre.bonus_favori == BONUS_FAVORI_LETTRE
-        assert BONUS_FAVORI_LETTRE == 40
         # Lettré ne renseigne volontairement pas le tirage pondéré (voir la
         # docstring du module) : le bonus de score suffit sur ses niveaux.
         assert lettre.poids_tirage_favori is None
@@ -1516,4 +1587,4 @@ class TestMotsFavorisLettreComplement:
             mots_favoris=mots_favoris, bonus_favori=BONUS_FAVORI_LETTRE
         )
         for niveau in (Niveau.AVANCE, Niveau.EXPERT, Niveau.CHAMPION_DU_MONDE):
-            assert _proportion_mot_favori_lettre(niveau, profil) == 1.0
+            assert _choisit_le_favori_sur_scenario_construit(niveau, profil)
