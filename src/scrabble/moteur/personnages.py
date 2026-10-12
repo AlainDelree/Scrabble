@@ -368,6 +368,47 @@ Réactivation : repasser ``actif=True`` sur l'entrée du registre (ci-dessous)
 suffit à tout remettre en place, sans aucune autre modification — c'est
 exactement l'inverse de cette désactivation.
 
+Désactivation d'Opportuniste et Titeuf, masquage de l'interface (issue #461)
+------------------------------------------------------------------------------
+Alain décide de ne proposer AUCUN personnage dans la première version
+diffusée : l'effet de chacun d'eux (Opportuniste comme les quatre autres,
+déjà inactifs depuis l'issue #459) reste trop discret pour être remarqué en
+jeu. Les deux entrées ``"opportuniste"`` et ``"titeuf"`` déclarent donc à leur
+tour ``actif=False`` ci-dessous, pour la même raison et avec la même procédure
+de réactivation que Chasseur de scrabbles et Lettré — rien n'est supprimé :
+code, réglages (``BONUS_PREMIUM_OPPORTUNISTE``, ``POIDS_TIRAGE_FAVORI_TITEUF``,
+etc.), listes de mots et tests de comportement restent en place pour une
+réactivation éventuelle.
+
+Classique reste donc, pour cette première diffusion, le seul personnage actif
+du registre. :func:`nombre_personnages_actifs` et
+:func:`interface_personnages_visible` (moins de deux personnages actifs rend
+le choix sans objet — comparer Classique à... Classique) en déduisent qu'il
+n'y a plus lieu de montrer AUCUNE interface liée aux personnages : plus de
+sélecteur ni de texte d'explication à l'accueil, plus de lien « Les
+personnages » à l'accueil, plus de bouton « Personnages » en jeu, plus de
+personnage entre parenthèses après le prénom d'un ordinateur (même pour une
+partie sauvegardée qui en mentionne un — voir :func:`libelle_choix_accueil` et
+:func:`libelle_personnage_partie`, qui renvoient toujours une chaîne vide dans
+ce cas), plus d'entrée « Aléatoire » (:func:`lister_personnages` renvoie alors
+la liste vide, consommée aussi bien par la fenêtre « Les personnages » que par
+le sélecteur de l'accueil, :meth:`~scrabble.ui.accueil.ApiAccueil.
+obtenir_personnages`). Cette règle est calculée depuis le registre, jamais
+codée en dur : réactiver un second personnage (``actif=True``) suffit à faire
+réapparaître toute l'interface, sans aucune autre modification.
+
+Rien d'autre ne change : une partie sauvegardée qui mentionne un personnage
+(actif ou non) continue de se charger et de se jouer avec son profil, exactement
+comme avant ce lot (:func:`obtenir_personnage`, :func:`profil_pour_niveau`) — et
+``scripts/mesurer_force_niveaux.py`` continue de pouvoir forcer n'importe quel
+personnage, actif ou non, puisqu'il accède au registre directement, jamais par
+les fonctions de disponibilité de ce module.
+
+Réactivation : repasser ``actif=True`` sur l'une ou l'autre entrée (ou les
+deux) suffit à la fois à la proposer de nouveau ET, dès qu'au moins deux
+personnages sont actifs, à faire réapparaître toute l'interface masquée
+ci-dessus — sans aucune autre modification.
+
 Liste complémentaire locale, hors dépôt (issue #455)
 ------------------------------------------------------
 En plus de ``data/personnages/lettre_mots_favoris.txt`` (suivi par git),
@@ -785,6 +826,13 @@ PERSONNAGES: dict[str, Personnage] = {
         ),
         niveaux_disponibles=NIVEAUX_OPPORTUNISTE,
         nb_joueurs_disponibles=NB_JOUEURS_OPPORTUNISTE,
+        # Désactivé (issue #461) : décision d'Alain de ne proposer aucun
+        # personnage dans la première version diffusée, l'effet jugé trop
+        # discret pour être remarqué en jeu. Code et réglages conservés tels
+        # quels pour une réactivation éventuelle — repasser à True suffit (et
+        # fait réapparaître toute l'interface dès qu'un second personnage est
+        # actif, voir la docstring du module).
+        actif=False,
     ),
     "chasseur_de_scrabbles": Personnage(
         cle="chasseur_de_scrabbles",
@@ -823,6 +871,13 @@ PERSONNAGES: dict[str, Personnage] = {
         ),
         niveaux_disponibles=NIVEAUX_TITEUF,
         nb_joueurs_disponibles=NB_JOUEURS_TITEUF,
+        # Désactivé (issue #461) : décision d'Alain de ne proposer aucun
+        # personnage dans la première version diffusée, l'effet jugé trop
+        # discret pour être remarqué en jeu. Code et réglages conservés tels
+        # quels pour une réactivation éventuelle — repasser à True suffit (et
+        # fait réapparaître toute l'interface dès qu'un second personnage est
+        # actif, voir la docstring du module).
+        actif=False,
     ),
     "lettre": Personnage(
         cle="lettre",
@@ -875,6 +930,33 @@ def personnage_actif(personnage_cle: str) -> bool:
         return True
     personnage = PERSONNAGES.get(personnage_cle)
     return personnage is not None and personnage.actif
+
+
+def nombre_personnages_actifs() -> int:
+    """Nombre de personnages actuellement actifs du registre (issue #461).
+
+    Ne compte que les entrées réelles de :data:`PERSONNAGES` dont
+    :attr:`Personnage.actif` est vrai — jamais le pseudo-personnage
+    :data:`CLE_ALEATOIRE`, qui n'est pas une entrée du registre.
+    """
+    return sum(1 for p in PERSONNAGES.values() if p.actif)
+
+
+def interface_personnages_visible() -> bool:
+    """Vrai si l'interface liée aux personnages doit être affichée (issue #461).
+
+    Moins de deux personnages actifs rend le choix d'un personnage sans objet
+    (comparer Classique à... Classique) : :func:`lister_personnages`,
+    :func:`libelle_choix_accueil`, :func:`libelle_personnage_partie` et
+    :meth:`~scrabble.ui.accueil.ApiAccueil.obtenir_personnages` s'appuient
+    tous sur cette seule fonction pour masquer entièrement le sélecteur de
+    personnage, le lien/bouton « Les personnages », le personnage entre
+    parenthèses après le prénom d'un ordinateur et l'entrée « Aléatoire ».
+    Calculée depuis :func:`nombre_personnages_actifs` — réactiver un second
+    personnage (``actif=True``) suffit à faire réapparaître toute cette
+    interface, sans aucune autre modification.
+    """
+    return nombre_personnages_actifs() >= 2
 
 
 def tirer_personnage(
@@ -996,9 +1078,10 @@ def aleatoire_disponible_a_nb_joueurs(nb_joueurs: int) -> bool:
     disponible à cette taille, sans aucune autre modification. Seuls les
     personnages actifs comptent (issue #459 — Chasseur de scrabbles et
     Lettré, inactifs, n'y sont plus comptés bien que tous deux réservés à
-    deux joueurs). Aujourd'hui : disponible à deux joueurs (Classique +
-    Opportuniste + Titeuf), indisponible à trois ou quatre (seul Classique y
-    figure).
+    deux joueurs). Depuis l'issue #461 (Opportuniste et Titeuf inactifs à leur
+    tour), Classique est le seul personnage actif du registre : indisponible
+    à toute taille de table, comme à tout niveau (voir
+    :func:`aleatoire_disponible_a_niveau`).
     """
     return len(personnages_disponibles_a_nb_joueurs(nb_joueurs)) >= 2
 
@@ -1217,8 +1300,13 @@ def libelle_choix_accueil(personnage_cle: str) -> str:
     qu'au lancement de la partie, voir
     :func:`~scrabble.moteur.partie.creer_partie`). Chaîne vide pour Classique
     (ou l'absence de personnage) : l'accueil affiche alors le prénom seul,
-    comme avant l'introduction du sélecteur.
+    comme avant l'introduction du sélecteur. Chaîne vide aussi, quel que soit
+    ``personnage_cle``, dès que :func:`interface_personnages_visible` est
+    fausse (issue #461) : l'interface liée aux personnages étant masquée,
+    plus rien ne doit apparaître entre parenthèses.
     """
+    if not interface_personnages_visible():
+        return ""
     if personnage_cle == CLE_ALEATOIRE:
         return "Aléatoire"
     if not personnage_cle or personnage_cle == "classique":
@@ -1244,7 +1332,15 @@ def libelle_personnage_partie(
     Pour un personnage choisi explicitement, chaîne vide pour Classique (ou
     l'absence de personnage, sauvegarde antérieure à l'issue #438) : seul un
     personnage tiré au hasard doit être annoncé pour Classique.
+
+    Chaîne vide dans tous les cas (tirage aléatoire révélé compris) dès que
+    :func:`interface_personnages_visible` est fausse (issue #461) : une
+    partie sauvegardée qui mentionne un personnage continue de se jouer avec
+    son profil, mais son nom s'affiche sans rien entre parenthèses puisque
+    l'interface qui en parlerait est elle-même masquée.
     """
+    if not interface_personnages_visible():
+        return ""
     if personnage_aleatoire:
         if reveler:
             return f"Aléatoire : {_prenom_affichable(personnage_cle)}"
@@ -1293,7 +1389,15 @@ def lister_personnages(
     pendant toute la partie (voir
     :func:`libelle_personnage_partie`) — seule l'identité tirée reste
     secrète, jamais le fait d'avoir réglé un adversaire sur Aléatoire.
+
+    Liste vide (même Classique, même « Aléatoire ») dès que
+    :func:`interface_personnages_visible` est fausse (issue #461) : moins de
+    deux personnages actifs, plus rien n'est proposé dans cette fenêtre — même
+    règle appliquée séparément par :meth:`~scrabble.ui.accueil.ApiAccueil.
+    obtenir_personnages` pour le sélecteur de l'accueil.
     """
+    if not interface_personnages_visible():
+        return []
     resultat = [
         {
             "cle": personnage.cle,

@@ -56,6 +56,7 @@ from scrabble.moteur.personnages import (
     CHEMIN_MOTS_FAVORIS_TITEUF,
     DESCRIPTION_ALEATOIRE,
     MESSAGE_ALEATOIRE_NB_JOUEURS_INSUFFISANT,
+    MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT,
     MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS,
     MOTS_FAVORIS_LETTRE,
     MOTS_FAVORIS_TITEUF,
@@ -84,11 +85,15 @@ from scrabble.moteur.personnages import (
     libelle_tailles,
     libelle_tailles_aleatoire,
     lister_personnages,
+    niveaux_disponibles_aleatoire,
+    nombre_personnages_actifs,
+    interface_personnages_visible,
     personnage_disponible_a_nb_joueurs,
     personnage_disponible_a_niveau,
     personnages_disponibles_a_nb_joueurs,
     personnages_disponibles_a_niveau,
     profil_pour_niveau,
+    tailles_disponibles_aleatoire,
     tirer_personnage,
 )
 from scrabble.moteur.plateau_partie import (
@@ -258,7 +263,20 @@ class TestTirerPersonnage:
             tire = tirer_personnage(random.Random(graine), Niveau.DEBUTANT)
             assert tire.cle in {"classique", "titeuf"}
 
-    def test_tirage_restreint_au_niveau_peut_tirer_opportuniste_a_facile(self):
+    def test_tirage_restreint_au_niveau_peut_tirer_opportuniste_a_facile(
+        self, monkeypatch
+    ):
+        """Opportuniste, inactif depuis l'issue #461 (décision de ne
+        proposer aucun personnage dans la première version diffusée), est
+        réactivé ici, le temps de ce seul test, pour continuer à couvrir la
+        restriction de NIVEAU elle-même, indépendante de son activité
+        (procédure de réactivation documentée par le module ``personnages``,
+        simulée via ``monkeypatch`` sans toucher au code)."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         cles = {
             tirer_personnage(random.Random(g), Niveau.FACILE).cle
             for g in range(50)
@@ -333,12 +351,29 @@ class TestDisponibiliteNiveauxPersonnages:
     def test_personnage_inconnu_indisponible_partout(self):
         assert personnage_disponible_a_niveau("ninja", Niveau.EXPERT) is False
 
-    def test_aleatoire_disponible_a_debutant_grace_a_titeuf(self):
-        """Depuis l'introduction de Titeuf (issue #452, lot J), Débutant
-        compte deux personnages réels (Classique + Titeuf) : Aléatoire, qui
-        demande au moins deux personnages, y est donc de nouveau disponible —
-        remplace ``test_aleatoire_indisponible_a_debutant_un_seul_personnage``
-        (issue #447, lot G), devenu faux par construction."""
+    def test_aleatoire_indisponible_a_debutant_titeuf_inactif(self):
+        """Titeuf, inactif depuis l'issue #461 (décision de ne proposer aucun
+        personnage dans la première version diffusée) : Débutant ne compte
+        plus que Classique, Aléatoire (qui demande au moins deux
+        personnages) y est donc de nouveau indisponible — remplace
+        ``test_aleatoire_disponible_a_debutant_grace_a_titeuf`` (issue #452,
+        lot J), devenu faux par construction."""
+        assert personnages_disponibles_a_niveau(Niveau.DEBUTANT) == [
+            PERSONNAGES["classique"],
+        ]
+        assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is False
+        assert personnage_disponible_a_niveau(CLE_ALEATOIRE, Niveau.DEBUTANT) is False
+
+    def test_aleatoire_disponible_a_debutant_si_titeuf_reactive(self, monkeypatch):
+        """Réactiver Titeuf (``actif=True``, procédure documentée par le
+        module ``personnages``, simulée ici via ``monkeypatch`` sans toucher
+        au code) suffit à rendre Aléatoire de nouveau disponible à Débutant,
+        sans aucune autre modification."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "titeuf", replace(PERSONNAGES["titeuf"], actif=True)
+        )
         assert personnages_disponibles_a_niveau(Niveau.DEBUTANT) == [
             PERSONNAGES["classique"],
             PERSONNAGES["titeuf"],
@@ -375,8 +410,17 @@ class TestDisponibiliteNiveauxPersonnages:
         finally:
             PERSONNAGES["titeuf"] = titeuf
 
-    def test_aleatoire_disponible_a_facile(self):
-        """Classique + Opportuniste : deux personnages disponibles à Facile."""
+    def test_aleatoire_indisponible_a_facile_opportuniste_inactif(self):
+        """Opportuniste, inactif depuis l'issue #461 : Facile ne compte plus
+        que Classique, Aléatoire y est donc indisponible."""
+        assert aleatoire_disponible_a_niveau(Niveau.FACILE) is False
+
+    def test_aleatoire_disponible_a_facile_si_opportuniste_reactive(self, monkeypatch):
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         assert aleatoire_disponible_a_niveau(Niveau.FACILE) is True
 
 
@@ -390,12 +434,28 @@ class TestLibelleEtExplicationNiveaux:
     def test_libelle_opportuniste(self):
         assert libelle_niveaux(PERSONNAGES["opportuniste"]) == "Facile à Champion du monde"
 
-    def test_libelle_aleatoire_tous_les_niveaux_grace_a_titeuf(self):
-        """Depuis l'introduction de Titeuf (issue #452, lot J), Débutant a
-        aussi deux personnages disponibles : Aléatoire couvre maintenant
-        TOUS les niveaux — remplace
-        ``test_libelle_aleatoire_aujourdhui_comme_opportuniste`` (issue #447,
-        lot G), devenu faux par construction."""
+    def test_niveaux_disponibles_aleatoire_vide_opportuniste_et_titeuf_inactifs(self):
+        """Opportuniste et Titeuf inactifs (issue #461) : Classique seul est
+        actif à tous les niveaux, Aléatoire n'est donc disponible à AUCUN
+        niveau — remplace ``test_libelle_aleatoire_tous_les_niveaux_grace_a_titeuf``
+        (issue #452, lot J), devenu faux par construction. On s'arrête à
+        l'ensemble des niveaux plutôt qu'au libellé affiché : ``_libelle_niveaux``
+        n'a jamais eu à représenter un ensemble vide avant cette désactivation,
+        et rien dans le produit n'affiche ce libellé dans ce cas (interface
+        masquée, voir ``TestInterfacePersonnagesVisible``)."""
+        assert niveaux_disponibles_aleatoire() == frozenset()
+
+    def test_libelle_aleatoire_tous_les_niveaux_si_titeuf_et_opportuniste_reactives(
+        self, monkeypatch
+    ):
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
+        monkeypatch.setitem(
+            PERSONNAGES, "titeuf", replace(PERSONNAGES["titeuf"], actif=True)
+        )
         assert libelle_niveaux_aleatoire() == "Tous les niveaux"
 
     def test_explication_classique_vide(self):
@@ -407,12 +467,15 @@ class TestLibelleEtExplicationNiveaux:
             == "Disponible à partir de Facile"
         )
 
-    def test_explication_aleatoire_vide_grace_a_titeuf(self):
-        """Depuis l'introduction de Titeuf (issue #452, lot J), Aléatoire est
-        disponible à tous les niveaux : rien à expliquer — remplace
-        ``test_explication_aleatoire`` (issue #447, lot G), devenu faux par
-        construction."""
-        assert explication_disponibilite_niveaux(CLE_ALEATOIRE) == ""
+    def test_explication_aleatoire_indisponible_opportuniste_et_titeuf_inactifs(self):
+        """Opportuniste et Titeuf inactifs (issue #461) : Aléatoire n'est
+        disponible à aucun niveau, le message dédié réapparaît donc —
+        remplace ``test_explication_aleatoire_vide_grace_a_titeuf`` (issue
+        #452, lot J), devenu faux par construction."""
+        assert (
+            explication_disponibilite_niveaux(CLE_ALEATOIRE)
+            == MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -456,9 +519,22 @@ class TestDisponibiliteNbJoueursPersonnages:
     def test_personnage_inconnu_indisponible_partout(self):
         assert personnage_disponible_a_nb_joueurs("ninja", 2) is False
 
-    def test_aleatoire_disponible_a_deux_joueurs(self):
-        """Classique + Opportuniste + Chasseur de scrabbles : trois
-        personnages disponibles à deux joueurs."""
+    def test_aleatoire_indisponible_a_deux_joueurs_classique_seul(self):
+        """Opportuniste et Chasseur de scrabbles (ainsi que Titeuf et Lettré)
+        sont tous inactifs (issues #459/#461) : seul Classique reste actif à
+        deux joueurs comme à toute autre taille, Aléatoire y est donc
+        indisponible."""
+        assert aleatoire_disponible_a_nb_joueurs(2) is False
+        assert personnage_disponible_a_nb_joueurs(CLE_ALEATOIRE, 2) is False
+
+    def test_aleatoire_disponible_a_deux_joueurs_si_opportuniste_reactive(
+        self, monkeypatch
+    ):
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         assert aleatoire_disponible_a_nb_joueurs(2) is True
         assert personnage_disponible_a_nb_joueurs(CLE_ALEATOIRE, 2) is True
 
@@ -510,7 +586,22 @@ class TestLibelleEtExplicationTailles:
             == "Parties à deux joueurs"
         )
 
-    def test_libelle_aleatoire_aujourdhui_comme_opportuniste(self):
+    def test_tailles_disponibles_aleatoire_vide_opportuniste_et_chasseur_inactifs(self):
+        """Opportuniste et Chasseur de scrabbles (tous deux réservés à deux
+        joueurs) sont inactifs : Aléatoire n'est disponible à AUCUNE taille
+        de table — remplace ``test_libelle_aleatoire_aujourdhui_comme_opportuniste``,
+        devenu faux par construction. On s'arrête à l'ensemble des tailles
+        plutôt qu'au libellé affiché, pour la même raison que
+        ``test_niveaux_disponibles_aleatoire_vide_opportuniste_et_titeuf_inactifs``
+        ci-dessus."""
+        assert tailles_disponibles_aleatoire() == frozenset()
+
+    def test_libelle_aleatoire_deux_joueurs_si_opportuniste_reactive(self, monkeypatch):
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         assert libelle_tailles_aleatoire() == "Parties à deux joueurs"
 
     def test_explication_classique_vide(self):
@@ -551,11 +642,37 @@ class TestLibelleChoixAccueil:
         ancienne configuration sans personnage renvoient aussi une chaîne vide."""
         assert libelle_choix_accueil("") == ""
 
-    def test_personnage_explicite_porte_son_prenom(self):
+    def test_personnage_explicite_vide_interface_masquee(self):
+        """Opportuniste inactif (issue #461, interface masquée tant que
+        moins de deux personnages sont actifs) : plus aucun libellé, même
+        pour un personnage choisi explicitement."""
+        assert libelle_choix_accueil("opportuniste") == ""
+
+    def test_personnage_explicite_porte_son_prenom_si_interface_visible(
+        self, monkeypatch
+    ):
+        """Réactiver un second personnage (ici Opportuniste, procédure
+        documentée par le module ``personnages``, simulée via
+        ``monkeypatch`` sans toucher au code) rend l'interface visible et le
+        libellé de nouveau affiché."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         assert libelle_choix_accueil("opportuniste") == "Opportuniste"
 
-    def test_aleatoire_porte_le_libelle_mystere(self):
-        """Avant résolution, « Aléatoire » lui-même, jamais une identité réelle."""
+    def test_aleatoire_vide_interface_masquee(self):
+        assert libelle_choix_accueil(CLE_ALEATOIRE) == ""
+
+    def test_aleatoire_porte_le_libelle_mystere_si_interface_visible(self, monkeypatch):
+        """Avant résolution, « Aléatoire » lui-même, jamais une identité
+        réelle — dès que l'interface est visible (deux personnages actifs)."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         assert libelle_choix_accueil(CLE_ALEATOIRE) == "Aléatoire"
 
 
@@ -574,33 +691,91 @@ class TestLibellePersonnagePartie:
         """Sauvegarde antérieure à l'issue #438, sans personnage du tout."""
         assert libelle_personnage_partie("", personnage_aleatoire=False) == ""
 
-    def test_personnage_explicite_porte_son_prenom(self):
+    def test_personnage_explicite_vide_interface_masquee(self):
+        """Opportuniste inactif (issue #461, interface masquée tant que
+        moins de deux personnages sont actifs) : une partie sauvegardée qui
+        le mentionne continue de se jouer avec son profil, mais son nom
+        s'affiche sans rien entre parenthèses puisque l'interface qui en
+        parlerait est elle-même masquée."""
+        assert (
+            libelle_personnage_partie("opportuniste", personnage_aleatoire=False) == ""
+        )
+
+    def test_personnage_explicite_porte_son_prenom_si_interface_visible(
+        self, monkeypatch
+    ):
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         assert (
             libelle_personnage_partie("opportuniste", personnage_aleatoire=False)
             == "Opportuniste"
         )
 
-    def test_aleatoire_non_revele_affiche_aleatoire_seul(self):
+    def test_aleatoire_revele_ou_non_vide_interface_masquee(self):
+        """Interface masquée (issue #461) : jamais rien à afficher pour un
+        personnage tiré au hasard, révélé ou non, Classique compris — une
+        ancienne sauvegarde qui en mentionne un continue de se jouer avec son
+        profil sans que l'identité tirée, même révélée en fin de partie, ne
+        s'affiche."""
+        for cle in PERSONNAGES:
+            assert (
+                libelle_personnage_partie(cle, personnage_aleatoire=True, reveler=False)
+                == ""
+            )
+            assert (
+                libelle_personnage_partie(cle, personnage_aleatoire=True, reveler=True)
+                == ""
+            )
+
+    def test_aleatoire_non_revele_affiche_aleatoire_seul_si_interface_visible(
+        self, monkeypatch
+    ):
         """Pendant toute la partie (``reveler=False``), quel que soit le
-        personnage réellement tiré — y compris Classique — rien ne doit fuiter."""
+        personnage réellement tiré — y compris Classique — rien ne doit
+        fuiter, dès que l'interface est visible (deux personnages actifs)."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         for cle in PERSONNAGES:
             assert (
                 libelle_personnage_partie(cle, personnage_aleatoire=True, reveler=False)
                 == "Aléatoire"
             )
 
-    def test_aleatoire_revele_affiche_le_personnage_tire_pour_chaque_entree(self):
+    def test_aleatoire_revele_affiche_le_personnage_tire_pour_chaque_entree_si_interface_visible(
+        self, monkeypatch
+    ):
         """En fin de partie (``reveler=True``), le personnage réel apparaît,
-        Classique compris — jamais le prénom seul (point 3 de l'issue #441)."""
+        Classique compris — jamais le prénom seul (point 3 de l'issue #441),
+        dès que l'interface est visible (deux personnages actifs)."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         for cle, personnage in PERSONNAGES.items():
             assert (
                 libelle_personnage_partie(cle, personnage_aleatoire=True, reveler=True)
                 == f"Aléatoire : {personnage.prenom}"
             )
 
-    def test_aleatoire_revele_classique_nest_jamais_le_prenom_seul(self):
+    def test_aleatoire_revele_classique_nest_jamais_le_prenom_seul_si_interface_visible(
+        self, monkeypatch
+    ):
         """Cas explicite rappelé par l'issue : « Aléatoire : Classique », pas
-        « Classique » tout court, pour ne pas ressembler à un défaut d'affichage."""
+        « Classique » tout court, pour ne pas ressembler à un défaut
+        d'affichage — dès que l'interface est visible (deux personnages
+        actifs)."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         libelle = libelle_personnage_partie(
             "classique", personnage_aleatoire=True, reveler=True
         )
@@ -611,9 +786,27 @@ class TestLibellePersonnagePartie:
 class TestListerPersonnages:
     """Fenêtre « Les personnages » (issue #442, lot F) : liste construite depuis le registre."""
 
-    def test_contient_le_registre_puis_aleatoire_en_dernier(self):
-        """Seuls les personnages ACTIFS du registre apparaissent (issue
-        #459) : Chasseur de scrabbles et Lettré, inactifs, en sont exclus."""
+    def test_liste_vide_moins_de_deux_personnages_actifs(self):
+        """Interface masquée par défaut (issue #461) : Classique étant seul
+        actif du registre, la liste — même Classique, même Aléatoire — est
+        entièrement vide. Remplace
+        ``test_contient_le_registre_puis_aleatoire_en_dernier`` (issue #459),
+        devenu faux par construction : voir la variante ci-dessous pour le
+        même contrôle une fois l'interface rendue visible."""
+        assert lister_personnages() == []
+
+    def test_contient_le_registre_puis_aleatoire_en_dernier_si_interface_visible(
+        self, monkeypatch
+    ):
+        """Dès que l'interface est visible (ici : Opportuniste réactivé, deux
+        personnages actifs), la liste reprend tous les personnages ACTIFS du
+        registre (Chasseur de scrabbles, Lettré et Titeuf, eux, restent
+        inactifs et en sont exclus), puis Aléatoire en dernier."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         personnages = lister_personnages()
         cles = [p["cle"] for p in personnages]
         assert cles == [
@@ -645,22 +838,41 @@ class TestListerPersonnages:
         # Aléatoire doit rester en dernier malgré l'ajout.
         assert cles[-1] == CLE_ALEATOIRE
 
-    def test_aleatoire_en_dernier_meme_avec_des_entrees_dans_la_partie(self):
+    def test_aleatoire_en_dernier_meme_avec_des_entrees_dans_la_partie(
+        self, monkeypatch
+    ):
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         cles_dans_partie = frozenset(PERSONNAGES.keys())
         personnages = lister_personnages(cles_dans_partie)
         assert personnages[-1]["cle"] == CLE_ALEATOIRE
 
-    def test_aleatoire_nest_jamais_marque_dans_la_partie(self):
+    def test_aleatoire_nest_jamais_marque_dans_la_partie(self, monkeypatch):
         """Même si toutes les clés réelles du registre sont « dans la partie »,
         l'entrée Aléatoire ne doit jamais être marquée — elle ne représente
         aucune identité, et ne doit donc jamais laisser deviner un tirage."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         cles_dans_partie = frozenset(PERSONNAGES.keys())
         personnages = lister_personnages(cles_dans_partie)
         aleatoire = next(p for p in personnages if p["cle"] == CLE_ALEATOIRE)
         assert aleatoire["dans_la_partie"] is False
         assert aleatoire["description"] == DESCRIPTION_ALEATOIRE
 
-    def test_marquage_dans_la_partie_ne_concerne_que_les_cles_fournies(self):
+    def test_marquage_dans_la_partie_ne_concerne_que_les_cles_fournies(
+        self, monkeypatch
+    ):
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         personnages = lister_personnages(frozenset({"opportuniste"}))
         marques = {p["cle"] for p in personnages if p["dans_la_partie"]}
         assert marques == {"opportuniste"}
@@ -669,17 +881,120 @@ class TestListerPersonnages:
         personnages = lister_personnages()
         assert all(not p["dans_la_partie"] for p in personnages)
 
-    def test_aleatoire_dans_partie_marque_uniquement_lentree_aleatoire(self):
+    def test_aleatoire_dans_partie_marque_uniquement_lentree_aleatoire(
+        self, monkeypatch
+    ):
         """``aleatoire_dans_partie`` (issue #443, lot F bis) ne marque QUE
         l'entrée Aléatoire, jamais une entrée réelle du registre."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         personnages = lister_personnages(aleatoire_dans_partie=True)
         marques = {p["cle"] for p in personnages if p["dans_la_partie"]}
         assert marques == {CLE_ALEATOIRE}
 
-    def test_aleatoire_dans_partie_faux_par_defaut(self):
+    def test_aleatoire_dans_partie_faux_par_defaut(self, monkeypatch):
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
         personnages = lister_personnages(frozenset({"opportuniste"}))
         aleatoire = next(p for p in personnages if p["cle"] == CLE_ALEATOIRE)
         assert aleatoire["dans_la_partie"] is False
+
+
+class TestInterfacePersonnagesVisible:
+    """Masquage de toute l'interface liée aux personnages tant que moins de
+    deux personnages sont actifs dans le registre (issue #461).
+
+    À cette première diffusion, seul Classique est actif (Opportuniste,
+    Titeuf, Chasseur de scrabbles et Lettré sont tous inactifs) : un seul
+    personnage actif, donc interface masquée par défaut. La réactivation
+    d'un second personnage (ici Opportuniste) est simulée via ``monkeypatch``
+    dans chaque test, sans jamais toucher au code — exactement la procédure
+    documentée par le module ``personnages``.
+    """
+
+    def test_nombre_personnages_actifs_un_seul_par_defaut(self):
+        assert nombre_personnages_actifs() == 1
+        assert PERSONNAGES["classique"].actif is True
+
+    def test_interface_masquee_par_defaut(self):
+        """Zéro ou un personnage actif rend le choix sans objet (comparer
+        Classique à... Classique) : l'interface reste masquée."""
+        assert interface_personnages_visible() is False
+
+    def test_interface_masquee_avec_zero_personnage_actif(self, monkeypatch):
+        """Cas limite (hypothétique, Classique étant toujours actif en
+        production) : zéro personnage actif masque aussi l'interface — la
+        règle est une inégalité, pas un cas spécial pour « un seul »."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "classique", replace(PERSONNAGES["classique"], actif=False)
+        )
+        assert nombre_personnages_actifs() == 0
+        assert interface_personnages_visible() is False
+
+    def test_interface_visible_des_que_deux_personnages_actifs(self, monkeypatch):
+        """Réactiver un second personnage (``actif=True``, procédure
+        documentée par le module) suffit à rendre l'interface visible, sans
+        aucune autre modification — c'est tout l'objet de l'issue #461."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
+        assert nombre_personnages_actifs() == 2
+        assert interface_personnages_visible() is True
+
+    def test_lister_personnages_vide_par_defaut(self):
+        """Plus aucun personnage proposé (ni Classique, ni Aléatoire) tant
+        que l'interface est masquée."""
+        assert lister_personnages() == []
+
+    def test_obtenir_personnages_accueil_vide_par_defaut(self):
+        """Même règle côté sélecteur de l'accueil (:meth:`ApiAccueil.
+        obtenir_personnages`), qui construit sa propre liste depuis le
+        registre plutôt que de réutiliser :func:`lister_personnages`."""
+        from scrabble.ui.accueil import ApiAccueil
+
+        api = ApiAccueil()
+        assert api.obtenir_personnages() == []
+        assert api.interface_personnages_visible() is False
+
+    def test_obtenir_personnages_accueil_non_vide_si_interface_visible(
+        self, monkeypatch
+    ):
+        from dataclasses import replace
+
+        from scrabble.ui.accueil import ApiAccueil
+
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
+        api = ApiAccueil()
+        cles = {p["cle"] for p in api.obtenir_personnages()}
+        assert cles == {"classique", "opportuniste", CLE_ALEATOIRE}
+        assert api.interface_personnages_visible() is True
+
+    def test_api_jeu_interface_personnages_visible_delegue_au_moteur(self, monkeypatch):
+        """Même délégation côté écran de jeu (:meth:`ApiJeu.
+        interface_personnages_visible`), qui pilote la visibilité du bouton
+        « Personnages »."""
+        from dataclasses import replace
+
+        from scrabble.ui.jeu import ApiJeu
+
+        api = ApiJeu()
+        assert api.interface_personnages_visible() is False
+        monkeypatch.setitem(
+            PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+        )
+        assert api.interface_personnages_visible() is True
 
 
 # --------------------------------------------------------------------------- #
@@ -1131,7 +1446,26 @@ class TestPersonnageTiteuf:
         assert titeuf.prenom == "Titeuf"
         assert titeuf.description != ""
 
-    def test_titeuf_apparait_dans_la_liste(self):
+    def test_titeuf_absent_de_la_liste_car_inactif(self):
+        """Désactivé (issue #461, décision de ne proposer aucun personnage
+        dans la première version diffusée) : n'apparaît plus dans la fenêtre
+        « Les personnages », mais reste bien dans le registre lui-même —
+        remplace ``test_titeuf_apparait_dans_la_liste``, devenu faux par
+        construction."""
+        assert "titeuf" in PERSONNAGES
+        assert PERSONNAGES["titeuf"].actif is False
+        cles = [p["cle"] for p in lister_personnages()]
+        assert "titeuf" not in cles
+
+    def test_titeuf_reapparait_dans_la_liste_si_reactive(self, monkeypatch):
+        """Réactiver l'indicateur (dans ce test seul, sans toucher au code)
+        remet le personnage dans la liste affichée — procédure de
+        réactivation documentée par le module."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "titeuf", replace(PERSONNAGES["titeuf"], actif=True)
+        )
         cles = [p["cle"] for p in lister_personnages()]
         assert "titeuf" in cles
 
@@ -1178,19 +1512,45 @@ class TestPersonnageTiteuf:
             == MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS
         )
 
-    def test_aleatoire_redevient_disponible_a_debutant_grace_a_titeuf(self):
+    def test_aleatoire_indisponible_a_debutant_titeuf_inactif(self):
+        """Titeuf inactif (issue #461) : Débutant ne compte plus que
+        Classique, Aléatoire y est donc indisponible — remplace
+        ``test_aleatoire_redevient_disponible_a_debutant_grace_a_titeuf``
+        (issue #452), devenu faux par construction."""
+        assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is False
+        assert personnages_disponibles_a_niveau(Niveau.DEBUTANT) == [
+            PERSONNAGES["classique"],
+        ]
+
+    def test_aleatoire_redevient_disponible_a_debutant_si_titeuf_reactive(
+        self, monkeypatch
+    ):
         """Point central de l'issue #452 : la règle déjà en place (lot G,
         issue #447) rend Aléatoire de nouveau disponible à Débutant dès que
-        Titeuf y figure, sans aucune autre modification."""
+        Titeuf y figure, sans aucune autre modification — vérifié ici avec
+        Titeuf réactivé (procédure documentée par le module, simulée via
+        ``monkeypatch`` sans toucher au code), puisqu'il est inactif par
+        défaut depuis l'issue #461."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "titeuf", replace(PERSONNAGES["titeuf"], actif=True)
+        )
         assert aleatoire_disponible_a_niveau(Niveau.DEBUTANT) is True
         assert personnages_disponibles_a_niveau(Niveau.DEBUTANT) == [
             PERSONNAGES["classique"],
             PERSONNAGES["titeuf"],
         ]
 
-    def test_tirage_aleatoire_a_debutant_inclut_titeuf(self):
+    def test_tirage_aleatoire_a_debutant_inclut_titeuf_si_reactive(self, monkeypatch):
         """Le tirage « Aléatoire » à Débutant doit, sur de nombreuses
-        graines, couvrir les deux personnages désormais disponibles."""
+        graines, couvrir les deux personnages désormais disponibles, une
+        fois Titeuf réactivé (inactif par défaut depuis l'issue #461)."""
+        from dataclasses import replace
+
+        monkeypatch.setitem(
+            PERSONNAGES, "titeuf", replace(PERSONNAGES["titeuf"], actif=True)
+        )
         cles = {
             tirer_personnage(random.Random(g), Niveau.DEBUTANT).cle
             for g in range(50)

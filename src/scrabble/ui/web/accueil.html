@@ -138,8 +138,15 @@
                      le niveau : un réglage courant, pas une modale). Les
                      <option> sont construites dynamiquement par accueil.js
                      depuis le registre (api.obtenir_personnages()), Aléatoire
-                     toujours en dernier. -->
-                <div class="zone-personnage">
+                     toujours en dernier. Toute cette zone (sélecteur, textes
+                     d'explication, lien « Les personnages ») est masquée par
+                     accueil.js dès l'ouverture tant que moins de deux
+                     personnages sont actifs dans le registre (issue #461,
+                     api.interface_personnages_visible()) : pas de ``hidden``
+                     statique ici, pour qu'elle réapparaisse automatiquement
+                     sans toucher au HTML si un second personnage est
+                     réactivé. -->
+                <div class="zone-personnage" id="zone-personnage">
                     <label for="select-personnage" class="label-personnage">Personnage du prochain ordinateur :</label>
                     <select id="select-personnage" class="select-personnage"></select>
                     <!-- Accès discret à la fenêtre « Les personnages » (issue #442,

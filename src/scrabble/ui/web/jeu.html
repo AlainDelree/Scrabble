@@ -96,7 +96,13 @@
 
                     <!-- Bouton « Les personnages » (issue #442, lot F) : ouvre la
                          même fenêtre qu'à l'accueil, sans effet sur l'état de la
-                         partie, le tour en cours ni la sauvegarde. -->
+                         partie, le tour en cours ni la sauvegarde. Masqué par
+                         jeu.js dès l'initialisation tant que moins de deux
+                         personnages sont actifs dans le registre (issue #461,
+                         api.interface_personnages_visible()) : pas de
+                         ``hidden`` statique ici, pour qu'il réapparaisse
+                         automatiquement sans toucher au HTML si un second
+                         personnage est réactivé. -->
                     <button id="btn-les-personnages" class="btn btn-secondaire btn-utilitaire"
                             title="Voir la liste des personnages et leurs particularités">
                         🎭 Personnages

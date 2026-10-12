@@ -309,17 +309,22 @@ def test_reprise_partie_avec_lettre(tmp_path):
     assert reprise.joueurs[1].niveau == Niveau.AVANCE
 
 
-@pytest.mark.parametrize("personnage_cle", ["chasseur_de_scrabbles", "lettre"])
+@pytest.mark.parametrize(
+    "personnage_cle", ["chasseur_de_scrabbles", "lettre", "opportuniste"]
+)
 def test_reprise_partie_avec_personnage_desactive_se_joue_normalement(
     tmp_path, personnage_cle
 ):
-    """Issue #459 : Chasseur de scrabbles et Lettré sont désactivés
-    (``Personnage.actif`` à ``False``), mais une partie sauvegardée avant
-    leur désactivation se charge et se joue normalement, sans erreur ni
-    changement de comportement — ``reprendre_partie`` ne vérifie aucune
-    disponibilité, et le profil résolu par
+    """Issues #459/#461 : Chasseur de scrabbles, Lettré et Opportuniste sont
+    désactivés (``Personnage.actif`` à ``False``), mais une partie
+    sauvegardée avant leur désactivation se charge et se joue normalement,
+    sans erreur ni changement de comportement — ``reprendre_partie`` ne
+    vérifie aucune disponibilité, et le profil résolu par
     :func:`~scrabble.moteur.personnages.profil_pour_niveau` reste le profil
-    complet du personnage, actif ou non."""
+    complet du personnage, actif ou non. Titeuf (également inactif depuis
+    l'issue #461) n'est disponible qu'à Débutant : couvert séparément par
+    ``test_reprise_partie_avec_titeuf_desactive_se_joue_normalement``
+    ci-dessous."""
     from scrabble.moteur.personnages import PERSONNAGES, profil_pour_niveau
 
     assert PERSONNAGES[personnage_cle].actif is False
@@ -340,6 +345,32 @@ def test_reprise_partie_avec_personnage_desactive_se_joue_normalement(
     profil = profil_pour_niveau(personnage_cle, reprise.joueurs[1].niveau)
     # La partie reste jouable : l'IA produit une entrée d'historique (coup
     # ou passe) sans exception, avec le profil complet du personnage.
+    entree_ia = reprise.jouer_tour_ia(profil)
+    assert entree_ia is not None
+
+
+def test_reprise_partie_avec_titeuf_desactive_se_joue_normalement(tmp_path):
+    """Même garantie que ci-dessus pour Titeuf (issue #461), disponible
+    uniquement à Débutant (:data:`~scrabble.moteur.personnages.
+    NIVEAUX_TITEUF`), donc testé séparément à ce niveau."""
+    from scrabble.moteur.personnages import PERSONNAGES, profil_pour_niveau
+
+    assert PERSONNAGES["titeuf"].actif is False
+
+    chemin = tmp_path / "parties.db"
+    trie = _trie()
+    partie, _graine, mot = _partie_ouvrable(
+        trie, nb_ia=1, niveaux_ia=[Niveau.DEBUTANT],
+        personnages_ia=["titeuf"],
+    )
+    id_partie = demarrer_suivi(partie, chemin)
+    entree = partie.jouer_coup(_coup_ouverture(mot))
+    enregistrer_action(id_partie, entree, chemin)
+
+    reprise = reprendre_partie(id_partie, trie, chemin)
+
+    assert reprise.joueurs[1].personnage == "titeuf"
+    profil = profil_pour_niveau("titeuf", reprise.joueurs[1].niveau)
     entree_ia = reprise.jouer_tour_ia(profil)
     assert entree_ia is not None
 

@@ -72,6 +72,7 @@ from scrabble.moteur.personnages import (
     MESSAGE_PERSONNAGES_RESERVES_DEUX_JOUEURS,
     PERSONNAGES,
     explication_disponibilite_niveaux,
+    interface_personnages_visible,
     libelle_choix_accueil,
     libelle_niveaux,
     libelle_niveaux_aleatoire,
@@ -535,7 +536,15 @@ class ApiAccueil:
         (« Toutes les parties », ou « Parties à deux joueurs ») : même champs
         et même présentation que la fenêtre « Les personnages » en cours de
         partie (:func:`~scrabble.moteur.personnages.lister_personnages`).
+
+        Liste vide (même Classique, même « Aléatoire ») dès que
+        :func:`~scrabble.moteur.personnages.interface_personnages_visible` est
+        fausse (issue #461) : moins de deux personnages actifs, plus aucun
+        choix n'a de sens — le JS masque alors tout le sélecteur et le lien
+        « Les personnages » (voir :meth:`interface_personnages_visible`).
         """
+        if not interface_personnages_visible():
+            return []
         resultat = [
             {
                 "cle": personnage.cle,
@@ -557,6 +566,18 @@ class ApiAccueil:
             }
         )
         return resultat
+
+    def interface_personnages_visible(self) -> bool:
+        """Vrai si l'interface liée aux personnages doit être affichée (issue #461).
+
+        Simple délégation à :func:`~scrabble.moteur.personnages.
+        interface_personnages_visible` (moins de deux personnages actifs dans
+        le registre → interface entièrement masquée), exposée au JS pour
+        qu'il masque le sélecteur de personnage et le lien « Les personnages »
+        dès le chargement de l'accueil, sans attendre un premier appel à
+        :meth:`obtenir_personnages`.
+        """
+        return interface_personnages_visible()
 
     def obtenir_disponibilite_niveaux_personnage(
         self, personnage_cle: str

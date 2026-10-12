@@ -53,7 +53,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const drapeauFrance = document.getElementById('drapeau-france');
     const drapeauBelgique = document.getElementById('drapeau-belgique');
 
-    // Sélecteur de personnage (issue #440, lot D)
+    // Sélecteur de personnage (issue #440, lot D). ``zonePersonnage``
+    // contient tout le bloc (sélecteur, textes d'explication et bouton
+    // « Les personnages » ci-dessous) : la masquer suffit à masquer le bloc
+    // entier quand moins de deux personnages sont actifs (issue #461, voir
+    // appliquerVisibilitePersonnages).
+    const zonePersonnage = document.getElementById('zone-personnage');
     const selectPersonnage = document.getElementById('select-personnage');
     const descriptionPersonnage = document.getElementById('description-personnage');
     // Explication de la restriction de niveaux du personnage choisi (issue
@@ -526,6 +531,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     });
+
+    /**
+     * Masque tout le bloc personnage (sélecteur, textes d'explication, lien
+     * « Les personnages ») dès que moins de deux personnages sont actifs
+     * dans le registre (issue #461) : à cette première diffusion, seul
+     * Classique est actif, donc choisir un personnage n'a plus aucun sens.
+     * Calculée côté Python depuis le registre
+     * (api.interface_personnages_visible()) : réactiver un second
+     * personnage y suffit pour faire réapparaître ce bloc, sans toucher à ce
+     * fichier. En cas d'échec de l'appel, masqué par prudence.
+     */
+    async function appliquerVisibilitePersonnages() {
+        let visible = false;
+        try {
+            visible = await api.interface_personnages_visible();
+        } catch (err) {
+            visible = false;
+        }
+        zonePersonnage.hidden = !visible;
+    }
 
     /**
      * Charge les personnages du registre (issue #440, lot D) et construit les
@@ -1188,6 +1213,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Sélecteur de personnage (issue #440, lot D), construit depuis le
     // registre dès l'affichage de l'accueil.
     await chargerPersonnages();
+    // Masquage de tout le bloc personnage si moins de deux personnages sont
+    // actifs (issue #461) — après chargerPersonnages, sans en dépendre.
+    await appliquerVisibilitePersonnages();
 
     // Issue #434 : aucune configuration de partie ne doit démarrer sans
     // joueur humain présent (ou en cours de saisie). Le seeding automatique

@@ -2620,6 +2620,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialisation : thème puis premier état public
     // ------------------------------------------------------------------ //
     await appliquerTheme();
+    // Bouton « Les personnages » (issue #442, lot F) : masqué tant que moins
+    // de deux personnages sont actifs dans le registre (issue #461) — à
+    // cette première diffusion, seul Classique est actif. Calculé côté
+    // Python depuis le registre ; masqué par prudence si l'appel échoue.
+    try {
+        btnLesPersonnages.hidden = !(await api.interface_personnages_visible());
+    } catch (err) {
+        btnLesPersonnages.hidden = true;
+    }
     try {
         const initial = await api.obtenir_etat_plateau();
         appliquerEtatPlateau(initial);

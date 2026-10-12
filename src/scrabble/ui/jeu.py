@@ -62,6 +62,7 @@ from scrabble.moteur.partie import (
     recreer_partie_meme_joueurs,
 )
 from scrabble.moteur.personnages import (
+    interface_personnages_visible,
     libelle_personnage_partie,
     lister_personnages,
     obtenir_personnage,
@@ -1508,6 +1509,16 @@ class ApiJeu(MixinDiffusion, MixinTirageOrdre, MixinTourEtFinPartie, MixinPose, 
                 joueur.personnage_aleatoire for joueur in adversaires
             )
         return lister_personnages(cles_dans_partie, aleatoire_dans_partie)
+
+    def interface_personnages_visible(self) -> bool:
+        """Vrai si le bouton « Personnages » doit être affiché (issue #461).
+
+        Simple délégation à :func:`~scrabble.moteur.personnages.
+        interface_personnages_visible` (moins de deux personnages actifs dans
+        le registre → interface entièrement masquée), exposée au JS pour
+        masquer le bouton dès l'initialisation de l'écran de jeu.
+        """
+        return interface_personnages_visible()
 
     def obtenir_historique(self) -> list[dict[str, Any]]:
         """Liste des coups **sans** le détail du score, chargée à la demande.

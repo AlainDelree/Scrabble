@@ -17,6 +17,10 @@ Couvre :
 
 from __future__ import annotations
 
+from dataclasses import replace
+
+import pytest
+
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import Joueur, Partie
 from scrabble.moteur.personnages import CLE_ALEATOIRE, PERSONNAGES
@@ -28,6 +32,20 @@ from scrabble.ui.jeu import (
     serialiser_joueur_public,
 )
 from tests._aides_test_jeu import _DicoFactice
+
+
+@pytest.fixture
+def opportuniste_actif(monkeypatch):
+    """Réactive Opportuniste (inactif par défaut depuis l'issue #461,
+    décision de ne proposer aucun personnage dans la première version
+    diffusée), le temps d'un test, pour continuer à couvrir un mécanisme
+    générique (libellé, repérage « dans la partie »...) indépendant de
+    l'activité du personnage lui-même — procédure de réactivation
+    documentée par le module ``personnages``, simulée via ``monkeypatch``
+    sans toucher au code."""
+    monkeypatch.setitem(
+        PERSONNAGES, "opportuniste", replace(PERSONNAGES["opportuniste"], actif=True)
+    )
 
 
 def _partie_avec_ia(personnage: str = "", personnage_aleatoire: bool = False) -> Partie:
@@ -210,7 +228,23 @@ class TestPersonnageLibelleAffichage:
         pub = serialiser_joueur_public(joueur, index=0, courant=False)
         assert pub["personnage_libelle"] == ""
 
-    def test_personnage_explicite_porte_son_prenom(self):
+    def test_personnage_explicite_vide_interface_masquee(self):
+        """Opportuniste inactif (issue #461) : l'interface liée aux
+        personnages est masquée (moins de deux personnages actifs), donc
+        plus aucun libellé entre parenthèses, même pour un personnage choisi
+        explicitement — remplace
+        ``test_personnage_explicite_porte_son_prenom``, devenu faux par
+        construction."""
+        joueur = Joueur(
+            nom="Thomas", humain=False, niveau=Niveau.FACILE, personnage="opportuniste"
+        )
+        pub = serialiser_joueur_public(joueur, index=0, courant=False)
+        assert pub["nom"] == "Thomas"
+        assert pub["personnage_libelle"] == ""
+
+    def test_personnage_explicite_porte_son_prenom_si_interface_visible(
+        self, opportuniste_actif
+    ):
         joueur = Joueur(
             nom="Thomas", humain=False, niveau=Niveau.FACILE, personnage="opportuniste"
         )
@@ -218,16 +252,42 @@ class TestPersonnageLibelleAffichage:
         assert pub["nom"] == "Thomas"
         assert pub["personnage_libelle"] == "Opportuniste"
 
-    def test_aleatoire_pendant_la_partie_affiche_aleatoire_seul(self):
+    def test_aleatoire_pendant_la_partie_vide_interface_masquee(self):
+        partie = _partie_avec_ia("opportuniste", personnage_aleatoire=True)
+        etat = etat_public(partie, id_partie=1)
+        joueur_ia = next(j for j in etat["joueurs"] if not j["humain"])
+        assert joueur_ia["nom"] == "Thomas"
+        assert joueur_ia["personnage_libelle"] == ""
+
+    def test_aleatoire_pendant_la_partie_affiche_aleatoire_seul_si_interface_visible(
+        self, opportuniste_actif
+    ):
         partie = _partie_avec_ia("opportuniste", personnage_aleatoire=True)
         etat = etat_public(partie, id_partie=1)
         joueur_ia = next(j for j in etat["joueurs"] if not j["humain"])
         assert joueur_ia["nom"] == "Thomas"
         assert joueur_ia["personnage_libelle"] == "Aléatoire"
 
-    def test_aleatoire_revele_en_fin_de_partie_pour_chaque_personnage(self):
+    def test_aleatoire_revele_en_fin_de_partie_vide_interface_masquee(self):
+        """Interface masquée (issue #461) : jamais rien à révéler, même en
+        fin de partie — remplace
+        ``test_aleatoire_revele_en_fin_de_partie_pour_chaque_personnage``
+        pour ce cas par défaut, la variante avec interface visible
+        continuant de couvrir chaque personnage ci-dessous."""
+        for cle in PERSONNAGES:
+            partie = _partie_avec_ia(cle, personnage_aleatoire=True)
+            partie.terminee = True
+            etat = etat_public(partie, id_partie=1)
+            joueur_ia = next(j for j in etat["joueurs"] if not j["humain"])
+            assert joueur_ia["nom"] == "Thomas"
+            assert joueur_ia["personnage_libelle"] == ""
+
+    def test_aleatoire_revele_en_fin_de_partie_pour_chaque_personnage_si_interface_visible(
+        self, opportuniste_actif
+    ):
         """Une fois ``partie.terminee``, le libellé devient « Aléatoire :
-        <Personnage> », Classique compris (point 3 de l'issue #441)."""
+        <Personnage> », Classique compris (point 3 de l'issue #441), dès que
+        l'interface est visible (deux personnages actifs)."""
         for cle, personnage in PERSONNAGES.items():
             partie = _partie_avec_ia(cle, personnage_aleatoire=True)
             partie.terminee = True
@@ -236,9 +296,23 @@ class TestPersonnageLibelleAffichage:
             assert joueur_ia["nom"] == "Thomas"
             assert joueur_ia["personnage_libelle"] == f"Aléatoire : {personnage.prenom}"
 
-    def test_personnage_choisi_explicitement_jamais_revele_en_fin_de_partie(self):
+    def test_personnage_choisi_explicitement_vide_interface_masquee(self):
+        """Opportuniste inactif (issue #461) : interface masquée, plus rien
+        à afficher, même pour un personnage choisi à l'avance — remplace
+        ``test_personnage_choisi_explicitement_jamais_revele_en_fin_de_partie``
+        pour ce cas par défaut."""
+        partie = _partie_avec_ia("opportuniste", personnage_aleatoire=False)
+        partie.terminee = True
+        etat = etat_public(partie, id_partie=1)
+        joueur_ia = next(j for j in etat["joueurs"] if not j["humain"])
+        assert joueur_ia["personnage_libelle"] == ""
+
+    def test_personnage_choisi_explicitement_jamais_revele_en_fin_de_partie_si_interface_visible(
+        self, opportuniste_actif
+    ):
         """Un personnage choisi à l'avance n'a rien à « révéler » : son nom
-        l'annonçait déjà pendant toute la partie (contrainte du point 3)."""
+        l'annonçait déjà pendant toute la partie (contrainte du point 3),
+        dès que l'interface est visible (deux personnages actifs)."""
         partie = _partie_avec_ia("opportuniste", personnage_aleatoire=False)
         partie.terminee = True
         etat = etat_public(partie, id_partie=1)
@@ -290,11 +364,23 @@ class TestApiJeuObtenirPersonnages:
     point comme condition de test explicite.
     """
 
-    def test_sans_partie_chargee_renvoie_la_liste_sans_marquage(self):
-        """``ApiJeu()`` vide (pas encore de ``charger_partie``) doit tout de
-        même renvoyer la liste des personnages ACTIFS, simplement sans aucun
-        marquage — Chasseur de scrabbles et Lettré, inactifs (issue #459),
-        en sont exclus."""
+    def test_sans_partie_chargee_renvoie_la_liste_vide_interface_masquee(self):
+        """``ApiJeu()`` vide (pas encore de ``charger_partie``) : interface
+        masquée par défaut (issue #461, Opportuniste et Titeuf inactifs,
+        Classique seul actif) — remplace
+        ``test_sans_partie_chargee_renvoie_la_liste_sans_marquage`` pour ce
+        cas par défaut, la variante avec interface visible ci-dessous
+        continuant de couvrir l'absence de marquage."""
+        api = ApiJeu()
+        assert api.obtenir_personnages() == []
+
+    def test_sans_partie_chargee_renvoie_la_liste_sans_marquage_si_interface_visible(
+        self, opportuniste_actif
+    ):
+        """Une fois l'interface visible (deux personnages actifs), la liste
+        des personnages ACTIFS est renvoyée, simplement sans aucun
+        marquage — Chasseur de scrabbles, Lettré (issue #459) et Titeuf
+        (issue #461), tous inactifs, en restent exclus."""
         api = ApiJeu()
         personnages = api.obtenir_personnages()
         cles = [p["cle"] for p in personnages]
@@ -303,7 +389,9 @@ class TestApiJeuObtenirPersonnages:
         ]
         assert all(not p["dans_la_partie"] for p in personnages)
 
-    def test_personnage_choisi_explicitement_est_marque_dans_la_partie(self):
+    def test_personnage_choisi_explicitement_est_marque_dans_la_partie(
+        self, opportuniste_actif
+    ):
         partie = _partie_avec_deux_ia(personnage_a="opportuniste", aleatoire_a=False)
         api = ApiJeu(partie, id_partie=None)
 
@@ -312,7 +400,7 @@ class TestApiJeuObtenirPersonnages:
         marques = {p["cle"] for p in personnages if p["dans_la_partie"]}
         assert marques == {"opportuniste"}
 
-    def test_personnage_tire_au_hasard_nest_jamais_marque(self):
+    def test_personnage_tire_au_hasard_nest_jamais_marque(self, opportuniste_actif):
         """Même si l'identité réellement tirée est connue du moteur
         (``Joueur.personnage``), le tirage ne doit rien laisser deviner avant
         la fin de la partie : SON entrée (« Opportuniste ») ne doit pas être
@@ -331,7 +419,9 @@ class TestApiJeuObtenirPersonnages:
         opportuniste = next(p for p in personnages if p["cle"] == "opportuniste")
         assert opportuniste["dans_la_partie"] is False
 
-    def test_aleatoire_marque_des_quun_adversaire_y_est_regle(self):
+    def test_aleatoire_marque_des_quun_adversaire_y_est_regle(
+        self, opportuniste_actif
+    ):
         """Issue #443 (lot F bis) : un adversaire choisi explicitement et un
         autre réglé sur Aléatoire cohabitent — le premier est marqué par sa
         propre entrée, ET l'entrée Aléatoire est marquée à son tour (elle ne
@@ -350,7 +440,9 @@ class TestApiJeuObtenirPersonnages:
         marques = {p["cle"] for p in personnages if p["dans_la_partie"]}
         assert marques == {"opportuniste", CLE_ALEATOIRE}
 
-    def test_aleatoire_non_marque_si_aucun_adversaire_regle_dessus(self):
+    def test_aleatoire_non_marque_si_aucun_adversaire_regle_dessus(
+        self, opportuniste_actif
+    ):
         partie = _partie_avec_deux_ia(personnage_a="opportuniste", aleatoire_a=False)
         api = ApiJeu(partie, id_partie=None)
 
