@@ -8,16 +8,36 @@ et ce `README.md` sont suivis par git.
 
 ## Dépendances externes à déposer manuellement (nouveau clone/poste)
 
-`build\rebuild_scrabble.bat` vérifie leur présence en étape 0 et s'arrête
-immédiatement si l'une manque. Sur un nouveau clone ou un nouveau poste de
-build, déposez-les avant de lancer un build complet :
+`build\rebuild_scrabble.bat` vérifie sa présence en étape 0 et s'arrête
+immédiatement si elle manque. Sur un nouveau clone ou un nouveau poste de
+build, déposez-la avant de lancer un build complet :
 
 - `.tools\InnoSetup6\ISCC.exe` — installation portable d'Inno Setup 6 (voir
   section Prérequis ci-dessous). Non suivi par git (`.gitignore` ignore
   `.tools\`).
-- `data\dictionnaire\French-Scrabble-ODS8-main\` (et les autres dictionnaires
-  utilisés) — voir `data\dictionnaire\README.md` pour le détail complet et
-  la justification (licence floue, contenu tiers non redistribuable).
+
+## Dictionnaires : absents du build et de l'installeur (issue #460)
+
+Contrairement à avant l'issue #460, **`data\dictionnaire\` n'est pas une
+dépendance de ce build** : le dépôt du jeu étant public et l'updater
+Actualise téléchargeant les mises à jour sans identifiant, aucun fichier de
+`data\dictionnaire\` (dictionnaires tiers ODS8/Hunspell, définitions, mots
+courants, caches, personnalisations, belgicismes) n'est embarqué ni dans
+`Scrabble-Setup.exe`, ni dans l'archive `scrabble-vN.zip` d'Actualise (voir
+`scrabble.spec`). `rebuild_scrabble.bat` ne vérifie donc plus sa présence
+avant de lancer un build (il affiche un simple message d'information en
+étape 0, et PyInstaller ne regarde même plus ce dossier).
+
+Ces données sont déposées **à la main par Alain**, après installation, dans
+le dossier `data` situé à côté de `Scrabble.exe` (voir
+`data\dictionnaire\README.md` pour le détail complet et la justification —
+licence floue, contenu tiers non redistribuable). L'installeur affiche un
+rappel de cet emplacement exact à la fin de l'installation. Les mises à jour
+ultérieures via Actualise ne touchent pas à ces données (elles ne
+suppriment que les chemins listés dans le manifeste de l'archive, qui ne
+contient jamais de chemin `data\dictionnaire`) : un poste déjà équipé garde
+ses dictionnaires d'une mise à jour à l'autre, et une désinstallation ne les
+efface plus non plus (voir `[UninstallDelete]` dans `scrabble.iss`).
 
 ## Quel script lancer
 

@@ -147,12 +147,34 @@ begin
   SaveStringToFile(DossierActualise + 'config_scrabble.json', Contenu, False);
 end;
 
+// Message de fin d'installation (issue #460) : le dépôt du jeu étant public,
+// les dictionnaires et listes de mots (data\dictionnaire) ne sont plus
+// embarqués dans cet installeur (voir scrabble.spec) — rappel de
+// l'emplacement exact où les déposer à la main avant le premier lancement,
+// faute de quoi le jeu démarre normalement mais valide zéro mot (voir
+// data\dictionnaire\README.md).
+procedure AfficherMessageDictionnaires();
+begin
+  MsgBox(
+    'Les dictionnaires ne sont pas inclus dans cet installeur (dépôt public).' + #13#10 +
+    #13#10 +
+    'Avant le premier lancement de Scrabble, copiez-les manuellement dans :' + #13#10 +
+    ExpandConstant('{app}') + '\data\' + #13#10 +
+    #13#10 +
+    'Sans cela, le jeu démarre normalement mais valide zéro mot ' +
+    '(voir data\dictionnaire\README.md).',
+    mbInformation, MB_OK);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
     SupprimerAncienneInstanceActualise();
   if CurStep = ssPostInstall then
+  begin
     CreerConfigScrabble();
+    AfficherMessageDictionnaires();
+  end;
 end;
 
 // Indique si un autre config_*.json (une autre application partageant
@@ -195,12 +217,22 @@ begin
 end;
 
 [UninstallDelete]
-; Nettoyage des fichiers générés à l'usage par le jeu (config.json, logs/,
-; data/parties.db, mots_ajoutes_*/mots_retires_*) qui ne font pas partie de
-; [Files] et que le désinstalleur par défaut d'Inno Setup ne supprime donc pas.
-; La suppression de config_scrabble.json (instance partagée C:\Actualise\)
-; est traitée séparément par CurUninstallStepChanged ci-dessus, car elle est
-; conditionnelle au partage avec d'autres applications.
+; Nettoyage des fichiers générés à l'usage par le jeu qui ne font pas partie
+; de [Files] et que le désinstalleur par défaut d'Inno Setup ne supprime donc
+; pas. La suppression de config_scrabble.json (instance partagée
+; C:\Actualise\) est traitée séparément par CurUninstallStepChanged ci-dessus,
+; car elle est conditionnelle au partage avec d'autres applications.
+;
+; {app}\data n'est PLUS supprimé en bloc (issue #460) : le dépôt étant
+; public, data\dictionnaire (dictionnaires tiers, définitions, mots
+; courants, caches, personnalisations) n'est plus embarqué dans l'archive/
+; l'installeur (voir scrabble.spec) — il est déposé à la main par Alain
+; après installation et doit survivre à une désinstallation ou une
+; réinstallation. Même règle pour les fichiers déposés à la main dans
+; data\personnages (ex. lettre_mots_meral.txt, jamais suivi par git) : seuls
+; les personnages eux-mêmes sont hors périmètre de cette issue, pas la
+; persistance de ces fichiers. Supprimer {app}\data en bloc effacerait ces
+; deux dossiers à chaque désinstallation/réinstallation, obligeant Alain à
+; redéposer les dictionnaires à la main sur un poste déjà équipé.
 Type: filesandordirs; Name: "{app}\logs"
-Type: filesandordirs; Name: "{app}\data"
 Type: files; Name: "{app}\config.json"
