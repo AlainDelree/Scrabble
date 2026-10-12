@@ -4,6 +4,39 @@ Ce dossier accueille les dictionnaires tiers utilisés par le projet Scrabble.
 **Ces fichiers ne sont jamais commités dans le dépôt git** : leur redistribution
 publique est à éviter (licence floue pour l'ODS8, licences propres pour Hunspell).
 
+## Build et installeur : rien de ce dossier n'est embarqué (issue #460)
+
+Le dépôt du jeu est **public** et l'updater Actualise télécharge les mises à
+jour (archive de Release GitHub) sans identifiant : tout ce qui serait
+embarqué dans l'archive serait donc public. Depuis l'issue #460, **aucun
+fichier de `data/dictionnaire/`** (dictionnaires tiers ODS8/Hunspell,
+`definitions.json`, `mots_courants*.txt`, caches `trie_cache*.pkl`,
+`belgicismes_a_revoir.csv`, personnalisations `mots_ajoutes_*`/
+`mots_retires_*`, listes `classiques_*`, ce `README.md` lui-même) n'est
+embarqué ni dans l'archive `scrabble-vN.zip` d'Actualise, ni dans
+`Scrabble-Setup.exe` (voir `scrabble.spec` et `installeur/scrabble.iss`). Ce
+qui reste embarqué : les ressources de l'interface (`src/scrabble/ui/web/`),
+l'icône, et le code. Les fichiers de `data/personnages/` ne sont pas
+concernés par cette issue et suivent leur propre règle (voir ce dossier).
+
+**Emplacement où déposer les données sur un PC** : à la main, après
+installation du jeu, dans le dossier `data` situé à côté de `Scrabble.exe`
+(`{dossier d'installation}\data\`, par défaut
+`C:\Program Files\Scrabble\data\`) — mêmes sous-chemins que ci-dessous
+(`French-Scrabble-ODS8-main\`, `hunspell-french-dictionaries-v7.7\`,
+`Lexique383.tsv`, etc.). Sans cela, le jeu démarre normalement mais valide
+zéro mot. L'installeur affiche un rappel de cet emplacement exact à la fin
+de l'installation.
+
+**Les mises à jour du jeu (Actualise) ne touchent pas aux données** :
+Actualise extrait l'archive de mise à jour par-dessus le dossier
+d'installation et ne supprime que les chemins listés dans le manifeste de
+l'archive (`manifest.json`) — un fichier présent sur disque mais absent de
+l'archive et du manifeste (c'est le cas de tout `data/dictionnaire/`,
+puisqu'il n'y est jamais inclus) survit donc à toute mise à jour. Un
+ordinateur déjà équipé garde ses dictionnaires d'une mise à jour à l'autre ;
+seul un nouvel ordinateur demande un dépôt manuel.
+
 ## Contenu attendu
 
 Déposez manuellement ici, à cet emplacement, sans les ajouter au suivi git :

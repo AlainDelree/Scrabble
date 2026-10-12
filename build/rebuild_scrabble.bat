@@ -27,16 +27,12 @@ if not exist ".tools\InnoSetup6\ISCC.exe" (
     popd
     exit /b 1
 )
-if not exist "data\dictionnaire\French-Scrabble-ODS8-main" (
-    echo.
-    echo ERREUR : data\dictionnaire\French-Scrabble-ODS8-main introuvable.
-    echo Deposez le dictionnaire ODS8 a cet emplacement exact
-    echo ^(data\dictionnaire\French-Scrabble-ODS8-main\^) avant de lancer ce script
-    echo ^(voir data\dictionnaire\README.md^).
-    popd
-    exit /b 1
-)
 echo Dependances externes presentes. OK.
+echo.
+echo INFO : data\dictionnaire n'est plus requis pour ce build ^(issue #460^) --
+echo le depot etant public, les dictionnaires et listes de mots ne sont plus
+echo embarques dans l'archive/l'installeur. Ils sont deposes a la main par
+echo Alain sur chaque poste, apres installation ^(voir data\dictionnaire\README.md^).
 echo.
 
 REM --- 0bis. Determiner le numero de build (nom du zip scrabble-vN.zip) -----
@@ -97,7 +93,11 @@ if errorlevel 1 (
     popd
     exit /b 1
 )
-robocopy "%ORIGDIR%" "%LOCALBUILD%" /E /XD ".git" "venv" ".venv_build" "dist" "build" "__pycache__" ".pytest_cache" "logs" "Exemples plateau" "issue-attachments" /NFL /NDL /NJH /NJS /NC /NS /NP >nul
+REM data\dictionnaire exclu (issue #460) : plus lu par scrabble.spec (plus
+REM embarque dans l'archive), inutile de le copier vers le repertoire de
+REM build local -- chemin complet pour ne pas confondre avec
+REM src\scrabble\dictionnaire\ (code source, lui necessaire au build).
+robocopy "%ORIGDIR%" "%LOCALBUILD%" /E /XD ".git" "venv" ".venv_build" "dist" "build" "__pycache__" ".pytest_cache" "logs" "Exemples plateau" "issue-attachments" "%ORIGDIR%\data\dictionnaire" /NFL /NDL /NJH /NJS /NC /NS /NP >nul
 if %errorlevel% geq 8 (
     echo.
     echo ERREUR : la copie des sources vers %LOCALBUILD% a echoue.
