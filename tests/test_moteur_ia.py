@@ -306,6 +306,7 @@ class TestScoreMoyenParNiveau:
         moy_debutant = moyenne_scores(Niveau.DEBUTANT)
         assert moy_expert > moy_debutant
 
+    @pytest.mark.lent
     def test_expert_score_moyen_entre_intermediaire_et_avance(self):
         """EXPERT (top 5 %) se situe strictement entre INTERMEDIAIRE et AVANCE.
 
@@ -2111,6 +2112,7 @@ class TestProgressionTrieIaRestreint:
         assert len(coups_ia) >= 10
         assert len({cn.score for cn in coups_ia}) >= 3
 
+    @pytest.mark.lent
     def test_progression_monotone_avec_filtre_actif(self):
         """La progression reste STRICTEMENT monotone avec le Trie IA restreint.
 
@@ -2131,6 +2133,7 @@ class TestProgressionTrieIaRestreint:
         for a, b in zip(_ORDRE_CROISSANT_ATTENDU, _ORDRE_CROISSANT_ATTENDU[1:]):
             assert moy[a] < moy[b], f"{a} devrait être < {b} : {moy}"
 
+    @pytest.mark.lent
     def test_niveaux_restent_perceptiblement_distincts(self):
         """Aucun niveau ne se confond avec son voisin sous le filtre.
 
@@ -2151,6 +2154,7 @@ class TestProgressionTrieIaRestreint:
             ecart = moy[b] - moy[a]
             assert ecart >= 1.0, f"{a} et {b} trop proches sous filtre : {moy}"
 
+    @pytest.mark.lent
     def test_ordre_relatif_identique_avec_et_sans_filtre(self):
         """L'ordre RELATIF des quatre niveaux à palier est identique avec et
         sans filtre.
@@ -2182,6 +2186,7 @@ class TestProgressionTrieIaRestreint:
             niveaux_a_palier, key=lambda niv: moy_ia[niv]
         )
 
+    @pytest.mark.lent
     def test_ecart_avance_debutant_se_resserre_sous_filtre(self):
         """Mesure le resserrement Avancé↔Débutant sous filtre (point #4).
 

@@ -17,6 +17,7 @@ from scrabble.ui.accueil import (
     NIVEAUX_LABELS,
 )
 from scrabble.ui.noms_ordinateur import PRENOMS_ORDINATEUR
+from tests._aides_test_environnement import palier_vocabulaire_indisponible
 
 
 @pytest.fixture
@@ -1882,6 +1883,16 @@ class TestApiAccueilInfosTirage:
         assert result["succes"] is True
         assert "tirage_ordre" not in result
 
+    @pytest.mark.skipif(
+        palier_vocabulaire_indisponible("intermediaire"),
+        reason=(
+            "vocabulaire IA du palier 'intermediaire' indisponible (fichier "
+            "absent de data/dictionnaire/, non répliqué dans un dossier de "
+            "travail isolé) : ajouter_ordinateur('Intermédiaire') échoue "
+            "silencieusement, faussant le test sans rapport avec le routage "
+            "vérifié ici (issue #464)"
+        ),
+    )
     def test_infos_tirage_memorisees(self, monkeypatch):
         """Les infos de tirage sont mémorisées dans l'ordre de création.
 

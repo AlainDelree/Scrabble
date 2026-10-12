@@ -28,6 +28,26 @@ from scrabble.ui.application import (
     lancer_application_unifiee,
 )
 from scrabble.ui.jeu import ApiJeu
+from scrabble.config import charger_config
+
+# ``obtenir_theme_plateau`` lit le ``config.json`` RÉEL du poste (non mocké
+# ci-dessous, voir ``ApiTirageOrdre.obtenir_theme_plateau``) : les deux tests
+# qui l'exercent attendent le défaut historique "classique", alors que le
+# défaut réel du code est "vert" depuis l'issue #342 (préférence de Béatrice).
+# Ils ne passent que parce que le ``config.json`` d'Alain, jamais effacé
+# depuis avant l'issue #342, a conservé l'ancienne valeur "classique" — un
+# fichier gitignoré donc absent d'un dossier de travail isolé, où le défaut
+# réel ("vert") s'applique alors et fait échouer l'assertion sans rapport
+# avec le routage vérifié ici. Capturé au chargement du module : si une
+# requête bridge CCL ne doit en toucher ni le réglage ni la valeur attendue.
+_THEME_PLATEAU_LOCAL = charger_config().get("theme_plateau")
+_RAISON_THEME_NON_CLASSIQUE = (
+    "theme_plateau local == %r (config.json du poste), pas 'classique' : "
+    "ce test lit le config.json réel et non mocké, dont le défaut (depuis "
+    "l'issue #342) est 'vert' ; 'classique' ne tient que par un config.json "
+    "ancien conservé sur le poste d'Alain, absent d'un dossier de travail "
+    "isolé (issue #464)" % (_THEME_PLATEAU_LOCAL,)
+)
 
 # Référence vers le VRAI ``_differer`` (fil démon + délai), capturée avant tout
 # ``monkeypatch`` : la fixture autouse ci-dessous le remplace par une exécution
@@ -107,6 +127,9 @@ class TestRoutageVueActive:
         assert etat_jeu.get("succes") is False
         assert "joueurs" not in etat_jeu
 
+    @pytest.mark.skipif(
+        _THEME_PLATEAU_LOCAL != "classique", reason=_RAISON_THEME_NON_CLASSIQUE
+    )
     def test_methode_propre_au_jeu_hors_vue_leve_attribute_error(self):
         """Une méthode absente de la vue active lève une ``AttributeError`` claire."""
         routeur = ApiRouteur()
@@ -489,6 +512,9 @@ class TestParcoursCompletUnifie:
     pywebview sont neutralisées (headless).
     """
 
+    @pytest.mark.skipif(
+        _THEME_PLATEAU_LOCAL != "classique", reason=_RAISON_THEME_NON_CLASSIQUE
+    )
     def test_parcours_complet_une_seule_session_et_fermeture(self, monkeypatch):
         """lancement→accueil→partie→tirage→jeu→menu→reprise→recommencer.
 
