@@ -342,3 +342,49 @@ class TestTaillesAffichesDansListePersonnages:
     def test_personnages_css_definit_le_style_dedie(self):
         css = _lire("personnages.css")
         assert ".personnage-entree-tailles" in css
+
+
+class TestMasquageHiddenNonEcraseParLeStyle:
+    """Un élément ``hidden`` ne doit jamais rester affiché (issue #462).
+
+    Avant correction, ``zone-personnage.hidden = true`` (accueil.js) restait
+    sans effet visuel : la règle d'auteur ``.zone-personnage { display: flex
+    }`` (accueil.css) l'emportait sur le ``[hidden] { display: none }`` par
+    défaut du navigateur, qui n'est qu'une règle UA — toujours perdante face
+    à une règle d'auteur, quels que soient la spécificité ou l'ordre. La
+    correction ajoute une règle d'auteur générale et prioritaire
+    (``!important``) plutôt qu'un correctif ciblé sur ``.zone-personnage``,
+    pour que tout élément masqué de l'accueil (présent ou futur) en
+    bénéficie durablement.
+    """
+
+    def test_regle_hidden_display_none_important_presente(self):
+        css = _lire("accueil.css")
+        assert re.search(r"\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}", css), (
+            "accueil.css doit définir [hidden] { display: none !important } "
+            "pour que le masquage l'emporte toujours sur les règles de "
+            "display des sélecteurs de classe (ex. .zone-personnage)"
+        )
+
+    def test_regle_hidden_nest_pas_limitee_a_zone_personnage(self):
+        """La règle doit cibler l'attribut ``[hidden]`` tout seul, pas un
+        sélecteur composé du style ``.zone-personnage[hidden]`` : un
+        correctif au cas par cas laisserait le même piège ouvert pour tout
+        autre élément masqué de l'accueil."""
+        css = _lire("accueil.css")
+        m = re.search(r"([^\n{]*)\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}", css)
+        assert m, "règle [hidden] introuvable"
+        prefixe = m.group(1).strip()
+        assert prefixe == "" or prefixe.endswith("\n") or prefixe == "", (
+            f"le sélecteur [hidden] ne doit pas être préfixé ({prefixe!r}) : "
+            "il doit rester un sélecteur d'attribut nu pour s'appliquer à "
+            "tous les éléments masqués de l'accueil"
+        )
+
+    def test_zone_personnage_garde_son_display_flex_normal(self):
+        """La correction ne doit pas retirer le ``display: flex`` normal de
+        ``.zone-personnage`` : quand deux personnages sont actifs, l'accueil
+        doit s'afficher exactement comme avant (issue #462, point 2)."""
+        css = _lire("accueil.css")
+        m = re.search(r"\.zone-personnage\s*\{([^}]+)\}", css)
+        assert m and "display: flex" in m.group(1)

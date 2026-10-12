@@ -39,6 +39,20 @@
     padding: 0;
 }
 
+/* Garde-fou durable (issue #462) : un élément ``hidden`` ne doit JAMAIS
+   rester affiché, même si une règle plus bas (ex. `.zone-personnage {
+   display: flex }`) cible le même élément. Sans cette règle, une déclaration
+   d'auteur l'emporte toujours sur le `[hidden] { display: none }` du
+   navigateur (règle UA, toujours perdante face à l'auteur quelle que soit la
+   spécificité ou l'ordre) : c'était la cause exacte du sélecteur de
+   personnage et du lien « Les personnages » qui restaient visibles à
+   l'accueil malgré ``zone-personnage.hidden = true``. Volontairement
+   générale (pas limitée à `.zone-personnage`) pour couvrir tout élément
+   masqué de cet écran, présent ou futur. */
+[hidden] {
+    display: none !important;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     /* Tapis de jeu vert (issue #75) : même traitement que le body de jeu.css.

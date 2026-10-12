@@ -46,6 +46,14 @@ async function capture(page, outName) {
           { cle: 'aleatoire', prenom: 'Aléatoire', description: 'Un caractère sera tiré au sort au lancement de la partie et restera secret jusqu\\u2019à l\\u2019écran de résultat.' },
         ]),
         obtenir_prenom_principal: async () => 'Alain',
+        // Interface personnages visible (issue #461) : la scène ci-dessus
+        // compte 3 personnages actifs dans le registre (classique,
+        // opportuniste, aléatoire), donc bien au-dessus du seuil de deux
+        // qui la ferait masquer — sans cette entrée, l'appel API échoue et
+        // zone-personnage/#btn-les-personnages restent masqués (issue
+        // #462 : la correction du masquage CSS rend ce mock obligatoire,
+        // alors qu'il passait inaperçu avant faute d'effet visible).
+        interface_personnages_visible: async () => true,
       },
     };
   `;
