@@ -150,9 +150,11 @@ end;
 // Message de fin d'installation (issue #460) : le dépôt du jeu étant public,
 // les dictionnaires et listes de mots (data\dictionnaire) ne sont plus
 // embarqués dans cet installeur (voir scrabble.spec) — rappel de
-// l'emplacement exact où les déposer à la main avant le premier lancement,
-// faute de quoi le jeu démarre normalement mais valide zéro mot (voir
-// data\dictionnaire\README.md).
+// l'emplacement exact où les déposer à la main avant le premier lancement.
+// Depuis l'issue #463, Scrabble refuse de lancer/reprendre une partie tant
+// que ce dépôt manuel n'est pas fait (message clair affiché dans le jeu),
+// au lieu de démarrer normalement en validant zéro mot comme auparavant —
+// texte harmonisé avec data\dictionnaire\README.md.
 procedure AfficherMessageDictionnaires();
 begin
   MsgBox(
@@ -161,8 +163,8 @@ begin
     'Avant le premier lancement de Scrabble, copiez-les manuellement dans :' + #13#10 +
     ExpandConstant('{app}') + '\data\' + #13#10 +
     #13#10 +
-    'Sans cela, le jeu démarre normalement mais valide zéro mot ' +
-    '(voir data\dictionnaire\README.md).',
+    'Sans cela, la partie ne pourra pas démarrer : le jeu affichera un ' +
+    'message le rappelant (voir data\dictionnaire\README.md).',
     mbInformation, MB_OK);
 end;
 

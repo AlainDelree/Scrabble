@@ -738,6 +738,69 @@ def test_ia_passe_si_aucun_coup():
     assert partie.index_courant == 1
 
 
+class _EspionJournalErreur:
+    """Remplaçant minimal de ``scrabble.journal`` : n'enregistre que les erreurs."""
+
+    def __init__(self) -> None:
+        self.erreurs: list[str] = []
+
+    def erreur(self, message: str, exc: BaseException | None = None) -> None:
+        self.erreurs.append(message)
+
+    def info(self, message: str) -> None:
+        pass
+
+
+def test_ia_passe_avec_vocabulaire_vide_journalise_anomalie(monkeypatch):
+    """Vocabulaire IA vide (issue #463) : la passe forcée est journalisée.
+
+    Défense en profondeur : si un Trie de niveau vide échappe aux contrôles de
+    l'accueil (ex. partie reprise dont le niveau est devenu indisponible
+    depuis le dernier lancement), l'ordinateur ne doit jamais passer son tour
+    sans qu'aucune trace de l'anomalie ne reste dans le journal.
+    """
+    import scrabble.moteur.partie as partie_mod
+
+    espion = _EspionJournalErreur()
+    monkeypatch.setattr(partie_mod, "journal_app", espion)
+
+    complet = _trie("CADRE")
+    vide = _trie()  # Vocabulaire du niveau vide : aucun mot chargé.
+    partie = Partie(
+        [Joueur("IA", humain=False, niveau=Niveau.DEBUTANT), Joueur("Humain")],
+        complet,
+        graine=1,
+        dictionnaires_ia={Niveau.DEBUTANT: vide},
+    )
+    partie.joueurs[0].chevalet[:] = list("CADREX")  # jouable sur dico complet
+
+    entree = partie.jouer_tour_ia()
+
+    assert entree.action == ACTION_PASSE
+    assert len(espion.erreurs) == 1
+    assert "vocabulaire IA vide" in espion.erreurs[0]
+
+
+def test_ia_passe_sans_vocabulaire_vide_ne_journalise_rien(monkeypatch):
+    """Non-régression : une passe normale (vocabulaire non vide) ne journalise rien."""
+    import scrabble.moteur.partie as partie_mod
+
+    espion = _EspionJournalErreur()
+    monkeypatch.setattr(partie_mod, "journal_app", espion)
+
+    partie = Partie(
+        [Joueur("IA", humain=False, niveau=Niveau.EXPERT), Joueur("Humain")],
+        _trie("CADRE"),
+        graine=1,
+    )
+    partie.joueurs[0].chevalet[:] = list("BCDFGHJ")  # aucune voyelle jouable
+
+    entree = partie.jouer_tour_ia()
+
+    assert entree.action == ACTION_PASSE
+    assert espion.erreurs == []
+
+
 def test_ia_joue_un_mot_existant():
     from scrabble.moteur.ia import Niveau
     partie = Partie(

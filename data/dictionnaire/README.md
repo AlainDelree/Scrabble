@@ -24,9 +24,12 @@ installation du jeu, dans le dossier `data` situé à côté de `Scrabble.exe`
 (`{dossier d'installation}\data\`, par défaut
 `C:\Program Files\Scrabble\data\`) — mêmes sous-chemins que ci-dessous
 (`French-Scrabble-ODS8-main\`, `hunspell-french-dictionaries-v7.7\`,
-`Lexique383.tsv`, etc.). Sans cela, le jeu démarre normalement mais valide
-zéro mot. L'installeur affiche un rappel de cet emplacement exact à la fin
-de l'installation.
+`Lexique383.tsv`, etc.). Sans cela, la partie ne peut pas démarrer : depuis
+l'issue #463, Scrabble détecte l'absence du dictionnaire de validation (ou
+du vocabulaire d'un niveau d'ordinateur) et refuse de lancer/reprendre la
+partie, avec un message clair rappelant cet emplacement exact — plutôt que
+de démarrer normalement en validant zéro mot comme auparavant. L'installeur
+affiche le même rappel à la fin de l'installation.
 
 **Les mises à jour du jeu (Actualise) ne touchent pas aux données** :
 Actualise extrait l'archive de mise à jour par-dessus le dossier

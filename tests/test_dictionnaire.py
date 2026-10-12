@@ -145,6 +145,47 @@ def test_paliers_disponibles_defaut_utilise_fichiers_vocabulaire_palier():
     assert set(paliers_disponibles()) == set(FICHIERS_VOCABULAIRE_PALIER)
 
 
+def test_paliers_disponibles_signale_le_fichier_vide(tmp_path):
+    """Un fichier de vocabulaire présent mais vide est signalé indisponible (issue #463).
+
+    Un dossier de données fabriqué (p. ex. recréé à la main et oublié à moitié
+    rempli) peut laisser un fichier de taille nulle plutôt qu'absent : même
+    anomalie pour l'IA (aucun mot), donc même signalement — pas de repli
+    silencieux sur un niveau qui n'a en réalité aucun vocabulaire chargé.
+    """
+    chemin_vide = tmp_path / "mots_courants_vide.txt"
+    chemin_vide.touch()
+    chemin_rempli = tmp_path / "mots_courants_rempli.txt"
+    chemin_rempli.write_text("CHAT\n", encoding="utf-8")
+    assert paliers_disponibles(
+        {"vide": chemin_vide, "rempli": chemin_rempli}
+    ) == {"vide": False, "rempli": True}
+
+
+# --------------------------------------------------------------------------- #
+# Message de blocage quand le dictionnaire de validation est absent (issue #463)
+# --------------------------------------------------------------------------- #
+
+def test_message_dictionnaire_indisponible_nomme_le_dossier_exact(tmp_path):
+    """Le message convivial cite le dossier exact où déposer les données."""
+    message = d.message_dictionnaire_indisponible(tmp_path)
+    assert str(tmp_path) in message
+
+
+def test_message_dictionnaire_indisponible_pas_de_vocabulaire_technique():
+    """Le message reste compréhensible sans connaissance technique du projet.
+
+    Pas de mention de « Trie », « cache », « ODS8 »/« Hunspell » ni de chemin
+    de code : seulement le constat, l'emplacement, et la marche à suivre
+    (contacter Alain) — voir le corps de l'issue #463.
+    """
+    message = d.message_dictionnaire_indisponible()
+    for terme_interdit in ("Trie", "cache", "ODS8", "Hunspell", ".py"):
+        assert terme_interdit not in message
+    assert "Alain" in message
+    assert "installés" in message or "installé" in message
+
+
 # --------------------------------------------------------------------------- #
 # Normalisation
 # --------------------------------------------------------------------------- #

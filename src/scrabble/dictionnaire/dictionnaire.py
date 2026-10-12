@@ -166,12 +166,19 @@ def paliers_disponibles(
 ) -> dict[str, bool]:
     """Disponibilité de chaque palier de vocabulaire IA (issue #369, lot C).
 
-    Un palier est disponible si son fichier de vocabulaire existe sur disque.
-    Contrairement à :func:`lire_liste_mots` (qui tolère silencieusement un
-    fichier absent en renvoyant un ensemble vide), cette fonction sert à
-    **détecter** l'absence plutôt qu'à s'en accommoder : un palier absent doit
-    être signalé à l'utilisatrice (niveau désactivé), pas remplacé
-    silencieusement par un vocabulaire vide ou un autre palier.
+    Un palier est disponible si son fichier de vocabulaire existe sur disque
+    **et n'est pas vide** (issue #463 : un dossier de données fraîchement
+    créé mais mal rempli peut contenir un fichier de taille nulle, ce qui
+    revient pour l'IA à n'avoir aucun mot — même anomalie qu'un fichier
+    absent, à signaler de la même façon plutôt qu'à laisser l'ordinateur
+    passer tous ses tours en silence). Le test de taille (``stat().st_size``)
+    est un simple appel système, sans lecture ni parsing du contenu : aucun
+    coût perceptible sur un ordinateur déjà équipé, où le fichier existe et
+    pèse plusieurs ko. Contrairement à :func:`lire_liste_mots` (qui tolère
+    silencieusement un fichier absent en renvoyant un ensemble vide), cette
+    fonction sert à **détecter** l'absence plutôt qu'à s'en accommoder : un
+    palier absent doit être signalé à l'utilisatrice (niveau désactivé), pas
+    remplacé silencieusement par un vocabulaire vide ou un autre palier.
 
     Ne couvre pas les paliers ``"expert"`` et ``"champion_du_monde"`` (aucune
     entrée dans :data:`FICHIERS_VOCABULAIRE_PALIER` : ils se résolvent vers
@@ -183,7 +190,10 @@ def paliers_disponibles(
     ``fichiers`` par défaut :data:`FICHIERS_VOCABULAIRE_PALIER` ; un mapping
     explicite reste accepté pour les tests.
     """
-    return {palier: chemin.exists() for palier, chemin in fichiers.items()}
+    return {
+        palier: chemin.exists() and chemin.stat().st_size > 0
+        for palier, chemin in fichiers.items()
+    }
 
 # Belgicismes à revoir (issue #274) : CSV colonnes ``mot`` /
 # ``définition(s) belge(s)`` / ``origine_wallonne`` / ``existe_sens_standard``,
@@ -1405,6 +1415,37 @@ def obtenir_trie_ia(
     except OSError:
         pass  # Un cache non écrit n'empêche pas de fonctionner.
     return trie
+
+
+# --------------------------------------------------------------------------- #
+# Message de blocage quand le dictionnaire de validation est absent (issue #463)
+# --------------------------------------------------------------------------- #
+
+def message_dictionnaire_indisponible(dossier: Path = DOSSIER_DICO) -> str:
+    """Message convivial (français, sans vocabulaire technique) d'absence de données.
+
+    Avant cette issue, un dictionnaire de validation absent ou vide (dossier
+    de données jamais rempli, ou effacé) laissait la partie démarrer
+    normalement tout en validant zéro mot, en violation de la règle d'Alain
+    (le joueur humain a accès à tout le dictionnaire de la partie — voir le
+    README de ``data/dictionnaire/``). L'appelant (:mod:`scrabble.ui.accueil`)
+    détecte ce cas en observant que le Trie renvoyé par :func:`obtenir_trie`
+    est vide (``len(trie) == 0``, ce qui couvre aussi bien un fichier source
+    absent que vide), puis bloque le lancement/la reprise de la partie avec ce
+    message plutôt que de la laisser commencer en silence.
+
+    ``dossier`` (par défaut :data:`DOSSIER_DICO`) est le dossier exact où les
+    dictionnaires doivent être déposés — identique à celui rappelé par le
+    message de fin d'installation (``installeur/scrabble.iss``) et par
+    ``data/dictionnaire/README.md``.
+    """
+    return (
+        "Les dictionnaires ne sont pas installés sur cet ordinateur : "
+        "la partie ne peut pas démarrer.\n\n"
+        "Ils doivent se trouver dans ce dossier :\n"
+        f"{dossier}\n\n"
+        "Contactez Alain pour qu'il les installe."
+    )
 
 
 def charger_dictionnaire(config: dict[str, Any] | None = None) -> Dictionnaire:

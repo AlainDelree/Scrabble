@@ -58,6 +58,7 @@ from scrabble.dictionnaire.dictionnaire import (
     FICHIERS_VOCABULAIRE_PALIER,
     SOURCES,
     marquer_classique,
+    message_dictionnaire_indisponible,
     modifier_appartenance,
     obtenir_trie,
     obtenir_trie_ia,
@@ -915,6 +916,12 @@ class ApiAccueil:
         En cas de succès, le champ ``pret`` vaut ``True`` : le JS doit alors
         fermer la fenêtre d'accueil (``api.fermer_fenetre()``) pour que l'écran
         de jeu puisse s'ouvrir directement dans l'état « pré-partie » (tirage).
+
+        Dictionnaire de validation absent/vide (issue #463) : si le Trie
+        renvoyé par ``obtenir_trie(source)`` est vide, le lancement est refusé
+        avant toute création de partie, avec un message convivial
+        (:func:`~scrabble.dictionnaire.dictionnaire.message_dictionnaire_indisponible`)
+        plutôt que de démarrer une partie qui validerait zéro mot.
         """
         # Garde-fou backend (issue #175) : refuse explicitement plus d'un
         # joueur humain, avec un message dédié — indépendamment de toute
@@ -984,6 +991,28 @@ class ApiAccueil:
             # dictionnaire les belgicismes sans équivalent standard (issue #274).
             mode_belgicisme = self.config_partie.mode_belgicisme
             trie = obtenir_trie(source, mode_belgicisme=mode_belgicisme)
+            # Garde-fou (issue #463) : un Trie vide signifie un dictionnaire de
+            # validation absent ou vide sur cet ordinateur (fichiers sources
+            # manquants) — sans ce contrôle, la partie démarrerait normalement
+            # tout en validant zéro mot, et l'ordinateur passerait tous ses
+            # tours sans que rien ne le signale. On bloque le lancement avec un
+            # message clair plutôt que de laisser la partie commencer en
+            # silence. Sur un ordinateur déjà équipé (cas normal), le Trie est
+            # non vide et ce test n'a aucun effet. ``getattr(..., "taille",
+            # None)`` plutôt que ``len(trie)`` : certains tests substituent au
+            # Trie un double minimal n'exposant que ``contient`` (p. ex.
+            # ``tests._aides_test_jeu._DicoMots``), sans ``__len__`` — ce
+            # contrôle reste alors neutre (``None != 0``) au lieu de lever
+            # ``TypeError``.
+            if getattr(trie, "taille", None) == 0:
+                journal.erreur(
+                    "Accueil : dictionnaire de validation vide ou absent "
+                    f"(source={source!r}) — partie non lancée."
+                )
+                return {
+                    "succes": False,
+                    "erreur": message_dictionnaire_indisponible(),
+                }
             # Réglage du bonus officiel au finisseur (issue #134), câblé dans le
             # moteur via creer_partie.
             bonus_fin_partie = bool(config.get("bonus_fin_partie", False))
@@ -1117,6 +1146,20 @@ class ApiAccueil:
             # l'IA sur la source active (Hunspell/ODS), pas sur l'ODS par défaut.
             source = charger_config().get("source_dictionnaire", "ods")
             trie = obtenir_trie(source)
+            # Garde-fou (issue #463), même contrôle qu'à la création
+            # (:meth:`lancer_partie`) : un Trie vide bloque la reprise avec un
+            # message clair plutôt que de rouvrir une partie qui validerait
+            # zéro mot. ``getattr(..., "taille", None)`` : voir le commentaire
+            # jumeau de :meth:`lancer_partie` (doubles de test sans ``__len__``).
+            if getattr(trie, "taille", None) == 0:
+                journal.erreur(
+                    "Accueil : dictionnaire de validation vide ou absent "
+                    f"(source={source!r}) — partie #{id_partie} non reprise."
+                )
+                return {
+                    "succes": False,
+                    "erreur": message_dictionnaire_indisponible(),
+                }
             # Vocabulaire par palier (issue #369, lot C) : une partie reprise
             # continue de restreindre son IA niveau par niveau, sur la même
             # source que le Trie complet (issue #210), selon les niveaux

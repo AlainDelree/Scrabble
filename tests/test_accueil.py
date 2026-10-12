@@ -1656,6 +1656,108 @@ class TestSourceDictionnaireAppliquee:
         assert "MOTODS" not in dico  # présent uniquement dans l'ODS → refusé
 
 
+class TestDictionnaireValidationAbsentOuVide:
+    """La partie ne démarre jamais en silence sans dictionnaire de validation (issue #463).
+
+    Avant cette issue, un dictionnaire ODS8/Hunspell absent ou vide (dossier
+    de données jamais rempli, ou effacé sur un PC) laissait ``obtenir_trie``
+    renvoyer un Trie vide : la partie démarrait normalement tout en validant
+    zéro mot, et l'ordinateur pouvait passer tous ses tours sans qu'aucun
+    message ne le signale. On vérifie ici que ``lancer_partie``/``reprendre``
+    refusent explicitement ce cas, avec le message convivial dédié
+    (:func:`~scrabble.dictionnaire.dictionnaire.message_dictionnaire_indisponible`).
+    """
+
+    def test_lancer_partie_refuse_si_dictionnaire_vide(self, monkeypatch):
+        """Trie vide (fichiers sources absents/vides, simulé) : lancement refusé."""
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda source="ods", **_: Trie(),  # Trie vide : aucun mot chargé.
+        )
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Intermédiaire")
+
+        result = api.lancer_partie()
+
+        assert result["succes"] is False
+        assert "Alain" in result["erreur"]
+        assert "installés" in result["erreur"]
+        assert api._partie is None
+
+    def test_lancer_partie_fonctionne_toujours_si_dictionnaire_non_vide(
+        self, monkeypatch
+    ):
+        """Non-régression : un Trie non vide ne déclenche aucun blocage ni message."""
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda source="ods", **_: Trie.depuis_iterable(["MAISON"]),
+        )
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie, **_: 1)
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Intermédiaire")
+
+        result = api.lancer_partie()
+
+        assert result["succes"] is True
+        assert "erreur" not in result
+
+    def test_reprendre_refuse_si_dictionnaire_vide(self, monkeypatch):
+        """Même garde-fou à la reprise : un Trie vide bloque, sans rouvrir la partie."""
+        from scrabble.ui.accueil import ApiAccueil
+        from scrabble.dictionnaire.dictionnaire import Trie
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda source="ods", **_: Trie(),
+        )
+
+        api = ApiAccueil()
+        result = api.reprendre(99)
+
+        assert result["succes"] is False
+        assert "Alain" in result["erreur"]
+        assert api._partie is None
+
+    def test_double_minimal_sans_taille_ne_bloque_pas(self, monkeypatch):
+        """Un double de test n'exposant pas ``taille`` (pas de ``__len__``) reste neutre.
+
+        Plusieurs suites de tests substituent ``obtenir_trie`` par un double
+        minimal (ex. ``tests._aides_test_jeu._DicoMots``) qui n'a ni ``taille``
+        ni ``__len__`` : le garde-fou doit rester sans effet sur ces doubles
+        (``getattr(..., "taille", None) == 0`` vaut ``False``), pas lever
+        ``TypeError`` ni les bloquer à tort.
+        """
+        from scrabble.ui.accueil import ApiAccueil
+
+        class _DicoSansTaille:
+            def contient(self, mot: str) -> bool:
+                return True
+
+        monkeypatch.setattr(
+            "scrabble.ui.accueil.obtenir_trie",
+            lambda source="ods", **_: _DicoSansTaille(),
+        )
+        monkeypatch.setattr("scrabble.ui.accueil.demarrer_suivi", lambda partie, **_: 1)
+
+        api = ApiAccueil()
+        api.ajouter_humain("Alice")
+        api.ajouter_ordinateur("Intermédiaire")
+
+        result = api.lancer_partie()
+
+        assert result["succes"] is True
+
+
 class TestApiAccueilJoueurHumainParDefaut:
     """Tests de la présence d'office du joueur humain de référence (issue #141).
 

@@ -52,6 +52,10 @@ from dataclasses import dataclass, field
 
 import random
 
+# Alias distinct du paramètre local ``journal`` de :meth:`Partie.jouer_tour_ia`
+# (un ``JournalDecisionIA`` par tour, sans rapport) : utiliser le nom ``journal``
+# tel quel masquerait le module pour le reste de la fonction.
+from scrabble import journal as journal_app
 from scrabble.moteur import ia, personnages
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.ordre import determiner_ordre_jeu
@@ -730,6 +734,19 @@ class Partie:
             coup_choisi=evaluation.coup_choisi,
         )
         if coup is None:
+            # Défense en profondeur (issue #463) : si le Trie transmis à l'IA
+            # est vide (vocabulaire de niveau vide/absent, échappé aux
+            # contrôles de l'accueil — p. ex. partie reprise dont le niveau
+            # est devenu indisponible depuis), consigner l'anomalie plutôt que
+            # de laisser l'ordinateur passer tous ses tours sans aucune trace.
+            # ``taille`` (plutôt que ``len()``) reste silencieux pour les
+            # faux dictionnaires de test qui n'exposent que ``contient``.
+            if getattr(dictionnaire_ia, "taille", None) == 0:
+                journal_app.erreur(
+                    f"Partie : {joueur.nom!r} (niveau {joueur.niveau.name}) "
+                    "passe son tour avec un vocabulaire IA vide — anomalie, "
+                    "prévenir Alain."
+                )
             return self.passer(journal_ia=journal)
         return self.jouer_coup(coup, journal_ia=journal)
 
