@@ -45,8 +45,9 @@ visuelle).
 
 ## Données
 `data/dictionnaire/` (gitignoré) reçoit **manuellement** les dictionnaires
-tiers — **ODS8** (défaut) ou **Hunspell** déplié — avant tout build, sinon le
-jeu démarre mais valide zéro mot. Contient aussi `definitions.json`,
+tiers — **ODS8** (défaut) ou **Hunspell** déplié — nécessaires pour **jouer**
+(pas pour construire l'installeur, issue #460), sans quoi le jeu refuse de
+démarrer/reprendre une partie (issue #463). Contient aussi `definitions.json`,
 personnalisations `mots_ajoutes_*`/`mots_retires_*` (une paire par source), la
 liste des « classiques du jeu » `classiques_ajoutes.txt`/`classiques_retires.txt`
 (étiquette sur le mot lui-même, gérée depuis l'onglet Dictionnaire, amorcée par
