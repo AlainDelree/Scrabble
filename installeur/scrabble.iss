@@ -1,4 +1,4 @@
-; Script Inno Setup pour l'installeur Windows du jeu Scrabble (issue #217, issue A).
+﻿; Script Inno Setup pour l'installeur Windows du jeu Scrabble (issue #217, issue A).
 ;
 ; Compilation : depuis Inno Setup Compiler (ISCC.exe), à la racine du dépôt ou
 ; depuis ce dossier :
