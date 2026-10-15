@@ -93,7 +93,26 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 Source: "{#MyDistDir}\*"; DestDir: "{app}"; Excludes: "config.json,logs\*,data\parties.db,data\*.db"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Dirs]
-Name: "{#MyActualiseDir}"
+; Droit de modification accordé au groupe « Utilisateurs » (alias "users" ;
+; Inno Setup le résout via le SID universel S-1-5-32-545, indépendant de la
+; langue de Windows, donc équivalent à la commande icacls à la main décrite
+; dans le README.md de ce dossier), avec héritage (OI)(CI) aux sous-dossiers
+; et fichiers créés par la suite : sans ce droit, Actualise, lancé depuis un
+; compte standard sans droits administrateur, ne peut pas remplacer les
+; fichiers du jeu installés sous "Program Files" lors d'une mise à jour
+; (issue #471). Les dossiers de cette section sont créés avant la copie des
+; fichiers de [Files] ci-dessus : les fichiers copiés dans la même passe
+; héritent donc de ce droit via le mécanisme standard d'héritage NTFS, sans
+; qu'il soit nécessaire de répéter la permission sur chaque entrée [Files].
+; Ajout uniquement : les droits déjà présents (SYSTEM, Administrateurs, etc.)
+; ne sont ni supprimés ni réinitialisés.
+Name: "{app}"; Permissions: users-modify
+; Même raison, pour l'instance partagée C:\Actualise (voir commentaire plus
+; haut sur MyActualiseDir) : ce dossier et son contenu doivent rester
+; modifiables par un compte standard pour que la mise à jour s'y effectue.
+; Ajout uniquement : ne touche pas aux droits déjà accordés par ailleurs
+; (autre application partageant l'instance, etc.).
+Name: "{#MyActualiseDir}"; Permissions: users-modify
 
 [Icons]
 ; Les raccourcis pointent directement vers Scrabble.exe (issue #407) :

@@ -99,6 +99,29 @@ voir ci-dessous).
 Bureau et menu Démarrer pointant vers `Scrabble.exe`, et un désinstalleur
 standard (entrée dans "Applications" de Windows 11).
 
+## Droits d'écriture sur le dossier d'installation et C:\Actualise (issue #471)
+
+L'installeur accorde au groupe « Utilisateurs » (entrées `Permissions:
+users-modify` dans `[Dirs]`, résolues par Inno Setup via le SID universel
+`S-1-5-32-545`, indépendant de la langue de Windows) le droit de modification,
+avec héritage aux sous-dossiers et fichiers, sur `{app}` (le dossier du jeu,
+sous "Program Files") et sur `C:\Actualise`. Sans ce droit, Actualise — lancé
+depuis le compte standard de l'utilisatrice, sans droits administrateur — ne
+peut pas remplacer les fichiers du jeu lors d'une mise à jour (constaté sur le
+build 13, `PermissionError` sur une DLL). Ces entrées ajoutent le droit sans
+retirer ceux déjà présents (ex. sur `C:\Actualise`, instance partagée avec
+d'autres applications).
+
+Un poste déjà installé avant cette version (une réinstallation ou une
+installation par-dessus applique automatiquement le nouveau droit, mais pas
+une mise à jour via Actualise seule) doit recevoir ce droit à la main, en
+ligne de commande administrateur :
+
+```
+icacls "C:\Program Files\Scrabble" /grant *S-1-5-32-545:(OI)(CI)M /T
+icacls "C:\Actualise" /grant *S-1-5-32-545:(OI)(CI)M /T
+```
+
 ## Règle git
 
 Le `.gitignore` à la racine ignore `installeur\output\` (les `setup.exe`
