@@ -2,6 +2,92 @@
 
 Convention d'ajout : voir §10 de BRIDGE_AGENT_DOC.md.
 
+# Changelog — Issue #471
+
+## Ajouté
+
+- **`installeur\scrabble.iss` : droit de modification pour le groupe
+  « Utilisateurs » sur `{app}` et `C:\Actualise`.** Nouvelles entrées
+  `Permissions: users-modify` dans `[Dirs]` (alias Inno Setup résolu via le
+  SID universel `S-1-5-32-545`, indépendant de la langue de Windows), avec
+  héritage aux sous-dossiers et fichiers. Sans ce droit, Actualise — lancé
+  depuis un compte standard, sans droits administrateur — ne peut pas
+  remplacer les fichiers du jeu lors d'une mise à jour (constaté sur le
+  build 13 : `PermissionError` sur une DLL, contourné à la main par Alain
+  via `icacls`). Les droits existants ne sont ni supprimés ni réinitialisés
+  (ajout uniquement), notamment ceux déjà présents sur l'instance partagée
+  `C:\Actualise`.
+- **`installeur\README.md` : section expliquant ces droits**, avec la
+  commande `icacls` à lancer à la main sur un poste déjà installé avant
+  cette version (une réinstallation ou installation par-dessus les applique
+  automatiquement, mais pas une simple mise à jour via Actualise).
+
+# Changelog — Issue #470
+
+## Build
+
+- **Build 13 construit (mode publication, sans publication effective).**
+  `build\rebuild_scrabble.bat --publier 13` exécuté avec succès depuis le
+  worktree. Archive `scrabble-v13.zip` (77 fichiers, aucun dictionnaire ni
+  liste de mots) et installeur `Scrabble-Setup-v13.exe` générés dans
+  `installeur\output\`. `version.json` mis à jour et committé localement
+  par le script (`51b503d`). Ni `git push` ni `gh release create` exécutés :
+  ces étapes restent manuelles pour Alain (voir issue #470 pour le détail
+  des vérifications effectuées).
+
+# Issue #469 — Installeur : ligne `#13#10` seule faisant échouer la compilation ISPP
+
+- Correction de `installeur\scrabble.iss` (procédure `AfficherMessageDictionnaires`,
+  section `[Code]`) : les deux lignes composées uniquement de `#13#10 +` (après
+  l'indentation) ont été ramenées en fin de la ligne de texte précédente, sur
+  la même ligne. Le préprocesseur ISPP d'Inno Setup traite tout `#` en début
+  de ligne comme une directive de préprocesseur ; isolé, `#13#10` était donc
+  rejeté avec « Unknown preprocessor directive » (build 13, issue #468). Le
+  texte affiché à l'utilisateur (contenu et retours à la ligne) est inchangé.
+- Vérification du reste de `installeur\scrabble.iss` : aucune autre ligne ne
+  commence par un `#` qui ne soit pas une vraie directive ISPP voulue
+  (`#define`, `#ifndef`/`#endif`).
+
+# Changelog — Issue #467
+
+## Modifié
+
+- **`build\rebuild_scrabble.bat` : Inno Setup cherché hors du dépôt, script
+  indépendant de l'emplacement du clone.** Étape 0 (vérification des
+  dépendances) et étape 6 (compilation) cherchaient `ISCC.exe` uniquement
+  dans `.tools\InnoSetup6\` à l'intérieur du dépôt — dossier non suivi par
+  git, présent seulement dans le clone principal. Lancé depuis un worktree
+  jetable (CCW, qui ne contient que les fichiers suivis par git), le build
+  échouait dès cette vérification. Le script cherche maintenant `ISCC.exe`
+  dans l'ordre : `C:\CCW\tools\InnoSetup6\ISCC.exe` (nouvel emplacement
+  stable du poste, hors dépôt), puis à défaut `.tools\InnoSetup6\ISCC.exe`
+  dans le clone (ancien emplacement, toléré pour un build manuel). Erreur
+  claire nommant les deux emplacements si aucun des deux n'existe. Le
+  compilateur est appelé directement depuis l'emplacement trouvé
+  (`%ISCC_EXE%`), sans le recopier vers le dossier de build local — `.tools`
+  ajouté aux exclusions du `robocopy` de l'étape 1. Aucun autre
+  comportement du script ne change (copie des sources, PyInstaller,
+  archive, mode `--publier`, commit local de `version.json`).
+- **`installeur\README.md`** : section « Dépendances externes » et
+  « Prérequis » mises à jour pour décrire le nouvel ordre de recherche
+  d'Inno Setup (emplacement préféré hors dépôt, ancien emplacement toléré).
+
+## Vérifié (sans modification)
+
+- Aucun chemin en dur vers `C:\CCW\scrabble` ou un autre clone trouvé dans
+  `build\rebuild_scrabble.bat`, `installeur\scrabble.iss` ni
+  `installeur\README.md` (le script ne dépend que de `%~dp0..`, son propre
+  emplacement). `CONTEXTE.md` ne mentionne pas l'emplacement d'Inno Setup,
+  rien à y aligner.
+- Syntaxe batch des lignes modifiées relue attentivement (script non
+  exécutable sous Linux) : parenthèses équilibrées, échappement `^(`/`^)`
+  dans les `echo` à l'intérieur des blocs `if`, fins de ligne CRLF
+  préservées sur tout le fichier (vérifié programmatiquement, aucune ligne
+  en LF seul). `git diff --stat` ne montre que les lignes des étapes 0, 1
+  (robocopy) et 6, plus la documentation.
+- Suite rapide (`pytest -m "not lent"`) : 1404 passed, 5 skipped,
+  5 deselected.
+
 # Changelog — Issue #465
 
 ## Corrigé
