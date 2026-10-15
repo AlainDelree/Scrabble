@@ -17,17 +17,24 @@ echo ============================================
 echo.
 
 REM --- 0. Verifier les dependances externes non versionnees -----------------
+REM Inno Setup est cherche hors du depot (emplacement stable du poste,
+REM partage par tous les clones/worktrees), puis a defaut dans l'ancien
+REM emplacement .tools\InnoSetup6 du depot (build manuel du clone principal).
 echo [0/8] Verification des dependances externes (hors git)...
-if not exist ".tools\InnoSetup6\ISCC.exe" (
+set "ISCC_EXE=C:\CCW\tools\InnoSetup6\ISCC.exe"
+if not exist "%ISCC_EXE%" set "ISCC_EXE=%ORIGDIR%\.tools\InnoSetup6\ISCC.exe"
+if not exist "%ISCC_EXE%" (
     echo.
-    echo ERREUR : .tools\InnoSetup6\ISCC.exe introuvable.
-    echo Deposez l'installation portable d'Inno Setup 6 a cet emplacement exact
-    echo ^(.tools\InnoSetup6\^) avant de lancer ce script ^(voir installeur\README.md,
+    echo ERREUR : ISCC.exe introuvable. Emplacements recherches :
+    echo   - C:\CCW\tools\InnoSetup6\ISCC.exe
+    echo   - %ORIGDIR%\.tools\InnoSetup6\ISCC.exe
+    echo Deposez l'installation portable d'Inno Setup 6 a l'un de ces
+    echo emplacements avant de lancer ce script ^(voir installeur\README.md,
     echo section Prerequis^).
     popd
     exit /b 1
 )
-echo Dependances externes presentes. OK.
+echo Inno Setup trouve : %ISCC_EXE%
 echo.
 echo INFO : data\dictionnaire n'est plus requis pour ce build ^(issue #460^) --
 echo le depot etant public, les dictionnaires et listes de mots ne sont plus
@@ -97,7 +104,9 @@ REM data\dictionnaire exclu (issue #460) : plus lu par scrabble.spec (plus
 REM embarque dans l'archive), inutile de le copier vers le repertoire de
 REM build local -- chemin complet pour ne pas confondre avec
 REM src\scrabble\dictionnaire\ (code source, lui necessaire au build).
-robocopy "%ORIGDIR%" "%LOCALBUILD%" /E /XD ".git" "venv" ".venv_build" "dist" "build" "__pycache__" ".pytest_cache" "logs" "Exemples plateau" "issue-attachments" "%ORIGDIR%\data\dictionnaire" /NFL /NDL /NJH /NJS /NC /NS /NP >nul
+REM .tools exclu (issue #467) : Inno Setup est appele depuis %ISCC_EXE%,
+REM pas besoin de le recopier vers le repertoire de build local.
+robocopy "%ORIGDIR%" "%LOCALBUILD%" /E /XD ".git" "venv" ".venv_build" "dist" "build" "__pycache__" ".pytest_cache" "logs" "Exemples plateau" "issue-attachments" ".tools" "%ORIGDIR%\data\dictionnaire" /NFL /NDL /NJH /NJS /NC /NS /NP >nul
 if %errorlevel% geq 8 (
     echo.
     echo ERREUR : la copie des sources vers %LOCALBUILD% a echoue.
@@ -201,15 +210,15 @@ if exist "dist\Scrabble\Scrabble.exe" (
 
 REM --- 6. Compiler l'installeur Windows (Inno Setup) ------------------------
 echo [6/8] Compilation de l'installeur Inno Setup...
-if not exist ".tools\InnoSetup6\ISCC.exe" (
+if not exist "%ISCC_EXE%" (
     echo.
-    echo ERREUR : .tools\InnoSetup6\ISCC.exe introuvable. Verifiez l'installation
-    echo portable d'Inno Setup sur cette machine ^(voir installeur\README.md^).
+    echo ERREUR : %ISCC_EXE% introuvable. Verifiez l'installation portable
+    echo d'Inno Setup sur cette machine ^(voir installeur\README.md^).
     popd
     popd
     exit /b 1
 )
-call ".tools\InnoSetup6\ISCC.exe" /DScrabbleBuildInstalle=!SCRABBLE_BUILD! installeur\scrabble.iss
+call "%ISCC_EXE%" /DScrabbleBuildInstalle=!SCRABBLE_BUILD! installeur\scrabble.iss
 if errorlevel 1 (
     echo.
     echo ERREUR : la compilation Inno Setup a echoue. Voir les messages ci-dessus.

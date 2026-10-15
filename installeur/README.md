@@ -6,15 +6,19 @@ sont jamais commités dans le dépôt git** (volumineux, régénérables à tout
 moment à partir du build PyInstaller + de ce script) : seuls `scrabble.iss`
 et ce `README.md` sont suivis par git.
 
-## Dépendances externes à déposer manuellement (nouveau clone/poste)
+## Dépendances externes à déposer manuellement (nouveau poste)
 
-`build\rebuild_scrabble.bat` vérifie sa présence en étape 0 et s'arrête
-immédiatement si elle manque. Sur un nouveau clone ou un nouveau poste de
-build, déposez-la avant de lancer un build complet :
+`build\rebuild_scrabble.bat` vérifie la présence d'Inno Setup en étape 0 et
+s'arrête immédiatement si elle manque. Il cherche `ISCC.exe` dans cet ordre
+(issue #467, pour fonctionner aussi depuis un worktree jetable qui ne
+contient que les fichiers suivis par git) :
 
-- `.tools\InnoSetup6\ISCC.exe` — installation portable d'Inno Setup 6 (voir
-  section Prérequis ci-dessous). Non suivi par git (`.gitignore` ignore
-  `.tools\`).
+- `C:\CCW\tools\InnoSetup6\ISCC.exe` — emplacement préféré, hors du dépôt,
+  installé une fois pour toutes sur le poste (partagé par le clone
+  principal et tous les worktrees).
+- `.tools\InnoSetup6\ISCC.exe`, à la racine du clone — ancien emplacement,
+  encore toléré pour un build manuel dans le clone principal. Non suivi par
+  git (`.gitignore` ignore `.tools\`).
 
 ## Dictionnaires : absents du build et de l'installeur (issue #460)
 
@@ -57,7 +61,9 @@ inconditionnel pour garder la fenêtre ouverte le temps de lire le résultat.
    portable, `ISCC.exe` — le compilateur en ligne de commande). Installation
    silencieuse : `innosetup-6.x.x.exe /PORTABLE=1 /VERYSILENT /SUPPRESSMSGBOXES
    /SP- /NORESTART /DIR="<dossier cible>"` (mode portable : pas de droits
-   admin, pas d'entrée registre/désinstalleur Windows).
+   admin, pas d'entrée registre/désinstalleur Windows). Emplacement préféré
+   hors du dépôt : `C:\CCW\tools\InnoSetup6\` (voir ci-dessus) ; ancien
+   emplacement `.tools\InnoSetup6\` dans le clone encore toléré.
 2. `dist\Scrabble\` doit déjà exister, généré par le build PyInstaller
    existant (`pyinstaller scrabble.spec`, depuis la racine du dépôt — voir le
    docstring de `scrabble.spec`). Le script `.iss` ne déclenche pas ce build
