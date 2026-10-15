@@ -158,11 +158,9 @@ end;
 procedure AfficherMessageDictionnaires();
 begin
   MsgBox(
-    'Les dictionnaires ne sont pas inclus dans cet installeur (dépôt public).' + #13#10 +
-    #13#10 +
+    'Les dictionnaires ne sont pas inclus dans cet installeur (dépôt public).' + #13#10 + #13#10 +
     'Avant le premier lancement de Scrabble, copiez-les manuellement dans :' + #13#10 +
-    ExpandConstant('{app}') + '\data\' + #13#10 +
-    #13#10 +
+    ExpandConstant('{app}') + '\data\' + #13#10 + #13#10 +
     'Sans cela, la partie ne pourra pas démarrer : le jeu affichera un ' +
     'message le rappelant (voir data\dictionnaire\README.md).',
     mbInformation, MB_OK);
