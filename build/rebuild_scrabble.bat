@@ -105,14 +105,16 @@ if "!ANCIEN_BUILD!"=="" (
 )
 echo Build actuel dans version.json : !ANCIEN_BUILD!
 
+set "BUILD_FORMAT_OK=1"
+if not "%BUILD_ARG%"=="" echo %BUILD_ARG%| findstr /r "^[1-9][0-9]*$" >nul || set "BUILD_FORMAT_OK=0"
+if "%BUILD_FORMAT_OK%"=="0" (
+    echo.
+    echo ERREUR : --build "%BUILD_ARG%" n'est pas un numero de build valide ^(entier positif attendu^).
+    popd
+    exit /b 1
+)
+
 if not "%BUILD_ARG%"=="" (
-    echo %BUILD_ARG%| findstr /r "^[1-9][0-9]*$" >nul
-    if errorlevel 1 (
-        echo.
-        echo ERREUR : --build "%BUILD_ARG%" n'est pas un numero de build valide ^(entier positif attendu^).
-        popd
-        exit /b 1
-    )
     set "BUILD_CANDIDATE=%BUILD_ARG%"
     echo Numero de build demande ^(--build^) : !BUILD_CANDIDATE!
 ) else (
