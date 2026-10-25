@@ -19,6 +19,8 @@ REM acceptee : utiliser desormais "--publier --build N".
 set "PUBLIER=0"
 set "BUILD_ARG="
 set "ARG_ERR="
+set "VENV_ERR="
+set "PUBLIER_ERR="
 
 :parse_args
 if "%~1"=="" goto parse_done
@@ -183,32 +185,25 @@ echo [2/9] Verification de l'environnement virtuel de build...
 if not exist ".venv_build\Scripts\python.exe" (
     echo .venv_build introuvable : creation en cours...
     python -m venv .venv_build
-    if errorlevel 1 (
-        echo.
-        echo ERREUR : impossible de creer .venv_build. Verifiez l'installation Python.
-        popd
-        popd
-        exit /b 1
+    if errorlevel 1 set "VENV_ERR=impossible de creer .venv_build. Verifiez l'installation Python."
+    if not defined VENV_ERR (
+        call ".venv_build\Scripts\python.exe" -m pip install --upgrade pip >nul
+        call ".venv_build\Scripts\pip.exe" install -r requirements.txt
+        if errorlevel 1 set "VENV_ERR=l'installation de requirements.txt a echoue."
     )
-    call ".venv_build\Scripts\python.exe" -m pip install --upgrade pip >nul
-    call ".venv_build\Scripts\pip.exe" install -r requirements.txt
-    if errorlevel 1 (
-        echo.
-        echo ERREUR : l'installation de requirements.txt a echoue.
-        popd
-        popd
-        exit /b 1
-    )
-    call ".venv_build\Scripts\pip.exe" install pyinstaller
-    if errorlevel 1 (
-        echo.
-        echo ERREUR : l'installation de pyinstaller a echoue.
-        popd
-        popd
-        exit /b 1
+    if not defined VENV_ERR (
+        call ".venv_build\Scripts\pip.exe" install pyinstaller
+        if errorlevel 1 set "VENV_ERR=l'installation de pyinstaller a echoue."
     )
 ) else (
     echo .venv_build present. OK.
+)
+if defined VENV_ERR (
+    echo.
+    echo ERREUR : !VENV_ERR!
+    popd
+    popd
+    exit /b 1
 )
 echo.
 
@@ -403,44 +398,41 @@ if "%PUBLIER%"=="1" (
     echo ============================================
     echo.
     echo [Publier 1/3] Calcul du SHA-256 de installeur\output\%ZIP_NAME%...
-    if not exist "installeur\output\%ZIP_NAME%" (
-        echo.
-        echo ERREUR : installeur\output\%ZIP_NAME% introuvable, publication annulee.
-        popd
-        exit /b 1
+    if not exist "installeur\output\%ZIP_NAME%" set "PUBLIER_ERR=installeur\output\%ZIP_NAME% introuvable, publication annulee."
+    if not defined PUBLIER_ERR (
+        set "ZIP_SHA256="
+        for /f "usebackq" %%h in (`powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 'installeur\output\%ZIP_NAME%').Hash.ToLower()"`) do set "ZIP_SHA256=%%h"
+        if "!ZIP_SHA256!"=="" set "PUBLIER_ERR=le calcul du SHA-256 de %ZIP_NAME% a echoue."
     )
-    set "ZIP_SHA256="
-    for /f "usebackq" %%h in (`powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 'installeur\output\%ZIP_NAME%').Hash.ToLower()"`) do set "ZIP_SHA256=%%h"
-    if "!ZIP_SHA256!"=="" (
+    if not defined PUBLIER_ERR (
+        echo SHA-256 : !ZIP_SHA256!
         echo.
-        echo ERREUR : le calcul du SHA-256 de %ZIP_NAME% a echoue.
-        popd
-        exit /b 1
-    )
-    echo SHA-256 : !ZIP_SHA256!
-    echo.
 
-    echo [Publier 2/3] Ecriture de version.json ^(build !NOUVEAU_BUILD!^)...
-    echo {"build": !NOUVEAU_BUILD!, "sha256": "!ZIP_SHA256!"}>version.json
-    type version.json
-    echo.
-    echo.
-
-    echo [Publier 3/3] Commit git de version.json...
-    git add version.json
-    git commit -m "version.json : build !NOUVEAU_BUILD!, sha256 !ZIP_NAME!"
-    if errorlevel 1 (
+        echo [Publier 2/3] Ecriture de version.json ^(build !NOUVEAU_BUILD!^)...
+        echo {"build": !NOUVEAU_BUILD!, "sha256": "!ZIP_SHA256!"}>version.json
+        type version.json
         echo.
-        echo ERREUR : le commit git de version.json a echoue.
-        popd
-        exit /b 1
+        echo.
+
+        echo [Publier 3/3] Commit git de version.json...
+        git add version.json
+        git commit -m "version.json : build !NOUVEAU_BUILD!, sha256 !ZIP_NAME!"
+        if errorlevel 1 set "PUBLIER_ERR=le commit git de version.json a echoue."
     )
+    if not defined PUBLIER_ERR (
+        echo.
+        echo ============================================
+        echo   RAPPEL : git push et gh release create restent MANUELS.
+        echo   Ce script ne les execute JAMAIS automatiquement.
+        echo ============================================
+        echo.
+    )
+)
+if defined PUBLIER_ERR (
     echo.
-    echo ============================================
-    echo   RAPPEL : git push et gh release create restent MANUELS.
-    echo   Ce script ne les execute JAMAIS automatiquement.
-    echo ============================================
-    echo.
+    echo ERREUR : !PUBLIER_ERR!
+    popd
+    exit /b 1
 )
 
 if "%PUBLIER%"=="1" (
