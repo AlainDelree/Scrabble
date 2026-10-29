@@ -232,7 +232,19 @@ body.mode-belgicisme .container::before {
     bottom: -20px;
     left: 50%;
     transform: translateX(-50%);
-    width: clamp(620px, 94vw, 720px);
+    /* Plancher de 620px retiré (issue #476) : sur un téléphone en portrait
+       (~360-430px), ce plancher imposait au panneau une largeur FIXE de
+       620px bien plus grande que la fenêtre, provoquant un vrai débordement
+       horizontal (mesuré au harnais Playwright : scrollWidth ≈ 490px pour une
+       fenêtre de 360px). ``.container`` juste au-dessous (même formule à
+       l'origine, voir son commentaire) ne souffrait pas de ce défaut : sa
+       largeur réelle est bornée par son conteneur (le body, donc la fenêtre)
+       quelle que soit la valeur du ``max-width`` — ``min(94vw, 720px)``
+       reproduit ce même comportement pour ce pseudo-élément positionné en
+       absolu (donc jamais borné par un parent), sans aucun changement au-delà
+       d'environ 660px de large (``94vw`` y dépasse déjà 620px, zone où
+       l'ancien plancher ne jouait aucun rôle). */
+    width: min(94vw, 720px);
     background: rgba(255, 255, 255, 0.95);
     border-radius: 12px;
     box-shadow: 0 2px 16px rgba(0, 0, 0, 0.18);
@@ -323,25 +335,33 @@ body:not(.mode-belgicisme) .message-limite {
    dans laquelle `justify-content: center` centre les tuiles, les décalant
    d'autant vers la gauche : espace réservé au bouton à toutes les largeurs
    de fenêtre, sans dépendre d'un calcul de largeur de tuiles fragile. */
+/* Tuiles responsives (issue #476) : les 8 tuiles de 3.2rem fixes + leur
+   padding-right réservé (56px pour le bouton ⚙) ne tenaient plus sur un
+   téléphone en portrait — ``.container`` les masquait par son
+   ``overflow: hidden`` (pas de barre de défilement visible, mais le titre
+   était tronqué). ``clamp()`` ramène la taille et le padding réservé à l'échelle
+   de la fenêtre tout en gardant EXACTEMENT les mêmes valeurs qu'avant au-delà
+   d'environ 730px de large (borne haute du clamp = ancienne valeur fixe) —
+   donc aucun changement au-dessus du seuil de 880px exigé par l'issue. */
 header h1 {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 8px;
+    gap: clamp(2px, 1.5vw, 8px);
     margin-bottom: 14px;
-    padding-right: 56px;
+    padding-right: clamp(40px, 12vw, 56px);
 }
 
 header h1 .lettre-scrabble {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 3.2rem;
-    height: 3.2rem;
+    min-width: clamp(1.6rem, 7vw, 3.2rem);
+    height: clamp(1.6rem, 7vw, 3.2rem);
     padding: 0 4px;
     background: #f5e6c8;
     color: #4a3418;
-    font-size: 2.2rem;
+    font-size: clamp(1rem, 4.4vw, 2.2rem);
     font-weight: 700;
     line-height: 1;
     text-shadow: none;
