@@ -30,6 +30,10 @@ table, réglages) puis enchaîne vers l'écran de jeu.
   #187/#193).
 - **`config.py`** (config auto-réparante `config.json`), `reglages.py`,
   `journal.py` (logs dans `logs/`).
+- **`serveur/`** — prototype de serveur HTTP local, un seul joueur (issue
+  #475) : sert `ui/web/` dans un navigateur à la place d'une fenêtre
+  pywebview, en réutilisant tel quel le routeur d'API (`ui.application.
+  ApiRouteur`). Voir « Serveur local (prototype) » plus bas.
 
 Note : les anciens sous-paquets reliquats `src/scrabble/interface/`,
 `src/scrabble/ia/`, `src/scrabble/generateur/` et le dossier racine `web/`
@@ -57,6 +61,55 @@ lexicale, CC-BY-SA 4.0), croisé avec l'ODS8 par
 `scripts/generer_mots_courants.py` (issue #205) pour produire `mots_courants.txt`
 (vocabulaire « humain » de l'IA — croisement **désaccentué** car l'ODS8 est
 stocké sans accents ; consommé par le futur filtre de vocabulaire, issue C).
+
+## Serveur local (prototype, issue #475)
+Prototype **un seul joueur de confiance**, pour essayer l'interface existante
+dans un navigateur (bureau, puis téléphone sur le même réseau local) sans
+attendre la vraie version « serveur » du jeu. Bibliothèque standard
+uniquement (`http.server`) : aucune dépendance ajoutée.
+
+```
+PYTHONPATH=src python -m scrabble.serveur [--reseau] [--port 8765] [--dossier-donnees CHEMIN]
+```
+
+- Par défaut : écoute sur `127.0.0.1` seulement (cette machine). `--reseau`
+  bascule sur `0.0.0.0` (joignable depuis un téléphone du même réseau local) —
+  l'agent ne touche à aucun pare-feu, à vous de l'ouvrir si besoin.
+- Port par défaut **8765** (délibérément différent de 8000).
+- `--dossier-donnees` : dossier de données utilisateur du serveur
+  (`config.json`, `data/parties.db`, `logs/`) — **distinct** de celui de
+  l'application de bureau par défaut (`~/.local/share/scrabble-serveur` sur
+  Linux), pour ne jamais mélanger ni écraser les parties du bureau. Le
+  dictionnaire (`data/dictionnaire/`, lu depuis la racine du dépôt) n'est lui
+  jamais copié ni redirigé : il reste la seule copie en lecture, partagée.
+
+**AUCUNE authentification.** Affiché au démarrage : réservé à un réseau local
+de confiance, jamais à exposer sur Internet.
+
+**Une seule partie à la fois** (même modèle que le bureau : un seul routeur
+d'API par processus). Un second navigateur qui se connecte partage le MÊME
+état de partie que le premier (pas de comptes, pas de session par onglet) —
+prototype, non résolu.
+
+Les fonctions qui, côté bureau, supposent une fenêtre pywebview native sont
+adaptées dans `serveur/` sans toucher à `ui/` :
+- navigation Accueil↔Jeu (`demarrer_jeu`/`retourner_accueil`/
+  `recommencer_jeu`/`annuler_tirage_accueil`) : le routeur laissé sans fenêtre
+  (code déjà prévu) saute sa navigation Python ; le script injecté dans les
+  pages HTML navigue à sa place (`window.location.href`) sur succès ;
+- diffusion d'état après chaque coup (`ApiJeu._diffuser`, qui pousse
+  normalement via `window.evaluate_js`) : relayée en Server-Sent Events
+  (`/__scrabble__/evenements`) vers `window.appliquerEtatPlateau`/
+  `appliquerEtatChevalet`, déjà présents dans `jeu.js` ;
+- positionnement/maximisation de fenêtre (`_maximiser_plateau` et consorts) :
+  déjà tolérants à une fenêtre absente (code existant, testé comme tel) —
+  aucune adaptation nécessaire.
+
+Limites connues de ce prototype (voir le rapport de clôture de l'issue #475
+pour le détail) : onglet Dictionnaire des réglages et `verifier_mot`/
+`verifier_coup` restent, pour l'instant, un oracle de dictionnaire utilisable
+par quiconque atteint le serveur — leur verrouillage est le chantier suivant,
+volontairement hors de cette issue.
 
 ## Stack (`requirements.txt`)
 `pywebview` (UI), `pyinstaller` (build .exe), `pytest` (tests), `spylls`
