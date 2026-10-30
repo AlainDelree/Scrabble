@@ -2012,9 +2012,20 @@ body {
        contenu qui se replie sur 2 lignes). Utilisée à la fois comme décalage
        ``top`` du plateau collant (point 2) et comme point d'ancrage du
        popover « Derniers coups » (point 4), pour que les deux restent
-       synchronisés si cette hauteur devait être retouchée plus tard. */
+       synchronisés si cette hauteur devait être retouchée plus tard.
+
+       Valeur recalculée par l'issue #478 (point 1) : 36px, la hauteur commune
+       désormais imposée à Retour/Sac/Coups (voir plus bas), et non plus 48px.
+       Cette hauteur n'est fiable QUE parce que la barre est garantie à une
+       seule rangée en toutes circonstances (« Les personnages » en est retiré
+       plus bas, pour le même motif que le bouton « ↻ Resynchroniser » déjà
+       écarté par #477) : sans cette garantie, un deuxième bouton visible
+       repliait la barre sur 2 lignes (80px réels) tandis que le plateau,
+       collant à seulement 48px du haut, venait recouvrir entièrement cette
+       2e ligne une fois la page défilée (bogue constaté en vérification
+       Playwright, corrigé en même temps que cette valeur). */
     :root {
-        --barre-portrait-haut: 48px;
+        --barre-portrait-haut: 36px;
     }
 
     /* ------------------------------------------------------------------- */
@@ -2085,19 +2096,64 @@ body {
         display: contents;
     }
 
-    /* Fond opaque commun aux deux boîtes collantes (barre + plateau) : même
-       dégradé que le tapis du ``body`` (issue #59), pour que le contenu qui
-       défile dessous (joueurs, chevalet, actions) ne transparaisse jamais au
-       travers pendant le défilement. */
-    .zone-systeme,
-    .colonne-plateau,
-    #historique-menu {
+    /* Fond opaque du plateau collant : même dégradé que le tapis du ``body``
+       (issue #59), pour que le contenu qui défile dessous (joueurs, chevalet,
+       actions) ne transparaisse jamais au travers pendant le défilement. La
+       barre système (zone A) et « Derniers coups » n'ont PLUS leur propre
+       fond ici (issue #478, point 1) : voir ``.container::before`` ci-dessous. */
+    .colonne-plateau {
         position: sticky;
         top: 0;
         z-index: 30;
         background: var(--tapis-vert);
         background-image:
             radial-gradient(120% 90% at 50% 30%, var(--tapis-vert-clair) 0%, var(--tapis-vert) 55%, var(--tapis-vert-fonce) 100%);
+    }
+
+    /* Barre système (zone A) et « Derniers coups » : restent collants
+       (``position: sticky``) pour que leur CONTENU reste épinglé en haut de
+       l'écran pendant le défilement, mais sans fond propre (voir plus bas) —
+       seul le contenu (texte/pastilles) doit rester au-dessus du fond commun. */
+    .zone-systeme,
+    #historique-menu {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+    }
+
+    /* Fond plein largeur de la barre système (issue #478, point 1). Avant ce
+       correctif, ``.zone-systeme`` (colonne 1, ``1fr``) et ``#historique-menu``
+       (colonne 2, ``auto``) portaient chacun leur PROPRE fond, limité à leur
+       propre boîte : la bande entre les deux colonnes (``column-gap``) et la
+       marge jusqu'au bord droit de l'écran (après le bouton « Coups », plus
+       étroit que sa colonne) restaient transparentes, laissant voir le
+       contenu qui défile derrière. Un pseudo-élément séparé, placé sur la
+       MÊME cellule de grille que les deux (``grid-column: 1 / -1`` donc toute
+       la largeur, ``grid-row: 1``, empilé SOUS eux via ``z-index``), couvre
+       tout le rectangle de la ligne 1 en une seule fois — sans toucher au
+       HTML ni déplacer les deux boîtes existantes.
+
+       ``background-attachment: fixed`` (comme le ``body``, voir plus haut
+       dans ce fichier) plutôt qu'un dégradé calculé sur la petite boîte de la
+       barre : un dégradé local aurait donné une teinte visiblement
+       différente du tapis du ``body`` vu juste au-dessus pendant le
+       défilement (bogue constaté — « bande de couleur légèrement différente
+       au-dessus de la barre »). ``fixed`` ancre le dégradé sur la fenêtre,
+       pas sur la boîte : les pixels rendus sont rigoureusement identiques à
+       ceux du ``body`` à la même position écran, donc aucun raccord visible
+       quel que soit le défilement. */
+    .container::before {
+        content: '';
+        grid-column: 1 / -1;
+        grid-row: 1;
+        position: sticky;
+        top: 0;
+        z-index: 29;
+        pointer-events: none;
+        background: var(--tapis-vert);
+        background-image:
+            radial-gradient(120% 90% at 50% 30%, var(--tapis-vert-clair) 0%, var(--tapis-vert) 55%, var(--tapis-vert-fonce) 100%);
+        background-attachment: fixed;
     }
 
     /* Barre système (zone A) : colonne 1, ligne 1. Ligne 2 (joker) est
@@ -2119,15 +2175,83 @@ body {
         display: none;
     }
 
+    /* Issue #478, point 1 (suite) : « Les personnages » quitte lui aussi la
+       barre en portrait, pour le même motif structurel que ci-dessus — pas
+       remplacé cette fois (fonctionnalité annexe, sans équivalent nécessaire
+       sur téléphone), ``jeu.js`` inchangé, le bouton reste affiché tel quel
+       ≥481px. Nécessaire pour que la ligne 1 de ``.zone-systeme-ligne``
+       tienne TOUJOURS sur une seule rangée de 36px (voir la règle de hauteur
+       commune plus bas) : avec ce bouton visible (dès que 2 personnages sont
+       actifs, le cas courant dès qu'un ordinateur a un nom — pas un cas
+       rare), la colonne 1 (``1fr``, trop étroite pour les 3 boutons) le
+       repliait sur une 2e ligne, portant la barre système à 80px. Or
+       ``--barre-portrait-haut`` (ci-dessus, décalage ``top`` du plateau
+       collant) est une valeur FIXE : avec la barre à 80px mais le plateau
+       collant seulement à 48px du haut, le plateau recouvrait entièrement
+       cette 2e ligne une fois la page défilée (bogue constaté en
+       vérification Playwright — bouton « Personnages » totalement invisible
+       après défilement). Le masquer ici garantit une barre à une seule
+       rangée en toutes circonstances, donc une hauteur FIXE et prévisible
+       pour ``--barre-portrait-haut``. */
+    #btn-les-personnages {
+        display: none;
+    }
+
     /* « Derniers coups » (bloc rendu ``display:contents`` ci-dessus) :
        colonne 2, MÊME ligne 1 que la barre système — c'est la juxtaposition
        demandée par le point 3. ``align-self: start`` l'aligne avec le haut de
        la barre système plutôt que de le centrer sur toute la hauteur de la
-       rangée (utile si « Les personnages » replie la colonne 1 sur 2 lignes). */
+       rangée. */
     #historique-menu {
         grid-column: 2;
         grid-row: 1;
         align-self: start;
+    }
+
+    /* Point 1 (suite, issue #478) : les 3 éléments visibles de la ligne 1
+       (bouton « Retour », pastille du sac, bouton « Coups ») à la MÊME
+       hauteur et alignés verticalement. En desktop, le sac est une pastille
+       assez haute (icône 22px + padding vertical 8px) alors que le bouton
+       « Coups » (``.historique-resume``) est une pastille plus basse et le
+       bouton « Retour » un bouton standard — trois hauteurs différentes,
+       constaté comme « sac en grande pastille, bouton Coups accolé en haut à
+       droite, plus petit ». On fixe ici une hauteur commune (36px, sous la
+       limite de 50px visée pour toute la barre) et on recentre le contenu de
+       chacun par flexbox ; le sac, trop haut par défaut, est le seul à voir
+       sa taille réduite (icône/texte) pour tenir dans cette hauteur. */
+    #btn-retour-menu,
+    .sac,
+    .historique-resume {
+        height: 36px;
+        box-sizing: border-box;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #btn-retour-menu {
+        padding: 0 12px;
+    }
+
+    .sac {
+        padding: 0 10px;
+        gap: 4px;
+    }
+
+    .sac-icone {
+        width: 16px;
+    }
+
+    .sac-nombre {
+        font-size: 1rem;
+    }
+
+    .sac-label {
+        font-size: 0.72rem;
+    }
+
+    .historique-resume {
+        padding: 0 10px;
     }
 
     /* Plateau (point 2) : s'étend sur les 2 colonnes, ligne 2, collant juste
@@ -2141,25 +2265,30 @@ body {
         padding-bottom: 6px;
     }
 
-    /* Reste du contenu : chacun sur sa propre ligne de grille, dans l'ordre
-       voulu par l'issue, DÉFILANT sous le plateau collant (ni l'un ni l'autre
-       n'a de position sticky). */
-    .zone-dico-permanente {
+    /* Reste du contenu : chacun sur sa propre ligne de grille, DÉFILANT sous
+       le plateau collant (ni l'un ni l'autre n'a de position sticky). Ordre
+       voulu par l'issue #478 (point 2, retour d'essai réel sur téléphone) :
+       chevalet JUSTE sous le plateau (visible/manipulable sans défiler), puis
+       les boutons d'action de l'humain qui vont avec lui, puis les cartes des
+       joueurs, puis le dictionnaire en dernier. Remplace l'ordre de #477
+       (dictionnaire, joueurs, chevalet, actions) — seul le ``grid-row`` de
+       chaque zone change ici, aucun élément déplacé dans le HTML. */
+    .zone-chevalet {
         grid-column: 1 / -1;
         grid-row: 3;
     }
 
-    .zone-joueurs {
+    .zone-actions-humain {
         grid-column: 1 / -1;
         grid-row: 4;
     }
 
-    .zone-chevalet {
+    .zone-joueurs {
         grid-column: 1 / -1;
         grid-row: 5;
     }
 
-    .zone-actions-humain {
+    .zone-dico-permanente {
         grid-column: 1 / -1;
         grid-row: 6;
         margin-bottom: 20px;
