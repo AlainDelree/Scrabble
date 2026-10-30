@@ -138,3 +138,70 @@ class FenetrePont:
             return
         charge = json.loads(correspondance.group("charge"))
         self._diffusion.publier(fonction, charge)
+
+
+#: Évènement DOM que ``httpd._script_pont`` déclenche sur ``EventSource.onopen``
+#: (connexion initiale ET reconnexions automatiques du navigateur) — seul
+#: moyen, pour :func:`script_rattrapage` ci-dessous, de savoir que le flux SSE
+#: vient de (re)s'ouvrir sans dupliquer une seconde connexion SSE. Nom PUBLIC
+#: (pas de ``_``) : ``httpd._script_pont`` l'importe pour déclencher le même
+#: évènement, voir ce module.
+EVENEMENT_SSE_OUVERTURE = "scrabble:sse-ouverture"
+
+
+def script_rattrapage() -> str:
+    """Script de rattrapage automatique après un décrochage (issue #477, point 5).
+
+    Remplace, en portrait (téléphone, voir le bouton masqué à ≤480px dans
+    ``jeu.css``), l'ancien bouton « ↻ Resynchroniser » (``btn-rafraichir``,
+    ``jeu.js``) : sur l'application de bureau (pywebview), Alain n'en a jamais
+    eu besoin — mais sur téléphone, l'affichage peut rater une diffusion SSE
+    pendant une mise en veille de l'écran ou une coupure de connexion
+    momentanée pendant que l'ordinateur joue son coup. Ce script recrée
+    exactement l'effet du bouton (``obtenir_etat_plateau``/
+    ``obtenir_etat_chevalet`` puis ``appliquerEtatPlateau``/
+    ``appliquerEtatChevalet`` — mêmes fonctions que ``rafraichir()`` dans
+    jeu.js, jamais modifié) à deux déclencheurs :
+
+    - ``visibilitychange`` quand la page redevient visible (réveil du
+      téléphone, retour d'un changement d'onglet) ;
+    - :data:`EVENEMENT_SSE_OUVERTURE`, déclenché par le script-pont
+      (``scrabble.serveur.httpd._script_pont``) à chaque ouverture de la
+      connexion SSE — la première ET, grâce à la reconnexion automatique
+      native d'``EventSource``, toute reconnexion après une coupure.
+
+    Injecté dans TOUTES les pages HTML servies (comme ``_script_pont``), donc
+    aussi sur ``accueil.html`` : les deux gardes ``typeof ... === 'function'``
+    rendent l'appel silencieux là où ``jeu.js`` n'a rien posé sur ``window``
+    (``appliquerEtatPlateau``/``appliquerEtatChevalet`` n'existent que sur
+    ``jeu.html``). Sans aucun effet sur l'application de bureau : ce script
+    n'existe que dans les pages servies par CE serveur HTTP, jamais chargé par
+    pywebview.
+    """
+    return f"""
+<script>
+(function() {{
+    "use strict";
+    function rattraper() {{
+        if (!window.pywebview || !window.pywebview.api) {{ return; }}
+        var api = window.pywebview.api;
+        if (typeof api.obtenir_etat_plateau === "function"
+                && typeof window.appliquerEtatPlateau === "function") {{
+            api.obtenir_etat_plateau().then(function(etat) {{
+                window.appliquerEtatPlateau(etat);
+            }}).catch(function() {{}});
+        }}
+        if (typeof api.obtenir_etat_chevalet === "function"
+                && typeof window.appliquerEtatChevalet === "function") {{
+            api.obtenir_etat_chevalet().then(function(etat) {{
+                window.appliquerEtatChevalet(etat);
+            }}).catch(function() {{}});
+        }}
+    }}
+    document.addEventListener("visibilitychange", function() {{
+        if (document.visibilityState === "visible") {{ rattraper(); }}
+    }});
+    window.addEventListener("{EVENEMENT_SSE_OUVERTURE}", rattraper);
+}})();
+</script>
+""".strip()

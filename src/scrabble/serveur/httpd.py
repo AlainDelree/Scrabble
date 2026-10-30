@@ -30,7 +30,13 @@ from pathlib import Path
 from typing import Any, Callable
 
 from scrabble import journal
-from scrabble.serveur.pont import FenetrePont, GestionnaireDiffusion, fonctions_exposees
+from scrabble.serveur.pont import (
+    EVENEMENT_SSE_OUVERTURE,
+    FenetrePont,
+    GestionnaireDiffusion,
+    fonctions_exposees,
+    script_rattrapage,
+)
 
 #: Préfixe réservé aux endpoints du serveur — jamais un vrai fichier de ``ui/web/``.
 PREFIXE_INTERNE = "/__scrabble__"
@@ -69,7 +75,13 @@ def _script_pont(noms_fonctions: list[str]) -> str:
     Un deuxième bloc ouvre une connexion SSE vers ``/__scrabble__/evenements``
     et appelle ``window[fonction](charge)`` pour chaque message reçu — c'est
     le relais des diffusions poussées par ``ApiJeu._diffuser`` (voir
-    ``scrabble.serveur.pont.FenetrePont``).
+    ``scrabble.serveur.pont.FenetrePont``). Il déclenche aussi, sur
+    ``EventSource.onopen`` (connexion initiale ET reconnexions automatiques du
+    navigateur après une coupure), l'évènement DOM
+    :data:`~scrabble.serveur.pont.EVENEMENT_SSE_OUVERTURE` : c'est le signal
+    dont dépend le rattrapage automatique du téléphone (issue #477, point 5 —
+    voir :func:`scrabble.serveur.pont.script_rattrapage`, injecté séparément
+    par :meth:`GestionnaireRequetes._servir_statique`).
 
     Navigation (point 6) : ``demarrer_jeu``/``recommencer_jeu``/``retourner_
     accueil``/``annuler_tirage_accueil`` sont les méthodes de contrôle du
@@ -125,6 +137,9 @@ def _script_pont(noms_fonctions: list[str]) -> str:
         if (typeof fn === "function") {{
             fn(message.charge);
         }}
+    }};
+    source.onopen = function() {{
+        window.dispatchEvent(new Event("{EVENEMENT_SSE_OUVERTURE}"));
     }};
 }})();
 </script>
@@ -210,7 +225,14 @@ class GestionnaireRequetes(BaseHTTPRequestHandler):
         type_mime, _ = mimetypes.guess_type(str(fichier))
         type_mime = type_mime or "application/octet-stream"
         if fichier.suffix == ".html":
-            script = _script_pont(sorted(self.server.fonctions.keys())).encode("utf-8")
+            # Script-pont (point 4) + rattrapage automatique portrait (issue
+            # #477, point 5 — scrabble.serveur.pont.script_rattrapage) : les
+            # deux sont injectés ensemble, dans TOUTES les pages HTML, comme
+            # le script-pont l'était déjà seul. Sans effet hors de ce
+            # serveur : jamais chargé par l'application de bureau (pywebview).
+            script = (
+                _script_pont(sorted(self.server.fonctions.keys())) + script_rattrapage()
+            ).encode("utf-8")
             if _BALISE_INJECTION in contenu:
                 contenu = contenu.replace(_BALISE_INJECTION, script + _BALISE_INJECTION, 1)
             else:

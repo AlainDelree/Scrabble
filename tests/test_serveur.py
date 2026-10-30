@@ -38,7 +38,13 @@ from scrabble.serveur.httpd import (
     _resoudre_chemin_statique,
     _script_pont,
 )
-from scrabble.serveur.pont import FenetrePont, GestionnaireDiffusion, fonctions_exposees
+from scrabble.serveur.pont import (
+    EVENEMENT_SSE_OUVERTURE,
+    FenetrePont,
+    GestionnaireDiffusion,
+    fonctions_exposees,
+    script_rattrapage,
+)
 from scrabble.ui.accueil import ApiAccueil
 from scrabble.ui.application import DOSSIER_WEB, VUE_ACCUEIL, ApiRouteur
 from scrabble.ui.jeu import ApiJeu
@@ -151,6 +157,38 @@ def test_script_pont_navigue_sur_succes_des_fonctions_de_controle():
     pytest, documentée dans le rapport de l'issue #475)."""
     script = _script_pont(["demarrer_jeu", "obtenir_etat", "retourner_accueil"])
     assert json.dumps(_CIBLES_NAVIGATION) in script
+
+
+# -------------------------------------------------------------------------- #
+# Rattrapage automatique portrait (issue #477, point 5)
+# -------------------------------------------------------------------------- #
+
+
+def test_script_pont_declenche_l_evenement_sse_ouverture_a_l_ouverture():
+    """``source.onopen`` doit déclencher l'évènement dont dépend le rattrapage
+    automatique (:func:`script_rattrapage`) — à l'ouverture initiale ET à
+    chaque reconnexion automatique du navigateur après une coupure (même
+    callback native ``EventSource.onopen``)."""
+    script = _script_pont(["obtenir_etat"])
+    assert "source.onopen" in script
+    assert f'new Event("{EVENEMENT_SSE_OUVERTURE}")' in script
+
+
+def test_script_rattrapage_ecoute_visibilite_et_reouverture_sse():
+    script = script_rattrapage()
+    assert "visibilitychange" in script
+    assert EVENEMENT_SSE_OUVERTURE in script
+    assert "obtenir_etat_plateau" in script
+    assert "obtenir_etat_chevalet" in script
+    assert "appliquerEtatPlateau" in script
+    assert "appliquerEtatChevalet" in script
+
+
+def test_serveur_sert_jeu_html_avec_le_script_de_rattrapage(serveur_test):
+    with urllib.request.urlopen(_url(serveur_test, "/jeu.html")) as reponse:
+        corps = reponse.read().decode("utf-8")
+    assert EVENEMENT_SSE_OUVERTURE in corps
+    assert "visibilitychange" in corps
 
 
 def test_fonctions_exposees_exclut_set_window_et_les_prives():

@@ -69,9 +69,16 @@
                          l'écran de jeu et rouvre l'accueil ; la partie reste persistée
                          et reprenable. Avertissement (modale) si des lettres sont
                          posées mais non validées. -->
+                    <!-- Libellé raccourci en portrait (issue #477, point 3) : « Retour »
+                         seul, via deux <span> basculés par jeu.css (aucun JS). Le
+                         libellé complet reste porté par ``aria-label`` (accessibilité)
+                         et ``title`` (infobulle), inchangés quelle que soit la largeur ;
+                         les modales de confirmation et l'affichage ordinateur, qui lisent
+                         leur propre texte statique ailleurs, ne sont pas concernés. -->
                     <button id="btn-retour-menu" class="btn btn-secondaire btn-utilitaire"
+                            aria-label="Retour au menu"
                             title="Fermer la partie et revenir au menu d'accueil (la partie reste reprenable)">
-                        🏠 Retour au menu
+                        <span class="btn-retour-texte-long">🏠 Retour au menu</span><span class="btn-retour-texte-court">🏠 Retour</span>
                     </button>
 
                     <!-- Bouton « Resynchroniser » (issue #41 point 3 ; issue #78).
@@ -79,7 +86,13 @@
                          doute sur la synchronisation. Réduit à sa seule icône (issue
                          #189) : Alain n'en a jamais eu besoin, il doit rester discret.
                          Le libellé texte est retiré de l'affichage mais reste porté
-                         par ``title`` + ``aria-label`` pour l'accessibilité. -->
+                         par ``title`` + ``aria-label`` pour l'accessibilité.
+
+                         Masqué en portrait étroit (≤480px, issue #477, point 5) : sur
+                         téléphone, un rattrapage AUTOMATIQUE (visibilité de la page +
+                         reconnexion du flux SSE) le remplace, injecté par
+                         scrabble.serveur.pont.script_rattrapage — jeu.js inchangé, ce
+                         bouton reste affiché tel quel sur grand écran. -->
                     <button id="btn-rafraichir" class="btn btn-secondaire btn-utilitaire btn-icone-seule"
                             aria-label="Resynchroniser"
                             title="Recharger l'affichage depuis le moteur (en cas de doute sur la synchronisation)">
@@ -127,13 +140,23 @@
                  liste (C.configurerPopover, jeu.js) : ouverture/fermeture au
                  clic, fermeture au clic extérieur ou à la touche Échap. La plus
                  RÉCENTE en haut ; chaque ligne rouvre le détail du score de CE
-                 coup. -->
+                 coup.
+
+                 En portrait étroit (≤480px, issue #477, point 3), ``#historique-
+                 menu`` (ce <section> rendu ``display:contents``) est replacé par
+                 jeu.css DANS la grille de ``.container``, à côté de la barre
+                 système (zone A), pour afficher « Retour / Sac / Derniers coups »
+                 sur une seule ligne collante au-dessus du plateau. Aucun id/classe
+                 ni écouteur JS ne change — seule la position CSS. -->
             <section class="zone-gauche zone-historique-permanente">
                 <div class="historique-menu" id="historique-menu">
+                    <!-- Libellé raccourci en portrait (issue #477, point 3), même
+                         bascule par deux <span> que « Retour » ci-dessus. -->
                     <button id="btn-historique" class="historique-resume"
-                            aria-haspopup="dialog" aria-expanded="false">
+                            aria-haspopup="dialog" aria-expanded="false"
+                            aria-label="Derniers coups">
                         <span class="historique-resume-inner">
-                            <span class="historique-resume-titre">🕑 Derniers coups</span>
+                            <span class="historique-resume-titre"><span class="historique-texte-long">🕑 Derniers coups</span><span class="historique-texte-court">🕑 Coups</span></span>
                             <span class="historique-resume-compte" id="historique-compte"></span>
                         </span>
                     </button>
