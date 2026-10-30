@@ -10,11 +10,17 @@ Couvre :
   pont.fonctions_exposees`) : public/appelable seulement, ``set_window``
   explicitement exclu ;
 - un aller-retour HTTP complet (statique + appel d'API) sur un serveur réel,
-  lancé sur ``127.0.0.1`` à un port éphémère, arrêté en fin de test.
+  lancé sur ``127.0.0.1`` à un port éphémère, arrêté en fin de test ;
+- le verrouillage du dictionnaire (issue #479) : fonctions de gestion des
+  mots interdites, masquage de l'onglet Dictionnaire, lettres posées/
+  vérifiées limitées au chevalet réel, limites de fréquence et leur
+  allongement de pause, absence d'arguments dans le journal.
 
-Aucun de ces tests n'a besoin du dictionnaire (``data/dictionnaire/``) : les
-méthodes exercées (``obtenir_etat``, servir une page statique) ne le
-sollicitent pas.
+Aucun de ces tests n'a besoin du VRAI dictionnaire (``data/dictionnaire/``) :
+les méthodes exercées (``obtenir_etat``, servir une page statique) ne le
+sollicitent pas, et les tests de partie (issue #479) chargent un
+:class:`~scrabble.dictionnaire.dictionnaire.Trie` minimal construit en
+mémoire (``Trie.depuis_iterable``) plutôt que les fichiers du dépôt.
 """
 
 from __future__ import annotations
@@ -25,12 +31,16 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from typing import Any
 
 import pytest
 
 import scrabble.config as _config
+import scrabble.journal as journal
 import scrabble.persistance.stockage as _stockage
 import scrabble.reglages as _reglages
+from scrabble.dictionnaire.dictionnaire import Trie
+from scrabble.moteur.partie import Joueur, Partie
 from scrabble.serveur.donnees import _repointer_defaut, isoler_donnees_utilisateur
 from scrabble.serveur.httpd import (
     _CIBLES_NAVIGATION,
@@ -44,9 +54,20 @@ from scrabble.serveur.pont import (
     GestionnaireDiffusion,
     fonctions_exposees,
     script_rattrapage,
+    style_masquage_dictionnaire,
+)
+from scrabble.serveur.securite import (
+    FONCTIONS_DICTIONNAIRE_INTERDITES,
+    LIMITES_FREQUENCE,
+    MESSAGE_CHEVALET_INVALIDE,
+    MESSAGE_FONCTION_INTERDITE,
+    MESSAGE_LIMITE_FREQUENCE,
+    PALIERS_BLOCAGE_SECONDES,
+    LimiteurFrequence,
+    chevalet_du_joueur_courant,
 )
 from scrabble.ui.accueil import ApiAccueil
-from scrabble.ui.application import DOSSIER_WEB, VUE_ACCUEIL, ApiRouteur
+from scrabble.ui.application import DOSSIER_WEB, VUE_ACCUEIL, VUE_JEU, ApiRouteur
 from scrabble.ui.jeu import ApiJeu
 
 _FONCTIONS_STOCKAGE = (
@@ -341,3 +362,320 @@ def test_serveur_diffuse_l_etat_via_sse(serveur_test):
     fil.join(timeout=5)
     fonctions_recues = {m.get("fonction") for m in messages}
     assert fonctions_recues == {"appliquerEtatPlateau", "appliquerEtatChevalet"}
+
+
+# -------------------------------------------------------------------------- #
+# Verrouillage du dictionnaire (issue #479)
+# -------------------------------------------------------------------------- #
+# Utilitaires communs aux points 1, 3, 4 et 5 ci-dessous.
+
+
+def _requete_api(serveur: ServeurScrabble, fonction: str, *args, **kwargs):
+    """Appel HTTP brut vers ``/api/<fonction>`` — renvoie ``(statut, corps)``.
+
+    Contrairement à ``urllib.request.urlopen`` seul, ne lève JAMAIS : un
+    statut non-2xx est simplement renvoyé tel quel (comme ``statut``), pour
+    pouvoir vérifier aussi bien un succès qu'un refus contrôlé sans
+    ``pytest.raises`` à chaque appel.
+    """
+    corps_requete: dict[str, Any] = {"args": list(args)}
+    if kwargs:
+        corps_requete["kwargs"] = kwargs
+    requete = urllib.request.Request(
+        _url(serveur, f"/__scrabble__/api/{fonction}"),
+        data=json.dumps(corps_requete).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(requete) as reponse:
+            return reponse.status, json.loads(reponse.read())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read())
+
+
+def _charger_partie_test(
+    serveur: ServeurScrabble, chevalet: tuple[str, ...]
+) -> Partie:
+    """Charge une partie à 1 joueur humain, chevalet FORCÉ, en vue Jeu.
+
+    Injection d'état directe (comme l'issue #477) plutôt qu'un vrai
+    ``lancer_partie`` : un dictionnaire minimal construit en mémoire
+    (:class:`~scrabble.dictionnaire.dictionnaire.Trie.depuis_iterable`) évite
+    toute dépendance au vrai ``data/dictionnaire/`` (absent par défaut dans un
+    clone isolé) et un chevalet connu rend les tests de contrôle « lettre hors
+    chevalet » déterministes, sans dépendre d'un tirage aléatoire.
+    """
+    joueur = Joueur("Testeur", humain=True)
+    partie = Partie([joueur], Trie.depuis_iterable(["ABC"]))
+    partie.joueurs[0].chevalet = list(chevalet)
+    serveur.routeur.charger_jeu(partie, 1)
+    serveur.routeur.activer_vue(VUE_JEU)
+    return partie
+
+
+# -- Point 1 — fonctions de gestion des mots interdites -------------------- #
+
+
+@pytest.mark.parametrize("nom_fonction", sorted(FONCTIONS_DICTIONNAIRE_INTERDITES))
+def test_serveur_refuse_les_fonctions_de_gestion_du_dictionnaire(
+    serveur_test, nom_fonction
+):
+    statut, corps = _requete_api(serveur_test, nom_fonction, "xxx")
+    assert statut == 403
+    assert corps == {"erreur": MESSAGE_FONCTION_INTERDITE}
+
+
+def test_fonctions_exposees_exclut_la_gestion_du_dictionnaire():
+    """Ces fonctions sortent de la liste des fonctions appelables (point 1) :
+    absentes de ``fonctions_exposees``, donc jamais dans ``FONCTIONS`` côté
+    script-pont — ``typeof api.ajouter_mot`` reste ``'undefined'``, comme une
+    fonction qui n'existe pas (même comportement que pywebview réel)."""
+    routeur = ApiRouteur()
+    fonctions = fonctions_exposees(routeur)
+    for nom in FONCTIONS_DICTIONNAIRE_INTERDITES:
+        assert nom not in fonctions
+
+
+def test_verifier_mot_n_est_pas_dans_les_fonctions_interdites():
+    """``verifier_mot`` reste une fonction de jeu normale (point 4, pas 1)."""
+    assert "verifier_mot" not in FONCTIONS_DICTIONNAIRE_INTERDITES
+
+
+# -- Point 2 — masquage de l'onglet Dictionnaire des réglages -------------- #
+
+
+def test_style_masquage_dictionnaire_cible_les_bons_identifiants():
+    style = style_masquage_dictionnaire()
+    assert "#onglet-dictionnaire" in style
+    assert "#panneau-dictionnaire" in style
+    assert "display: none" in style
+
+
+def test_serveur_sert_accueil_html_avec_le_masquage_dictionnaire(serveur_test):
+    with urllib.request.urlopen(_url(serveur_test, "/accueil.html")) as reponse:
+        corps = reponse.read().decode("utf-8")
+    assert "#onglet-dictionnaire" in corps
+    assert "#panneau-dictionnaire" in corps
+
+
+def test_serveur_sert_jeu_html_sans_toucher_au_panneau_de_verification(serveur_test):
+    """Le panneau « Tapez un mot à tester » (identifiants distincts de ceux
+    masqués ci-dessus) reste intact sur l'écran de jeu : seul l'onglet
+    Dictionnaire des réglages (accueil) est masqué."""
+    with urllib.request.urlopen(_url(serveur_test, "/jeu.html")) as reponse:
+        corps = reponse.read().decode("utf-8")
+    assert "champ-verif" in corps
+    assert "btn-verifier" in corps
+
+
+# -- Point 3 — lettres posées/vérifiées limitées au chevalet --------------- #
+
+
+def test_chevalet_du_joueur_courant_lit_le_chevalet_reel(serveur_test):
+    _charger_partie_test(serveur_test, ("A", "B", "C", "D", "E", "F", "G"))
+    assert chevalet_du_joueur_courant(serveur_test.fonctions) == [
+        "A", "B", "C", "D", "E", "F", "G",
+    ]
+
+
+def test_chevalet_du_joueur_courant_renvoie_none_sans_partie_chargee(serveur_test):
+    assert chevalet_du_joueur_courant(serveur_test.fonctions) is None
+
+
+def test_serveur_laisse_passer_le_mode_clic_plateau(serveur_test):
+    """Mode « clic plateau » (``ligne``/``colonne`` seuls) : la lettre est déjà
+    résolue depuis le chevalet réel côté ``scrabble.ui`` — rien à contrôler de
+    plus ici, le déroulé honnête n'est jamais refusé."""
+    _charger_partie_test(serveur_test, ("A", "B", "C", "D", "E", "F", "G"))
+    statut, corps = _requete_api(serveur_test, "selectionner_lettre", 0)
+    assert statut == 200
+    assert corps["resultat"]["succes"] is True
+    statut, corps = _requete_api(serveur_test, "poser_lettre_en_attente", 7, 7)
+    assert statut == 200
+    assert corps["resultat"] == {"succes": True}
+
+
+def test_serveur_laisse_passer_une_lettre_reellement_du_chevalet(serveur_test):
+    _charger_partie_test(serveur_test, ("A", "B", "C", "D", "E", "F", "G"))
+    statut, corps = _requete_api(
+        serveur_test, "poser_lettre_en_attente", 7, 7, "A", False, 1, 0
+    )
+    assert statut == 200
+    assert corps["resultat"] == {"succes": True}
+
+
+def test_serveur_refuse_une_lettre_hors_chevalet_en_finalisation(serveur_test):
+    _charger_partie_test(serveur_test, ("A", "B", "C", "D", "E", "F", "G"))
+    statut, corps = _requete_api(
+        serveur_test, "poser_lettre_en_attente", 7, 7, "Z", False, 10, 0
+    )
+    assert statut == 200
+    assert corps["resultat"] == {"succes": False, "erreur": MESSAGE_CHEVALET_INVALIDE}
+
+
+def test_serveur_accepte_un_joker_reellement_du_chevalet(serveur_test):
+    _charger_partie_test(serveur_test, ("*", "B", "C", "D", "E", "F", "G"))
+    statut, corps = _requete_api(
+        serveur_test, "poser_lettre_en_attente", 7, 7, "X", True, 0, 0
+    )
+    assert statut == 200
+    assert corps["resultat"] == {"succes": True}
+
+
+def test_serveur_refuse_un_joker_sans_joker_au_chevalet(serveur_test):
+    _charger_partie_test(serveur_test, ("A", "B", "C", "D", "E", "F", "G"))
+    statut, corps = _requete_api(
+        serveur_test, "poser_lettre_en_attente", 7, 7, "X", True, 0, 0
+    )
+    assert statut == 200
+    assert corps["resultat"] == {"succes": False, "erreur": MESSAGE_CHEVALET_INVALIDE}
+
+
+def test_serveur_refuse_verifier_coup_avec_placements_hors_chevalet(serveur_test):
+    _charger_partie_test(serveur_test, ("A", "B", "C", "D", "E", "F", "G"))
+    statut, corps = _requete_api(
+        serveur_test,
+        "verifier_coup",
+        [{"ligne": 7, "colonne": 7, "lettre": "Z", "joker": False}],
+    )
+    assert statut == 200
+    assert corps["resultat"] == {"succes": False, "erreur": MESSAGE_CHEVALET_INVALIDE}
+
+
+def test_serveur_refuse_poser_mot_avec_placements_hors_chevalet(serveur_test):
+    _charger_partie_test(serveur_test, ("A", "B", "C", "D", "E", "F", "G"))
+    statut, corps = _requete_api(
+        serveur_test,
+        "poser_mot",
+        [{"ligne": 7, "colonne": 7, "lettre": "Z", "joker": False}],
+    )
+    assert statut == 200
+    assert corps["resultat"] == {"succes": False, "erreur": MESSAGE_CHEVALET_INVALIDE}
+
+
+def test_serveur_laisse_passer_verifier_coup_avec_placements_du_chevalet(serveur_test):
+    """Une lettre réellement du chevalet n'est jamais bloquée par CE contrôle :
+    si l'appel échoue malgré tout, c'est pour une autre raison (ici : un mot
+    d'une seule lettre n'est pas un placement valide), jamais le message de
+    chevalet invalide."""
+    _charger_partie_test(serveur_test, ("A", "B", "C", "D", "E", "F", "G"))
+    statut, corps = _requete_api(
+        serveur_test,
+        "verifier_coup",
+        [{"ligne": 7, "colonne": 7, "lettre": "A", "joker": False}],
+    )
+    assert statut == 200
+    assert corps["resultat"].get("erreur") != MESSAGE_CHEVALET_INVALIDE
+
+
+# -- Point 4 — limites de fréquence ----------------------------------------- #
+
+
+def test_limiteur_frequence_refuse_au_dela_de_la_limite_minute():
+    limiteur = LimiteurFrequence(max_par_minute=3, max_par_jour=1000)
+    t0 = 1_000_000.0
+    assert limiteur.autoriser("1.2.3.4", t0)
+    assert limiteur.autoriser("1.2.3.4", t0 + 1)
+    assert limiteur.autoriser("1.2.3.4", t0 + 2)
+    assert not limiteur.autoriser("1.2.3.4", t0 + 3)
+
+
+def test_limiteur_frequence_refuse_au_dela_de_la_limite_jour():
+    limiteur = LimiteurFrequence(max_par_minute=1000, max_par_jour=2)
+    t0 = 1_000_000.0
+    # Espacés de plus d'une minute pour ne jamais aussi déclencher la limite/minute.
+    assert limiteur.autoriser("1.2.3.4", t0)
+    assert limiteur.autoriser("1.2.3.4", t0 + 120)
+    assert not limiteur.autoriser("1.2.3.4", t0 + 240)
+
+
+def test_limiteur_frequence_distingue_les_adresses():
+    limiteur = LimiteurFrequence(max_par_minute=1, max_par_jour=1000)
+    t0 = 1_000_000.0
+    assert limiteur.autoriser("1.2.3.4", t0)
+    assert not limiteur.autoriser("1.2.3.4", t0 + 1)
+    assert limiteur.autoriser("5.6.7.8", t0 + 1)
+
+
+def test_limiteur_frequence_pause_s_allonge_si_le_client_insiste():
+    limiteur = LimiteurFrequence(max_par_minute=1, max_par_jour=1000)
+    t0 = 1_000_000.0
+    assert limiteur.autoriser("1.2.3.4", t0)
+
+    assert not limiteur.autoriser("1.2.3.4", t0 + 1)
+    etat = limiteur._etats["1.2.3.4"]
+    assert etat.blocage_jusqua - (t0 + 1) == PALIERS_BLOCAGE_SECONDES[0]
+
+    # Insiste PENDANT le blocage : palier suivant, plus long.
+    assert not limiteur.autoriser("1.2.3.4", t0 + 2)
+    assert etat.blocage_jusqua - (t0 + 2) == PALIERS_BLOCAGE_SECONDES[1]
+
+    assert not limiteur.autoriser("1.2.3.4", t0 + 3)
+    assert etat.blocage_jusqua - (t0 + 3) == PALIERS_BLOCAGE_SECONDES[2]
+
+    # Plafonné : un refus de plus ne dépasse pas le dernier palier.
+    assert not limiteur.autoriser("1.2.3.4", t0 + 4)
+    assert etat.blocage_jusqua - (t0 + 4) == PALIERS_BLOCAGE_SECONDES[-1]
+
+
+def test_limiteur_frequence_reaccepte_apres_la_pause_et_reinitialise_l_escalade():
+    limiteur = LimiteurFrequence(max_par_minute=1, max_par_jour=1000)
+    t0 = 1_000_000.0
+    assert limiteur.autoriser("1.2.3.4", t0)
+    assert not limiteur.autoriser("1.2.3.4", t0 + 1)
+    pause = PALIERS_BLOCAGE_SECONDES[0]
+    assert limiteur.autoriser("1.2.3.4", t0 + 1 + pause + 1)
+    assert limiteur._etats["1.2.3.4"].niveau_blocage == 0
+
+
+def test_serveur_limite_la_frequence_de_verifier_mot(serveur_test):
+    _charger_partie_test(serveur_test, ("A", "B", "C", "D", "E", "F", "G"))
+    max_minute, _ = LIMITES_FREQUENCE["verifier_mot"]
+    for _ in range(max_minute):
+        statut, corps = _requete_api(serveur_test, "verifier_mot", "ABC")
+        assert statut == 200
+        assert corps["resultat"].get("erreur") != MESSAGE_LIMITE_FREQUENCE
+    statut, corps = _requete_api(serveur_test, "verifier_mot", "ABC")
+    assert statut == 200
+    assert corps["resultat"] == {"succes": False, "erreur": MESSAGE_LIMITE_FREQUENCE}
+
+
+def test_serveur_limite_la_frequence_de_verifier_coup(serveur_test):
+    _charger_partie_test(serveur_test, ("A", "B", "C", "D", "E", "F", "G"))
+    max_minute, _ = LIMITES_FREQUENCE["verifier_coup"]
+    for _ in range(max_minute):
+        statut, corps = _requete_api(serveur_test, "verifier_coup")
+        assert statut == 200
+        assert corps["resultat"].get("erreur") != MESSAGE_LIMITE_FREQUENCE
+    statut, corps = _requete_api(serveur_test, "verifier_coup")
+    assert statut == 200
+    assert corps["resultat"] == {"succes": False, "erreur": MESSAGE_LIMITE_FREQUENCE}
+
+
+# -- Point 5 — journal des abus, jamais les arguments ----------------------- #
+
+
+def test_journal_abus_ne_contient_jamais_les_arguments(tmp_path, serveur_test):
+    journal.demarrer_session(dossier=tmp_path)
+    try:
+        _requete_api(serveur_test, "rechercher_mot", "MOTSECRETINTERDIT")
+        _charger_partie_test(serveur_test, ("A", "B", "C", "D", "E", "F", "G"))
+        _requete_api(
+            serveur_test, "poser_lettre_en_attente", 7, 7, "ZEBRECACHE", False, 10, 0
+        )
+        max_minute, _ = LIMITES_FREQUENCE["verifier_mot"]
+        for _ in range(max_minute + 1):
+            _requete_api(serveur_test, "verifier_mot", "AUTREMOTCACHE")
+        # Lu AVANT la clôture : une session sans entrée de niveau « erreur »
+        # (le cas ici — ``journal.info`` seulement) voit son fichier supprimé
+        # par ``Journal.cloturer`` (politique de rétention, voir journal.py).
+        contenu = journal.session_courante().chemin.read_text(encoding="utf-8")
+    finally:
+        journal.cloturer_session()
+    assert "MOTSECRETINTERDIT" not in contenu
+    assert "ZEBRECACHE" not in contenu
+    assert "AUTREMOTCACHE" not in contenu
+    assert "rechercher_mot" in contenu
+    assert "poser_lettre_en_attente" in contenu
+    assert "verifier_mot" in contenu

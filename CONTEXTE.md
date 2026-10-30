@@ -105,11 +105,50 @@ adaptées dans `serveur/` sans toucher à `ui/` :
   déjà tolérants à une fenêtre absente (code existant, testé comme tel) —
   aucune adaptation nécessaire.
 
-Limites connues de ce prototype (voir le rapport de clôture de l'issue #475
-pour le détail) : onglet Dictionnaire des réglages et `verifier_mot`/
-`verifier_coup` restent, pour l'instant, un oracle de dictionnaire utilisable
-par quiconque atteint le serveur — leur verrouillage est le chantier suivant,
-volontairement hors de cette issue.
+### Verrouillage du dictionnaire (issue #479)
+
+Le dictionnaire (`data/dictionnaire/`) n'est jamais diffusé au navigateur ;
+tout appel permettant de le reconstituer mot par mot est verrouillé côté
+serveur, dans `scrabble/serveur/securite.py` (réglages ci-dessous), appliqué
+par `scrabble/serveur/httpd.py` AVANT tout appel au routeur :
+
+- **Fonctions interdites** — les quatre méthodes de gestion des mots de
+  l'onglet Dictionnaire des réglages (`rechercher_mot`, `ajouter_mot`,
+  `retirer_mot`, `marquer_classique_mot`) sont refusées pour tous les clients
+  (HTTP 403, `{"erreur": ...}`, même format que les autres erreurs de l'API)
+  et absentes de la liste des fonctions exposées au navigateur — jamais
+  appelables depuis le téléphone. `verifier_mot` (champ « Tapez un mot à
+  tester » de l'écran de jeu) n'est PAS concernée : limitée en fréquence
+  (ci-dessous), pas interdite. L'onglet Dictionnaire des réglages est masqué
+  en CSS, injecté par le serveur dans les pages HTML servies (comme le
+  script-pont) — aucun fichier de `ui/web/` modifié, le bureau garde
+  l'onglet.
+- **Lettres hors chevalet** — `poser_lettre_en_attente` (choix de la lettre
+  d'un joker) et `verifier_coup`/`poser_mot` (quand `placements` est fourni
+  explicitement) sont recontrôlées contre le chevalet réel du joueur dont
+  c'est le tour, lu via les fonctions déjà publiques `obtenir_etat` +
+  `obtenir_chevalet` — aucun accès à l'état privé d'`ApiJeu`, donc aucune
+  modification de `scrabble/ui/`. Un joker du chevalet reste utilisable avec
+  n'importe quelle lettre choisie, seulement si l'emplacement visé porte
+  réellement un joker.
+- **Limites de fréquence** — réglables dans `scrabble/serveur/securite.py`
+  (`LIMITES_FREQUENCE`, `PALIERS_BLOCAGE_SECONDES`) : `verifier_coup` 30
+  appels/minute et 1 000/jour, `verifier_mot` 10 appels/minute et 200/jour
+  (plus stricte : elle accepte n'importe quelle suite de lettres). Au-delà,
+  refus `{"succes": False, "erreur": "Trop de vérifications, réessayez dans
+  quelques minutes."}` ; une insistance après un refus allonge la pause (1,
+  5, puis 15 minutes, plafonnée), réinitialisée au premier appel de nouveau
+  accepté. Par adresse de client (pas de comptes pour l'instant — la limite
+  sera rattachée au compte quand les comptes existeront). **Compteurs en
+  mémoire du processus serveur : remis à zéro à chaque redémarrage.**
+- **Journal des abus** — chaque refus (fonction interdite, limite atteinte,
+  lettre hors chevalet) ajoute une ligne au journal du serveur (heure,
+  adresse, fonction/limite concernée) — jamais les arguments de l'appel
+  (lettres, mots) ni leurs résultats.
+
+Limite connue restant hors de cette issue (voir le rapport de clôture de
+l'issue #475) : une seule partie à la fois, partagée par tout client — pas de
+comptes ni de session par joueur.
 
 ## Stack (`requirements.txt`)
 `pywebview` (UI), `pyinstaller` (build .exe), `pytest` (tests), `spylls`

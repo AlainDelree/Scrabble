@@ -18,6 +18,12 @@ Avertissement de sécurité (point 2) : AUCUNE authentification. Prototype pour
 un seul joueur de confiance sur un réseau local de confiance — jamais
 Internet. Affiché au démarrage par :func:`scrabble.serveur.cli.main` ; voir
 ``CONTEXTE.md``.
+
+Verrouillage du dictionnaire (issue #479) : ``do_POST`` consulte, dans l'ordre,
+:mod:`scrabble.serveur.securite` pour refuser les appels interdits (gestion
+des mots), les dépassements de fréquence (``verifier_coup``/``verifier_mot``)
+et les lettres posées/vérifiées hors du chevalet réel — AVANT tout appel au
+routeur. Voir ce module pour le détail des réglages et des messages.
 """
 
 from __future__ import annotations
@@ -36,6 +42,14 @@ from scrabble.serveur.pont import (
     GestionnaireDiffusion,
     fonctions_exposees,
     script_rattrapage,
+    style_masquage_dictionnaire,
+)
+from scrabble.serveur.securite import (
+    CONTROLES_CHEVALET,
+    FONCTIONS_DICTIONNAIRE_INTERDITES,
+    MESSAGE_FONCTION_INTERDITE,
+    MESSAGE_LIMITE_FREQUENCE,
+    construire_limiteurs,
 )
 
 #: Préfixe réservé aux endpoints du serveur — jamais un vrai fichier de ``ui/web/``.
@@ -226,12 +240,16 @@ class GestionnaireRequetes(BaseHTTPRequestHandler):
         type_mime = type_mime or "application/octet-stream"
         if fichier.suffix == ".html":
             # Script-pont (point 4) + rattrapage automatique portrait (issue
-            # #477, point 5 — scrabble.serveur.pont.script_rattrapage) : les
-            # deux sont injectés ensemble, dans TOUTES les pages HTML, comme
-            # le script-pont l'était déjà seul. Sans effet hors de ce
+            # #477, point 5 — scrabble.serveur.pont.script_rattrapage) +
+            # masquage de l'onglet Dictionnaire des réglages (issue #479,
+            # point 2 — scrabble.serveur.pont.style_masquage_dictionnaire) :
+            # les trois sont injectés ensemble, dans TOUTES les pages HTML,
+            # comme le script-pont l'était déjà seul. Sans effet hors de ce
             # serveur : jamais chargé par l'application de bureau (pywebview).
             script = (
-                _script_pont(sorted(self.server.fonctions.keys())) + script_rattrapage()
+                _script_pont(sorted(self.server.fonctions.keys()))
+                + script_rattrapage()
+                + style_masquage_dictionnaire()
             ).encode("utf-8")
             if _BALISE_INJECTION in contenu:
                 contenu = contenu.replace(_BALISE_INJECTION, script + _BALISE_INJECTION, 1)
@@ -301,6 +319,20 @@ class GestionnaireRequetes(BaseHTTPRequestHandler):
             self._repondre_json(400, {"erreur": "« args »/« kwargs » invalides."})
             return
 
+        # Gestion des mots (onglet Dictionnaire) : interdite pour tous les
+        # clients en mode serveur (issue #479, point 1) — message dédié et
+        # entrée de journal distincts d'une fonction simplement inconnue,
+        # vérifiés AVANT toute résolution de fonction (jamais appelées, même
+        # si un nom venait à coïncider avec une méthode de contrôle du
+        # routeur). Jamais les arguments de l'appel dans le journal.
+        if nom_fonction in FONCTIONS_DICTIONNAIRE_INTERDITES:
+            journal.info(
+                "Serveur HTTP : appel refusé (gestion du dictionnaire) — "
+                f"{self.address_string()} — « {nom_fonction} »."
+            )
+            self._repondre_json(403, {"erreur": MESSAGE_FONCTION_INTERDITE})
+            return
+
         # Seules les fonctions publiques du routeur, jamais un nom commençant
         # par « _ » ni un attribut quelconque (point 4 de l'issue #475) : le
         # filtre a déjà eu lieu une fois dans ``fonctions_exposees`` au
@@ -310,6 +342,41 @@ class GestionnaireRequetes(BaseHTTPRequestHandler):
         if methode is None:
             self._repondre_json(404, {"erreur": f"Fonction inconnue : « {nom_fonction} »."})
             return
+
+        # Limite de fréquence (issue #479, point 4) : ``verifier_coup``/
+        # ``verifier_mot`` seulement (dict pré-construit par serveur, voir
+        # ``ServeurScrabble.limiteurs``). Le refus est renvoyé comme un échec
+        # normal de l'API (``{"succes": False, "erreur": ...}``, HTTP 200) —
+        # pas une erreur de transport — pour que l'écran de jeu existant
+        # (jeu.js, jamais modifié) affiche le message tel quel, exactement
+        # comme un coup refusé par le moteur.
+        limiteur = self.server.limiteurs.get(nom_fonction)
+        if limiteur is not None and not limiteur.autoriser(self.client_address[0]):
+            journal.info(
+                "Serveur HTTP : limite de fréquence atteinte — "
+                f"{self.address_string()} — « {nom_fonction} »."
+            )
+            self._repondre_json(
+                200, {"resultat": {"succes": False, "erreur": MESSAGE_LIMITE_FREQUENCE}}
+            )
+            return
+
+        # Lettres hors chevalet (issue #479, point 3) : rejoue, pour les
+        # fonctions concernées, le contrôle absent côté ``scrabble.ui`` — voir
+        # ``scrabble.serveur.securite``. Même format de refus que ci-dessus.
+        controle_chevalet = CONTROLES_CHEVALET.get(nom_fonction)
+        if controle_chevalet is not None:
+            erreur_chevalet = controle_chevalet(self.server.fonctions, args, kwargs)
+            if erreur_chevalet is not None:
+                journal.info(
+                    "Serveur HTTP : lettre hors chevalet refusée — "
+                    f"{self.address_string()} — « {nom_fonction} »."
+                )
+                self._repondre_json(
+                    200, {"resultat": {"succes": False, "erreur": erreur_chevalet}}
+                )
+                return
+
         try:
             resultat = methode(*args, **kwargs)
         except Exception as e:  # noqa: BLE001 - erreur Python remontée au JS, comme pywebview
@@ -346,6 +413,12 @@ class ServeurScrabble(ThreadingHTTPServer):
     Un thread par connexion (hérité de ``ThreadingHTTPServer``) : nécessaire
     pour que le flux SSE (une connexion bloquée indéfiniment) ne gèle pas les
     appels d'API suivants.
+
+    ``limiteurs`` (issue #479, point 4) — un :class:`~scrabble.serveur.
+    securite.LimiteurFrequence` par fonction de :data:`~scrabble.serveur.
+    securite.LIMITES_FREQUENCE` — vit en mémoire sur l'instance du serveur :
+    remis à zéro à chaque redémarrage (voir ``CONTEXTE.md``), partagé par
+    tous les fils de connexion (verrou interne à chaque limiteur).
     """
 
     daemon_threads = True
@@ -365,4 +438,5 @@ class ServeurScrabble(ThreadingHTTPServer):
         self.fonctions: dict[str, Callable[..., Any]] = fonctions_exposees(routeur)
         self.fenetre_pont = fenetre_pont
         self.diffusion = diffusion
+        self.limiteurs = construire_limiteurs()
 

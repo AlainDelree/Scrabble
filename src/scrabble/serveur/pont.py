@@ -35,7 +35,9 @@ routeur, à l'exclusion de :data:`_FONCTIONS_INTERDITES` (méthodes de
 plomberie interne, jamais appelées par ``accueil.js``/``jeu.js`` — en
 particulier ``set_window``, dont un appel depuis le navigateur avec un objet
 JSON quelconque casserait l'invariant « pas de fenêtre » dont dépend la
-navigation côté serveur, cf. :mod:`scrabble.serveur.httpd`).
+navigation côté serveur, cf. :mod:`scrabble.serveur.httpd`) et de
+:data:`~scrabble.serveur.securite.FONCTIONS_DICTIONNAIRE_INTERDITES` (gestion
+des mots de l'onglet Dictionnaire, verrouillée en mode serveur — issue #479).
 """
 
 from __future__ import annotations
@@ -46,12 +48,14 @@ import re
 import threading
 from typing import Any, Callable
 
+from scrabble.serveur.securite import FONCTIONS_DICTIONNAIRE_INTERDITES
+
 # Méthodes de contrôle du routeur jamais appelées par le JS existant
 # (``accueil.js``/``jeu.js``) : exclues par prudence du pont, même si elles
 # sont publiques. Cf. ``ApiRouteur._CONTROLE`` (scrabble.ui.application) pour
 # la liste des méthodes de contrôle *routées* ; ``set_window`` n'en fait même
 # pas partie (ce n'est pas une route, c'est de la plomberie de démarrage).
-_FONCTIONS_INTERDITES = frozenset({"set_window"})
+_FONCTIONS_INTERDITES = frozenset({"set_window"}) | FONCTIONS_DICTIONNAIRE_INTERDITES
 
 # Forme exacte produite par ``MixinDiffusion._pousser`` (api_diffusion.py) :
 # ``f"window.{fonction} && window.{fonction}({json.dumps(charge, ...)})"``.
@@ -205,3 +209,27 @@ def script_rattrapage() -> str:
 }})();
 </script>
 """.strip()
+
+
+def style_masquage_dictionnaire() -> str:
+    """Masque l'onglet Dictionnaire des réglages en mode serveur (issue #479, point 2).
+
+    Les quatre fonctions de cet onglet (``rechercher_mot``/``ajouter_mot``/
+    ``retirer_mot``/``marquer_classique_mot``) sont interdites côté serveur
+    (:mod:`scrabble.serveur.securite`) — l'onglet et son panneau, qui n'y
+    menaient qu'à des erreurs, sont donc masqués. Pure CSS, injectée dans
+    TOUTES les pages HTML servies (comme :func:`script_rattrapage`) : les deux
+    identifiants (``#onglet-dictionnaire``, ``#panneau-dictionnaire``)
+    n'existent que dans ``accueil.html``, donc sans effet sur ``jeu.html`` —
+    en particulier le panneau « Tapez un mot à tester » de l'écran de jeu
+    (``#champ-verif``/``#btn-verifier``, IDENTIFIANTS DISTINCTS), qui reste
+    affiché et fonctionnel : ``verifier_mot`` n'est PAS une fonction interdite.
+    Sans aucun effet sur l'application de bureau : cette feuille de style
+    n'existe que dans les pages servies par CE serveur HTTP, jamais chargée
+    par pywebview — aucun fichier de ``scrabble/ui/web/`` n'est modifié.
+    """
+    return (
+        "<style>\n"
+        "#onglet-dictionnaire, #panneau-dictionnaire { display: none !important; }\n"
+        "</style>"
+    )
