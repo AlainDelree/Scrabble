@@ -1986,6 +1986,23 @@ body {
     }
 }
 
+/* Palier supplémentaire téléphone en portrait (issue #476), sous la bascule en
+   une colonne ci-dessus : le seul point qui débordait encore horizontalement
+   sous ~400px était le chevalet, resté sur une seule rangée NOWRAP de 9 tuiles
+   de 40px (voir .zone-chevalet .panneau plus haut) — mesuré : 9×40px + 8
+   interstices de 5px = 400px de contenu, qui dépasse la largeur réellement
+   disponible dans la marge dès que la fenêtre descend sous ~400px (vérifié au
+   harnais Playwright, débordement de 20px à 360px). Reste du contenu de la
+   marge (boutons, fiches joueurs, actions) déjà en ``flex-wrap: wrap``, donc
+   déjà sans débordement à ces largeurs. Seuil choisi à 480px (valeur suggérée
+   par l'issue) pour une marge de sécurité confortable. */
+@media (max-width: 480px) {
+    .zone-chevalet .panneau {
+        flex-wrap: wrap;
+        row-gap: 6px;
+    }
+}
+
 /* =========================================================================
    Écran de tirage de l'ordre de jeu (issue #170)
    -------------------------------------------------------------------------
