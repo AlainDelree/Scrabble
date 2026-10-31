@@ -1788,7 +1788,13 @@ body {
    défiler. Un message
    long grandit vers le HAUT (ancrage par le bas), à l'écart des boutons. Pastille
    blanche à ombre légère, comme #message-plateau, pour rester lisible par-dessus
-   le tapis vert ; masquée quand vide pour ne laisser aucune pastille fantôme. */
+   le tapis vert ; masquée quand vide pour ne laisser aucune pastille fantôme.
+   Cette surimpression reste inchangée ≥481px (bureau). Au palier portrait
+   ≤480px (issue #480, point 1), le chevalet est placé juste au-dessus de cette
+   zone (#478) : un message sans minuteur (erreur, ou résultat de « Vérifier et
+   calculer ») y recouvrait le bas des lettres, les rendant impossibles à
+   sélectionner. La règle plus bas dans le media query ``@media (max-width:
+   480px)`` remet alors le message dans le flux normal, sous les boutons. */
 .message-coup {
     position: absolute;
     bottom: calc(100% + 2px);
@@ -1932,12 +1938,54 @@ body {
     /* Ombre portée renforcée : détache nettement le panneau du plateau resté
        visible derrière lui (plus de fond assombri pour l'en séparer). */
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    /* Contexte de positionnement de la croix de fermeture (issue #480, point
+       3, bouton #score-fermer-croix) : n'affecte pas la mise en page actuelle
+       (la carte n'était déjà positionnée nulle part ailleurs via ce parent). */
+    position: relative;
 }
 
 /* Rangée d'actions de la modale de score (issue #225) : « Fermer » et, pour un
    coup en attente, « Jouer ». Détachée du total par une marge haute. */
 .modale-score-actions {
     margin-top: 14px;
+}
+
+/* Croix de fermeture rapide de la modale de score (issue #480, point 3).
+   Masquée par défaut (≥881px, bureau) : la fenêtre garde son aspect actuel,
+   seuls « Fermer » et le clic en dehors la ferment. Dévoilée au palier ≤880px
+   (même seuil que le repli à une colonne plus bas dans ce fichier), où le
+   bouton « Fermer » est loin du doigt en bas d'une fenêtre haute sur petit
+   écran. Branchée par jeu.js sur exactement le même chemin que #score-fermer
+   (``modaleScore.fermer()``, qui retire la surbrillance du coup consulté ET
+   remasque « ✓ Jouer »), donc aucun nouveau code de fermeture. */
+#score-fermer-croix {
+    display: none;
+}
+
+@media (max-width: 880px) {
+    #score-fermer-croix {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        width: 40px;
+        height: 40px;
+        box-sizing: border-box;
+        padding: 0;
+        border: none;
+        border-radius: 50%;
+        background: transparent;
+        font-size: 1.3rem;
+        line-height: 1;
+        color: var(--couleur-secondaire, #5d4037);
+        cursor: pointer;
+    }
+
+    #score-fermer-croix:hover {
+        background: rgba(0, 0, 0, 0.08);
+    }
 }
 
 /* Avertissement avant un « Retour au menu » avec un coup en attente (issue #74).
@@ -2332,6 +2380,61 @@ body {
     .btn-retour-texte-court,
     .historique-texte-court {
         display: inline;
+    }
+
+    /* ------------------------------------------------------------------- */
+    /* Issue #480, point 1 : le message de retour (#message-coup) quitte la */
+    /* surimpression pour rentrer dans le flux de la page, sous les boutons */
+    /* d'action humains (dernier enfant de .zone-actions-humain, grid-row 4 */
+    /* ci-dessus). En surimpression (règle de base, inchangée ≥481px), il   */
+    /* grandissait vers le HAUT en recouvrant le bas du chevalet (zone C,   */
+    /* grid-row 3) placé juste au-dessus par #478 — constaté en vérification*/
+    /* Playwright (lettres du chevalet masquées, non sélectionnables, sous  */
+    /* un message d'erreur sans minuteur). En flux normal, il s'ajoute      */
+    /* simplement APRÈS les boutons (``.zone-actions-humain`` est une      */
+    /* colonne flex, ``gap`` hérité de ``.zone-gauche``) : il repousse la  */
+    /* fiche joueur (grid-row 5) plus bas au lieu de recouvrir quoi que ce  */
+    /* soit, et s'étend sur toute la largeur disponible (retour à la ligne  */
+    /* natif d'un ``<p>``). ``position: relative`` (au lieu de ``static``)  */
+    /* sert UNIQUEMENT de contexte à la croix ``::after`` ci-dessous ; elle */
+    /* ne retire pas l'élément du flux (seules ``top``/``left``/etc. le     */
+    /* feraient). La pastille vide reste masquée par ``.message-coup:empty``*/
+    /* (règle de base, non scopée à ce palier). */
+    .message-coup {
+        position: relative;
+        bottom: auto;
+        right: auto;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        border-radius: 10px;
+        padding: 8px 32px 8px 12px;
+        text-align: left;
+        white-space: normal;
+        word-wrap: break-word;
+        z-index: auto;
+    }
+
+    /* Issue #480, point 2 : croix « ✕ » ajoutée par la feuille de style à
+       droite du message quand il n'est pas vide (``:not(:empty)``, jamais sur
+       la pastille fantôme déjà masquée par ``.message-coup:empty``). Purement
+       décorative (``pointer-events: none``) : le toucher qui ferme le message
+       porte sur tout l'élément (voir l'écouteur dans jeu.js), pas seulement
+       sur la croix, pour une cible plus large sur petit écran. Curseur en
+       pointeur sur tout l'élément pour signaler l'affordance. */
+    .message-coup:not(:empty) {
+        cursor: pointer;
+    }
+
+    .message-coup:not(:empty)::after {
+        content: '✕';
+        position: absolute;
+        top: 6px;
+        right: 10px;
+        font-size: 0.95rem;
+        line-height: 1;
+        opacity: 0.6;
+        pointer-events: none;
     }
 }
 
