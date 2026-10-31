@@ -207,13 +207,15 @@ if defined VENV_ERR (
 )
 echo.
 
-REM --- 3. Fermer Scrabble.exe s'il tourne encore ---------------------------
-echo [3/9] Fermeture de Scrabble.exe si necessaire...
+REM --- 3. Verifier si Scrabble.exe est en cours d'execution (sans l'arreter) -
+REM Le build se fait entierement dans %LOCALBUILD%, recree a l'etape 1 ; une
+REM instance de Scrabble.exe installee ailleurs ne bloque aucun fichier du
+REM build. Sur le modele d'Actualise : on signale sans arreter (issue #481).
+echo [3/9] Verification de Scrabble.exe...
 tasklist /fi "imagename eq Scrabble.exe" 2>nul | find /i "Scrabble.exe" >nul
 if not errorlevel 1 (
-    echo Scrabble.exe est en cours d'execution : fermeture...
-    taskkill /im Scrabble.exe /f >nul 2>&1
-    timeout /t 2 >nul
+    echo Scrabble.exe est en cours d'execution. Ce script ne l'arrete pas
+    echo ^(il ne l'a pas lance^) ; le build continue normalement.
 ) else (
     echo Aucune instance en cours. OK.
 )
@@ -292,7 +294,7 @@ REM (l'updater Actualise l'extrait directement par-dessus le dossier installe).
 REM N = SCRABBLE_BUILD/NOUVEAU_BUILD, determine plus haut (etape 0bis), pour
 REM que le nom du zip soit coherent avec le tag de la Release GitHub (vN).
 echo [7/9] Creation de manifest.json et de %ZIP_NAME%...
-echo {"build": 1, "supprimer": []}>manifest.json
+echo {"build": !NOUVEAU_BUILD!, "supprimer": []}>manifest.json
 if not exist "installeur\output" mkdir "installeur\output"
 if exist "installeur\output\%ZIP_NAME%" del /f /q "installeur\output\%ZIP_NAME%"
 powershell -NoProfile -Command "try { Compress-Archive -Path 'dist\Scrabble\*','manifest.json' -DestinationPath 'installeur\output\%ZIP_NAME%' -Force } catch { exit 1 }"
@@ -422,8 +424,13 @@ if "%PUBLIER%"=="1" (
     if not defined PUBLIER_ERR (
         echo.
         echo ============================================
-        echo   RAPPEL : git push et gh release create restent MANUELS.
-        echo   Ce script ne les execute JAMAIS automatiquement.
+        echo   Etapes MANUELLES restantes, dans cet ordre :
+        echo ============================================
+        echo   1^) Fusionner la branche du worktree dans master
+        echo      ^(relecture_web, entree scrabble_ccw^), SANS pousser.
+        echo   2^) Creer la Release v!NOUVEAU_BUILD! avec DEUX fichiers
+        echo      attaches : !SETUP_NAME! et !ZIP_NAME!.
+        echo   3^) Pousser master.
         echo ============================================
         echo.
     )
@@ -433,34 +440,6 @@ if defined PUBLIER_ERR (
     echo ERREUR : !PUBLIER_ERR!
     popd
     exit /b 1
-)
-
-if "%PUBLIER%"=="1" (
-    echo Mode --publier : clone CCW conserve tel quel ^(commit version.json en
-    echo place^), aucun reset. Push et release restent MANUELS.
-    echo.
-) else (
-    echo Verification des commits locaux non pousses dans %ORIGDIR%...
-    set "UNPUSHED_COUNT="
-    for /f "usebackq" %%c in (`git -C %ORIGDIR% rev-list --count origin/master..HEAD 2^>nul`) do set "UNPUSHED_COUNT=%%c"
-    if "!UNPUSHED_COUNT!"=="" set "UNPUSHED_COUNT=0"
-    if not "!UNPUSHED_COUNT!"=="0" (
-        echo.
-        echo ****************************************************************
-        echo *  ATTENTION : RESET IGNORE - COMMITS LOCAUX NON POUSSES       *
-        echo ****************************************************************
-        echo !UNPUSHED_COUNT! commit^(s^) present^(s^) dans %ORIGDIR%
-        echo ^(HEAD^) ne sont pas encore pousses sur origin/master. Le reset --hard
-        echo a ete saute pour ne pas les ecraser. Poussez ou sauvegardez ces
-        echo commits avant de relancer un build.
-        echo ****************************************************************
-        echo.
-    ) else (
-        echo Aucun commit local non pousse : nettoyage du clone CCW ^(reset^)...
-        git -C %ORIGDIR% reset --hard origin/master
-        echo Clone CCW propre.
-        echo.
-    )
 )
 
 popd
