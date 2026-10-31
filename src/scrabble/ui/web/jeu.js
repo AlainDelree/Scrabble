@@ -165,6 +165,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             return true;
         },
     });
+    // Croix de fermeture rapide en haut à droite (issue #480, point 3,
+    // masquée par défaut et dévoilée seulement sur petit écran, voir jeu.css).
+    // Même chemin de fermeture QUE #score-fermer : les deux boutons déclenchent
+    // le même ``fermer()`` du contrôleur ci-dessus (surbrillance retirée,
+    // « ✓ Jouer » remasqué), aucun nouveau code de fermeture.
+    const btnScoreFermerCroix = document.getElementById('score-fermer-croix');
+    if (btnScoreFermerCroix) {
+        btnScoreFermerCroix.addEventListener('click', () => modaleScore.fermer());
+    }
 
     // Thèmes reconnus (alignés avec scrabble.config.THEMES_PLATEAU et le CSS).
     const THEMES = C.THEMES;
@@ -785,6 +794,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             }, dureeMs);
         }
     }
+    // Fermeture d'un toucher (issue #480, point 2) : un clic/toucher sur le
+    // message (erreur SANS minuteur, ou succès AVEC minuteur) le vide via la
+    // même fonction que l'auto-effacement — n'a aucun effet sur un message
+    // déjà vide. Sur le bureau (surimpression inchangée), le message peut
+    // ainsi aussi disparaître au clic ; en portrait (≤480px, jeu.css), une
+    // croix ✕ ajoutée par la feuille de style rend ce geste visible.
+    // N'interfère pas avec l'auto-effacement des messages de succès
+    // (« Coup joué », « Tour passé ») : clic ou minuteur, le premier arrivé
+    // l'emporte sans conflit (afficherMessageCoup annule de toute façon
+    // l'ancien minuteur à chaque nouvel appel, y compris celui déclenché
+    // manuellement par ce clic).
+    messageCoup.addEventListener('click', () => {
+        if (messageCoup.textContent) afficherMessageCoup('');
+    });
 
     /** Message éphémère de pose (issue #90), affiché en surimpression. */
     let messageTimer = null;

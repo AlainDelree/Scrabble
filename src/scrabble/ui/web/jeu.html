@@ -391,6 +391,11 @@
          « scrabble » éventuel et le total. Fermeture par bouton ou clic dehors. -->
     <div id="score-modale" class="modale" hidden>
         <div class="modale-contenu modale-score">
+            <!-- Croix de fermeture rapide (issue #480, point 3), masquée par
+                 défaut (jeu.css) et dévoilée seulement sur petit écran, en
+                 complément de « Fermer » ci-dessous (jamais seule). Branchée
+                 par jeu.js sur le même chemin de fermeture que #score-fermer. -->
+            <button type="button" id="score-fermer-croix" aria-label="Fermer">✕</button>
             <h3 id="score-titre">Détail du score</h3>
             <div id="score-detail" class="score-detail"></div>
             <div id="score-total" class="score-total"></div>
