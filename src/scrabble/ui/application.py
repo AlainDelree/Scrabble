@@ -34,9 +34,6 @@ scrabble.ui.application``) **sans** modifier le chemin de production par défaut
 
 from __future__ import annotations
 
-import json
-import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -45,6 +42,7 @@ from typing import Any, Callable
 import webview
 
 from scrabble import journal
+from scrabble.actualise import traiter_flag_actualise
 from scrabble.moteur.partie import Partie
 from scrabble.ui import TAPIS_VERT
 from scrabble.ui.accueil import ApiAccueil
@@ -567,14 +565,8 @@ def lancer_application_unifiee(routeur: ApiRouteur | None = None) -> ApiRouteur:
             # Mise à jour Actualise en attente (issue #386) : à la fermeture de
             # la fenêtre, on lance le bat de mise à jour puis on laisse la
             # fermeture se poursuivre normalement (le handler ne bloque pas).
-            _flag = Path(sys.executable).parent / "actualise_update.flag"
-            if _flag.exists():
-                try:
-                    _data = json.loads(_flag.read_text(encoding="utf-8"))
-                    _flag.unlink(missing_ok=True)
-                    subprocess.Popen([_data["bat"]], shell=True)
-                except Exception:
-                    pass
+            # Lecture du flag et validation du chemin centralisées (issue #484).
+            traiter_flag_actualise("fermeture")
 
         window.events.closing += _handler_fermeture_actualise
 
