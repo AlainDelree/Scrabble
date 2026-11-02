@@ -11,10 +11,11 @@ Couvre :
   explicitement exclu ;
 - un aller-retour HTTP complet (statique + appel d'API) sur un serveur réel,
   lancé sur ``127.0.0.1`` à un port éphémère, arrêté en fin de test ;
-- le verrouillage du dictionnaire (issue #479) : fonctions de gestion des
-  mots interdites, masquage de l'onglet Dictionnaire, lettres posées/
-  vérifiées limitées au chevalet réel, limites de fréquence et leur
-  allongement de pause, absence d'arguments dans le journal.
+- le verrouillage du dictionnaire (issue #479, étendu à ``poser_mot`` par
+  l'issue #483) : fonctions de gestion des mots interdites, masquage de
+  l'onglet Dictionnaire, lettres posées/vérifiées limitées au chevalet réel,
+  limites de fréquence (``verifier_coup``/``verifier_mot``/``poser_mot``) et
+  leur allongement de pause, absence d'arguments dans le journal.
 
 Aucun de ces tests n'a besoin du VRAI dictionnaire (``data/dictionnaire/``) :
 les méthodes exercées (``obtenir_etat``, servir une page statique) ne le
@@ -651,6 +652,30 @@ def test_serveur_limite_la_frequence_de_verifier_coup(serveur_test):
     statut, corps = _requete_api(serveur_test, "verifier_coup")
     assert statut == 200
     assert corps["resultat"] == {"succes": False, "erreur": MESSAGE_LIMITE_FREQUENCE}
+
+
+def test_serveur_limite_la_frequence_de_poser_mot(serveur_test):
+    """Issue #483 : ``poser_mot`` est le même oracle accepté/refusé que
+    ``verifier_coup`` — reprend donc exactement les mêmes plafonds, et chaque
+    appel compte qu'il soit accepté ou refusé. Aucune lettre n'est posée via
+    ``poser_lettre_en_attente`` ici : ``_en_attente`` reste vide, donc chaque
+    appel est un refus « rien à jouer », sans jamais muter la partie — ce qui
+    permet d'enchaîner les appels sans se soucier de l'état du plateau."""
+    _charger_partie_test(serveur_test, ("A", "B", "C", "D", "E", "F", "G"))
+    max_minute, _ = LIMITES_FREQUENCE["poser_mot"]
+    for _ in range(max_minute):
+        statut, corps = _requete_api(serveur_test, "poser_mot")
+        assert statut == 200
+        assert corps["resultat"].get("erreur") != MESSAGE_LIMITE_FREQUENCE
+    statut, corps = _requete_api(serveur_test, "poser_mot")
+    assert statut == 200
+    assert corps["resultat"] == {"succes": False, "erreur": MESSAGE_LIMITE_FREQUENCE}
+
+
+def test_poser_mot_et_verifier_coup_partagent_les_memes_plafonds(serveur_test):
+    """Plafonds identiques, exigés explicitement par l'issue #483 (pas de
+    seconde implémentation, mêmes limites que ``verifier_coup``)."""
+    assert LIMITES_FREQUENCE["poser_mot"] == LIMITES_FREQUENCE["verifier_coup"]
 
 
 # -- Point 5 — journal des abus, jamais les arguments ----------------------- #

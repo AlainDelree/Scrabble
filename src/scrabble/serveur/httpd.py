@@ -343,8 +343,9 @@ class GestionnaireRequetes(BaseHTTPRequestHandler):
             self._repondre_json(404, {"erreur": f"Fonction inconnue : « {nom_fonction} »."})
             return
 
-        # Limite de fréquence (issue #479, point 4) : ``verifier_coup``/
-        # ``verifier_mot`` seulement (dict pré-construit par serveur, voir
+        # Limite de fréquence (issue #479, point 4 ; étendue à ``poser_mot``
+        # par l'issue #483) : ``verifier_coup``/``verifier_mot``/``poser_mot``
+        # seulement (dict pré-construit par serveur, voir
         # ``ServeurScrabble.limiteurs``). Le refus est renvoyé comme un échec
         # normal de l'API (``{"succes": False, "erreur": ...}``, HTTP 200) —
         # pas une erreur de transport — pour que l'écran de jeu existant

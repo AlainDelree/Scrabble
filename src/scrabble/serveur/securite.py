@@ -18,7 +18,10 @@ coups d'appels automatisés :
    champ « Tapez un mot à tester »), mais répondent toutes deux « valide »/
    « refusé » pour n'importe quelle entrée : elles sont donc chacune limitées
    en fréquence par adresse de client, avec une pause qui s'allonge en cas
-   d'insistance après un refus. **Réglages dans un seul endroit** :
+   d'insistance après un refus. ``poser_mot`` (le bouton « Jouer ce coup »)
+   rejoue le même oracle — accepté/refusé — et reçoit donc la même limite que
+   ``verifier_coup`` (issue #483) : un appel compte qu'il soit finalement
+   accepté ou refusé. **Réglages dans un seul endroit** :
    :data:`LIMITES_FREQUENCE` et :data:`PALIERS_BLOCAGE_SECONDES` ci-dessous
    (voir aussi ``CONTEXTE.md``, section « Serveur local »).
 
@@ -77,14 +80,19 @@ MESSAGE_FONCTION_INTERDITE = (
 # Point 4 — limites de fréquence des vérifications
 # --------------------------------------------------------------------------- #
 
-#: Réglages des deux limites, modifiables UNIQUEMENT ici (documenté dans
+#: Réglages des trois limites, modifiables UNIQUEMENT ici (documenté dans
 #: CONTEXTE.md) : ``{nom_fonction: (appels_max_par_minute, appels_max_par_jour)}``.
 #: Ordres de grandeur délibérément larges pour qu'un joueur honnête ne les
-#: atteigne jamais ; ``verifier_mot`` est plus stricte que ``verifier_coup``
-#: car elle accepte n'importe quelle suite de lettres (pas besoin qu'un coup
-#: soit en cours de pose), donc un oracle plus direct sur le dictionnaire.
+#: atteigne jamais (de l'ordre d'un coup par tour) ; ``verifier_mot`` est plus
+#: stricte que ``verifier_coup``/``poser_mot`` car elle accepte n'importe
+#: quelle suite de lettres (pas besoin qu'un coup soit en cours de pose), donc
+#: un oracle plus direct sur le dictionnaire. ``poser_mot`` reprend exactement
+#: les plafonds de ``verifier_coup`` (issue #483) : poser un mot et observer
+#: s'il est accepté ou refusé est le même oracle de dictionnaire que
+#: « vérifier et calculer », une fois celui-ci verrouillé par l'issue #479.
 LIMITES_FREQUENCE: dict[str, tuple[int, int]] = {
     "verifier_coup": (30, 1000),
+    "poser_mot": (30, 1000),
     "verifier_mot": (10, 200),
 }
 

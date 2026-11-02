@@ -105,7 +105,7 @@ adaptées dans `serveur/` sans toucher à `ui/` :
   déjà tolérants à une fenêtre absente (code existant, testé comme tel) —
   aucune adaptation nécessaire.
 
-### Verrouillage du dictionnaire (issue #479)
+### Verrouillage du dictionnaire (issue #479, étendu par l'issue #483)
 
 Le dictionnaire (`data/dictionnaire/`) n'est jamais diffusé au navigateur ;
 tout appel permettant de le reconstituer mot par mot est verrouillé côté
@@ -132,9 +132,11 @@ par `scrabble/serveur/httpd.py` AVANT tout appel au routeur :
   n'importe quelle lettre choisie, seulement si l'emplacement visé porte
   réellement un joker.
 - **Limites de fréquence** — réglables dans `scrabble/serveur/securite.py`
-  (`LIMITES_FREQUENCE`, `PALIERS_BLOCAGE_SECONDES`) : `verifier_coup` 30
-  appels/minute et 1 000/jour, `verifier_mot` 10 appels/minute et 200/jour
-  (plus stricte : elle accepte n'importe quelle suite de lettres). Au-delà,
+  (`LIMITES_FREQUENCE`, `PALIERS_BLOCAGE_SECONDES`) : `verifier_coup` et
+  `poser_mot` (issue #483 — même oracle accepté/refusé, chaque appel compte
+  qu'il soit accepté ou refusé) 30 appels/minute et 1 000/jour, `verifier_mot`
+  10 appels/minute et 200/jour (plus stricte : elle accepte n'importe quelle
+  suite de lettres). Au-delà,
   refus `{"succes": False, "erreur": "Trop de vérifications, réessayez dans
   quelques minutes."}` ; une insistance après un refus allonge la pause (1,
   5, puis 15 minutes, plafonnée), réinitialisée au premier appel de nouveau
