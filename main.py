@@ -22,7 +22,6 @@ invoqué par défaut — disponible pour un rollback rapide si nécessaire.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +29,7 @@ from pathlib import Path
 if not getattr(sys, "frozen", False):
     sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
+from scrabble.actualise import traiter_flag_actualise  # noqa: E402
 from scrabble.ui.application import main  # noqa: E402
 
 if __name__ == "__main__":
@@ -52,19 +52,9 @@ if __name__ == "__main__":
     # Détection du flag de mise à jour Actualise (issue #386) : déposé par
     # Actualise dans le dossier d'installation quand une mise à jour est prête.
     # Lancé avant l'ouverture de la fenêtre pywebview, sans jamais bloquer le
-    # démarrage de Scrabble en cas de flag absent ou malformé.
-    _flag = Path(sys.executable).parent / "actualise_update.flag"
-    if _flag.exists():
-        try:
-            _data = json.loads(_flag.read_text(encoding="utf-8"))
-            subprocess.Popen([
-                _data["actualise_ui"],
-                "--bat", _data["bat"],
-                "--flag", str(_flag),
-                "--relancer", sys.executable,
-            ])
-        except Exception:
-            pass  # ne jamais bloquer le démarrage de Scrabble
+    # démarrage de Scrabble en cas de flag absent, malformé ou aux chemins
+    # invalides (validation centralisée, issue #484).
+    traiter_flag_actualise("demarrage")
 
     # Lancement d'Actualise au démarrage (issue #405) : si l'application est
     # installée, on la démarre en arrière-plan (subprocess non-bloquant) pour
