@@ -57,3 +57,11 @@ avance_vs_champion.log
 # data/personnages/lettre_mots_favoris.txt. Absente par défaut, sans effet
 # sur le jeu (voir scrabble.moteur.personnages).
 data/personnages/lettre_mots_meral.txt
+
+# Liste de mots favoris de Titeuf (issue #452, lot J) : personnage
+# désactivé, dépôt public — ce fichier de mots du dictionnaire en clair
+# sort du suivi git (issue #487) mais reste sur le disque pour le jeu et
+# les tests (chargement toujours tolérant à son absence, voir
+# scrabble.moteur.personnages.charger_mots_favoris, même garantie que pour
+# lettre_mots_meral.txt ci-dessus).
+data/personnages/titeuf_mots_favoris.txt
