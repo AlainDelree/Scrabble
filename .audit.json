@@ -1,6 +1,6 @@
 {
   "cas": ["C1"],
-  "cas_latents": ["C3"],
+  "cas_latents": ["C2", "C3"],
   "roles": {
     "interface": ["src/scrabble/ui", "src/scrabble/serveur"],
     "métier": ["src/scrabble/moteur", "src/scrabble/regles", "src/scrabble/dictionnaire"],
