@@ -152,6 +152,16 @@ Limite connue restant hors de cette issue (voir le rapport de clôture de
 l'issue #475) : une seule partie à la fois, partagée par tout client — pas de
 comptes ni de session par joueur.
 
+## Déclaration d'audit (`.audit.json`)
+Un fichier `.audit.json` existe à la racine du dépôt, à l'usage d'un outil
+d'audit externe ; Alain le maintient à la main (ne pas le modifier depuis une
+issue). Il déclare les données personnelles actuelles : le prénom dans la
+configuration et les noms de joueurs dans la base de parties. **À noter pour
+révision** : l'arrivée des comptes joueurs et du stockage par joueur rendra
+cette déclaration incomplète (le signaler alors à Alain pour mise à jour) ;
+l'exception qui y figure pour le serveur sans authentification deviendra
+caduque au même moment, ainsi qu'à l'arrivée du VPS.
+
 ## Stack (`requirements.txt`)
 `pywebview` (UI), `pyinstaller` (build .exe), `pytest` (tests), `spylls`
 (dépliage Hunspell, requis seulement pour la source « hunspell »).
