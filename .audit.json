@@ -1,0 +1,17 @@
+{
+  "cas": ["C1"],
+  "cas_latents": ["C3"],
+  "roles": {
+    "interface": ["src/scrabble/ui", "src/scrabble/serveur"],
+    "métier": ["src/scrabble/moteur", "src/scrabble/regles", "src/scrabble/dictionnaire"],
+    "persistance": ["src/scrabble/persistance"]
+  },
+  "dossiers_depot": ["data/dictionnaire", "data/personnages"],
+  "donnees_personnelles": ["config.json", "data/parties.db"],
+  "exceptions": [
+    {
+      "regle": "SEC-015",
+      "raison": "2026-11-03 — serveur prototype lancé sur demande (--reseau), réseau de confiance (hotspot), usage familial ; les trois fonctions touchant au dictionnaire sont plafonnées en débit (10/min et 200/jour pour verifier_mot, 30/min et 1000/jour pour verifier_coup et poser_mot). Exception caduque dès l'arrivée des comptes joueurs ou du VPS."
+    }
+  ]
+}
