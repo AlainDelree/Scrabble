@@ -78,12 +78,26 @@ from scrabble.config import RACINE_DONNEES_UTILISATEUR, RACINE_PROJET, charger_c
 # sous ``RACINE_PROJET`` (dossier d'installation en mode gelé, issue #421).
 DOSSIER_DICO = RACINE_PROJET / "data" / "dictionnaire"
 
-# Personnalisations et caches propres à l'utilisatrice (ajouts/retraits
-# manuels, Tries sérialisés en .pkl) : ces fichiers sont écrits à l'exécution,
-# donc placés sous ``RACINE_DONNEES_UTILISATEUR`` (issue #421), inscriptible
-# sans droits admin — distinct de ``DOSSIER_DICO`` pour ne jamais tenter
-# d'écrire dans le dossier d'installation.
+# Personnalisations propres à l'utilisatrice (ajouts/retraits manuels de
+# mots, classiques du jeu) : ces fichiers sont écrits à l'exécution, donc
+# placés sous ``RACINE_DONNEES_UTILISATEUR`` (issue #421), inscriptible sans
+# droits admin — distinct de ``DOSSIER_DICO`` pour ne jamais tenter d'écrire
+# dans le dossier d'installation.
 DOSSIER_DICO_UTILISATEUR = RACINE_DONNEES_UTILISATEUR / "data" / "dictionnaire"
+
+# Caches disque du Trie (Tries sérialisés en .pkl, relus par ``pickle.load``) :
+# dans un sous-dossier dédié, PAS sous ``DOSSIER_DICO_UTILISATEUR`` (issue
+# #488). En développement, ``DOSSIER_DICO_UTILISATEUR`` est physiquement le
+# même dossier que ``DOSSIER_DICO`` (``RACINE_DONNEES_UTILISATEUR ==
+# RACINE_PROJET`` hors mode gelé) — c'est-à-dire le dossier où les
+# dictionnaires tiers (ODS8/Hunspell) sont déposés à la main. Quiconque peut y
+# déposer un fichier pourrait donc remplacer le cache et obtenir une exécution
+# de code arbitraire à la prochaine désérialisation (la validation d'en-tête
+# dans ``_cache_valide`` a lieu APRÈS le ``pickle.load``, donc ne protège pas).
+# Un sous-dossier séparé, réservé à l'application, élimine ce risque dans les
+# deux modes (dev et gelé) sans changer le format ni la logique de fraîcheur
+# du cache.
+DOSSIER_CACHE_DICO = RACINE_DONNEES_UTILISATEUR / "cache" / "dictionnaire"
 
 CHEMIN_ODS = (
     DOSSIER_DICO / "French-Scrabble-ODS8-main" / "French ODS dictionary.txt"
@@ -156,7 +170,7 @@ FICHIERS_VOCABULAIRE_PALIER: dict[str, Path] = {
 # résolvent vers :func:`obtenir_trie` et réutilisent le cache du Trie complet
 # existant (:data:`CHEMIN_CACHE`), sans notion de palier.
 FICHIERS_CACHE_IA_PALIER: dict[str, Path] = {
-    palier: DOSSIER_DICO_UTILISATEUR / f"trie_ia_cache_{palier}.pkl"
+    palier: DOSSIER_CACHE_DICO / f"trie_ia_cache_{palier}.pkl"
     for palier in FICHIERS_VOCABULAIRE_PALIER
 }
 
@@ -201,7 +215,7 @@ def paliers_disponibles(
 # (``ConfigPartie.mode_belgicisme``) — voir :func:`charger_belgicismes`.
 CHEMIN_BELGICISMES = DOSSIER_DICO / "belgicismes_a_revoir.csv"
 
-CHEMIN_CACHE = DOSSIER_DICO_UTILISATEUR / "trie_cache.pkl"
+CHEMIN_CACHE = DOSSIER_CACHE_DICO / "trie_cache.pkl"
 # Cache disque du Trie restreint de l'IA (issue #206), distinct du cache du Trie
 # complet. Invalidé par mtime des mêmes sources que le Trie complet, plus
 # ``mots_courants.txt`` et la paire ``classiques_ajoutes/retires.txt``.
@@ -213,7 +227,7 @@ CHEMIN_CACHE = DOSSIER_DICO_UTILISATEUR / "trie_cache.pkl"
 # ``obtenir_trie_ia(source, mode_belgicisme=...)`` sans notion de palier). Le
 # lot C, quand il branchera plusieurs paliers, utilisera
 # :data:`FICHIERS_CACHE_IA_PALIER` pour les chemins propres à chaque palier.
-CHEMIN_CACHE_IA = DOSSIER_DICO_UTILISATEUR / "trie_ia_cache.pkl"
+CHEMIN_CACHE_IA = DOSSIER_CACHE_DICO / "trie_ia_cache.pkl"
 # Index mot → définition(s) restreint aux mots de l'ODS8 (issue #15). Ce fichier
 # est volumineux et gitignoré : construit hors-ligne par
 # ``scripts/construire_definitions.py``. Son absence est tolérée (dict vide).

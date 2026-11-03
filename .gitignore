@@ -30,6 +30,13 @@ data/*.db
 # Journaux de diagnostic par session (scrabble.journal) — jamais commités
 logs/
 
+# Cache disque du Trie du dictionnaire (trie_cache.pkl, trie_ia_cache*.pkl) —
+# régénérable, jamais commité. Volontairement séparé de data/dictionnaire/
+# (issue #488) : ce dossier n'est jamais utilisé comme dépôt de dictionnaires
+# tiers, afin qu'un fichier déposé à la main ne puisse jamais être rechargé
+# par pickle.load.
+cache/
+
 # Installeur Windows (Inno Setup, issue #217) : setup.exe générés jamais
 # commités (volumineux, régénérables via installeur\scrabble.iss) — seul le
 # script .iss et le README du dossier sont suivis. Voir installeur\README.md.

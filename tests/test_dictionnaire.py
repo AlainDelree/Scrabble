@@ -20,6 +20,7 @@ import pytest
 import scrabble.dictionnaire.dictionnaire as d
 from scrabble.dictionnaire.dictionnaire import (
     CHEMINS_MODIFS,
+    DOSSIER_CACHE_DICO,
     DOSSIER_DICO,
     DOSSIER_DICO_UTILISATEUR,
     FICHIERS_CACHE_IA_PALIER,
@@ -101,12 +102,33 @@ def test_fichiers_cache_ia_palier_meme_cles_que_vocabulaire_et_chemins_distincts
     assert "champion_du_monde" not in FICHIERS_CACHE_IA_PALIER
     noms = set()
     for palier, chemin in FICHIERS_CACHE_IA_PALIER.items():
-        # Cache écrit à l'exécution : sous DOSSIER_DICO_UTILISATEUR, pas
-        # DOSSIER_DICO (sources en lecture seule livrées avec l'app, issue #421).
-        assert chemin.parent == DOSSIER_DICO_UTILISATEUR
+        # Cache écrit à l'exécution : sous DOSSIER_CACHE_DICO, un sous-dossier
+        # dédié distinct de DOSSIER_DICO (sources en lecture seule livrées
+        # avec l'app, issue #421) et de DOSSIER_DICO_UTILISATEUR (dossier de
+        # dépôt des dictionnaires tiers, issue #488 — un fichier déposé à la
+        # main ne doit jamais pouvoir être rechargé par pickle.load).
+        assert chemin.parent == DOSSIER_CACHE_DICO
         assert chemin.name == f"trie_ia_cache_{palier}.pkl"
         noms.add(chemin.name)
     assert len(noms) == 4  # aucun doublon de nom de fichier entre paliers
+
+
+def test_cache_dictionnaire_separe_du_dossier_de_depot_des_dictionnaires():
+    """Le dossier de cache n'est jamais le dossier où l'on dépose les dictionnaires.
+
+    Défense en profondeur (issue #488) : le cache (``trie_cache.pkl``,
+    ``trie_ia_cache*.pkl``) est relu par ``pickle.load`` — quiconque peut
+    déposer un fichier dans ``DOSSIER_DICO``/``DOSSIER_DICO_UTILISATEUR``
+    (dictionnaires tiers ODS8/Hunspell, en développement comme en mode
+    installé) ne doit jamais pouvoir en remplacer le contenu pour obtenir une
+    exécution de code au chargement.
+    """
+    assert DOSSIER_CACHE_DICO != DOSSIER_DICO
+    assert DOSSIER_CACHE_DICO != DOSSIER_DICO_UTILISATEUR
+    assert DOSSIER_DICO not in DOSSIER_CACHE_DICO.parents
+    assert DOSSIER_DICO_UTILISATEUR not in DOSSIER_CACHE_DICO.parents
+    for chemin in [d.CHEMIN_CACHE, d.CHEMIN_CACHE_IA, *FICHIERS_CACHE_IA_PALIER.values()]:
+        assert chemin.parent == DOSSIER_CACHE_DICO
 
 
 # --------------------------------------------------------------------------- #
