@@ -10,14 +10,21 @@ Le dépôt du jeu est **public** et l'updater Actualise télécharge les mises �
 jour (archive de Release GitHub) sans identifiant : tout ce qui serait
 embarqué dans l'archive serait donc public. Depuis l'issue #460, **aucun
 fichier de `data/dictionnaire/`** (dictionnaires tiers ODS8/Hunspell,
-`definitions.json`, `mots_courants*.txt`, caches `trie_cache*.pkl`,
-`belgicismes_a_revoir.csv`, personnalisations `mots_ajoutes_*`/
-`mots_retires_*`, listes `classiques_*`, ce `README.md` lui-même) n'est
-embarqué ni dans l'archive `scrabble-vN.zip` d'Actualise, ni dans
-`Scrabble-Setup.exe` (voir `scrabble.spec` et `installeur/scrabble.iss`). Ce
-qui reste embarqué : les ressources de l'interface (`src/scrabble/ui/web/`),
-l'icône, et le code. Les fichiers de `data/personnages/` ne sont pas
-concernés par cette issue et suivent leur propre règle (voir ce dossier).
+`definitions.json`, `mots_courants*.txt`, `belgicismes_a_revoir.csv`,
+personnalisations `mots_ajoutes_*`/`mots_retires_*`, listes `classiques_*`,
+ce `README.md` lui-même) n'est embarqué ni dans l'archive
+`scrabble-vN.zip` d'Actualise, ni dans `Scrabble-Setup.exe` (voir
+`scrabble.spec` et `installeur/scrabble.iss`). Ce qui reste embarqué : les
+ressources de l'interface (`src/scrabble/ui/web/`), l'icône, et le code. Les
+fichiers de `data/personnages/` ne sont pas concernés par cette issue et
+suivent leur propre règle (voir ce dossier).
+
+Les caches du Trie (`trie_cache.pkl`, `trie_ia_cache*.pkl`) ne vivent **plus**
+dans ce dossier (issue #488) : ils sont écrits dans un sous-dossier
+`cache/dictionnaire/` dédié, à côté de `data/` et `logs/`, jamais dans un
+dossier où un fichier déposé à la main pourrait être rechargé par
+`pickle.load`. Rien à faire ici : le cache se régénère seul au premier
+lancement.
 
 **Emplacement où déposer les données sur un PC** : à la main, après
 installation du jeu, dans le dossier `data` situé à côté de `Scrabble.exe`
