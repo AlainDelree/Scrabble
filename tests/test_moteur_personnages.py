@@ -1416,6 +1416,21 @@ def _proportion_mot_favori(niveau: Niveau, profil, n: int = 300) -> float:
     return nb_favori / nb_joues
 
 
+def _profil_titeuf_scenario():
+    """Profil de Titeuf pour le scénario ci-dessus, avec une liste de mots
+    favoris FORCÉE au mot du scénario (``_DICO_COMPLET_TITEUF``), plutôt que
+    celle, éventuellement vide, chargée depuis le fichier local facultatif
+    ``titeuf_mots_favoris.txt`` — non suivi par git depuis l'issue #487, donc
+    absent d'un clone neuf ou d'un worktree isolé (issue #491). Les autres
+    réglages du profil (``poids_tirage_favori``) restent ceux réellement
+    réglés par Alain : seule la liste change."""
+    from dataclasses import replace
+
+    return replace(
+        PERSONNAGES["titeuf"].profil, mots_favoris=frozenset({"CACA"})
+    )
+
+
 class TestPersonnageTiteuf:
     """Titeuf doit choisir un mot favori plus souvent que Classique, sur un
     plateau et un chevalet où un mot favori est jouable (issue #452, lot
@@ -1423,7 +1438,7 @@ class TestPersonnageTiteuf:
 
     def test_titeuf_choisit_plus_souvent_un_mot_favori_que_classique(self):
         profil_classique = PERSONNAGES["classique"].profil
-        profil_titeuf = PERSONNAGES["titeuf"].profil
+        profil_titeuf = _profil_titeuf_scenario()
 
         proportion_classique = _proportion_mot_favori(Niveau.DEBUTANT, profil_classique)
         proportion_titeuf = _proportion_mot_favori(Niveau.DEBUTANT, profil_titeuf)
@@ -1436,7 +1451,7 @@ class TestPersonnageTiteuf:
         la variance d'un scénario de test miniature (le dictionnaire réel
         n'est pas disponible dans ce worktree isolé, voir le rapport de
         l'issue)."""
-        profil_titeuf = PERSONNAGES["titeuf"].profil
+        profil_titeuf = _profil_titeuf_scenario()
         proportion = _proportion_mot_favori(Niveau.DEBUTANT, profil_titeuf, n=500)
         assert proportion >= 0.40
 
@@ -1564,11 +1579,20 @@ class TestMotsFavorisTiteuf:
 
     def test_liste_de_depart_chargee_depuis_le_fichier_du_depot(self):
         """La liste effectivement utilisée par Titeuf vient bien du fichier
-        du dépôt (pas d'une valeur codée en dur ailleurs)."""
-        assert CHEMIN_MOTS_FAVORIS_TITEUF.exists()
+        du dépôt (pas d'une valeur codée en dur ailleurs).
+
+        ``titeuf_mots_favoris.txt`` est un fichier local facultatif, non
+        suivi par git depuis l'issue #487 (dépend de ce qu'Alain y dépose) :
+        ignoré proprement s'il est absent (clone neuf, worktree isolé),
+        plutôt que vérifié sur un contenu réel qui ne peut pas être reproduit
+        ici sans écrire dans le vrai dossier du dépôt (issue #491)."""
+        if not CHEMIN_MOTS_FAVORIS_TITEUF.exists():
+            pytest.skip(
+                "titeuf_mots_favoris.txt absent (fichier local facultatif, "
+                "non suivi par git depuis #487)"
+            )
         assert MOTS_FAVORIS_TITEUF == charger_mots_favoris(CHEMIN_MOTS_FAVORIS_TITEUF)
-        assert "CACA" in MOTS_FAVORIS_TITEUF
-        assert "PROUT" in MOTS_FAVORIS_TITEUF
+        assert len(MOTS_FAVORIS_TITEUF) > 0
 
     def test_fichier_absent_renvoie_un_ensemble_vide_sans_erreur(self, tmp_path):
         assert charger_mots_favoris(tmp_path / "n_existe_pas.txt") == frozenset()

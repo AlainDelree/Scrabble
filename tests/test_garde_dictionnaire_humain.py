@@ -291,11 +291,21 @@ class TestCoherenceMotsJouesParOrdinateur:
         return plateau
 
     def test_mot_favori_joue_par_titeuf_est_accepte_par_la_validation_humaine(self):
+        """``mots_favoris`` est forcé au mot du scénario (``CACA``) plutôt
+        que lu depuis le profil réel de Titeuf : la liste chargée depuis
+        ``titeuf_mots_favoris.txt`` (fichier local facultatif, non suivi par
+        git depuis #487) peut être vide dans un clone neuf ou un worktree
+        isolé (issue #491) — seul ``mots_favoris`` est remplacé, le reste du
+        profil (ex. ``poids_tirage_favori``) reste celui réellement réglé."""
+        from dataclasses import replace
+
         plateau = self._plateau_titeuf()
         chevalet = list("CACAXYW")
         dico_niveau = Trie.depuis_iterable(("ZX", "ZY", "ZW"))
         dico_complet = Trie.depuis_iterable(("ZX", "ZY", "ZW", "CACA", "ZC"))
-        profil = PERSONNAGES["titeuf"].profil
+        profil = replace(
+            PERSONNAGES["titeuf"].profil, mots_favoris=frozenset({"CACA"})
+        )
 
         au_moins_un_favori_joue = False
         for graine in range(100):

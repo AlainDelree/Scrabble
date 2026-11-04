@@ -62,9 +62,9 @@ class TestEchangerChevaletComplet:
         assert partie.index_courant == 0
         assert list(partie.joueurs[0].chevalet) == chevalet_avant
 
-    def test_api_echanger_tout_delegue(self):
+    def test_api_echanger_tout_delegue(self, tmp_path):
         partie = self._partie()
-        api = ApiJeu(partie, 42)
+        api = ApiJeu(partie, 42, chemin_persistance=tmp_path / "parties.db")
         res = api.echanger_tout()
         assert res["succes"] is True
         assert res["etat"]["id_partie"] == 42

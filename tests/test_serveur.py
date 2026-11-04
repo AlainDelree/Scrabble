@@ -228,7 +228,24 @@ def test_fonctions_exposees_exclut_set_window_et_les_prives():
 
 
 @pytest.fixture
-def serveur_test(donnees_isolees):
+def serveur_test(donnees_isolees, monkeypatch):
+    """``donnees_isolees`` ne redirige que config/parties/journal (portée
+    volontaire de l'issue #475, voir ``scrabble.serveur.donnees``) : le
+    dictionnaire lui-même en est délibérément exclu. Mais
+    ``test_serveur_diffuse_l_etat_via_sse`` (seul test d'ici à passer par un
+    vrai ``ApiAccueil.lancer_partie()`` plutôt qu'une injection d'état
+    directe) atteindrait sinon ``obtenir_trie``/``obtenir_trie_ia`` à leurs
+    chemins par défaut réels, écrivant un cache dans le vrai ``cache/
+    dictionnaire/`` du dépôt (issue #491) — un Trie factice en mémoire,
+    comme partout ailleurs dans la suite, l'évite sans toucher à ce test."""
+    monkeypatch.setattr(
+        "scrabble.ui.accueil.obtenir_trie",
+        lambda source="ods", **_: Trie.depuis_iterable(["ABC"]),
+    )
+    monkeypatch.setattr(
+        "scrabble.ui.accueil.obtenir_trie_ia",
+        lambda source="ods", **_: Trie.depuis_iterable(["ABC"]),
+    )
     chemins = donnees_isolees
     diffusion = GestionnaireDiffusion()
     pont = FenetrePont(diffusion)

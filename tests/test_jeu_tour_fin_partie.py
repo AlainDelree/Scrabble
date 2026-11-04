@@ -186,9 +186,9 @@ class TestPasserTour:
         assert partie.passes_consecutives == 1
         assert partie.index_courant == 1
 
-    def test_api_passer_delegue_et_incremente(self):
+    def test_api_passer_delegue_et_incremente(self, tmp_path):
         partie = self._partie()
-        api = ApiJeu(partie, 42)
+        api = ApiJeu(partie, 42, chemin_persistance=tmp_path / "parties.db")
         res = api.passer()
         assert res["succes"] is True
         assert res["etat"]["id_partie"] == 42
@@ -271,12 +271,12 @@ class TestJouerToursIaUi:
         assert partie.joueur_courant().humain is True
         assert res2["etat"]["tour_humain"] is True
 
-    def test_api_faire_jouer_ia_delegue(self):
+    def test_api_faire_jouer_ia_delegue(self, tmp_path):
         partie = self._partie_ia()
         partie.index_courant = 1
         partie.joueurs[1].chevalet[:] = list("BCDFGHJ")
         partie.joueurs[2].chevalet[:] = list("BCDFGHJ")
-        api = ApiJeu(partie, 99)
+        api = ApiJeu(partie, 99, chemin_persistance=tmp_path / "parties.db")
         # Un seul tour joué par appel (issue #55) : reste au tour du 2e ordinateur.
         res = api.faire_jouer_ia()
         assert res["succes"] is True

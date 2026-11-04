@@ -28,7 +28,7 @@ from scrabble.ui.application import (
     lancer_application_unifiee,
 )
 from scrabble.ui.jeu import ApiJeu
-from scrabble.config import charger_config
+from scrabble.config import CHEMIN_CONFIG, charger_config
 
 # ``obtenir_theme_plateau`` lit le ``config.json`` RÉEL du poste (non mocké
 # ci-dessous, voir ``ApiTirageOrdre.obtenir_theme_plateau``) : les deux tests
@@ -40,7 +40,16 @@ from scrabble.config import charger_config
 # réel ("vert") s'applique alors et fait échouer l'assertion sans rapport
 # avec le routage vérifié ici. Capturé au chargement du module : si une
 # requête bridge CCL ne doit en toucher ni le réglage ni la valeur attendue.
-_THEME_PLATEAU_LOCAL = charger_config().get("theme_plateau")
+#
+# ``charger_config`` est auto-réparante (voir son docstring) : l'appeler sur
+# un fichier absent ÉCRIRAIT un ``config.json`` tout neuf à l'emplacement
+# réel du dépôt — exactement la pollution de disque que l'issue #491 corrige.
+# Le fichier existant est donc lu tel quel, sans jamais déclencher cette
+# écriture dans un dossier de travail isolé où il est absent (``None`` y vaut
+# tout aussi bien que "vert" pour la comparaison ``!= "classique"`` ci-après).
+_THEME_PLATEAU_LOCAL = (
+    charger_config().get("theme_plateau") if CHEMIN_CONFIG.exists() else None
+)
 _RAISON_THEME_NON_CLASSIQUE = (
     "theme_plateau local == %r (config.json du poste), pas 'classique' : "
     "ce test lit le config.json réel et non mocké, dont le défaut (depuis "
