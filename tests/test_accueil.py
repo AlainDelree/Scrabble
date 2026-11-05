@@ -12,9 +12,9 @@ from scrabble.moteur.ia import Niveau
 from scrabble.ui.accueil import (
     MAX_HUMAINS,
     MAX_ORDINATEURS,
+    NIVEAUX_LABELS,
     ConfigPartie,
     JoueurConfig,
-    NIVEAUX_LABELS,
 )
 from scrabble.ui.noms_ordinateur import PRENOMS_ORDINATEUR
 from tests._aides_test_environnement import palier_vocabulaire_indisponible
@@ -458,7 +458,7 @@ class TestDisponibiliteNiveaux:
         from scrabble.dictionnaire.dictionnaire import Trie
         from scrabble.ui.accueil import ApiAccueil
 
-        monkeypatch.setattr("scrabble.ui.accueil.charger_config", lambda: {})
+        monkeypatch.setattr("scrabble.ui.accueil.charger_config", dict)
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
             lambda source="ods", **_: Trie.depuis_iterable(["TEST"]),
@@ -1220,8 +1220,8 @@ class TestApiAccueilLancement:
 
     def test_lancer_partie_renvoie_pret(self, tmp_path, monkeypatch):
         """lancer_partie() renvoie pret=True en cas de succès."""
-        from scrabble.ui.accueil import ApiAccueil
         from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.ui.accueil import ApiAccueil
 
         # Stub du dictionnaire pour éviter le chargement complet ; il reçoit
         # désormais la source lue dans la config (issue #210), d'où ``source``.
@@ -1248,9 +1248,9 @@ class TestApiAccueilLancement:
 
     def test_reprendre_renvoie_pret(self, tmp_path, monkeypatch):
         """reprendre() renvoie pret=True en cas de succès."""
-        from scrabble.ui.accueil import ApiAccueil
         from scrabble.dictionnaire.dictionnaire import Trie
-        from scrabble.moteur.partie import Partie, Joueur
+        from scrabble.moteur.partie import Joueur, Partie
+        from scrabble.ui.accueil import ApiAccueil
 
         # Créer une partie factice à "reprendre"
         partie_reprise = Partie(
@@ -1287,9 +1287,9 @@ class TestApiAccueilLancement:
         ``_infos_tirage``. Une reprise ne doit PAS afficher de tirage : le champ
         doit être effacé, sinon l'écran de jeu s'ouvrirait à tort sur le tirage.
         """
-        from scrabble.ui.accueil import ApiAccueil
         from scrabble.dictionnaire.dictionnaire import Trie
-        from scrabble.moteur.partie import Partie, Joueur
+        from scrabble.moteur.partie import Joueur, Partie
+        from scrabble.ui.accueil import ApiAccueil
 
         partie_reprise = Partie(
             joueurs=[Joueur(nom="Bob", humain=True)],
@@ -1375,8 +1375,8 @@ class TestSourceDictionnaireAppliquee:
 
     def test_lancer_partie_transmet_source_config(self, monkeypatch):
         """lancer_partie() passe ``source_dictionnaire`` de la config à obtenir_trie."""
-        from scrabble.ui.accueil import ApiAccueil
         from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.ui.accueil import ApiAccueil
 
         appels: list[str] = []
         monkeypatch.setattr(
@@ -1400,9 +1400,9 @@ class TestSourceDictionnaireAppliquee:
 
     def test_reprendre_transmet_source_config(self, monkeypatch):
         """reprendre() passe ``source_dictionnaire`` de la config à obtenir_trie."""
-        from scrabble.ui.accueil import ApiAccueil
         from scrabble.dictionnaire.dictionnaire import Trie
-        from scrabble.moteur.partie import Partie, Joueur
+        from scrabble.moteur.partie import Joueur, Partie
+        from scrabble.ui.accueil import ApiAccueil
 
         partie_reprise = Partie(
             joueurs=[Joueur(nom="Bob", humain=True)],
@@ -1434,12 +1434,12 @@ class TestSourceDictionnaireAppliquee:
 
     def test_source_defaut_ods_sans_reglage(self, monkeypatch):
         """Sans réglage explicite, la source reste « ods » (pas de régression)."""
-        from scrabble.ui.accueil import ApiAccueil
         from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.ui.accueil import ApiAccueil
 
         appels: list[str] = []
         # Config sans clé source_dictionnaire : le défaut « ods » doit s'appliquer.
-        monkeypatch.setattr("scrabble.ui.accueil.charger_config", lambda: {})
+        monkeypatch.setattr("scrabble.ui.accueil.charger_config", dict)
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
             lambda source="ods", **_: appels.append(source)
@@ -1463,9 +1463,9 @@ class TestSourceDictionnaireAppliquee:
         restreint et ne passe donc plus par ``obtenir_trie_ia`` (voir
         :meth:`test_construire_trie_ia_expert_reutilise_trie_complet`).
         """
+        from scrabble.dictionnaire.dictionnaire import Trie
         from scrabble.moteur.ia import Niveau
         from scrabble.ui.accueil import ApiAccueil
-        from scrabble.dictionnaire.dictionnaire import Trie
 
         appels: list[str] = []
         monkeypatch.setattr(
@@ -1489,9 +1489,9 @@ class TestSourceDictionnaireAppliquee:
         Réutilise ``trie_complet`` (le Trie de validation déjà construit par
         l'appelant) plutôt que d'en reconstruire un second (issue #369, lot C).
         """
+        from scrabble.dictionnaire.dictionnaire import Trie
         from scrabble.moteur.ia import Niveau
         from scrabble.ui.accueil import ApiAccueil
-        from scrabble.dictionnaire.dictionnaire import Trie
 
         appels_ia: list[str] = []
         monkeypatch.setattr(
@@ -1514,9 +1514,9 @@ class TestSourceDictionnaireAppliquee:
         l'ODS8 complet sans palier de vocabulaire restreint : il réutilise
         ``trie_complet`` sans jamais appeler ``obtenir_trie_ia``.
         """
+        from scrabble.dictionnaire.dictionnaire import Trie
         from scrabble.moteur.ia import Niveau
         from scrabble.ui.accueil import ApiAccueil
-        from scrabble.dictionnaire.dictionnaire import Trie
 
         appels_ia: list[str] = []
         monkeypatch.setattr(
@@ -1544,9 +1544,9 @@ class TestSourceDictionnaireAppliquee:
         des niveaux, issue #400/#402) pour exercer ce chargement paresseux par
         palier restreint.
         """
+        from scrabble.dictionnaire.dictionnaire import Trie
         from scrabble.moteur.ia import Niveau
         from scrabble.ui.accueil import ApiAccueil
-        from scrabble.dictionnaire.dictionnaire import Trie
 
         appels: list[str] = []
         monkeypatch.setattr(
@@ -1573,9 +1573,9 @@ class TestSourceDictionnaireAppliquee:
         ne consulte aucun fichier de vocabulaire par palier depuis la refonte
         des niveaux (issue #400/#402) : seul le Trie complet est utilisé.
         """
+        from scrabble.dictionnaire.dictionnaire import Trie
         from scrabble.moteur.ia import Niveau
         from scrabble.ui.accueil import ApiAccueil
-        from scrabble.dictionnaire.dictionnaire import Trie
 
         appels: list[str] = []
         monkeypatch.setattr(
@@ -1630,8 +1630,8 @@ class TestSourceDictionnaireAppliquee:
         le Trie effectivement porté par la partie doit être celui de Hunspell,
         prouvant que le réglage a un effet réel sur la validation des mots.
         """
-        from scrabble.ui.accueil import ApiAccueil
         from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.ui.accueil import ApiAccueil
 
         tries = {
             "ods": Trie.depuis_iterable(["MAISON", "MOTODS"]),
@@ -1671,8 +1671,8 @@ class TestDictionnaireValidationAbsentOuVide:
 
     def test_lancer_partie_refuse_si_dictionnaire_vide(self, monkeypatch):
         """Trie vide (fichiers sources absents/vides, simulé) : lancement refusé."""
-        from scrabble.ui.accueil import ApiAccueil
         from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
@@ -1694,8 +1694,8 @@ class TestDictionnaireValidationAbsentOuVide:
         self, monkeypatch
     ):
         """Non-régression : un Trie non vide ne déclenche aucun blocage ni message."""
-        from scrabble.ui.accueil import ApiAccueil
         from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
@@ -1714,8 +1714,8 @@ class TestDictionnaireValidationAbsentOuVide:
 
     def test_reprendre_refuse_si_dictionnaire_vide(self, monkeypatch):
         """Même garde-fou à la reprise : un Trie vide bloque, sans rouvrir la partie."""
-        from scrabble.ui.accueil import ApiAccueil
         from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",
@@ -1961,8 +1961,8 @@ class TestApiAccueilInfosTirage:
     """
 
     def _api_prete(self, monkeypatch):
-        from scrabble.ui.accueil import ApiAccueil
         from scrabble.dictionnaire.dictionnaire import Trie
+        from scrabble.ui.accueil import ApiAccueil
 
         monkeypatch.setattr(
             "scrabble.ui.accueil.obtenir_trie",

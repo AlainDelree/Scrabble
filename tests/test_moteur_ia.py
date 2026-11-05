@@ -27,6 +27,7 @@ donnant explicitement le dictionnaire complet à EXPERT et CHAMPION_DU_MONDE
 
 from __future__ import annotations
 
+import itertools
 import random
 import statistics
 import string
@@ -36,8 +37,8 @@ import pytest
 from scrabble.dictionnaire.dictionnaire import FICHIERS_VOCABULAIRE_PALIER, Trie
 from scrabble.moteur.generateur import CoupNote, generer_coups
 from scrabble.moteur.ia import (
-    Niveau,
     _POIDS_LEAVE,
+    Niveau,
     ProfilPersonnage,
     _generer_coups_candidats,
     _mot_connu_vocabulaire_court,
@@ -2130,7 +2131,7 @@ class TestProgressionTrieIaRestreint:
         )
         ordre = sorted(Niveau, key=lambda niv: moy[niv])
         assert ordre == _ORDRE_CROISSANT_ATTENDU
-        for a, b in zip(_ORDRE_CROISSANT_ATTENDU, _ORDRE_CROISSANT_ATTENDU[1:]):
+        for a, b in itertools.pairwise(_ORDRE_CROISSANT_ATTENDU):
             assert moy[a] < moy[b], f"{a} devrait être < {b} : {moy}"
 
     @pytest.mark.lent
@@ -2150,7 +2151,7 @@ class TestProgressionTrieIaRestreint:
         moy = _moyennes_par_niveau(
             self.plateau, self.chevalet, dico_ia, dico_champion=dico_complet
         )
-        for a, b in zip(_ORDRE_CROISSANT_ATTENDU, _ORDRE_CROISSANT_ATTENDU[1:]):
+        for a, b in itertools.pairwise(_ORDRE_CROISSANT_ATTENDU):
             ecart = moy[b] - moy[a]
             assert ecart >= 1.0, f"{a} et {b} trop proches sous filtre : {moy}"
 

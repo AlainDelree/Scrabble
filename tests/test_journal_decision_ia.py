@@ -20,8 +20,8 @@ from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import (
     ACTION_COUP,
     ACTION_PASSE,
-    JournalDecisionIA,
     Joueur,
+    JournalDecisionIA,
     Partie,
     creer_partie,
 )

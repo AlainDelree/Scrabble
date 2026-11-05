@@ -40,9 +40,7 @@ def _est_stub_protocole(valeur) -> bool:
     - ``...`` seul (``Expr(Constant(Ellipsis))``), ou
     - une docstring suivie de ``...`` (``Expr(Constant(str))``, puis ``Expr(Constant(Ellipsis))``).
     """
-    if isinstance(valeur, staticmethod):
-        valeur = valeur.__func__
-    elif isinstance(valeur, classmethod):
+    if isinstance(valeur, (staticmethod, classmethod)):
         valeur = valeur.__func__
     if not inspect.isfunction(valeur):
         return False

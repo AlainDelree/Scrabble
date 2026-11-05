@@ -63,8 +63,9 @@ import json
 import pickle
 import re
 import unicodedata
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from scrabble import journal
 from scrabble.config import RACINE_DONNEES_UTILISATEUR, RACINE_PROJET, charger_config
@@ -707,8 +708,7 @@ def _reecrire_liste_mots(chemin: Path, mots: set[str]) -> None:
     """Réécrit une liste « un mot par ligne », triée et dédoublonnée."""
     chemin.parent.mkdir(parents=True, exist_ok=True)
     with open(chemin, "w", encoding="utf-8") as fichier:
-        for mot in sorted(mots):
-            fichier.write(mot + "\n")
+        fichier.writelines(mot + "\n" for mot in sorted(mots))
 
 
 def statut_source(
@@ -985,7 +985,7 @@ class Trie:
         return self.taille
 
     @classmethod
-    def depuis_iterable(cls, mots: Iterable[str]) -> "Trie":
+    def depuis_iterable(cls, mots: Iterable[str]) -> Trie:
         """Construit un Trie à partir de mots déjà normalisés."""
         trie = cls()
         for mot in mots:
@@ -1091,7 +1091,7 @@ def _lire_trie_cache(chemin_cache: Path) -> Trie | None:
     """Charge le Trie depuis le cache, ou ``None`` si illisible."""
     try:
         with open(chemin_cache, "rb") as fichier:
-            entete = pickle.load(fichier)
+            pickle.load(fichier)  # en-tête, consommé pour avancer jusqu'au Trie
             trie = pickle.load(fichier)
     except (pickle.UnpicklingError, EOFError, OSError, AttributeError, ValueError):
         return None

@@ -18,17 +18,15 @@ import threading
 
 import pytest
 
+from scrabble.config import CHEMIN_CONFIG, charger_config
 from scrabble.moteur.ia import Niveau
 from scrabble.ui import application as _mod_application
-from scrabble.ui.accueil import ApiAccueil
 from scrabble.ui.application import (
     VUE_ACCUEIL,
     VUE_JEU,
     ApiRouteur,
     lancer_application_unifiee,
 )
-from scrabble.ui.jeu import ApiJeu
-from scrabble.config import CHEMIN_CONFIG, charger_config
 
 # ``obtenir_theme_plateau`` lit le ``config.json`` RÉEL du poste (non mocké
 # ci-dessous, voir ``ApiTirageOrdre.obtenir_theme_plateau``) : les deux tests
@@ -51,11 +49,11 @@ _THEME_PLATEAU_LOCAL = (
     charger_config().get("theme_plateau") if CHEMIN_CONFIG.exists() else None
 )
 _RAISON_THEME_NON_CLASSIQUE = (
-    "theme_plateau local == %r (config.json du poste), pas 'classique' : "
+    f"theme_plateau local == {_THEME_PLATEAU_LOCAL!r} (config.json du poste), pas 'classique' : "
     "ce test lit le config.json réel et non mocké, dont le défaut (depuis "
     "l'issue #342) est 'vert' ; 'classique' ne tient que par un config.json "
     "ancien conservé sur le poste d'Alain, absent d'un dossier de travail "
-    "isolé (issue #464)" % (_THEME_PLATEAU_LOCAL,)
+    "isolé (issue #464)"
 )
 
 # Référence vers le VRAI ``_differer`` (fil démon + délai), capturée avant tout

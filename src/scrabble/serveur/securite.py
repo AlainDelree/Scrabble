@@ -48,7 +48,8 @@ from __future__ import annotations
 import threading
 import time
 from collections import Counter
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from scrabble.regles.lettres import JOKER
 
@@ -110,7 +111,7 @@ MESSAGE_LIMITE_FREQUENCE = "Trop de vérifications, réessayez dans quelques min
 class _EtatClient:
     """État mutable d'un client pour UNE fonction limitée (``LimiteurFrequence``)."""
 
-    __slots__ = ("appels_minute", "appels_jour", "blocage_jusqua", "niveau_blocage")
+    __slots__ = ("appels_jour", "appels_minute", "blocage_jusqua", "niveau_blocage")
 
     def __init__(self) -> None:
         self.appels_minute: list[float] = []

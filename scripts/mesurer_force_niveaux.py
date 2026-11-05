@@ -280,10 +280,10 @@ import random
 import statistics
 import sys
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
 
 # Exécuté en tant que script : on ajoute ``src/`` au chemin d'import pour
 # retrouver le paquet ``scrabble`` quel que soit le répertoire courant.

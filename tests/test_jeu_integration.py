@@ -18,9 +18,7 @@ from scrabble.persistance import (
     reprendre_partie,
 )
 from scrabble.ui.jeu import ApiJeu
-
 from tests._aides_test_jeu import _DicoFactice, _DicoMots, _partie_simple, _placement
-
 
 # --------------------------------------------------------------------------- #
 # Suite #81 : persistance des actions de jeu (branchement de enregistrer_action

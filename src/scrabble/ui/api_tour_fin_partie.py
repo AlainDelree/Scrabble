@@ -238,7 +238,7 @@ class MixinTourEtFinPartie:
             self._retour_menu = False
             return {"succes": False, "erreur": f"Fermeture impossible : {e}"}
 
-    def creer_partie_recommencee(self) -> "Partie":
+    def creer_partie_recommencee(self) -> Partie:
         """Fabrique une nouvelle partie reprenant les joueurs de la partie courante.
 
         Cœur « moteur/API » de l'action « Recommencer » (issue #142) : réutilise
@@ -275,7 +275,7 @@ class MixinTourEtFinPartie:
 
     def preparer_partie_recommencee(
         self,
-    ) -> tuple["Partie", int | None, dict[str, Any] | None]:
+    ) -> tuple[Partie, int | None, dict[str, Any] | None]:
         """Crée et suit en base la nouvelle partie de « Recommencer » (issue #181).
 
         Cœur « moteur + persistance » de l'action « Recommencer », isolé pour être

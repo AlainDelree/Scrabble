@@ -29,7 +29,7 @@ class Sac:
     reproductible — utile en test.
     """
 
-    __slots__ = ("_jetons", "_alea")
+    __slots__ = ("_alea", "_jetons")
 
     def __init__(self, graine: int | None = None) -> None:
         self._alea = random.Random(graine)

@@ -9,12 +9,10 @@ Classe extraite de ``test_jeu.py`` (issue #257).
 import csv
 import json
 
-import pytest
-
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import Joueur, Partie
 from scrabble.ui.jeu import ApiJeu, etat_public, verifier_mot_dictionnaire
-from tests._aides_test_jeu import _DicoFactice, _partie_simple
+from tests._aides_test_jeu import _partie_simple
 
 
 class _DicoMots:

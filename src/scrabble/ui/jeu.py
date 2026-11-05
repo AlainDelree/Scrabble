@@ -34,16 +34,14 @@ et ouvre l'écran de jeu sans passer par l'écran d'accueil.
 from __future__ import annotations
 
 import hashlib
-import json
 import random
-import threading
 from pathlib import Path
 from typing import Any
 
 import webview
 
 from scrabble import journal
-from scrabble.config import AVATARS_DISPONIBLES, THEMES_PLATEAU, charger_config
+from scrabble.config import AVATARS_DISPONIBLES, charger_config
 from scrabble.dictionnaire.dictionnaire import (
     CHEMIN_BELGICISMES,
     CHEMIN_DEFINITIONS,
@@ -59,7 +57,6 @@ from scrabble.moteur.partie import (
     EntreeHistorique,
     Joueur,
     Partie,
-    recreer_partie_meme_joueurs,
 )
 from scrabble.moteur.personnages import (
     interface_personnages_visible,
@@ -76,14 +73,13 @@ from scrabble.moteur.plateau_partie import (
     dans_plateau,
 )
 from scrabble.moteur.score import DetailMot, DetailScore, detailler_score
+from scrabble.moteur.validation import CoupInvalide, DictionnaireMots, valider_coup
 from scrabble.persistance import (
     CHEMIN_DEFAUT,
     demarrer_suivi,
     enregistrer_action,
     finaliser_partie,
 )
-from scrabble.persistance.stockage import supprimer_partie
-from scrabble.moteur.validation import CoupInvalide, DictionnaireMots, valider_coup
 from scrabble.regles.lettres import JOKER, valeur_lettre
 from scrabble.regles.plateau import TAILLE, type_case
 from scrabble.ui import TAPIS_VERT
@@ -117,9 +113,7 @@ def serialiser_case(plateau: PlateauPartie, ligne: int, colonne: int) -> dict[st
     (classe CSS ``.tuile-valeur``), comme sur les lettres du chevalet/brouillon.
     """
     tuile = plateau.tuile(ligne, colonne)
-    if tuile is None:
-        valeur = 0
-    elif tuile.joker:
+    if tuile is None or tuile.joker:
         valeur = 0
     else:
         valeur = valeur_lettre(tuile.lettre)
@@ -244,7 +238,7 @@ def _graine_avatar(joueur: Joueur, index: int) -> int:
     l'autre (``PYTHONHASHSEED``) — la reproductibilité inter-exécutions n'est pas
     exigée ici mais elle rend les tests et le débogage plus simples.
     """
-    cle = f"{index}\x00{joueur.nom}".encode("utf-8")
+    cle = f"{index}\x00{joueur.nom}".encode()
     return int.from_bytes(hashlib.md5(cle).digest()[:8], "big")
 
 
@@ -417,7 +411,7 @@ def classer_score_total(total_combine: int) -> str | None:
     return None
 
 
-def evaluer_score_total(joueurs: "list[Joueur]") -> dict[str, Any]:
+def evaluer_score_total(joueurs: list[Joueur]) -> dict[str, Any]:
     """Évalue le total combiné des scores finaux de tous les joueurs (issue #137).
 
     Renvoie un dictionnaire sérialisable pour l'UI :
@@ -611,7 +605,7 @@ def serialiser_dernier_coup(partie: Partie) -> dict[str, Any] | None:
 
 
 def serialiser_entree_historique(
-    partie: Partie, entree: "EntreeHistorique", index: int
+    partie: Partie, entree: EntreeHistorique, index: int
 ) -> dict[str, Any]:
     """Sérialise une :class:`~scrabble.moteur.partie.EntreeHistorique` pour l'UI.
 
@@ -1190,7 +1184,7 @@ def jouer_tours_ia_ui(partie: Partie, id_partie: int | None) -> dict[str, Any]:
 def detail_tirage_ordre(
     noms_creation: list[str],
     graine: int | None,
-    noms_humains: "set[str] | list[str] | None" = None,
+    noms_humains: set[str] | list[str] | None = None,
 ) -> dict[str, Any]:
     """Reconstitue le détail du tirage d'ordre pour affichage côté JS.
 
@@ -1652,7 +1646,7 @@ def _rouvrir_accueil(id_partie: int | None) -> None:
     lancer_accueil(reutiliser_session=True)
 
 
-def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
+def _lancer_fenetre_jeu(api: ApiJeu) -> None:
     """Crée l'**unique** fenêtre de jeu et démarre la boucle (issues #90/#193).
 
     Depuis la migration du chevalet en zone C (issue #187) et le nettoyage du
@@ -1702,7 +1696,7 @@ def _lancer_fenetre_jeu(api: "ApiJeu") -> None:
     webview.start(_finaliser_fenetres, window_plateau)
 
 
-def _finaliser_fenetres(window_plateau: "webview.Window") -> None:
+def _finaliser_fenetres(window_plateau: webview.Window) -> None:
     """Finalise l'état de la fenêtre unique une fois la boucle GUI démarrée (issue #95).
 
     Exécuté par ``webview.start(func, …)`` dans un fil dédié, **après** le démarrage
@@ -1753,7 +1747,7 @@ def _zone_travail_ecran() -> tuple[int, int, int, int] | None:
     return None
 
 
-def _maximiser_plateau(window_plateau: "webview.Window") -> None:
+def _maximiser_plateau(window_plateau: webview.Window) -> None:
     """Déploie la fenêtre plateau en plein écran utile après démarrage (issue #95).
 
     Cause racine (issue #95 point B) : ``maximized=True`` à la création se traduit,
@@ -1820,7 +1814,7 @@ def _maximiser_plateau(window_plateau: "webview.Window") -> None:
 
 
 def _attendre_fenetre_affichee(
-    window: "webview.Window", nom: str = "plateau", timeout: float = 5.0
+    window: webview.Window, nom: str = "plateau", timeout: float = 5.0
 ) -> None:
     """Attend l'événement ``shown`` de ``window`` (au plus ``timeout`` s) — issue #92.
 

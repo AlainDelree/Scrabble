@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import time
 
-import pytest
-
 from scrabble.dictionnaire.dictionnaire import Trie
-from scrabble.moteur.generateur import CoupNote, generer_coups
+from scrabble.moteur.generateur import generer_coups
 from scrabble.moteur.plateau_partie import (
     CENTRE,
     Coup,
@@ -107,8 +105,6 @@ class TestPlateauNonVide:
 
         resultats = generer_coups(plateau, chevalet, trie)
 
-        # On devrait trouver au moins un coup vertical
-        directions = {res.coup.direction for res in resultats}
         # Le générateur peut trouver des extensions horizontales ou verticales
         assert len(resultats) >= 1
 

@@ -50,7 +50,7 @@ import tempfile
 import traceback
 from pathlib import Path
 from types import TracebackType
-from typing import Any
+from typing import Any, Self
 
 from scrabble.config import RACINE_DONNEES_UTILISATEUR
 
@@ -196,7 +196,7 @@ class Journal:
 
     # -- Confort : usage en gestionnaire de contexte -----------------------
 
-    def __enter__(self) -> "Journal":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(

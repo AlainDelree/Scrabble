@@ -140,7 +140,7 @@ def _dessiner_tuile(n):
 
 
 def _rgb(c):
-    return "#%02x%02x%02x" % c
+    return "#{:02x}{:02x}{:02x}".format(*c)
 
 
 def _ecrire_svg(chemin):

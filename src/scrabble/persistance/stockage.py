@@ -48,10 +48,10 @@ from __future__ import annotations
 import datetime
 import json
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
 from scrabble.config import RACINE_DONNEES_UTILISATEUR
 from scrabble.moteur.ia import AlternativeCoup, Niveau
@@ -60,8 +60,8 @@ from scrabble.moteur.partie import (
     ACTION_ECHANGE,
     ACTION_PASSE,
     EntreeHistorique,
-    JournalDecisionIA,
     Joueur,
+    JournalDecisionIA,
     Partie,
 )
 from scrabble.moteur.plateau_partie import Coup, Direction, Tuile
@@ -374,7 +374,7 @@ def _initialiser_schema(connexion: sqlite3.Connection) -> None:
 
 def _maintenant() -> str:
     """Horodatage ISO 8601 en UTC (colonnes de dates)."""
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
 # --------------------------------------------------------------------------- #

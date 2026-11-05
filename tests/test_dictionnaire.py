@@ -54,7 +54,6 @@ from scrabble.dictionnaire.dictionnaire import (
     statut_source,
 )
 
-
 # --------------------------------------------------------------------------- #
 # Vocabulaire IA par palier (issue #366, lot A)
 # --------------------------------------------------------------------------- #
@@ -596,13 +595,13 @@ def test_cache_ecrit_et_relu(tmp_path):
     )
     chemin_cache = tmp_path / "trie_cache.pkl"
 
-    kwargs = dict(
-        source="ods",
-        chemin_ods=chemin_ods,
-        chemin_ajoutes=chemin_ajoutes,
-        chemin_retires=chemin_retires,
-        chemin_cache=chemin_cache,
-    )
+    kwargs = {
+        "source": "ods",
+        "chemin_ods": chemin_ods,
+        "chemin_ajoutes": chemin_ajoutes,
+        "chemin_retires": chemin_retires,
+        "chemin_cache": chemin_cache,
+    }
 
     trie1 = obtenir_trie(**kwargs)
     assert chemin_cache.exists()
@@ -620,13 +619,13 @@ def test_cache_invalide_si_source_modifiee(tmp_path):
         tmp_path, source_mots=["chat"]
     )
     chemin_cache = tmp_path / "trie_cache.pkl"
-    kwargs = dict(
-        source="ods",
-        chemin_ods=chemin_ods,
-        chemin_ajoutes=chemin_ajoutes,
-        chemin_retires=chemin_retires,
-        chemin_cache=chemin_cache,
-    )
+    kwargs = {
+        "source": "ods",
+        "chemin_ods": chemin_ods,
+        "chemin_ajoutes": chemin_ajoutes,
+        "chemin_retires": chemin_retires,
+        "chemin_cache": chemin_cache,
+    }
 
     trie1 = obtenir_trie(**kwargs)
     assert "OISEAU" not in trie1
@@ -866,13 +865,13 @@ def test_obtenir_trie_cache_mode_defaut_false_comportement_inchange(tmp_path):
         tmp_path, source_mots=["chat"]
     )
     chemin_cache = tmp_path / "trie_cache.pkl"
-    kwargs = dict(
-        source="ods",
-        chemin_ods=chemin_ods,
-        chemin_ajoutes=chemin_ajoutes,
-        chemin_retires=chemin_retires,
-        chemin_cache=chemin_cache,
-    )
+    kwargs = {
+        "source": "ods",
+        "chemin_ods": chemin_ods,
+        "chemin_ajoutes": chemin_ajoutes,
+        "chemin_retires": chemin_retires,
+        "chemin_cache": chemin_cache,
+    }
 
     trie1 = obtenir_trie(**kwargs)
     assert chemin_cache.exists()
@@ -891,14 +890,14 @@ def test_obtenir_trie_cache_invalide_si_mode_belgicisme_change(tmp_path):
     chemin_belges = tmp_path / "belgicismes.csv"
     _ecrire_csv_belgicismes(chemin_belges, [("sketter", "non")])
     chemin_cache = tmp_path / "trie_cache.pkl"
-    kwargs = dict(
-        source="ods",
-        chemin_ods=chemin_ods,
-        chemin_ajoutes=chemin_ajoutes,
-        chemin_retires=chemin_retires,
-        chemin_cache=chemin_cache,
-        chemin_belgicismes=chemin_belges,
-    )
+    kwargs = {
+        "source": "ods",
+        "chemin_ods": chemin_ods,
+        "chemin_ajoutes": chemin_ajoutes,
+        "chemin_retires": chemin_retires,
+        "chemin_cache": chemin_cache,
+        "chemin_belgicismes": chemin_belges,
+    }
 
     trie_france = obtenir_trie(mode_belgicisme=False, **kwargs)
     assert "SKETTER" not in trie_france
@@ -1318,7 +1317,7 @@ def test_marquer_classique_accepte_mot_present(tmp_path, monkeypatch):
 
 def test_marquer_classique_refuse_mot_absent_des_deux_sources(tmp_path, monkeypatch):
     """Un mot inexistant dans les deux sources est refusé, sans écrire."""
-    ajoutes_p, retires_p = _preparer_classiques(tmp_path, monkeypatch)
+    ajoutes_p, _retires_p = _preparer_classiques(tmp_path, monkeypatch)
     chemin_ods = tmp_path / "ods.txt"
     chemin_ods.write_text("WU\n", encoding="utf-8")
 
@@ -1405,14 +1404,14 @@ def _preparer_ia(tmp_path, monkeypatch, *, source_mots, courants=None,
 
 def _kwargs_ia(chemin_ods, chemin_ajoutes, chemin_retires, chemin_courants,
                chemin_cache):
-    return dict(
-        source="ods",
-        chemin_ods=chemin_ods,
-        chemin_ajoutes=chemin_ajoutes,
-        chemin_retires=chemin_retires,
-        chemin_mots_courants=chemin_courants,
-        chemin_cache=chemin_cache,
-    )
+    return {
+        "source": "ods",
+        "chemin_ods": chemin_ods,
+        "chemin_ajoutes": chemin_ajoutes,
+        "chemin_retires": chemin_retires,
+        "chemin_mots_courants": chemin_courants,
+        "chemin_cache": chemin_cache,
+    }
 
 
 def test_ensemble_classiques_ajoutes_moins_retires(tmp_path, monkeypatch):

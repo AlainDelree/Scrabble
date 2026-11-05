@@ -4,8 +4,8 @@ Ces classes ont été extraites de ``test_jeu.py`` pour réduire la taille de ce
 fichier.
 """
 
-from tests._aides_test_jeu import _DicoFactice, _partie_simple
 from scrabble.ui.jeu import ApiJeu
+from tests._aides_test_jeu import _partie_simple
 
 
 class TestApiJeuChargementDiffere:

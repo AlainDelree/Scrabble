@@ -46,7 +46,8 @@ import json
 import queue
 import re
 import threading
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from scrabble.serveur.securite import FONCTIONS_DICTIONNAIRE_INTERDITES
 

@@ -37,9 +37,9 @@ from typing import Any
 import pytest
 
 import scrabble.config as _config
-import scrabble.journal as journal
 import scrabble.persistance.stockage as _stockage
 import scrabble.reglages as _reglages
+from scrabble import journal
 from scrabble.dictionnaire.dictionnaire import Trie
 from scrabble.moteur.partie import Joueur, Partie
 from scrabble.serveur.donnees import _repointer_defaut, isoler_donnees_utilisateur

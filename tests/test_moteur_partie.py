@@ -15,24 +15,23 @@ import random
 import pytest
 
 from scrabble.dictionnaire.dictionnaire import Trie
-from scrabble.moteur.plateau_partie import (
-    CENTRE,
-    Coup,
-    Direction,
-    PlateauPartie,
-    tuiles_depuis_chaine,
-)
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import (
     ACTION_COUP,
     ACTION_ECHANGE,
     ACTION_PASSE,
+    TAILLE_CHEVALET,
     ActionInvalide,
     Joueur,
     Partie,
-    TAILLE_CHEVALET,
     creer_partie,
     recreer_partie_meme_joueurs,
+)
+from scrabble.moteur.plateau_partie import (
+    CENTRE,
+    Coup,
+    Direction,
+    tuiles_depuis_chaine,
 )
 from scrabble.regles.lettres import JOKER
 
@@ -838,7 +837,6 @@ def test_jouer_tour_ia_sans_profil_ne_transmet_pas_profil(monkeypatch):
 
     def faux_choisir(plateau, chevalet, dictionnaire, niveau):
         captures["appele"] = True
-        return None
 
     monkeypatch.setattr(ia_mod, "choisir_coup", faux_choisir)
     partie.jouer_tour_ia()
@@ -857,7 +855,6 @@ def test_jouer_tour_ia_avec_profil_le_transmet_a_choisir_coup(monkeypatch):
 
     def faux_choisir(plateau, chevalet, dictionnaire, niveau, profil=None):
         captures["profil"] = profil
-        return None
 
     monkeypatch.setattr(ia_mod, "choisir_coup", faux_choisir)
     partie.jouer_tour_ia(profil=profil)
@@ -914,7 +911,6 @@ def test_jouer_tour_ia_genere_sur_dictionnaire_du_niveau(monkeypatch):
 
     def faux_choisir(plateau, chevalet, dictionnaire, niveau):
         captures["dico"] = dictionnaire
-        return None
 
     monkeypatch.setattr(ia_mod, "choisir_coup", faux_choisir)
     partie.jouer_tour_ia()
@@ -939,7 +935,6 @@ def test_jouer_tour_ia_niveau_absent_du_mapping_retombe_sur_dictionnaire(monkeyp
 
     def faux_choisir(plateau, chevalet, dictionnaire, niveau):
         captures["dico"] = dictionnaire
-        return None
 
     monkeypatch.setattr(ia_mod, "choisir_coup", faux_choisir)
     partie.jouer_tour_ia()
@@ -974,7 +969,6 @@ def test_deux_ia_niveaux_differents_utilisent_deux_tries_distincts(monkeypatch):
 
     def faux_choisir(plateau, chevalet, dictionnaire, niveau):
         captures.append((niveau, dictionnaire))
-        return None
 
     monkeypatch.setattr(ia_mod, "choisir_coup", faux_choisir)
     partie.jouer_tour_ia()  # Débutant (index 0)

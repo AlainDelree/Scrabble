@@ -22,7 +22,7 @@ import json
 import pytest
 
 from scrabble import journal
-from scrabble.journal import Journal, NIVEAU_ERREUR, NIVEAU_INFO
+from scrabble.journal import NIVEAU_ERREUR, NIVEAU_INFO, Journal
 
 
 def _lire(j: Journal) -> str:
@@ -284,10 +284,9 @@ def test_crash_conserve_le_fichier(tmp_path):
 
 def test_contextmanager_journalise_exception_et_conserve(tmp_path):
     """En gestionnaire de contexte, une exception est journalisée et conservée."""
-    with pytest.raises(RuntimeError):
-        with Journal(tmp_path) as j:
-            chemin = j.chemin
-            raise RuntimeError("échec dans le bloc")
+    with pytest.raises(RuntimeError), Journal(tmp_path) as j:
+        chemin = j.chemin
+        raise RuntimeError("échec dans le bloc")
 
     assert chemin.exists()
     contenu = chemin.read_text(encoding="utf-8")

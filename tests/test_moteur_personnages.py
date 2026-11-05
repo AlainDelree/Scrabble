@@ -43,17 +43,14 @@ from scrabble.moteur.ia import (
     Niveau,
     _choisir_avance,
     _choisir_top5,
-    _score_strategique,
     _trier_par_score_strategique,
     choisir_coup,
 )
-from scrabble.moteur.score import DetailMot, DetailScore
 from scrabble.moteur.personnages import (
-    CLE_ALEATOIRE,
     BONUS_FAVORI_LETTRE,
     CHEMIN_MOTS_FAVORIS_LETTRE,
-    CHEMIN_MOTS_FAVORIS_LETTRE_MERAL,
     CHEMIN_MOTS_FAVORIS_TITEUF,
+    CLE_ALEATOIRE,
     DESCRIPTION_ALEATOIRE,
     MESSAGE_ALEATOIRE_NB_JOUEURS_INSUFFISANT,
     MESSAGE_ALEATOIRE_NIVEAU_INSUFFISANT,
@@ -69,15 +66,16 @@ from scrabble.moteur.personnages import (
     PERSONNAGES,
     POIDS_TIRAGE_FAVORI_TITEUF,
     POIDS_TIRAGE_SCRABBLE_CHASSEUR,
-    Personnage,
     TOUS_NIVEAUX,
     TOUTES_TAILLES,
+    Personnage,
     aleatoire_disponible_a_nb_joueurs,
     aleatoire_disponible_a_niveau,
     charger_mots_favoris,
     charger_mots_favoris_avec_complement,
     explication_disponibilite_niveaux,
     explication_disponibilite_tailles,
+    interface_personnages_visible,
     libelle_choix_accueil,
     libelle_niveaux,
     libelle_niveaux_aleatoire,
@@ -87,7 +85,6 @@ from scrabble.moteur.personnages import (
     lister_personnages,
     niveaux_disponibles_aleatoire,
     nombre_personnages_actifs,
-    interface_personnages_visible,
     personnage_disponible_a_nb_joueurs,
     personnage_disponible_a_niveau,
     personnages_disponibles_a_nb_joueurs,
@@ -103,6 +100,7 @@ from scrabble.moteur.plateau_partie import (
     PlateauPartie,
     tuiles_depuis_chaine,
 )
+from scrabble.moteur.score import DetailMot, DetailScore
 
 #: Vocabulaire couvrant les coups accessibles depuis CADRE posé au centre
 #: (voir _plateau_avec_cadre) pour le chevalet "SOIRIT" : un mélange

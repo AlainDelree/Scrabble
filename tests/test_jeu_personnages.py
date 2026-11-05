@@ -174,7 +174,6 @@ class TestJouerToursIaUiTransmetLePersonnage:
 
         def faux_choisir_coup(plateau, chevalet, dictionnaire, niveau, *, profil=None):
             captures["profil"] = profil
-            return None
 
         monkeypatch.setattr(ia_mod, "choisir_coup", faux_choisir_coup)
 
@@ -195,7 +194,6 @@ class TestJouerToursIaUiTransmetLePersonnage:
 
         def faux_choisir_coup(plateau, chevalet, dictionnaire, niveau):
             captures["appele"] = True
-            return None
 
         monkeypatch.setattr(ia_mod, "choisir_coup", faux_choisir_coup)
 

@@ -83,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     from scrabble.serveur.httpd import ServeurScrabble
     from scrabble.serveur.pont import FenetrePont, GestionnaireDiffusion
     from scrabble.ui.accueil import ApiAccueil
-    from scrabble.ui.application import DOSSIER_WEB, ApiRouteur, VUE_ACCUEIL
+    from scrabble.ui.application import DOSSIER_WEB, VUE_ACCUEIL, ApiRouteur
     from scrabble.ui.jeu import ApiJeu
 
     journal.demarrer_session(dossier=chemins["logs"])

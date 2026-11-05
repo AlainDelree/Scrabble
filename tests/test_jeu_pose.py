@@ -304,7 +304,7 @@ class TestApiJeuRemplacementEnAttente:
         assert indices == [1, 2]  # « C » (0) libérée, « A » (2) posée, « H » (1) intacte
 
     def test_sans_selection_retrait_simple(self):
-        api, plateau = _api_pose("CHATSER")
+        api, _plateau = _api_pose("CHATSER")
         api.selectionner_lettre(0)
         api.poser_lettre_en_attente(7, 7)
         # Aucune sélection active au moment du clic : retrait simple (cas limite 1).

@@ -16,7 +16,7 @@ Ce mixin utilise les primitives suivantes de :class:`~.api_diffusion.MixinDiffus
 from __future__ import annotations
 
 import threading
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from scrabble import journal
 from scrabble.config import THEMES_PLATEAU, charger_config
@@ -38,7 +38,7 @@ class MixinTirageOrdre:
     _infos_tirage: dict[str, Any] | None
     _tirage_termine: bool
     _retour_menu: bool
-    _window_plateau: "webview.Window | None"
+    _window_plateau: webview.Window | None
     _chemin_persistance: Any
 
     # Méthodes attendues de MixinDiffusion (via l'héritage multiple d'ApiJeu).

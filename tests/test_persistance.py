@@ -35,7 +35,6 @@ from scrabble.moteur.plateau_partie import (
     Direction,
     tuiles_depuis_chaine,
 )
-from scrabble.persistance import stockage
 from scrabble.persistance.stockage import (
     STATUT_EN_COURS,
     STATUT_TERMINEE,
@@ -144,7 +143,7 @@ def test_demarrer_suivi_sans_graine_refuse(tmp_path):
 
 def test_lister_reflete_en_cours_et_joueurs(tmp_path):
     chemin = tmp_path / "parties.db"
-    partie, id_partie, _trie_ = _partie_coup_puis_echange(chemin)
+    partie, id_partie, _trie = _partie_coup_puis_echange(chemin)
 
     resumes = lister_parties(chemin)
     assert len(resumes) == 1
@@ -171,7 +170,7 @@ def test_scores_actuels_refletent_historique(tmp_path):
     scores vivants de la partie, dans l'ordre des joueurs.
     """
     chemin = tmp_path / "parties.db"
-    partie, _id, _trie_ = _partie_coup_puis_echange(chemin)
+    partie, _id, _trie = _partie_coup_puis_echange(chemin)
 
     resume = lister_parties(chemin)[0]
     assert resume.scores_actuels == [j.score for j in partie.joueurs]
@@ -735,7 +734,7 @@ def test_supprimer_partie_retire_de_la_liste(tmp_path):
 def test_supprimer_partie_avec_actions(tmp_path):
     """La suppression retire aussi les actions rattachées (clé étrangère)."""
     chemin = tmp_path / "parties.db"
-    partie, id_partie, _trie_ = _partie_coup_puis_echange(chemin)
+    _partie, id_partie, _trie_ = _partie_coup_puis_echange(chemin)
 
     assert supprimer_partie(id_partie, chemin) is True
     assert lister_parties(chemin) == []

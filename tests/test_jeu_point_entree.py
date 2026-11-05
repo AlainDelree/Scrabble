@@ -178,10 +178,10 @@ class TestZoneTravailEcran:
     """Repli de la zone de travail sur ``webview.screens`` si GDK indisponible (#95)."""
 
     def test_repli_sur_webview_screens(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
         # Force l'échec de l'import GDK : le repli lit webview.screens.
         import builtins
+
+        from scrabble.ui import jeu as mod
 
         vrai_import = builtins.__import__
 
@@ -202,9 +202,9 @@ class TestZoneTravailEcran:
         assert mod._zone_travail_ecran() == (5, 7, 1000, 800)
 
     def test_none_si_rien_interrogeable(self, monkeypatch):
-        from scrabble.ui import jeu as mod
-
         import builtins
+
+        from scrabble.ui import jeu as mod
 
         vrai_import = builtins.__import__
 

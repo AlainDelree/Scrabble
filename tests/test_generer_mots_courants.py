@@ -32,8 +32,7 @@ def _ecrire_lexique(chemin: Path, lignes: list[tuple[str, float, float]]) -> Non
     """Écrit un mini-Lexique ``ortho / freqfilms2 / freqlivres`` (avec en-tête)."""
     with open(chemin, "w", encoding="utf-8") as f:
         f.write(_ENTETE)
-        for ortho, freqfilms2, freqlivres in lignes:
-            f.write(f"{ortho}\tXXX\t{freqfilms2}\t{freqlivres}\n")
+        f.writelines(f"{ortho}\tXXX\t{freqfilms2}\t{freqlivres}\n" for ortho, freqfilms2, freqlivres in lignes)
 
 
 # --------------------------------------------------------------------------- #

@@ -44,8 +44,8 @@ donc lieu sur un sac intact, ce tirage d'ordre n'y prélevant aucune lettre.
 from __future__ import annotations
 
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from scrabble.regles.lettres import JOKER, constituer_sac
 

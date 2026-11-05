@@ -85,8 +85,6 @@ from scrabble.moteur.personnages import (
     personnages_disponibles_a_nb_joueurs,
 )
 from scrabble.persistance.stockage import (
-    CHEMIN_DEFAUT,
-    ResumePartie,
     demarrer_suivi,
     lister_parties,
     niveaux_ia_stockes,

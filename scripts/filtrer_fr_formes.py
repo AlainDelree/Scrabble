@@ -56,8 +56,7 @@ def extraire() -> None:
             # On ne conserve que les gloses de chaque sens, rien d'autre.
             gloses: list[str] = []
             for sens in entree.get("senses", []) or []:
-                for glose in sens.get("glosses", []) or []:
-                    gloses.append(glose)
+                gloses.extend(sens.get("glosses", []) or [])
 
             minimal = {
                 "word": entree.get("word"),

@@ -23,8 +23,8 @@ from scrabble.persistance import demarrer_suivi, reprendre_partie
 from scrabble.regles.lettres import JOKER
 from scrabble.regles.plateau import CENTRE, TAILLE, TypeCase
 from scrabble.ui.jeu import (
-    ApiJeu,
     AVATARS,
+    ApiJeu,
     calculer_avatars,
     calculer_positions,
     classer_score_total,
@@ -478,9 +478,9 @@ class TestCalculerAvatars:
         # avatar_principal de la config (issue #143) et un poste de dév peut y
         # avoir un avatar choisi, ce qui ferait diverger l'attribution du calcul
         # direct par défaut ci-dessous (avatar_principal absent = "").
-        import scrabble.ui.jeu as jeu
+        from scrabble.ui import jeu
 
-        monkeypatch.setattr(jeu, "charger_config", lambda: {})
+        monkeypatch.setattr(jeu, "charger_config", dict)
         joueurs = [
             Joueur(nom="Alice", humain=True),
             Joueur(nom="Robot", humain=False, niveau=Niveau.FACILE),
@@ -550,7 +550,7 @@ class TestCalculerAvatars:
 
     def test_avatar_principal_applique_dans_etat_public(self, monkeypatch):
         # etat_public lit avatar_principal de la config et le passe au calcul.
-        import scrabble.ui.jeu as jeu
+        from scrabble.ui import jeu
 
         monkeypatch.setattr(
             jeu, "charger_config", lambda: {"avatar_principal": "avatar-09"}

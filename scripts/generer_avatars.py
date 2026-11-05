@@ -133,8 +133,8 @@ def _bow(color):
 def avatar(bg, skin, shirt, features):
     """Assemble un avatar : fond circulaire, épaules, visage et traits."""
     parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" '
-        f'width="64" height="64" role="img">',
+        ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" '
+        'width="64" height="64" role="img">'),
         '<defs><clipPath id="cadre"><circle cx="32" cy="32" r="32"/></clipPath></defs>',
         '<g clip-path="url(#cadre)">',
         f'<rect width="64" height="64" fill="{bg}"/>',
@@ -177,21 +177,21 @@ SHIRT = [
 # (peau, config des traits) — pensé pour que chaque avatar soit nettement
 # différent des autres (coiffure + accessoire + pilosité).
 CONFIGS = [
-    ("clair", dict(arriere=[_hair(color="#2b2b2b")], avant=[])),
-    ("hale", dict(arriere=[_hair_long("#5a3825")], avant=[_earrings()])),
-    ("mat", dict(arriere=[_hair(color="#3a2a1a")], avant=[_glasses()])),
-    ("clair", dict(arriere=[_bald_sides("#7a7a7a")], avant=[_mustache("#7a7a7a"), _beard("#8a8a8a")])),
-    ("brun", dict(arriere=[_curly("#1e1e1e")], avant=[])),
-    ("hale", dict(arriere=[_hair(color="#a55728")], avant=[_glasses("#5a3825"), _beard("#a55728")])),
-    ("fonce", dict(arriere=[_hair(color="#111")], avant=[_hat_cap("#c0392b")])),
-    ("clair", dict(arriere=[_bun("#d9b36b")], avant=[_bow("#e74c3c")])),
-    ("mat", dict(arriere=[_hair(color="#2b2b2b")], avant=[_mustache("#2b2b2b")])),
-    ("clair", dict(arriere=[_hair_long("#d9b36b")], avant=[_earrings("#e74c3c")])),
-    ("brun", dict(arriere=[_bald_sides("#2b2b2b")], avant=[_glasses("#111")])),
-    ("hale", dict(arriere=[], avant=[_hat_top("#2c3e50")])),
-    ("clair", dict(arriere=[_curly("#a55728")], avant=[_glasses("#8e44ad")])),
-    ("fonce", dict(arriere=[_hair(color="#111")], avant=[_beard("#111")])),
-    ("clair", dict(arriere=[_hair(color="#c0c0c0")], avant=[_beret("#8e44ad")])),
+    ("clair", {"arriere": [_hair(color="#2b2b2b")], "avant": []}),
+    ("hale", {"arriere": [_hair_long("#5a3825")], "avant": [_earrings()]}),
+    ("mat", {"arriere": [_hair(color="#3a2a1a")], "avant": [_glasses()]}),
+    ("clair", {"arriere": [_bald_sides("#7a7a7a")], "avant": [_mustache("#7a7a7a"), _beard("#8a8a8a")]}),
+    ("brun", {"arriere": [_curly("#1e1e1e")], "avant": []}),
+    ("hale", {"arriere": [_hair(color="#a55728")], "avant": [_glasses("#5a3825"), _beard("#a55728")]}),
+    ("fonce", {"arriere": [_hair(color="#111")], "avant": [_hat_cap("#c0392b")]}),
+    ("clair", {"arriere": [_bun("#d9b36b")], "avant": [_bow("#e74c3c")]}),
+    ("mat", {"arriere": [_hair(color="#2b2b2b")], "avant": [_mustache("#2b2b2b")]}),
+    ("clair", {"arriere": [_hair_long("#d9b36b")], "avant": [_earrings("#e74c3c")]}),
+    ("brun", {"arriere": [_bald_sides("#2b2b2b")], "avant": [_glasses("#111")]}),
+    ("hale", {"arriere": [], "avant": [_hat_top("#2c3e50")]}),
+    ("clair", {"arriere": [_curly("#a55728")], "avant": [_glasses("#8e44ad")]}),
+    ("fonce", {"arriere": [_hair(color="#111")], "avant": [_beard("#111")]}),
+    ("clair", {"arriere": [_hair(color="#c0c0c0")], "avant": [_beret("#8e44ad")]}),
 ]
 
 

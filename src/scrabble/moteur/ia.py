@@ -646,9 +646,9 @@ def _mot_principal(coup: Coup) -> str:
 def _generer_coups_candidats(
     plateau: PlateauPartie,
     chevalet: list[str],
-    dictionnaire: "TrieProtocol",
+    dictionnaire: TrieProtocol,
     profil: ProfilPersonnage | None,
-    dictionnaire_complet: "TrieProtocol | None",
+    dictionnaire_complet: TrieProtocol | None,
 ) -> list[CoupNote]:
     """Génère les coups candidats, élargis ou restreints selon le profil.
 
@@ -736,9 +736,12 @@ def _generer_coups_candidats(
                 cle = _cle(cn)
                 if cle in vus:
                     continue
-                if part_vocabulaire_long is not None and part_vocabulaire_long < 1.0:
-                    if not _mot_connu_vocabulaire_long(_mot_principal(cn.coup), part_vocabulaire_long):
-                        continue
+                if (
+                    part_vocabulaire_long is not None
+                    and part_vocabulaire_long < 1.0
+                    and not _mot_connu_vocabulaire_long(_mot_principal(cn.coup), part_vocabulaire_long)
+                ):
+                    continue
                 vus.add(cle)
                 coups.append(cn)
 
@@ -768,11 +771,11 @@ def _generer_coups_candidats(
 def choisir_coup(
     plateau: PlateauPartie,
     chevalet: list[str],
-    dictionnaire: "TrieProtocol",
+    dictionnaire: TrieProtocol,
     niveau: Niveau,
     alea: random.Random | None = None,
     profil: ProfilPersonnage | None = None,
-    dictionnaire_complet: "TrieProtocol | None" = None,
+    dictionnaire_complet: TrieProtocol | None = None,
 ) -> Coup | None:
     """Choisit un coup selon le niveau IA, ou None pour passer.
 
@@ -874,12 +877,12 @@ def _construire_alternative(cn: CoupNote, score_strategique: int) -> Alternative
 def evaluer_coups(
     plateau: PlateauPartie,
     chevalet: list[str],
-    dictionnaire: "TrieProtocol",
+    dictionnaire: TrieProtocol,
     niveau: Niveau,
     profil: ProfilPersonnage | None = None,
     coup_choisi: Coup | None = None,
     limite: int = 5,
-    dictionnaire_complet: "TrieProtocol | None" = None,
+    dictionnaire_complet: TrieProtocol | None = None,
 ) -> EvaluationCoupsIA:
     """Évalue tous les coups possibles, pour le journal de décision (issue #445).
 

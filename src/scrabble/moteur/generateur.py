@@ -30,10 +30,10 @@ from typing import Protocol
 
 from scrabble.moteur.plateau_partie import (
     CENTRE,
+    TAILLE,
     Coup,
     Direction,
     PlateauPartie,
-    TAILLE,
     Tuile,
     dans_plateau,
 )
@@ -245,7 +245,7 @@ def generer_coups(
     plateau: PlateauPartie,
     chevalet: list[str],
     dictionnaire: TrieProtocol,
-    dictionnaire_validation: "TrieProtocol | None" = None,
+    dictionnaire_validation: TrieProtocol | None = None,
 ) -> list[CoupNote]:
     """Génère tous les coups valides pour le chevalet sur le plateau.
 

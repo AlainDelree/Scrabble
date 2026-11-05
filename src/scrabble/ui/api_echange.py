@@ -17,7 +17,7 @@ Ce mixin utilise les primitives suivantes de :class:`~.api_diffusion.MixinDiffus
 
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from scrabble.moteur.partie import EntreeHistorique, Partie
@@ -43,7 +43,7 @@ class MixinEchange:
     def _refuser_hors_tour(self) -> dict[str, Any] | None: ...
 
     # Méthodes attendues d'ApiJeu (utilisées par les échanges).
-    def _persister_entrees(self, entrees: "list[EntreeHistorique]") -> None: ...
+    def _persister_entrees(self, entrees: list[EntreeHistorique]) -> None: ...
     def _finaliser_si_terminee(self) -> None: ...
 
     def echanger_tout(self) -> dict[str, Any]:

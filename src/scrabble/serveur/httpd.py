@@ -31,9 +31,10 @@ from __future__ import annotations
 import json
 import mimetypes
 import urllib.parse
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from scrabble import journal
 from scrabble.serveur.pont import (
@@ -205,7 +206,7 @@ class GestionnaireRequetes(BaseHTTPRequestHandler):
     ``ThreadingHTTPServer`` (un nouveau gestionnaire par connexion).
     """
 
-    server: "ServeurScrabble"
+    server: ServeurScrabble
     protocol_version = "HTTP/1.1"
 
     # ------------------------------------------------------------------ #
@@ -285,7 +286,7 @@ class GestionnaireRequetes(BaseHTTPRequestHandler):
                     if message is None:
                         self.wfile.write(b": keep-alive\n\n")
                     else:
-                        self.wfile.write(f"data: {message}\n\n".encode("utf-8"))
+                        self.wfile.write(f"data: {message}\n\n".encode())
                     self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     break

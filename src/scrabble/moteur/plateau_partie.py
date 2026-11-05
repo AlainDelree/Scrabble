@@ -49,7 +49,7 @@ class Direction(enum.Enum):
         return (0, 1) if self is Direction.HORIZONTALE else (1, 0)
 
     @property
-    def perpendiculaire(self) -> "Direction":
+    def perpendiculaire(self) -> Direction:
         """La direction orthogonale (sens des mots transversaux)."""
         return (
             Direction.VERTICALE
@@ -158,7 +158,7 @@ class PlateauPartie:
         """Vrai si aucune tuile n'est posée (plateau de début de partie)."""
         return all(case is None for rangee in self._cases for case in rangee)
 
-    def copie(self) -> "PlateauPartie":
+    def copie(self) -> PlateauPartie:
         """Renvoie une copie indépendante de l'état (les tuiles sont figées)."""
         clone = PlateauPartie()
         clone._cases = [rangee.copy() for rangee in self._cases]

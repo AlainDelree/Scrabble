@@ -47,10 +47,9 @@ consécutives) n'attribue jamais ce bonus, même réglage activé.
 
 from __future__ import annotations
 
+import random
 from collections import Counter
 from dataclasses import dataclass, field
-
-import random
 
 # Alias distinct du paramètre local ``journal`` de :meth:`Partie.jouer_tour_ia`
 # (un ``JournalDecisionIA`` par tour, sans rapport) : utiliser le nom ``journal``
@@ -222,7 +221,7 @@ def creer_partie(
     tirage_ordre: bool = False,
     bonus_fin_partie: bool = False,
     dictionnaires_ia: dict[Niveau, DictionnaireMots] | None = None,
-) -> "Partie":
+) -> Partie:
     """Construit une partie à partir d'une configuration humains/IA.
 
     ``noms_humains`` doit contenir au moins un nom (1 à 4 humains). ``nb_ia``
@@ -338,12 +337,12 @@ def creer_partie(
 
 
 def recreer_partie_meme_joueurs(
-    partie: "Partie",
+    partie: Partie,
     dictionnaire: DictionnaireMots,
     *,
     graine: int | None = None,
     tirage_ordre: bool = True,
-) -> "Partie":
+) -> Partie:
     """Crée une **nouvelle** partie avec les mêmes joueurs qu'une partie donnée.
 
     Reprend la liste des joueurs de ``partie`` — leurs **noms**, leur nature

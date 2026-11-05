@@ -10,7 +10,7 @@ aucune dépendance sortante n'est attendue pour celui-ci.
 from __future__ import annotations
 
 import json
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from scrabble import journal
 from scrabble.regles.lettres import JOKER, valeur_lettre
@@ -34,7 +34,7 @@ class MixinDiffusion:
     _type_echange: str
     _mode_echange: bool
     _selection_echange: list[int]
-    _window_plateau: "webview.Window | None"
+    _window_plateau: webview.Window | None
     _lettres_pioches: list[str]
 
     def _placements_publics(self) -> list[dict[str, Any]]:
@@ -175,7 +175,7 @@ class MixinDiffusion:
 
     @staticmethod
     def _pousser(
-        window: "webview.Window | None", fonction: str, charge: dict[str, Any]
+        window: webview.Window | None, fonction: str, charge: dict[str, Any]
     ) -> None:
         """Appelle ``window.<fonction>(<charge JSON>)`` si la fenêtre existe.
 

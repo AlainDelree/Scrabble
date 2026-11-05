@@ -13,7 +13,7 @@ from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import Joueur, Partie
 from scrabble.moteur.plateau_partie import Coup, Direction, Tuile
 from scrabble.ui.jeu import construire_coup, jouer_placements, simuler_coup
-from tests._aides_test_jeu import _DicoFactice, _partie_simple
+from tests._aides_test_jeu import _partie_simple
 
 
 class _DicoMots:

@@ -21,7 +21,7 @@ Ce mixin utilise les primitives suivantes de :class:`~.api_diffusion.MixinDiffus
 
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from scrabble.regles.lettres import JOKER, valeur_lettre
 
@@ -469,6 +469,6 @@ class MixinPose:
         )
 
     # Méthodes attendues d'ApiJeu (utilisées par poser_mot).
-    def _persister_entrees(self, entrees: "list[EntreeHistorique]") -> None: ...
+    def _persister_entrees(self, entrees: list[EntreeHistorique]) -> None: ...
     def _journaliser_fin_partie(self) -> None: ...
     def _finaliser_si_terminee(self) -> None: ...

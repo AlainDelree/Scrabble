@@ -5,7 +5,6 @@ Couvre :
 - l'échange partiel d'une sélection de lettres (issue #138)
 """
 
-import pytest
 
 from scrabble.moteur.partie import Joueur, Partie
 from scrabble.ui.jeu import (
@@ -13,7 +12,7 @@ from scrabble.ui.jeu import (
     echanger_chevalet_complet,
     echanger_jetons,
 )
-from tests._aides_test_jeu import _DicoFactice, _partie_simple
+from tests._aides_test_jeu import _DicoFactice
 
 
 class TestEchangerChevaletComplet:

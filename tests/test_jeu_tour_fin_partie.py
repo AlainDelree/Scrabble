@@ -16,8 +16,8 @@ from scrabble.dictionnaire.dictionnaire import Trie
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import Joueur, Partie
 from scrabble.persistance import demarrer_suivi, lister_parties
-from tests._aides_test_jeu import _DicoFactice, _FenetreEspionne, _partie_simple
 from scrabble.ui.jeu import ApiJeu, jouer_tours_ia_ui, passer_tour
+from tests._aides_test_jeu import _DicoFactice, _FenetreEspionne, _partie_simple
 
 
 class TestApparenceBoutonsEchange:

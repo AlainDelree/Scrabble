@@ -8,7 +8,6 @@ Classes extraites de test_jeu.py :
 - TestFinaliserEntreeVueJeu — finalisation à chaque entrée (#180)
 """
 
-import pytest
 
 from scrabble.ui.jeu import ApiJeu
 from tests._aides_test_jeu import _DicoFactice, _partie_simple
@@ -107,7 +106,7 @@ class TestThemePlateau:
 
     def test_theme_absent_retombe_sur_classique(self, monkeypatch):
         """Clé absente de la config : défaut « classique »."""
-        monkeypatch.setattr("scrabble.ui.api_tirage_ordre.charger_config", lambda: {})
+        monkeypatch.setattr("scrabble.ui.api_tirage_ordre.charger_config", dict)
         api = ApiJeu(_partie_simple(), id_partie=1)
         assert api.obtenir_theme_plateau() == "classique"
 

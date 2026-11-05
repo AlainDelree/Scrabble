@@ -16,7 +16,6 @@ from __future__ import annotations
 import scrabble.ui.accueil as r
 from scrabble.ui.accueil import ApiAccueil
 
-
 # --------------------------------------------------------------------------- #
 # Onglet Général
 # --------------------------------------------------------------------------- #

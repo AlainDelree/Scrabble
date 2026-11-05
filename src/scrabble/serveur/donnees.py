@@ -31,8 +31,8 @@ concerné et reste partagé/en lecture seule, comme demandé.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 
 def _repointer_defaut(fonction: Callable, ancien: object, nouveau: object) -> None:
@@ -58,9 +58,8 @@ def isoler_donnees_utilisateur(dossier: Path) -> dict[str, Path]:
     effectivement utilisés (``config``, ``base_parties``, ``logs``), pour
     affichage/tests.
     """
-    import scrabble.config as config
-    import scrabble.persistance.stockage as stockage
-    import scrabble.reglages as reglages
+    from scrabble import config, reglages
+    from scrabble.persistance import stockage
 
     dossier = Path(dossier)
     dossier.mkdir(parents=True, exist_ok=True)
