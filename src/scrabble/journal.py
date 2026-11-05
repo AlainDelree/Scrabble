@@ -181,6 +181,8 @@ class Journal:
             try:
                 self.chemin.unlink()
             except FileNotFoundError:
+                # Déjà absent (supprimé entre-temps par une autre voie) :
+                # l'objectif — ne rien laisser sur disque — est déjà atteint.
                 pass
             return
 

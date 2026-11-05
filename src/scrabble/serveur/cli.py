@@ -111,6 +111,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         serveur.serve_forever()
     except KeyboardInterrupt:
+        # Arrêt volontaire (Ctrl+C) : un arrêt normal, pas une erreur à
+        # signaler.
         pass
     finally:
         serveur.server_close()
