@@ -91,9 +91,11 @@ def test_dossier_valide_mais_pas_un_fichier_refuse(tmp_path, monkeypatch):
 class _EspionPopen:
     def __init__(self) -> None:
         self.appels: list[list[str]] = []
+        self.appels_kwargs: list[dict] = []
 
     def __call__(self, commande, *args, **kwargs):
         self.appels.append(commande)
+        self.appels_kwargs.append(kwargs)
 
 
 def _preparer_executable(tmp_path: Path, monkeypatch) -> Path:
@@ -155,5 +157,6 @@ def test_traiter_flag_legitime_lance_le_processus_attendu(tmp_path, monkeypatch)
 
     actualise.traiter_flag_actualise("fermeture")
 
-    assert espion.appels == [[str(bat)]]
+    assert espion.appels == [["cmd.exe", "/c", str(bat)]]
+    assert espion.appels_kwargs == [{}]
     assert not flag.exists()

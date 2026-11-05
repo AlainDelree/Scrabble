@@ -99,7 +99,7 @@ def traiter_flag_actualise(contexte: str) -> None:
                     "flag Actualise (fermeture) : chemin 'bat' refusé"
                 )
                 return
-            subprocess.Popen([str(bat)], shell=True)
+            subprocess.Popen(["cmd.exe", "/c", str(bat)])
         elif contexte == "demarrage":
             actualise_ui = chemin_actualise_valide(data.get("actualise_ui"))
             bat = chemin_actualise_valide(data.get("bat"))
