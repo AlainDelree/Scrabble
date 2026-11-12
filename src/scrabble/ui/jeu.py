@@ -89,6 +89,15 @@ from scrabble.ui.api_pose import MixinPose
 from scrabble.ui.api_tirage_ordre import MixinTirageOrdre
 from scrabble.ui.api_tour_fin_partie import MixinTourEtFinPartie
 
+# Exposés volontairement : lus comme attributs du module par d'autres fichiers
+# (ex. api_tour_fin_partie.py, accès dynamique au module) et remplacés par les
+# tests via monkeypatch sur scrabble.ui.jeu.
+__all__ = [
+    "demarrer_suivi",
+    "enregistrer_action",
+    "finaliser_partie",
+]
+
 DOSSIER_WEB = Path(__file__).parent / "web"
 
 
