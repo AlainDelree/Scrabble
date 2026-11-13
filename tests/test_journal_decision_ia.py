@@ -258,6 +258,17 @@ class TestPersistanceDuJournal:
         actions = lire_actions_journalisees(id_partie, chemin)
         assert actions[0].journal_ia is None
 
+    def test_partie_inconnue_leve(self, tmp_path):
+        chemin = tmp_path / "parties.db"
+        partie = Partie(
+            [Joueur("IA", humain=False, niveau=Niveau.FACILE)],
+            _trie(*_MOTS_DE_BASE),
+            graine=1,
+        )
+        demarrer_suivi(partie, chemin)
+        with pytest.raises(KeyError):
+            lire_actions_journalisees(999, chemin)
+
     def test_chargement_ancienne_sauvegarde_sans_colonne_journal(self, tmp_path):
         """Une base créée avant l'issue #445 (sans colonne ``journal_ia``) se
         charge et se rejoue sans erreur, sans migration manuelle."""
