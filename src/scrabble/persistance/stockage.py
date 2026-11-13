@@ -825,13 +825,20 @@ def lire_actions_journalisees(
         colonnes = [
             row[1] for row in connexion.execute("PRAGMA table_info(actions)").fetchall()
         ]
-        colonne_journal = "journal_ia" if "journal_ia" in colonnes else "NULL AS journal_ia"
-        lignes = connexion.execute(
-            "SELECT indice, index_joueur, nom_joueur, type_action, coup, "
-            f"jetons_echanges, detail, {colonne_journal} FROM actions "
-            "WHERE id_partie = ? ORDER BY indice ASC",
-            (id_partie,),
-        ).fetchall()
+        if "journal_ia" in colonnes:
+            lignes = connexion.execute(
+                "SELECT indice, index_joueur, nom_joueur, type_action, coup, "
+                "jetons_echanges, detail, journal_ia FROM actions "
+                "WHERE id_partie = ? ORDER BY indice ASC",
+                (id_partie,),
+            ).fetchall()
+        else:
+            lignes = connexion.execute(
+                "SELECT indice, index_joueur, nom_joueur, type_action, coup, "
+                "jetons_echanges, detail, NULL AS journal_ia FROM actions "
+                "WHERE id_partie = ? ORDER BY indice ASC",
+                (id_partie,),
+            ).fetchall()
     finally:
         connexion.close()
     return [
