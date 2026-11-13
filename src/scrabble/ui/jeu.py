@@ -248,7 +248,9 @@ def _graine_avatar(joueur: Joueur, index: int) -> int:
     exigée ici mais elle rend les tests et le débogage plus simples.
     """
     cle = f"{index}\x00{joueur.nom}".encode()
-    return int.from_bytes(hashlib.md5(cle).digest()[:8], "big")
+    return int.from_bytes(
+        hashlib.md5(cle, usedforsecurity=False).digest()[:8], "big"
+    )
 
 
 def calculer_avatars(
