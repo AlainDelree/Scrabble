@@ -1222,7 +1222,7 @@ def detail_tirage_ordre(
     """
     humains = set(noms_humains or ())
     # Hasard de jeu (ordre de tour), jamais un secret.
-    resultat = determiner_ordre_jeu(noms_creation, random.Random(graine))  # noqa: S311  # nosec B311
+    resultat = determiner_ordre_jeu(noms_creation, random.Random(graine))  # nosec B311
     tirages = [
         {
             "nom": noms_creation[i],

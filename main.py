@@ -65,7 +65,7 @@ if __name__ == "__main__":
     if _actualise_exe.exists():
         try:
             # Chemin fixe, codé en dur juste au-dessus, et arguments constants.
-            subprocess.Popen([str(_actualise_exe), "--config", "scrabble"])  # noqa: S603  # nosec B603
+            subprocess.Popen([str(_actualise_exe), "--config", "scrabble"])  # nosec B603
         except Exception as exc:
             print(f"[Scrabble] Lancement d'Actualise ignoré : {exc}", file=sys.stderr)
 

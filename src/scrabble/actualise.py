@@ -100,7 +100,7 @@ def traiter_flag_actualise(contexte: str) -> None:
                 )
                 return
             # Chemin « bat » déjà validé juste au-dessus par chemin_actualise_valide.
-            subprocess.Popen(["cmd.exe", "/c", str(bat)])  # noqa: S603, S607  # nosec B603,B607
+            subprocess.Popen(["cmd.exe", "/c", str(bat)])  # nosec B603,B607
         elif contexte == "demarrage":
             actualise_ui = chemin_actualise_valide(data.get("actualise_ui"))
             bat = chemin_actualise_valide(data.get("bat"))
@@ -111,7 +111,7 @@ def traiter_flag_actualise(contexte: str) -> None:
                 )
                 return
             # Chemins « actualise_ui » et « bat » déjà validés juste au-dessus.
-            subprocess.Popen([  # noqa: S603  # nosec B603
+            subprocess.Popen([  # nosec B603
                 str(actualise_ui),
                 "--bat", str(bat),
                 "--flag", str(flag),

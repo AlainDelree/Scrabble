@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Écoute sur toutes les interfaces uniquement derrière --reseau explicite,
     # la valeur par défaut restant la boucle locale.
-    hote = "0.0.0.0" if args.reseau else "127.0.0.1"  # noqa: S104  # nosec B104
+    hote = "0.0.0.0" if args.reseau else "127.0.0.1"  # nosec B104
     serveur = ServeurScrabble((hote, args.port), DOSSIER_WEB, routeur, fenetre_pont, diffusion)
 
     hote_affiche = "0.0.0.0 (réseau local)" if args.reseau else "127.0.0.1 (cette machine)"

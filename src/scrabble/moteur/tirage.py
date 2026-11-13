@@ -33,7 +33,7 @@ class Sac:
 
     def __init__(self, graine: int | None = None) -> None:
         # Hasard de jeu (mélange du sac), jamais un secret.
-        self._alea = random.Random(graine)  # noqa: S311  # nosec B311
+        self._alea = random.Random(graine)  # nosec B311
         self._jetons: list[str] = constituer_sac()
         self._alea.shuffle(self._jetons)
 

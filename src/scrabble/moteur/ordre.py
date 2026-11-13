@@ -101,7 +101,7 @@ def determiner_ordre_jeu(
     """
     if alea is None:
         # Hasard de jeu (ordre de tour), jamais un secret.
-        alea = random.Random()  # noqa: S311  # nosec B311
+        alea = random.Random()  # nosec B311
     nombre = len(joueurs)
     if nombre == 0:
         return ResultatTirageOrdre(ordre=[], lettres=[])

@@ -259,7 +259,7 @@ class MixinTourEtFinPartie:
         que l'écran de jeu relancé affiche à son tour l'écran de tirage.
         """
         # Hasard de jeu (graine de partie), jamais un secret.
-        graine = random.randint(0, 2**31 - 1)  # noqa: S311  # nosec B311
+        graine = random.randint(0, 2**31 - 1)  # nosec B311
         noms_humains = [j.nom for j in self._partie.joueurs if j.humain]
         noms_ia = [j.nom for j in self._partie.joueurs if not j.humain]
         self._nouvelles_infos_tirage = {

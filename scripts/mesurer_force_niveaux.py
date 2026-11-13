@@ -567,7 +567,7 @@ def _deriver_graines(graine_partie: int) -> tuple[int, int, int, int]:
     partie strictement identique d'une exécution à l'autre.
     """
     # Hasard de jeu (dérivation de graines de mesure), jamais un secret.
-    maitre = random.Random(graine_partie)  # noqa: S311  # nosec B311
+    maitre = random.Random(graine_partie)  # nosec B311
     return (
         maitre.randrange(2**31),
         maitre.randrange(2**31),
@@ -728,7 +728,7 @@ def jouer_une_partie(
     joueurs = [joueur_a, joueur_b]
 
     # Hasard de jeu (ordre de tour), jamais un secret.
-    resultat_ordre = determiner_ordre_jeu(joueurs, random.Random(graine_ordre))  # noqa: S311  # nosec B311
+    resultat_ordre = determiner_ordre_jeu(joueurs, random.Random(graine_ordre))  # nosec B311
     joueurs = [joueurs[indice] for indice in resultat_ordre.ordre]
     commence = "a" if joueurs[0] is joueur_a else "b"
 
@@ -737,9 +737,9 @@ def jouer_une_partie(
     # Contexte par joueur : (Trie de génération, config, rng dédié).
     contexte_par_joueur = {
         # Hasard de jeu (choix de l'IA), jamais un secret.
-        id(joueur_a): (trie_a, config_a, random.Random(graine_ia_a)),  # noqa: S311  # nosec B311
+        id(joueur_a): (trie_a, config_a, random.Random(graine_ia_a)),  # nosec B311
         # Hasard de jeu (choix de l'IA), jamais un secret.
-        id(joueur_b): (trie_b, config_b, random.Random(graine_ia_b)),  # noqa: S311  # nosec B311
+        id(joueur_b): (trie_b, config_b, random.Random(graine_ia_b)),  # nosec B311
     }
 
     tours = 0

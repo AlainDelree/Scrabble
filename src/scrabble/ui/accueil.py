@@ -978,7 +978,7 @@ class ApiAccueil:
                 j.personnage for j in self.config_partie.joueurs if not j.humain
             ]
             # Hasard de jeu (graine de partie), jamais un secret.
-            graine = random.randint(0, 2**31 - 1)  # noqa: S311  # nosec B311
+            graine = random.randint(0, 2**31 - 1)  # nosec B311
             # Source du dictionnaire choisie dans les réglages (issue #210) : sans
             # cet argument, ``obtenir_trie()`` retombait silencieusement sur l'ODS
             # même quand l'utilisateur avait sélectionné Hunspell. On lit la config

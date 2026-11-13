@@ -326,7 +326,7 @@ def creer_partie(
         )
     if tirage_ordre:
         # Hasard de jeu (ordre de tour), jamais un secret.
-        resultat = determiner_ordre_jeu(joueurs, random.Random(graine))  # noqa: S311  # nosec B311
+        resultat = determiner_ordre_jeu(joueurs, random.Random(graine))  # nosec B311
         joueurs = [joueurs[indice] for indice in resultat.ordre]
     return Partie(
         joueurs,
