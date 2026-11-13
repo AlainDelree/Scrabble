@@ -810,7 +810,8 @@ def choisir_coup(
     if not coups:
         return None
 
-    rng = alea if alea is not None else random.Random()
+    # Hasard de jeu (choix de l'IA), jamais un secret.
+    rng = alea if alea is not None else random.Random()  # noqa: S311  # nosec B311
 
     coups_tries = [
         cn for cn, _ in _trier_par_score_strategique(coups, niveau, chevalet, profil)

@@ -100,7 +100,8 @@ def determiner_ordre_jeu(
         pour donner une lettre différente à chaque joueur (plus de 26 joueurs).
     """
     if alea is None:
-        alea = random.Random()
+        # Hasard de jeu (ordre de tour), jamais un secret.
+        alea = random.Random()  # noqa: S311  # nosec B311
     nombre = len(joueurs)
     if nombre == 0:
         return ResultatTirageOrdre(ordre=[], lettres=[])

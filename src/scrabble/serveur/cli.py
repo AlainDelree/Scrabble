@@ -101,7 +101,9 @@ def main(argv: list[str] | None = None) -> int:
     # ``lancer_application_unifiee``, sans sortir du contrat public du routeur.
     routeur.initialiser_joueur_humain()
 
-    hote = "0.0.0.0" if args.reseau else "127.0.0.1"
+    # Écoute sur toutes les interfaces uniquement derrière --reseau explicite,
+    # la valeur par défaut restant la boucle locale.
+    hote = "0.0.0.0" if args.reseau else "127.0.0.1"  # noqa: S104  # nosec B104
     serveur = ServeurScrabble((hote, args.port), DOSSIER_WEB, routeur, fenetre_pont, diffusion)
 
     hote_affiche = "0.0.0.0 (réseau local)" if args.reseau else "127.0.0.1 (cette machine)"
