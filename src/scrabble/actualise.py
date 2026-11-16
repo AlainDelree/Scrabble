@@ -99,7 +99,17 @@ def traiter_flag_actualise(contexte: str) -> None:
                     "flag Actualise (fermeture) : chemin 'bat' refusé"
                 )
                 return
-            # Chemin « bat » déjà validé juste au-dessus par chemin_actualise_valide.
+            # S603 : chemin « bat » déjà validé juste au-dessus par
+            # chemin_actualise_valide ; les autres arguments sont des constantes.
+            # S607 : « cmd.exe » est l'interpréteur de commandes système de
+            # Windows, lancé par son nom court ; le risque (un faux « cmd.exe »
+            # placé dans le chemin de recherche) est accepté parce que le
+            # lancement exige un fichier-drapeau lu à côté de l'exécutable du
+            # jeu (_flag_courant) et un « .bat » situé sous C:\Actualise
+            # (chemin_actualise_valide), donc l'attaquant devrait déjà pouvoir
+            # écrire dans le dossier de l'application ; un chemin complet vers
+            # « cmd.exe » n'apporterait pas de protection réelle ici et
+            # nuirait à la portabilité entre versions de Windows.
             subprocess.Popen(["cmd.exe", "/c", str(bat)])  # nosec B603,B607
         elif contexte == "demarrage":
             actualise_ui = chemin_actualise_valide(data.get("actualise_ui"))
