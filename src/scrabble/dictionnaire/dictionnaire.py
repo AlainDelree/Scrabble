@@ -1068,7 +1068,9 @@ def _cache_valide(
         return False
     try:
         with open(chemin_cache, "rb") as fichier:
-            entete = pickle.load(fichier)
+            # Fichier écrit par l'application elle-même dans son dossier
+            # réservé ``DOSSIER_CACHE_DICO`` : aucune donnée externe désérialisée.
+            entete = pickle.load(fichier)  # nosec B301
     except (pickle.UnpicklingError, EOFError, OSError, AttributeError, ValueError):
         return False
     if not isinstance(entete, dict):
@@ -1091,8 +1093,11 @@ def _lire_trie_cache(chemin_cache: Path) -> Trie | None:
     """Charge le Trie depuis le cache, ou ``None`` si illisible."""
     try:
         with open(chemin_cache, "rb") as fichier:
-            pickle.load(fichier)  # en-tête, consommé pour avancer jusqu'au Trie
-            trie = pickle.load(fichier)
+            # Les deux lectures ci-dessous portent sur le même fichier, écrit
+            # par l'application elle-même dans son dossier réservé
+            # ``DOSSIER_CACHE_DICO`` : aucune donnée externe désérialisée.
+            pickle.load(fichier)  # en-tête, consommé pour avancer jusqu'au Trie  # nosec B301
+            trie = pickle.load(fichier)  # nosec B301
     except (pickle.UnpicklingError, EOFError, OSError, AttributeError, ValueError):
         return None
     if isinstance(trie, Trie):
