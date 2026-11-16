@@ -289,19 +289,19 @@ from pathlib import Path
 # retrouver le paquet ``scrabble`` quel que soit le répertoire courant.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from scrabble.dictionnaire.dictionnaire import (  # noqa: E402
+from scrabble.dictionnaire.dictionnaire import (
     CHEMIN_ODS,
     FICHIERS_CACHE_IA_PALIER,
     FICHIERS_VOCABULAIRE_PALIER,
     obtenir_trie,
     obtenir_trie_ia,
 )
-from scrabble.moteur import ia  # noqa: E402
-from scrabble.moteur.ia import Niveau, ProfilPersonnage, resoudre_palier  # noqa: E402
-from scrabble.moteur.ordre import determiner_ordre_jeu  # noqa: E402
-from scrabble.moteur.partie import ACTION_COUP, ACTION_PASSE, Joueur, Partie  # noqa: E402
-from scrabble.moteur.personnages import PERSONNAGES, profil_pour_niveau  # noqa: E402
-from scrabble.regles.plateau import TypeCase  # noqa: E402
+from scrabble.moteur import ia
+from scrabble.moteur.ia import Niveau, ProfilPersonnage, resoudre_palier
+from scrabble.moteur.ordre import determiner_ordre_jeu
+from scrabble.moteur.partie import ACTION_COUP, ACTION_PASSE, Joueur, Partie
+from scrabble.moteur.personnages import PERSONNAGES, profil_pour_niveau
+from scrabble.regles.plateau import TypeCase
 
 #: Nombre de parties par défaut : modeste pour qu'un lancement sans argument
 #: ne parte pas pour 20 minutes (quelques minutes seulement).
