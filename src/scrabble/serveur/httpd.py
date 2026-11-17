@@ -17,7 +17,7 @@ pour ne jamais entrer en collision avec un fichier de ``ui/web/`` :
 Avertissement de sécurité (point 2) : AUCUNE authentification. Prototype pour
 un seul joueur de confiance sur un réseau local de confiance — jamais
 Internet. Affiché au démarrage par :func:`scrabble.serveur.cli.main` ; voir
-``CONTEXTE.md``.
+``docs/contexte/serveur_local.md``.
 
 Verrouillage du dictionnaire (issue #479) : ``do_POST`` consulte, dans l'ordre,
 :mod:`scrabble.serveur.securite` pour refuser les appels interdits (gestion
@@ -419,7 +419,8 @@ class ServeurScrabble(ThreadingHTTPServer):
     ``limiteurs`` (issue #479, point 4) — un :class:`~scrabble.serveur.
     securite.LimiteurFrequence` par fonction de :data:`~scrabble.serveur.
     securite.LIMITES_FREQUENCE` — vit en mémoire sur l'instance du serveur :
-    remis à zéro à chaque redémarrage (voir ``CONTEXTE.md``), partagé par
+    remis à zéro à chaque redémarrage (voir
+    ``docs/contexte/serveur_local.md``), partagé par
     tous les fils de connexion (verrou interne à chaque limiteur).
     """
 

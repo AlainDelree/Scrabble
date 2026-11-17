@@ -23,7 +23,7 @@ coups d'appels automatisés :
    ``verifier_coup`` (issue #483) : un appel compte qu'il soit finalement
    accepté ou refusé. **Réglages dans un seul endroit** :
    :data:`LIMITES_FREQUENCE` et :data:`PALIERS_BLOCAGE_SECONDES` ci-dessous
-   (voir aussi ``CONTEXTE.md``, section « Serveur local »).
+   (voir aussi ``docs/contexte/serveur_local.md``).
 
 3. :func:`verifier_pose_hors_chevalet`/:func:`verifier_placements_hors_chevalet`
    — ``poser_lettre_en_attente`` (mode « finalisation », après le choix de la
@@ -82,7 +82,7 @@ MESSAGE_FONCTION_INTERDITE = (
 # --------------------------------------------------------------------------- #
 
 #: Réglages des trois limites, modifiables UNIQUEMENT ici (documenté dans
-#: CONTEXTE.md) : ``{nom_fonction: (appels_max_par_minute, appels_max_par_jour)}``.
+#: docs/contexte/serveur_local.md) : ``{nom_fonction: (appels_max_par_minute, appels_max_par_jour)}``.
 #: Ordres de grandeur délibérément larges pour qu'un joueur honnête ne les
 #: atteigne jamais (de l'ordre d'un coup par tour) ; ``verifier_mot`` est plus
 #: stricte que ``verifier_coup``/``poser_mot`` car elle accepte n'importe
@@ -126,8 +126,8 @@ class LimiteurFrequence:
     Pensé pour un seul processus ``ThreadingHTTPServer`` (verrou interne,
     partagé par tous les fils de connexion). La clé est l'adresse du client
     (``self.client_address[0]`` côté ``httpd``) : en l'absence de comptes, voir
-    ``CONTEXTE.md`` — la limite sera rattachée au compte quand les comptes
-    existeront.
+    ``docs/contexte/serveur_local.md`` — la limite sera rattachée au compte
+    quand les comptes existeront.
 
     Deux fenêtres glissantes (par minute, par jour) ; au-delà de l'une ou
     l'autre, le client est bloqué pour la durée du palier courant

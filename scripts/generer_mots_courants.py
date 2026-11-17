@@ -364,7 +364,7 @@ def main(argv: list[str] | None = None) -> int:
     if not mots_ods:
         print(
             "ERREUR : ODS8 introuvable ou vide. Déposez le dictionnaire ODS8 "
-            "dans data/dictionnaire/ (voir CONTEXTE.md).",
+            "dans data/dictionnaire/ (voir docs/contexte/donnees_dictionnaire.md).",
             file=sys.stderr,
         )
         return 2

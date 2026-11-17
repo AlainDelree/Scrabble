@@ -28,7 +28,8 @@ Usage
     python scripts/generer_classiques.py --dry-run  # affiche seulement la liste
     python scripts/generer_classiques.py --force    # réécrit même si non vide
 
-Nécessite que l'ODS8 soit présent dans ``data/dictionnaire/`` (voir CONTEXTE.md).
+Nécessite que l'ODS8 soit présent dans ``data/dictionnaire/`` (voir
+``docs/contexte/donnees_dictionnaire.md``).
 """
 
 from __future__ import annotations

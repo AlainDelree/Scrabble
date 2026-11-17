@@ -11,8 +11,9 @@ Lancement ::
 
     python -m scrabble.serveur
 
-Voir ``CONTEXTE.md`` pour les options et l'avertissement de sécurité (aucune
-authentification : réseau local de confiance uniquement, jamais Internet).
+Voir ``docs/contexte/serveur_local.md`` pour les options et l'avertissement
+de sécurité (aucune authentification : réseau local de confiance
+uniquement, jamais Internet).
 """
 
 from __future__ import annotations

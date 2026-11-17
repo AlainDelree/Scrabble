@@ -4,8 +4,8 @@ Commande ::
 
     python -m scrabble.serveur [--reseau] [--port 8765] [--dossier-donnees CHEMIN]
 
-Voir ``CONTEXTE.md`` pour le détail des options et l'avertissement de
-sécurité. Aucune fenêtre n'est ouverte : ``ApiRouteur`` (routeur d'API
+Voir ``docs/contexte/serveur_local.md`` pour le détail des options et
+l'avertissement de sécurité. Aucune fenêtre n'est ouverte : ``ApiRouteur`` (routeur d'API
 existant, ``scrabble.ui.application``) est utilisé directement, avec une
 ``ApiAccueil``/``ApiJeu`` comme pour l'application de bureau — seule la
 fenêtre pywebview est remplacée par le serveur HTTP (:mod:`scrabble.serveur.
@@ -94,8 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     api_jeu.set_window(fenetre_pont)
     routeur = ApiRouteur(api_accueil=ApiAccueil(), api_jeu=api_jeu, vue_active=VUE_ACCUEIL)
     # Pas de ``routeur.set_window(...)`` : la navigation Accueil↔Jeu est donc
-    # laissée au navigateur (point 6 — cf. CONTEXTE.md et le rapport de
-    # l'issue #475 pour le détail des méthodes concernées).
+    # laissée au navigateur (point 6 — cf. docs/contexte/serveur_local.md
+    # pour le détail des méthodes concernées).
     # Routée dynamiquement par ``ApiRouteur`` (méthode publique d'``ApiAccueil``,
     # vue active = accueil) — même effet que l'accès privé fait par
     # ``lancer_application_unifiee``, sans sortir du contrat public du routeur.

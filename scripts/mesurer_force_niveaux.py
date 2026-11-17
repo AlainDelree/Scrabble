@@ -267,8 +267,9 @@ EXPERT, CHAMPION_DU_MONDE.
 
 Nécessite le dictionnaire réellement installé dans ``data/dictionnaire/``
 (gitignoré, déposé manuellement — voir ``data/dictionnaire/README.md`` et
-``CONTEXTE.md``) : le script s'arrête avec un message clair s'il est absent,
-plutôt que de mesurer sur un dictionnaire vide.
+``docs/contexte/donnees_dictionnaire.md``) : le script s'arrête avec un
+message clair s'il est absent, plutôt que de mesurer sur un dictionnaire
+vide.
 """
 
 from __future__ import annotations
@@ -590,8 +591,9 @@ def _verifier_dictionnaire_installe() -> None:
             f"{CHEMIN_ODS} n'existe pas.\n"
             "Dépose manuellement le dictionnaire ODS8 dans "
             "data/dictionnaire/French-Scrabble-ODS8-main/ avant de lancer ce "
-            "script (voir data/dictionnaire/README.md et CONTEXTE.md — le "
-            "dictionnaire est gitignoré, jamais commité)."
+            "script (voir data/dictionnaire/README.md et "
+            "docs/contexte/donnees_dictionnaire.md — le dictionnaire est "
+            "gitignoré, jamais commité)."
         )
 
 
@@ -643,8 +645,9 @@ def _resoudre_trie(cle_vocab: str, mode_belgicisme: bool, trie_complet):
             f"{chemin_vocab} n'existe pas.\n"
             "Génère les vocabulaires par palier avec "
             "scripts/generer_mots_courants.py --tous avant de mesurer avec "
-            "--vocab palier ou --vocab-a/--vocab-b (voir CONTEXTE.md — ces "
-            "fichiers sont gitignorés, jamais commités)."
+            "--vocab palier ou --vocab-a/--vocab-b (voir "
+            "docs/contexte/donnees_dictionnaire.md — ces fichiers sont "
+            "gitignorés, jamais commités)."
         )
     return obtenir_trie_ia(
         SOURCE_DICO,
