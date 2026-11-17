@@ -35,20 +35,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from scrabble.moteur.partie import (  # noqa: E402
+from scrabble.moteur.partie import (
     ACTION_COUP,
     ACTION_ECHANGE,
     ACTION_PASSE,
 )
-from scrabble.moteur.personnages import PERSONNAGES  # noqa: E402
-from scrabble.moteur.plateau_partie import PlateauPartie  # noqa: E402
-from scrabble.persistance.stockage import (  # noqa: E402
+from scrabble.moteur.personnages import PERSONNAGES
+from scrabble.moteur.plateau_partie import PlateauPartie
+from scrabble.persistance.stockage import (
     ActionJournalisee,
     ConfigurationPartie,
     lire_actions_journalisees,
     lire_configuration_partie,
 )
-from scrabble.regles.plateau import TypeCase  # noqa: E402
+from scrabble.regles.plateau import TypeCase
 
 #: Types de case comptant comme « mot double ou triple » pour le résumé.
 _CASES_MOT_DOUBLE_TRIPLE = frozenset({TypeCase.MOT_DOUBLE, TypeCase.MOT_TRIPLE})

@@ -214,14 +214,14 @@ class GestionnaireRequetes(BaseHTTPRequestHandler):
     # exigence du point 3 — ils peuvent contenir des mots du dictionnaire).
     # ------------------------------------------------------------------ #
 
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - signature imposée
+    def log_message(self, format: str, *args: Any) -> None:
         journal.info(f"Serveur HTTP : {self.address_string()} — {format % args}")
 
     # ------------------------------------------------------------------ #
     # GET — fichiers statiques + flux SSE
     # ------------------------------------------------------------------ #
 
-    def do_GET(self) -> None:  # noqa: N802 - nom imposé par BaseHTTPRequestHandler
+    def do_GET(self) -> None:
         chemin = urllib.parse.urlsplit(self.path).path
         if chemin == f"{PREFIXE_INTERNE}/evenements":
             self._servir_evenements()
@@ -297,7 +297,7 @@ class GestionnaireRequetes(BaseHTTPRequestHandler):
     # POST — appels d'API (point 4)
     # ------------------------------------------------------------------ #
 
-    def do_POST(self) -> None:  # noqa: N802 - nom imposé par BaseHTTPRequestHandler
+    def do_POST(self) -> None:
         chemin = urllib.parse.urlsplit(self.path).path
         prefixe_api = f"{PREFIXE_INTERNE}/api/"
         if not chemin.startswith(prefixe_api):

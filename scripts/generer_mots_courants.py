@@ -100,7 +100,7 @@ from pathlib import Path
 # retrouver le paquet ``scrabble`` quel que soit le répertoire courant.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from scrabble.dictionnaire.dictionnaire import (  # noqa: E402
+from scrabble.dictionnaire.dictionnaire import (
     DOSSIER_DICO,
     FICHIERS_VOCABULAIRE_PALIER,
     _reecrire_liste_mots,

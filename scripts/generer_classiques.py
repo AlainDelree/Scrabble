@@ -42,7 +42,7 @@ from pathlib import Path
 # quel que soit le répertoire courant.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from scrabble.dictionnaire.dictionnaire import (  # noqa: E402
+from scrabble.dictionnaire.dictionnaire import (
     CHEMINS_CLASSIQUES,
     _reecrire_liste_mots,
     charger_ods,

@@ -62,14 +62,14 @@ from pathlib import Path
 # l'assure explicitement pour rester robuste quel que soit le répertoire courant.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from croiser_formes_lemmes import (  # noqa: E402  (import après ajustement sys.path)
+from croiser_formes_lemmes import (
     _ajouter,
     _lemmes,
     desaccentuer,
     nettoyer_forme,
 )
 
-from scrabble.dictionnaire.dictionnaire import (  # noqa: E402
+from scrabble.dictionnaire.dictionnaire import (
     CHEMIN_DEFINITIONS,
     charger_ods,
     normaliser_mot,

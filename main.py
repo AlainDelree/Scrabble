@@ -29,8 +29,8 @@ from pathlib import Path
 if not getattr(sys, "frozen", False):
     sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from scrabble.actualise import traiter_flag_actualise  # noqa: E402
-from scrabble.ui.application import main  # noqa: E402
+from scrabble.actualise import traiter_flag_actualise
+from scrabble.ui.application import main
 
 if __name__ == "__main__":
     # Identification de l'application dans la barre des tâches (issue #318),
