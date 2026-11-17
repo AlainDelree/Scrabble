@@ -1,16 +1,37 @@
 # Dépendances du projet Scrabble.
-pywebview
+# Versions figées à celles relevées lors du build Windows v15 (issue #501,
+# environnement de build recréé à neuf). Toute mise à jour de ce fichier
+# doit être volontaire (nouveau relevé explicite), jamais une dérive au fil
+# des recréations de l'environnement.
+altgraph==0.17.5
+bottle==0.13.4
+cffi==2.1.1; sys_platform == "win32"
+clr_loader==0.3.1; sys_platform == "win32"
+colorama==0.4.6; sys_platform == "win32"
+iniconfig==2.3.1
+packaging==26.3
+pefile==2024.8.26; sys_platform == "win32"
+pluggy==1.7.0
+proxy_tools==0.1.0
+pycparser==3.12; sys_platform == "win32"
+pygments==2.21.0
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.10
+pytest==9.2.0
 # pythonnet est une dépendance transitive de pywebview sous Windows (backend
 # EdgeChromium/WinForms) ; épinglée explicitement en 3.x car 2.5.2 n'a pas de
 # roue précompilée pour les nouvelles versions de Python et sa compilation
-# source échoue (nuget.exe legacy) — issue #411. Borne basse en 3.0.0rc1 car
-# seule 3.0.0rc6 existe sur PyPI (pre-release) et pip exclut les pre-releases
-# par défaut avec une borne >=3.0 seule — issue #412.
-pythonnet>=3.0.0rc1,<4.0; sys_platform == "win32"
-pyinstaller
-pytest
+# source échoue (nuget.exe legacy) — issue #411. Fixée à 3.2.1 (et non à une
+# borne >=3.0.0rc1,<4.0) car seule 3.0.0rc6 existait sur PyPI comme
+# pre-release au moment de l'issue #412 ; le relevé du build v15 montre que
+# la version stable 3.2.1 est désormais disponible.
+pythonnet==3.2.1; sys_platform == "win32"
+pywebview==6.2.1
+pywin32-ctypes==0.2.3; sys_platform == "win32"
+setuptools==84.2.1
 # Dépliage ("unmunch") du dictionnaire Hunspell fr-toutesvariantes
 # (source alternative à l'ODS). Réimplémentation pure-Python de Hunspell
 # qui parse fiablement les fichiers .aff/.dic. Requis uniquement pour la
 # source "hunspell" ; le mode ODS (défaut) n'en dépend pas.
-spylls
+spylls==0.1.7
+typing_extensions==4.16.0
