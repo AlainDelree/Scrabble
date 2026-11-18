@@ -12,6 +12,10 @@
     {
       "regle": "SEC-015",
       "raison": "2026-11-03 — serveur prototype lancé sur demande (--reseau), réseau de confiance (hotspot), usage familial ; les trois fonctions touchant au dictionnaire sont plafonnées en débit (10/min et 200/jour pour verifier_mot, 30/min et 1000/jour pour verifier_coup et poser_mot). Exception caduque dès l'arrivée des comptes joueurs ou du VPS."
+    },
+    {
+      "regle": "SEC-020",
+      "raison": "2026-11-18 — les trois pickle.load de dictionnaire.py (_cache_valide et _lire_trie_cache) lisent un chemin reçu en paramètre ; tous les appelants de src/ et de scripts/ le construisent à partir de DOSSIER_CACHE_DICO (cache/dictionnaire dans le dossier de données de l'application, ignoré par git), distinct des dossiers de dépôt déclarés ; seuls les tests passent un autre chemin. Le fichier n'a pas de contrôle d'intégrité : quelqu'un qui peut écrire dans ce dossier peut le remplacer. Risque accepté."
     }
   ]
 }
