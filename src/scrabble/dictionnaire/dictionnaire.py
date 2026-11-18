@@ -1093,10 +1093,14 @@ def _lire_trie_cache(chemin_cache: Path) -> Trie | None:
     """Charge le Trie depuis le cache, ou ``None`` si illisible."""
     try:
         with open(chemin_cache, "rb") as fichier:
-            # Les deux lectures ci-dessous portent sur le même fichier, écrit
-            # par l'application elle-même dans son dossier réservé
-            # ``DOSSIER_CACHE_DICO`` : aucune donnée externe désérialisée.
-            pickle.load(fichier)  # en-tête, consommé pour avancer jusqu'au Trie  # nosec B301
+            # Fichier écrit par l'application elle-même dans son dossier
+            # réservé ``DOSSIER_CACHE_DICO`` : aucune donnée externe
+            # désérialisée. Cette première lecture ne sert qu'à consommer
+            # l'en-tête pour avancer jusqu'au Trie.
+            pickle.load(fichier)  # nosec B301
+            # Fichier écrit par l'application elle-même dans son dossier
+            # réservé ``DOSSIER_CACHE_DICO`` : aucune donnée externe
+            # désérialisée.
             trie = pickle.load(fichier)  # nosec B301
     except (pickle.UnpicklingError, EOFError, OSError, AttributeError, ValueError):
         return None
