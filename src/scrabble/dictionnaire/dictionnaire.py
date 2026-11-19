@@ -1098,9 +1098,8 @@ def _lire_trie_cache(chemin_cache: Path) -> Trie | None:
             # désérialisée. Cette première lecture ne sert qu'à consommer
             # l'en-tête pour avancer jusqu'au Trie.
             pickle.load(fichier)  # nosec B301
-            # Fichier écrit par l'application elle-même dans son dossier
-            # réservé ``DOSSIER_CACHE_DICO`` : aucune donnée externe
-            # désérialisée.
+            # Second pickle.load de cette fonction, pour charger le Trie lui-même.
+            # Fichier d'appli, DOSSIER_CACHE_DICO réservé : rien d'externe désérialisé.
             trie = pickle.load(fichier)  # nosec B301
     except (pickle.UnpicklingError, EOFError, OSError, AttributeError, ValueError):
         return None
