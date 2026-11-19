@@ -7,6 +7,7 @@ de tri mais d'une couverture transversale délibérée.
 """
 
 from collections import Counter
+from typing import ClassVar
 
 from scrabble.dictionnaire.dictionnaire import Trie
 from scrabble.moteur.ia import Niveau
@@ -281,7 +282,7 @@ class TestApiJeuHelpersCoquilleUnifiee:
     chemin de production.
     """
 
-    _INFOS = {
+    _INFOS: ClassVar[dict] = {
         "noms_creation": ["Alice", "Robot"],
         "graine": 1,
         "noms_humains": ["Alice"],

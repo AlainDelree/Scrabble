@@ -31,6 +31,7 @@ import itertools
 import random
 import statistics
 import string
+from typing import ClassVar
 
 import pytest
 
@@ -400,10 +401,6 @@ class TestAvance:
         plateau = PlateauPartie()
         chevalet = list("AB")
         dico = _trie("AB", "BA")
-        coups = generer_coups(plateau, chevalet, dico)
-        scores = [cn.score for cn in coups]
-        max_score = max(scores)
-        meilleurs_coups = [cn.coup for cn in coups if cn.score == max_score]
         choisis = set()
         for graine in range(100):
             coup = choisir_coup(
@@ -2100,7 +2097,7 @@ class TestProgressionTrieIaRestreint:
     """Progression de difficulté avec le Trie restreint de l'IA (issue #207)."""
 
     plateau = PlateauPartie()
-    chevalet = list("CARTONS")
+    chevalet: ClassVar[list[str]] = list("CARTONS")
 
     def test_sous_ensemble_strict_et_assez_de_coups(self):
         """Prérequis : le vocabulaire IA est un sous-ensemble STRICT du complet,

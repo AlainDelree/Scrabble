@@ -13,6 +13,8 @@ Couvre :
 Note : ce module regroupe les tests extraits de ``test_jeu.py`` pour la lisibilité.
 """
 
+from typing import ClassVar
+
 from scrabble.moteur.ia import Niveau
 from scrabble.moteur.partie import Joueur, Partie
 from scrabble.moteur.plateau_partie import Tuile
@@ -589,7 +591,7 @@ class TestSourceDictionnaireValidationCoup:
     comportement CORRECT. Ces mots servent ici de témoins croisés.
     """
 
-    _TRIES = {
+    _TRIES: ClassVar[dict] = {
         # COVID : Hunspell uniquement ; AERA : ODS uniquement (données réelles).
         "hunspell": _DicoMots("COVID"),
         "ods": _DicoMots("AERA"),

@@ -9,6 +9,8 @@ Classes extraites de test_jeu.py :
 """
 
 
+from typing import ClassVar
+
 from scrabble.ui.jeu import ApiJeu
 from tests._aides_test_jeu import _DicoFactice, _partie_simple
 
@@ -170,7 +172,7 @@ class TestApiJeuTirageOrdre:
     l'accueil. Testé sans vraie fenêtre grâce à des objets factices.
     """
 
-    _INFOS = {
+    _INFOS: ClassVar[dict] = {
         "noms_creation": ["Alice", "Robot"],
         "graine": 1,
         "noms_humains": ["Alice"],
