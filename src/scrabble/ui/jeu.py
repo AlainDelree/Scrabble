@@ -773,13 +773,13 @@ def _lire_placement(placement: Any) -> tuple[int, int, str, bool]:
         qu'il représente).
     """
     if not isinstance(placement, dict):
-        raise ValueError("Placement invalide : dictionnaire attendu.")
+        raise ValueError("Placement invalide : dictionnaire attendu.")  # noqa: TRY004 - jouer_placements et simuler_coup rattrapent ValueError, le type d'exception ne doit pas changer
     ligne = placement.get("ligne")
     colonne = placement.get("colonne")
     lettre = placement.get("lettre")
     joker = bool(placement.get("joker", False))
     if not isinstance(ligne, int) or not isinstance(colonne, int):
-        raise ValueError("Placement invalide : position (ligne, colonne) manquante.")
+        raise ValueError("Placement invalide : position (ligne, colonne) manquante.")  # noqa: TRY004 - jouer_placements et simuler_coup rattrapent ValueError, le type d'exception ne doit pas changer
     if not dans_plateau(ligne, colonne):
         raise ValueError(
             f"Placement hors plateau en (ligne={ligne}, colonne={colonne})."

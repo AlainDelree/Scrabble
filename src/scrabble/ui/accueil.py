@@ -314,7 +314,7 @@ class ApiAccueil:
         """Retourne le prénom principal configuré, ou chaîne vide."""
         try:
             return lire_reglage("prenom_principal") or ""
-        except (KeyError, Exception):
+        except (KeyError, Exception):  # noqa: BLE001 - lecture de réglage en échec : retombe sur chaîne vide plutôt que de planter l'accueil
             return ""
 
     def obtenir_avatar_principal(self) -> str:
@@ -331,7 +331,7 @@ class ApiAccueil:
         """
         try:
             valeur = lire_reglage("avatar_principal") or ""
-        except (KeyError, Exception):
+        except (KeyError, Exception):  # noqa: BLE001 - lecture de réglage en échec : retombe sur chaîne vide, l'accueil affiche alors l'icône générique
             return ""
         return valeur if valeur in AVATARS_DISPONIBLES else ""
 
@@ -432,7 +432,7 @@ class ApiAccueil:
         try:
             modifier_reglage("prenom_principal", prenom)
             return True
-        except (KeyError, TypeError, Exception):
+        except (KeyError, TypeError, Exception):  # noqa: BLE001 - un échec d'écriture du réglage renvoie False au lieu de planter l'accueil
             return False
 
     def obtenir_etat(self) -> dict[str, Any]:
@@ -760,7 +760,7 @@ class ApiAccueil:
         noms_pris = self.config_partie.noms_utilises()
         try:
             nom = tirer_prenoms(1, noms_pris)[0]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - tirer_prenoms peut échouer de façons diverses ; l'erreur est journalisée puis remontée au JS
             journal.erreur("Accueil : échec du tirage de prénom d'ordinateur.", e)
             return {"succes": False, "erreur": f"Impossible de tirer un prénom : {e}"}
         avertissements = []
@@ -1054,7 +1054,7 @@ class ApiAccueil:
                 "id_partie": self._id_partie,
                 "message": f"Partie #{self._id_partie} créée avec {len(self._partie.joueurs)} joueurs.",
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - le lancement de partie regroupe des échecs variés (persistance, moteur) ; journalisés puis remontés au JS
             journal.erreur("Accueil : échec du lancement de la partie.", e)
             return {"succes": False, "erreur": str(e)}
 
@@ -1119,7 +1119,8 @@ class ApiAccueil:
                     }
                 )
             return resultat
-        except Exception:
+        except Exception as e:  # noqa: BLE001 - le listing des parties ne doit jamais bloquer l'accueil ; l'erreur est journalisée avant de retomber sur une liste vide
+            journal.erreur("Accueil : échec du listing des parties en cours.", e)
             return []
 
     def reprendre(self, id_partie: int) -> dict[str, Any]:
@@ -1188,7 +1189,7 @@ class ApiAccueil:
         except KeyError as e:
             journal.erreur(f"Accueil : partie #{id_partie} introuvable à la reprise.", e)
             return {"succes": False, "erreur": f"Partie #{id_partie} introuvable."}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - la reprise peut échouer pour des causes diverses au-delà de l'introuvable (KeyError) déjà géré ci-dessus
             journal.erreur(f"Accueil : échec de la reprise de la partie #{id_partie}.", e)
             return {"succes": False, "erreur": str(e)}
 

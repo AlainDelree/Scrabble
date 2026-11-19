@@ -129,5 +129,5 @@ def traiter_flag_actualise(contexte: str) -> None:
             ])
         else:  # pragma: no cover - erreur de programmation interne
             raise ValueError(f"contexte inconnu : {contexte!r}")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - le traitement du flag Actualise ne doit jamais faire échouer le démarrage ou l'arrêt de Scrabble
         journal.erreur(f"lancement Actualise ignoré ({contexte}) : {exc}")

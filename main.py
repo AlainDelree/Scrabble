@@ -66,7 +66,7 @@ if __name__ == "__main__":
         try:
             # Chemin fixe, codé en dur juste au-dessus, et arguments constants.
             subprocess.Popen([str(_actualise_exe), "--config", "scrabble"])  # nosec B603
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - un échec de lancement d'Actualise ne doit jamais bloquer le démarrage de Scrabble
             print(f"[Scrabble] Lancement d'Actualise ignoré : {exc}", file=sys.stderr)
 
     raise SystemExit(main())

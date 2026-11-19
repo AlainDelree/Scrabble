@@ -105,7 +105,7 @@ class Journal:
         # des tests, notamment) n'écrasent jamais le fichier l'une de l'autre.
         nom = f"session-{lancement:%Y%m%d-%H%M%S-%f}-{os.getpid()}.log"
         self.chemin = self.dossier / nom
-        self._fichier = open(self.chemin, "a", encoding="utf-8")
+        self._fichier = open(self.chemin, "a", encoding="utf-8")  # noqa: SIM115 - gardé ouvert toute la session, fermé explicitement par cloturer()
         self._nb_erreurs = 0
         self._clos = False
 
